@@ -13,6 +13,7 @@ namespace {
 constexpr double k_x_min = -10.0;
 constexpr double k_x_max = 10.0;
 constexpr std::size_t k_num_samples = 2000;
+constexpr double k_auto_v_scale = 0.4;
 const char* k_vert_shader = ":/vnm_plot/shaders/function_sample.vert";
 
 } // namespace
@@ -45,7 +46,7 @@ void Plot_controller::set_plot_widget(vnm::plot::Plot_widget* widget)
         }
         m_plot_widget->set_t_range(k_x_min, k_x_max);
         m_plot_widget->set_available_t_range(k_x_min, k_x_max);
-        m_plot_widget->auto_adjust_view();
+        m_plot_widget->auto_adjust_view(false, k_auto_v_scale);
         m_plot_widget->update();
     }
 
@@ -118,7 +119,7 @@ void Plot_controller::configure_plot_widget()
     config.font_size_px = 11.0;
     config.preview_height_px = 0;
     config.line_width_px = 1.25;
-    config.auto_v_range_extra_scale = 0.4;
+    config.auto_v_range_extra_scale = k_auto_v_scale;
 
     m_plot_widget->set_config(config);
 }
