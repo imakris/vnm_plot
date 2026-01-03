@@ -5,12 +5,20 @@
 #include <QtCore/QCoreApplication>
 #include <QtGui/QGuiApplication>
 #include <QtQml/QQmlApplicationEngine>
+#include <QtQuick/QQuickWindow>
+#include <QSurfaceFormat>
 
 #include <cstdlib>
 
 int main(int argc, char* argv[])
 {
+    QSurfaceFormat surface_format = QSurfaceFormat::defaultFormat();
+    surface_format.setSamples(8);
+    QSurfaceFormat::setDefaultFormat(surface_format);
+
     QGuiApplication app(argc, argv);
+
+    QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
 
     qmlRegisterType<vnm::plot::Plot_widget>("VnmPlot", 1, 0, "PlotWidget");
     qmlRegisterType<Plot_controller>("Example", 1, 0, "PlotController");
