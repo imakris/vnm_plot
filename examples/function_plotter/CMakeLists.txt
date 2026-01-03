@@ -64,6 +64,10 @@ add_executable(function_plotter
     resources.qrc
 )
 
+if(WIN32)
+    target_sources(function_plotter PRIVATE app_icon.rc)
+endif()
+
 target_link_libraries(function_plotter PRIVATE
     Qt6::Core
     Qt6::Gui
