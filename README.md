@@ -14,7 +14,7 @@ FreeType, and msdfgen if they are not already available as targets.
 
 ## Examples
 
-![Function Plotter](function_plotter.png)
+![Function Plotter](function_plotter_example.png)
 <sub>function_plotter example</sub>
 
 Enable examples by configuring with:
