@@ -1,0 +1,5 @@
+# Build outputs
+/examples/build-*
+
+# QtCreator user settings
+/examples/**/.qtcreator/
