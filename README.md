@@ -22,3 +22,5 @@ cmake --build build
 ```
 
 The example `vnm_plot_hello` renders a sine wave using `Function_data_source`.
+The example `function_plotter` is a more advanced demo with multiple functions,
+per-series styles, and expression evaluation via mexce.
