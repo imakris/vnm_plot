@@ -9,6 +9,7 @@
 #include <vnm_plot/plot_widget.h>
 
 #include <QtGui/QGuiApplication>
+#include <QtGui/QIcon>
 #include <QtQml/QQmlApplicationEngine>
 #include <QtQml/QQmlContext>
 #include <QtQuick/QQuickWindow>
@@ -28,6 +29,7 @@ int main(int argc, char* argv[])
     app.setApplicationName("Function Plotter");
     app.setApplicationVersion("0.1.0");
     app.setOrganizationName("VNM");
+    app.setWindowIcon(QIcon("qrc:/rc/varinomics.ico"));
 
     // Request OpenGL for rendering
     QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
