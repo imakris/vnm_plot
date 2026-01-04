@@ -78,7 +78,7 @@ else()
 
     FetchContent_Declare(glatter
         GIT_REPOSITORY https://github.com/imakris/glatter.git
-        GIT_TAG        v1.0.0
+        GIT_TAG        v1.0.1
         GIT_SHALLOW    TRUE
     )
     FetchContent_Populate(glatter)
