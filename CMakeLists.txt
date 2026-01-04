@@ -13,6 +13,8 @@ project(vnm_plot
 
 # Options
 option(VNM_PLOT_BUILD_EXAMPLES "Build example applications" OFF)
+option(VNM_PLOT_BUILD_QT "Build Qt wrapper library (requires Qt6)" ON)
+option(VNM_PLOT_CORE_ONLY "Build only the Qt-free core library" OFF)
 
 include(FetchContent)
 
@@ -20,8 +22,16 @@ include(FetchContent)
 # Find or fetch required dependencies
 # -----------------------------------------------------------------------------
 
-# Qt6 is required (must be installed, not fetched)
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick OpenGL)
+# Qt6 is optional - only needed if building Qt wrapper
+if(VNM_PLOT_CORE_ONLY)
+    set(VNM_PLOT_BUILD_QT OFF)
+elseif(VNM_PLOT_BUILD_QT)
+    find_package(Qt6 COMPONENTS Core Gui Quick OpenGL)
+    if(NOT Qt6_FOUND)
+        message(STATUS "vnm_plot: Qt6 not found, building core library only")
+        set(VNM_PLOT_BUILD_QT OFF)
+    endif()
+endif()
 
 # --- GLM ---
 if(TARGET glm::glm)
@@ -58,7 +68,7 @@ else()
 
     FetchContent_Declare(glatter
         GIT_REPOSITORY https://github.com/imakris/glatter.git
-        GIT_TAG        master
+        GIT_TAG        v1.0.0
         GIT_SHALLOW    TRUE
     )
     FetchContent_Populate(glatter)
@@ -195,7 +205,26 @@ else()
 endif()
 
 # -----------------------------------------------------------------------------
-# Source files
+# Source files - Core (Qt-free)
+# -----------------------------------------------------------------------------
+
+set(VNM_PLOT_CORE_SOURCES
+    # Core abstractions
+    src/core/gl_program.cpp
+    src/core/asset_loader.cpp
+    src/core/utf8_utils.cpp
+)
+
+set(VNM_PLOT_CORE_HEADERS
+    # Core headers
+    include/vnm_plot/core/core_types.h
+    include/vnm_plot/core/gl_program.h
+    include/vnm_plot/core/asset_loader.h
+    include/vnm_plot/core/utf8_utils.h
+)
+
+# -----------------------------------------------------------------------------
+# Source files - Full library (Qt-dependent)
 # -----------------------------------------------------------------------------
 
 set(VNM_PLOT_SOURCES
@@ -241,93 +270,135 @@ set(VNM_PLOT_HEADERS
 )
 
 # -----------------------------------------------------------------------------
-# Qt Resources
+# Core Library target (Qt-free)
 # -----------------------------------------------------------------------------
 
-qt6_add_resources(VNM_PLOT_QRC_SOURCES vnm_plot.qrc)
-
-# -----------------------------------------------------------------------------
-# Library target
-# -----------------------------------------------------------------------------
-
-add_library(vnm_plot STATIC
-    ${VNM_PLOT_SOURCES}
-    ${VNM_PLOT_HEADERS}
-    ${VNM_PLOT_QRC_SOURCES}
+add_library(vnm_plot_core STATIC
+    ${VNM_PLOT_CORE_SOURCES}
+    ${VNM_PLOT_CORE_HEADERS}
     "${GLATTER_SOURCE_DIR}/src/glatter/glatter.c"
 )
 
-add_library(vnm_plot::vnm_plot ALIAS vnm_plot)
+add_library(vnm_plot::core ALIAS vnm_plot_core)
 
-set_target_properties(vnm_plot PROPERTIES
-    AUTOMOC ON
-)
-
-target_include_directories(vnm_plot
+target_include_directories(vnm_plot_core
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<BUILD_INTERFACE:${GLATTER_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
-        ${GLATTER_SOURCE_DIR}/include
 )
 
-target_compile_features(vnm_plot PUBLIC cxx_std_20)
+target_compile_features(vnm_plot_core PUBLIC cxx_std_20)
 
-# Link dependencies
-target_link_libraries(vnm_plot
+# Link dependencies (Qt-free)
+target_link_libraries(vnm_plot_core
     PUBLIC
-        Qt6::Core
-        Qt6::Gui
-        Qt6::Quick
-        Qt6::OpenGL
         glm::glm
-    PRIVATE
-        msdfgen::msdfgen-core
-        msdfgen::msdfgen-ext
 )
 
-# Platform-specific settings
+# Platform-specific settings for core
 if(WIN32)
-    target_link_libraries(vnm_plot PRIVATE opengl32)
-    # Prevent Windows.h from defining min/max macros that conflict with std::min/max
-    target_compile_definitions(vnm_plot PRIVATE NOMINMAX)
+    target_link_libraries(vnm_plot_core PRIVATE opengl32)
+    target_compile_definitions(vnm_plot_core PRIVATE NOMINMAX)
 endif()
 
-# Compiler warnings
+# Compiler warnings for core
 if(MSVC)
-    target_compile_options(vnm_plot PRIVATE /W4)
+    target_compile_options(vnm_plot_core PRIVATE /W4)
 else()
-    target_compile_options(vnm_plot PRIVATE -Wall -Wextra)
+    target_compile_options(vnm_plot_core PRIVATE -Wall -Wextra)
+endif()
+
+message(STATUS "vnm_plot: Building Qt-free core library")
+
+# -----------------------------------------------------------------------------
+# Qt Resources (only if building Qt wrapper)
+# -----------------------------------------------------------------------------
+
+if(VNM_PLOT_BUILD_QT)
+    qt6_add_resources(VNM_PLOT_QRC_SOURCES vnm_plot.qrc)
 endif()
 
 # -----------------------------------------------------------------------------
-# Examples
+# Full Library target (Qt-dependent)
 # -----------------------------------------------------------------------------
 
-if(VNM_PLOT_BUILD_EXAMPLES)
+if(VNM_PLOT_BUILD_QT)
+    add_library(vnm_plot STATIC
+        ${VNM_PLOT_SOURCES}
+        ${VNM_PLOT_HEADERS}
+        ${VNM_PLOT_QRC_SOURCES}
+    )
+
+    add_library(vnm_plot::vnm_plot ALIAS vnm_plot)
+
+    set_target_properties(vnm_plot PROPERTIES
+        AUTOMOC ON
+    )
+
+    target_include_directories(vnm_plot
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:include>
+            ${GLATTER_SOURCE_DIR}/include
+    )
+
+    target_compile_features(vnm_plot PUBLIC cxx_std_20)
+
+    # Link dependencies
+    target_link_libraries(vnm_plot
+        PUBLIC
+            vnm_plot_core
+            Qt6::Core
+            Qt6::Gui
+            Qt6::Quick
+            Qt6::OpenGL
+            glm::glm
+        PRIVATE
+            msdfgen::msdfgen-core
+            msdfgen::msdfgen-ext
+    )
+
+    # Platform-specific settings
+    if(WIN32)
+        target_link_libraries(vnm_plot PRIVATE opengl32)
+        target_compile_definitions(vnm_plot PRIVATE NOMINMAX)
+    endif()
+
+    # Compiler warnings
+    if(MSVC)
+        target_compile_options(vnm_plot PRIVATE /W4)
+    else()
+        target_compile_options(vnm_plot PRIVATE -Wall -Wextra)
+    endif()
+
+    message(STATUS "vnm_plot: Building Qt wrapper library")
+endif()
+
+# -----------------------------------------------------------------------------
+# Examples (require Qt)
+# -----------------------------------------------------------------------------
+
+if(VNM_PLOT_BUILD_EXAMPLES AND VNM_PLOT_BUILD_QT)
     add_subdirectory(examples)
 endif()
 
 # -----------------------------------------------------------------------------
 # Installation (only when building as top-level project)
+# NOTE: Installation of targets that depend on FetchContent dependencies
+# requires those dependencies to also be exported. For simplicity, we only
+# install headers when using fetched dependencies.
 # -----------------------------------------------------------------------------
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     include(GNUInstallDirs)
 
-    install(TARGETS vnm_plot
-        EXPORT vnm_plot-targets
-        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-    )
-
+    # Install headers
     install(DIRECTORY include/vnm_plot
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
     )
 
-    install(EXPORT vnm_plot-targets
-        FILE vnm_plotTargets.cmake
-        NAMESPACE vnm_plot::
-        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/vnm_plot
-    )
+    # TODO: Full installation support requires either:
+    # 1. System-installed dependencies (glm, freetype, msdfgen)
+    # 2. Or bundling/installing the FetchContent dependencies
 endif()
