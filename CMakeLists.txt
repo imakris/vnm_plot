@@ -37,6 +37,12 @@ elseif(VNM_PLOT_BUILD_QT)
     endif()
 endif()
 
+# Qt wrapper requires text rendering (Font_renderer/Text_renderer are not optional)
+if(VNM_PLOT_BUILD_QT AND NOT VNM_PLOT_ENABLE_TEXT)
+    message(STATUS "vnm_plot: Forcing VNM_PLOT_ENABLE_TEXT=ON for Qt build")
+    set(VNM_PLOT_ENABLE_TEXT ON)
+endif()
+
 # --- GLM ---
 if(TARGET glm::glm)
     message(STATUS "vnm_plot: Using existing glm::glm target")

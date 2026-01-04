@@ -5,7 +5,7 @@ include(CMakeFindDependencyMacro)
 # Find required dependencies
 find_dependency(glm)
 
-# OpenGL linkage (use CMake's OpenGL if available, otherwise platform defaults)
+# OpenGL is required - try CMake's FindOpenGL first, then platform defaults
 find_package(OpenGL QUIET)
 if(NOT TARGET OpenGL::GL)
     # Provide fallback for systems without CMake OpenGL module
@@ -16,6 +16,7 @@ if(NOT TARGET OpenGL::GL)
     else()
         set(_vnm_opengl_lib "GL")
     endif()
+    message(STATUS "vnm_plot: OpenGL::GL not found, using platform default: ${_vnm_opengl_lib}")
 endif()
 
 # Library naming (substituted at configure time)
