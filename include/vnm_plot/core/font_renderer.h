@@ -15,6 +15,18 @@ namespace vnm::plot::core {
 class Asset_loader;
 
 // -----------------------------------------------------------------------------
+// Font Cache Configuration
+// -----------------------------------------------------------------------------
+// Controls whether MSDF font data is persisted to disk for faster startup.
+
+// Enable or disable disk caching of MSDF font data (default: enabled).
+// Call before Font_renderer::initialize() to take effect.
+void set_font_disk_cache_enabled(bool enabled);
+
+// Returns true if disk caching is enabled.
+[[nodiscard]] bool font_disk_cache_enabled();
+
+// -----------------------------------------------------------------------------
 // Font Renderer
 // -----------------------------------------------------------------------------
 // Renders text using multi-channel signed distance field (MSDF) technique.

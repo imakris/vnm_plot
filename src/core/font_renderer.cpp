@@ -42,6 +42,26 @@ constexpr float k_atlas_px_range = 2.0f;
 constexpr float k_sharpness_bias = 2.5f;
 constexpr int k_atlas_texture_size = 2048;
 
+std::atomic<bool> s_disk_cache_enabled{true};
+
+} // anonymous namespace
+
+// -----------------------------------------------------------------------------
+// Font Cache Configuration
+// -----------------------------------------------------------------------------
+
+void set_font_disk_cache_enabled(bool enabled)
+{
+    s_disk_cache_enabled.store(enabled, std::memory_order_relaxed);
+}
+
+bool font_disk_cache_enabled()
+{
+    return s_disk_cache_enabled.load(std::memory_order_relaxed);
+}
+
+namespace {
+
 struct vertex_buffer_t
 {
     GLuint vao = 0;
@@ -895,8 +915,10 @@ void Font_renderer::initialize(Asset_loader& asset_loader, int pixel_height, boo
     const auto font_digest = compute_font_digest();
     const auto cache_path = cache_file_path(pixel_height, font_digest);
 
+    const bool disk_cache = s_disk_cache_enabled.load(std::memory_order_relaxed);
+
     auto cached = get_cached_font(pixel_height);
-    if (!cached) {
+    if (!cached && disk_cache) {
         cached = load_cached_font_from_disk(cache_path, font_digest, pixel_height);
         if (cached) {
             store_cached_font(cached);
@@ -906,7 +928,9 @@ void Font_renderer::initialize(Asset_loader& asset_loader, int pixel_height, boo
         cached = build_font_cache(pixel_height, font_digest, m_impl->m_log_error, m_impl->m_log_debug);
         if (cached) {
             store_cached_font(cached);
-            save_cached_font_to_disk(cache_path, *cached);
+            if (disk_cache) {
+                save_cached_font_to_disk(cache_path, *cached);
+            }
         }
     }
     if (!cached) {
