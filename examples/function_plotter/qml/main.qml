@@ -434,7 +434,7 @@ ApplicationWindow {
             spacing: 12
 
             Text {
-                text: "X min:"
+                text: "x min:"
                 font.pixelSize: fontSize
                 color: dimTextColor
                 Layout.alignment: Qt.AlignVCenter
@@ -492,7 +492,7 @@ ApplicationWindow {
             }
 
             Text {
-                text: "X max:"
+                text: "x max:"
                 font.pixelSize: fontSize
                 color: dimTextColor
                 Layout.alignment: Qt.AlignVCenter
