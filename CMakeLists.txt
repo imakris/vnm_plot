@@ -37,10 +37,9 @@ elseif(VNM_PLOT_BUILD_QT)
     endif()
 endif()
 
-# Qt wrapper requires text rendering (Font_renderer/Text_renderer are not optional)
-if(VNM_PLOT_BUILD_QT AND NOT VNM_PLOT_ENABLE_TEXT)
-    message(STATUS "vnm_plot: Forcing VNM_PLOT_ENABLE_TEXT=ON for Qt build")
-    set(VNM_PLOT_ENABLE_TEXT ON)
+# Text rendering is optional - stub implementations maintain stable layout when OFF
+if(NOT VNM_PLOT_ENABLE_TEXT)
+    message(STATUS "vnm_plot: Text rendering disabled (using stub implementations)")
 endif()
 
 # --- GLM ---
@@ -267,11 +266,17 @@ set(VNM_PLOT_SOURCES
     src/plot_widget.cpp
 )
 
-# Text rendering sources (only when VNM_PLOT_ENABLE_TEXT is ON)
+# Text rendering sources: use real or stub implementations
 if(VNM_PLOT_ENABLE_TEXT)
     list(APPEND VNM_PLOT_SOURCES
         src/renderers/font_renderer.cpp
         src/renderers/text_renderer.cpp
+    )
+else()
+    # Stub implementations for text-off builds (maintains stable layout)
+    list(APPEND VNM_PLOT_SOURCES
+        src/renderers/font_renderer_stub.cpp
+        src/renderers/text_renderer_stub.cpp
     )
 endif()
 
@@ -345,6 +350,11 @@ if(WIN32)
     target_compile_definitions(vnm_plot_core PRIVATE NOMINMAX)
 endif()
 
+# Text rendering compile definition (available to consumers for conditional code)
+if(VNM_PLOT_ENABLE_TEXT)
+    target_compile_definitions(vnm_plot_core PUBLIC VNM_PLOT_ENABLE_TEXT=1)
+endif()
+
 # Compiler warnings for core
 if(MSVC)
     target_compile_options(vnm_plot_core PRIVATE /W4)
@@ -400,13 +410,13 @@ if(VNM_PLOT_BUILD_QT)
     )
 
     # Link MSDF text rendering dependencies if enabled
+    # (VNM_PLOT_ENABLE_TEXT compile definition is inherited from vnm_plot_core)
     if(VNM_PLOT_ENABLE_TEXT)
         target_link_libraries(vnm_plot
             PRIVATE
                 msdfgen::msdfgen-core
                 msdfgen::msdfgen-ext
         )
-        target_compile_definitions(vnm_plot PRIVATE VNM_PLOT_ENABLE_TEXT=1)
     endif()
 
     # Platform-specific settings
