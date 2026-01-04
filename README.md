@@ -14,7 +14,7 @@ The library uses a type-erased data interface (`Data_source` + `Data_access_poli
 ## Architecture
 
 ```
-vnm_plot_core (Qt-free)
+vnm_plot_core (standalone core library)
   -> Chrome_renderer (grid and axes)
   -> Series_renderer (data series)
   -> Text_renderer (labels)
@@ -26,7 +26,7 @@ vnm_plot (Qt wrapper)
         -> vnm_plot_core
 ```
 
-- `vnm_plot_core` is Qt-free rendering and data logic
+- `vnm_plot_core` is the standalone rendering and data logic
 - `vnm_plot` is the Qt Quick wrapper (QML-friendly Plot_widget)
 - `Plot_renderer` runs on the GL thread and coordinates the sub-renderers
 - `Series_renderer` handles lines, dots, and area fills with VBO management
@@ -128,7 +128,7 @@ cmake --build build
 Qt 6 (Core, Gui, Quick, OpenGL) is optional. The build fetches glm, glatter,
 FreeType, and msdfgen if they are not already available as targets.
 
-To build the Qt-free core only:
+To build the standalone core library only:
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DVNM_PLOT_BUILD_QT=OFF
@@ -153,7 +153,7 @@ cmake --build build
 
 - `vnm_plot_hello` - renders a sine wave using `Function_data_source`
 - `function_plotter` - multiple functions, per-series styles, expression evaluation via mexce
-- `standalone_glfw` - Qt-free validation example using GLFW
+- `standalone_glfw` - standalone core validation example using GLFW
 
 `function_plotter` depends on `mexce`. You can point at a local checkout by
 configuring with `-DMEXCE_LOCAL_PATH=...`.
@@ -179,7 +179,7 @@ As a subdirectory:
 
 ```cmake
 add_subdirectory(vnm_plot)
-target_link_libraries(your_app PRIVATE vnm_plot::core)      # Qt-free core
+target_link_libraries(your_app PRIVATE vnm_plot::core)      # standalone core library
 # target_link_libraries(your_app PRIVATE vnm_plot::vnm_plot) # Qt wrapper
 ```
 
@@ -189,10 +189,10 @@ Via FetchContent:
 include(FetchContent)
 FetchContent_Declare(vnm_plot
     GIT_REPOSITORY https://github.com/imakris/vnm_plot.git
-    GIT_TAG        285736b014567e09c2ae200ed718a2ec5ecc9e76
+    GIT_TAG        master
 )
 FetchContent_MakeAvailable(vnm_plot)
-target_link_libraries(your_app PRIVATE vnm_plot::core)      # Qt-free core
+target_link_libraries(your_app PRIVATE vnm_plot::core)      # standalone core library
 # target_link_libraries(your_app PRIVATE vnm_plot::vnm_plot) # Qt wrapper
 ```
 
