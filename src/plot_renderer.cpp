@@ -26,6 +26,7 @@
 #include <limits>
 #include <shared_mutex>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -128,12 +129,27 @@ core::Display_style to_core_style(Display_style style)
     return static_cast<core::Display_style>(static_cast<int>(style));
 }
 
+std::string normalize_asset_name(std::string_view name)
+{
+    std::string_view out = name;
+    if (out.rfind("qrc:/", 0) == 0) {
+        out.remove_prefix(5);
+    }
+    else if (out.rfind(":/", 0) == 0) {
+        out.remove_prefix(2);
+    }
+    if (out.rfind("vnm_plot/", 0) == 0) {
+        out.remove_prefix(9);
+    }
+    return std::string(out);
+}
+
 core::shader_set_t to_core_shader_set(const shader_set_t& shader)
 {
     core::shader_set_t res;
-    res.vert = shader.vert;
-    res.geom = shader.geom;
-    res.frag = shader.frag;
+    res.vert = normalize_asset_name(shader.vert);
+    res.geom = normalize_asset_name(shader.geom);
+    res.frag = normalize_asset_name(shader.frag);
     return res;
 }
 
