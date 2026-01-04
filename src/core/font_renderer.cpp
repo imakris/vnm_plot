@@ -466,13 +466,18 @@ std::filesystem::path cache_file_path(int pixel_height, const Sha256::Digest& fo
     static std::filesystem::path s_cache_dir;
 
     if (s_cache_dir.empty()) {
-        s_cache_dir = get_data_directory();
+        // Prefer cache directory for disposable MSDF artifacts
+        s_cache_dir = get_cache_directory();
         if (s_cache_dir.empty()) {
-            // Fallback to current directory
-            s_cache_dir = std::filesystem::current_path() / ".vnm_plot_cache";
+            // Fallback to data directory
+            s_cache_dir = get_data_directory();
         }
-        std::error_code ec;
-        std::filesystem::create_directories(s_cache_dir, ec);
+        if (s_cache_dir.empty()) {
+            // Last resort: current directory
+            s_cache_dir = std::filesystem::current_path() / ".vnm_plot_cache";
+            std::error_code ec;
+            std::filesystem::create_directories(s_cache_dir, ec);
+        }
     }
 
     std::ostringstream oss;
