@@ -542,6 +542,7 @@ void Series_renderer::render(
         }
     }
 
+    const GLboolean was_blend = glIsEnabled(GL_BLEND);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
@@ -737,7 +738,9 @@ void Series_renderer::render(
     }
 
     glUseProgram(0);
-    glDisable(GL_BLEND);
+    if (!was_blend) {
+        glDisable(GL_BLEND);
+    }
 }
 
 } // namespace vnm::plot::core
