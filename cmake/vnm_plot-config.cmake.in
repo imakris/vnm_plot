@@ -5,6 +5,19 @@ include(CMakeFindDependencyMacro)
 # Find required dependencies
 find_dependency(glm)
 
+# OpenGL linkage (use CMake's OpenGL if available, otherwise platform defaults)
+find_package(OpenGL QUIET)
+if(NOT TARGET OpenGL::GL)
+    # Provide fallback for systems without CMake OpenGL module
+    if(WIN32)
+        set(_vnm_opengl_lib "opengl32")
+    elseif(APPLE)
+        set(_vnm_opengl_lib "-framework OpenGL")
+    else()
+        set(_vnm_opengl_lib "GL")
+    endif()
+endif()
+
 # Library naming (substituted at configure time)
 set(_vnm_lib_prefix "@CMAKE_STATIC_LIBRARY_PREFIX@")
 set(_vnm_lib_suffix "@CMAKE_STATIC_LIBRARY_SUFFIX@")
@@ -13,11 +26,17 @@ set(_vnm_lib_suffix "@CMAKE_STATIC_LIBRARY_SUFFIX@")
 set(_vnm_core_lib "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_LIBDIR@/${_vnm_lib_prefix}vnm_plot_core${_vnm_lib_suffix}")
 if(NOT TARGET vnm_plot::core AND EXISTS "${_vnm_core_lib}")
     add_library(vnm_plot::core STATIC IMPORTED)
+    if(TARGET OpenGL::GL)
+        set(_vnm_gl_dep "OpenGL::GL")
+    else()
+        set(_vnm_gl_dep "${_vnm_opengl_lib}")
+    endif()
     set_target_properties(vnm_plot::core PROPERTIES
         IMPORTED_LOCATION "${_vnm_core_lib}"
         INTERFACE_INCLUDE_DIRECTORIES "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_INCLUDEDIR@"
-        INTERFACE_LINK_LIBRARIES "glm::glm"
+        INTERFACE_LINK_LIBRARIES "glm::glm;${_vnm_gl_dep}"
     )
+    unset(_vnm_gl_dep)
 endif()
 
 set(_vnm_qt_lib "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_LIBDIR@/${_vnm_lib_prefix}vnm_plot${_vnm_lib_suffix}")
@@ -34,5 +53,6 @@ unset(_vnm_lib_prefix)
 unset(_vnm_lib_suffix)
 unset(_vnm_core_lib)
 unset(_vnm_qt_lib)
+unset(_vnm_opengl_lib)
 
 check_required_components(vnm_plot)

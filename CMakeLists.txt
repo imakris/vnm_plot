@@ -23,6 +23,9 @@ include(FetchContent)
 # Find or fetch required dependencies
 # -----------------------------------------------------------------------------
 
+# OpenGL is required for core library (optional at configure time for header-only usage)
+find_package(OpenGL)
+
 # Qt6 is optional - only needed if building Qt wrapper
 if(VNM_PLOT_CORE_ONLY)
     set(VNM_PLOT_BUILD_QT OFF)
@@ -250,8 +253,6 @@ set(VNM_PLOT_SOURCES
 
     # Renderers
     src/renderers/primitive_renderer.cpp
-    src/renderers/font_renderer.cpp
-    src/renderers/text_renderer.cpp
     src/renderers/chrome_renderer.cpp
     src/renderers/series_renderer.cpp
 
@@ -259,6 +260,14 @@ set(VNM_PLOT_SOURCES
     src/plot_renderer.cpp
     src/plot_widget.cpp
 )
+
+# Text rendering sources (only when VNM_PLOT_ENABLE_TEXT is ON)
+if(VNM_PLOT_ENABLE_TEXT)
+    list(APPEND VNM_PLOT_SOURCES
+        src/renderers/font_renderer.cpp
+        src/renderers/text_renderer.cpp
+    )
+endif()
 
 set(VNM_PLOT_HEADERS
     # Public headers
@@ -313,9 +322,20 @@ target_link_libraries(vnm_plot_core
         glm::glm
 )
 
+# Link OpenGL (required at link time, optional at configure time)
+if(TARGET OpenGL::GL)
+    target_link_libraries(vnm_plot_core PUBLIC OpenGL::GL)
+elseif(WIN32)
+    target_link_libraries(vnm_plot_core PUBLIC opengl32)
+elseif(APPLE)
+    target_link_libraries(vnm_plot_core PUBLIC "-framework OpenGL")
+else()
+    # Linux/BSD: GL is typically provided by the driver
+    target_link_libraries(vnm_plot_core PUBLIC GL)
+endif()
+
 # Platform-specific settings for core
 if(WIN32)
-    target_link_libraries(vnm_plot_core PRIVATE opengl32)
     target_compile_definitions(vnm_plot_core PRIVATE NOMINMAX)
 endif()
 
