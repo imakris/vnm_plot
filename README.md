@@ -1,6 +1,6 @@
 # vnm_plot
 
-A GPU-accelerated 2D time-series plotting library using OpenGL, with Qt Quick integration.
+A GPU-accelerated 2D time-series plotting library using OpenGL, with optional Qt Quick integration.
 
 ![Function Plotter](function_plotter_example.png)
 <sub>function_plotter example</sub>
@@ -14,15 +14,20 @@ The library uses a type-erased data interface (`Data_source` + `Data_access_poli
 ## Architecture
 
 ```
-Plot_widget (QQuickFramebufferObject)
-  -> Plot_renderer (GL thread)
-     -> Chrome_renderer (grid and axes)
-     -> Series_renderer (data series)
-     -> Text_renderer (labels)
-     -> Font_renderer (MSDF glyphs)
+vnm_plot_core (Qt-free)
+  -> Chrome_renderer (grid and axes)
+  -> Series_renderer (data series)
+  -> Text_renderer (labels)
+  -> Font_renderer (MSDF glyphs)
+
+vnm_plot (Qt wrapper)
+  -> Plot_widget (QQuickFramebufferObject)
+     -> Plot_renderer (GL thread)
+        -> vnm_plot_core
 ```
 
-- `Plot_widget` is a `QQuickFramebufferObject` for use in QML
+- `vnm_plot_core` is Qt-free rendering and data logic
+- `vnm_plot` is the Qt Quick wrapper (QML-friendly Plot_widget)
 - `Plot_renderer` runs on the GL thread and coordinates the sub-renderers
 - `Series_renderer` handles lines, dots, and area fills with VBO management
 - `Chrome_renderer` draws the grid and axes
@@ -120,8 +125,22 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ```
 
-Qt 6 (Core, Gui, Quick, OpenGL) is required. The build fetches glm, glatter,
+Qt 6 (Core, Gui, Quick, OpenGL) is optional. The build fetches glm, glatter,
 FreeType, and msdfgen if they are not already available as targets.
+
+To build the Qt-free core only:
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DVNM_PLOT_BUILD_QT=OFF
+cmake --build build
+```
+
+To disable text rendering (skips FreeType + msdfgen):
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DVNM_PLOT_ENABLE_TEXT=OFF
+cmake --build build
+```
 
 ## Examples
 
@@ -134,6 +153,7 @@ cmake --build build
 
 - `vnm_plot_hello` - renders a sine wave using `Function_data_source`
 - `function_plotter` - multiple functions, per-series styles, expression evaluation via mexce
+- `standalone_glfw` - planned Qt-free validation example (not yet in tree)
 
 `function_plotter` depends on `mexce`. You can point at a local checkout by
 configuring with `-DMEXCE_LOCAL_PATH=...`.
@@ -159,7 +179,8 @@ As a subdirectory:
 
 ```cmake
 add_subdirectory(vnm_plot)
-target_link_libraries(your_app PRIVATE vnm_plot::vnm_plot)
+target_link_libraries(your_app PRIVATE vnm_plot::core)      # Qt-free core
+# target_link_libraries(your_app PRIVATE vnm_plot::vnm_plot) # Qt wrapper
 ```
 
 Via FetchContent:
@@ -168,16 +189,17 @@ Via FetchContent:
 include(FetchContent)
 FetchContent_Declare(vnm_plot
     GIT_REPOSITORY https://github.com/imakris/vnm_plot.git
-    GIT_TAG        master
+    GIT_TAG        285736b014567e09c2ae200ed718a2ec5ecc9e76
 )
 FetchContent_MakeAvailable(vnm_plot)
-target_link_libraries(your_app PRIVATE vnm_plot::vnm_plot)
+target_link_libraries(your_app PRIVATE vnm_plot::core)      # Qt-free core
+# target_link_libraries(your_app PRIVATE vnm_plot::vnm_plot) # Qt wrapper
 ```
 
 ## Requirements
 
-- OpenGL 3.3+ with geometry shader support
-- Qt 6.2+
+- OpenGL 4.3+ with geometry shader support and `GL_ARB_gpu_shader_int64`
+- Qt 6.2+ (only required for the Qt wrapper target)
 
 ## Scope
 
