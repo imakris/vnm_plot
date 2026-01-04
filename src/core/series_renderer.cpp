@@ -369,8 +369,9 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
     }
 
     const std::size_t needed_bytes = snapshot.count * snapshot.stride;
+    const void* current_identity = data_source.identity();
     const bool data_changed = (snapshot.sequence != view_state.last_sequence) ||
-                              (data_source.identity() != reinterpret_cast<const void*>(view_state.active_vbo));
+                              (current_identity != view_state.cached_data_identity);
 
     if (data_changed || view_state.last_ring_size < needed_bytes) {
         glBindBuffer(GL_ARRAY_BUFFER, view_state.id);
@@ -391,6 +392,7 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
 
         view_state.last_sequence = snapshot.sequence;
         view_state.last_snapshot_elements = snapshot.count;
+        view_state.cached_data_identity = current_identity;
         view_state.active_vbo = view_state.id;
     }
 
@@ -411,12 +413,17 @@ void Series_renderer::set_common_uniforms(GLuint program, const glm::mat4& pmv, 
     glUniformMatrix4fv(glGetUniformLocation(program, "pmv"), 1, GL_FALSE, glm::value_ptr(pmv));
 
     const auto& layout = ctx.layout;
-    glUniform1f(glGetUniformLocation(program, "plot_width"), static_cast<float>(layout.usable_width));
-    glUniform1f(glGetUniformLocation(program, "plot_height"), static_cast<float>(layout.usable_height));
+    glUniform1d(glGetUniformLocation(program, "width"), layout.usable_width);
+    glUniform1d(glGetUniformLocation(program, "height"), layout.usable_height);
+    glUniform1f(glGetUniformLocation(program, "y_offset"), 0.0f);
     glUniform1d(glGetUniformLocation(program, "t_min"), ctx.t0);
     glUniform1d(glGetUniformLocation(program, "t_max"), ctx.t1);
     glUniform1f(glGetUniformLocation(program, "v_min"), ctx.v0);
     glUniform1f(glGetUniformLocation(program, "v_max"), ctx.v1);
+
+    // Line rendering options
+    const bool snap = ctx.config ? ctx.config->snap_lines_to_pixels : true;
+    glUniform1i(glGetUniformLocation(program, "snap_to_pixels"), snap ? 1 : 0);
 }
 
 void Series_renderer::modify_uniforms_for_preview(GLuint program, const frame_context_t& ctx)
@@ -425,8 +432,8 @@ void Series_renderer::modify_uniforms_for_preview(GLuint program, const frame_co
     const float preview_y = static_cast<float>(layout.usable_height + layout.h_bar_height);
     const float preview_height = static_cast<float>(ctx.adjusted_preview_height);
 
-    glUniform1f(glGetUniformLocation(program, "plot_y_offset"), preview_y);
-    glUniform1f(glGetUniformLocation(program, "plot_height"), preview_height);
+    glUniform1f(glGetUniformLocation(program, "y_offset"), preview_y);
+    glUniform1d(glGetUniformLocation(program, "height"), static_cast<double>(preview_height));
     glUniform1f(glGetUniformLocation(program, "v_min"), ctx.preview_v0);
     glUniform1f(glGetUniformLocation(program, "v_max"), ctx.preview_v1);
     glUniform1d(glGetUniformLocation(program, "t_min"), ctx.t_available_min);
@@ -446,17 +453,45 @@ void Series_renderer::render(
         return;
     }
 
+    // Cleanup stale VBO states for series no longer in the map
+    for (auto it = m_vbo_states.begin(); it != m_vbo_states.end(); ) {
+        if (series.find(it->first) == series.end()) {
+            auto& state = it->second;
+            for (auto* view : {&state.main_view, &state.preview_view}) {
+                if (view->id != UINT_MAX) {
+                    glDeleteBuffers(1, &view->id);
+                }
+            }
+            it = m_vbo_states.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
+    // Cleanup stale colormap textures
+    for (auto it = m_colormap_textures.begin(); it != m_colormap_textures.end(); ) {
+        bool found = false;
+        for (const auto& [_, s] : series) {
+            if (s.get() == it->first) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            if (it->second.texture != 0) {
+                glDeleteTextures(1, &it->second.texture);
+            }
+            it = m_colormap_textures.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     for (const auto& [id, s] : series) {
         if (!s || !s->enabled || !s->data_source) {
-            continue;
-        }
-
-        const auto& shader_set = s->shader_for(s->style);
-        auto shader = get_or_load_shader(shader_set, ctx.config);
-        if (!shader) {
             continue;
         }
 
@@ -481,28 +516,37 @@ void Series_renderer::render(
             id,
             ctx.config);
 
-        if (main_result.can_draw) {
-            const GLuint program_id = shader->program_id();
+        // Helper to draw one pass for a specific primitive style
+        auto draw_pass = [&](Display_style primitive_style, GLuint vbo_id, GLint first, GLsizei count, bool is_preview) {
+            // Get shader for this specific style
+            const auto& pass_shader_set = s->shader_for(primitive_style);
+            auto pass_shader = get_or_load_shader(pass_shader_set, ctx.config);
+            if (!pass_shader) {
+                return;
+            }
+
+            const GLuint program_id = pass_shader->program_id();
             glUseProgram(program_id);
 
             set_common_uniforms(program_id, ctx.pmv, ctx);
+            if (is_preview) {
+                modify_uniforms_for_preview(program_id, ctx);
+            }
             glUniform4fv(glGetUniformLocation(program_id, "color"), 1, glm::value_ptr(s->color));
 
-            // Bind custom uniforms if any
             if (s->access.bind_uniforms) {
                 s->access.bind_uniforms(program_id);
             }
 
-            // Handle colormap
+            // Handle colormap for COLORMAP_AREA
             GLuint colormap_tex = 0;
-            if (!!(s->style & Display_style::COLORMAP_AREA)) {
+            if (primitive_style == Display_style::COLORMAP_AREA) {
                 colormap_tex = ensure_colormap_texture(*s);
                 if (colormap_tex != 0) {
                     glActiveTexture(GL_TEXTURE0);
                     glBindTexture(GL_TEXTURE_1D, colormap_tex);
                     glUniform1i(glGetUniformLocation(program_id, "colormap"), 0);
 
-                    // Update aux metric range if needed
                     auto snapshot = s->data_source->snapshot(main_result.applied_level);
                     if (snapshot) {
                         double aux_min = 0.0, aux_max = 1.0;
@@ -518,24 +562,50 @@ void Series_renderer::render(
                 }
             }
 
-            const GLuint vao = ensure_series_vao(s->style, vbo_state.main_view.id, *s);
+            const GLuint vao = ensure_series_vao(primitive_style, vbo_id, *s);
             glBindVertexArray(vao);
 
-            // Draw based on style
-            if (!!(s->style & Display_style::DOTS)) {
-                glDrawArrays(GL_POINTS, main_result.first, main_result.count);
+            // Draw based on primitive style
+            if (primitive_style == Display_style::DOTS) {
+                glDrawArrays(GL_POINTS, first, count);
             }
-            else if (!!(s->style & Display_style::AREA)) {
-                glDrawArrays(GL_LINE_STRIP, main_result.first, main_result.count);
+            else if (primitive_style == Display_style::AREA || primitive_style == Display_style::COLORMAP_AREA) {
+                // Area rendering uses triangle strip in geometry shader
+                glDrawArrays(GL_LINE_STRIP, first, count);
             }
             else {
-                glDrawArrays(GL_LINE_STRIP, main_result.first, main_result.count);
+                // LINE style
+                glDrawArrays(GL_LINE_STRIP, first, count);
             }
 
             glBindVertexArray(0);
 
             if (colormap_tex != 0) {
                 glBindTexture(GL_TEXTURE_1D, 0);
+            }
+        };
+
+        // Main view rendering - multiple passes for combined styles
+        if (main_result.can_draw) {
+            // Handle colormap area first if present
+            if (!!(s->style & Display_style::COLORMAP_AREA)) {
+                draw_pass(Display_style::COLORMAP_AREA, vbo_state.main_view.id,
+                         main_result.first, main_result.count, false);
+            }
+            // Then area (rendered before lines so lines appear on top)
+            if (!!(s->style & Display_style::AREA)) {
+                draw_pass(Display_style::AREA, vbo_state.main_view.id,
+                         main_result.first, main_result.count, false);
+            }
+            // Then lines
+            if (!!(s->style & Display_style::LINE)) {
+                draw_pass(Display_style::LINE, vbo_state.main_view.id,
+                         main_result.first, main_result.count, false);
+            }
+            // Finally dots (on top)
+            if (!!(s->style & Display_style::DOTS)) {
+                draw_pass(Display_style::DOTS, vbo_state.main_view.id,
+                         main_result.first, main_result.count, false);
             }
         }
 
@@ -552,23 +622,19 @@ void Series_renderer::render(
                 ctx.config);
 
             if (preview_result.can_draw) {
-                const GLuint program_id = shader->program_id();
-                glUseProgram(program_id);
-
-                set_common_uniforms(program_id, ctx.pmv, ctx);
-                modify_uniforms_for_preview(program_id, ctx);
-                glUniform4fv(glGetUniformLocation(program_id, "color"), 1, glm::value_ptr(s->color));
-
-                if (s->access.bind_uniforms) {
-                    s->access.bind_uniforms(program_id);
+                // Preview uses same multi-pass approach
+                if (!!(s->style & Display_style::AREA)) {
+                    draw_pass(Display_style::AREA, vbo_state.preview_view.id,
+                             preview_result.first, preview_result.count, true);
                 }
-
-                const GLuint vao = ensure_series_vao(s->style, vbo_state.preview_view.id, *s);
-                glBindVertexArray(vao);
-
-                glDrawArrays(GL_LINE_STRIP, preview_result.first, preview_result.count);
-
-                glBindVertexArray(0);
+                if (!!(s->style & Display_style::LINE)) {
+                    draw_pass(Display_style::LINE, vbo_state.preview_view.id,
+                             preview_result.first, preview_result.count, true);
+                }
+                if (!!(s->style & Display_style::DOTS)) {
+                    draw_pass(Display_style::DOTS, vbo_state.preview_view.id,
+                             preview_result.first, preview_result.count, true);
+                }
             }
         }
     }

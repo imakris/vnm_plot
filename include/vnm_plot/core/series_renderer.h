@@ -60,6 +60,7 @@ private:
         std::size_t last_ring_size = 0;
         std::size_t last_snapshot_elements = 0;
         uint64_t last_sequence = 0;
+        const void* cached_data_identity = nullptr;
 
         GLint last_first = 0;
         GLsizei last_count = 0;
@@ -72,6 +73,7 @@ private:
             last_ring_size = 0;
             last_snapshot_elements = 0;
             last_sequence = 0;
+            cached_data_identity = nullptr;
             last_first = 0;
             last_count = 0;
             last_lod_level = 0;
