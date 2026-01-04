@@ -1,4 +1,7 @@
 # vnm_plot
+A GPU-accelerated 2D time-series plotting library using OpenGL, with optional Qt Quick integration.
+![Function Plotter](function_plotter_example.png)
+<sub>function_plotter example</sub>
 ## CI Status
 | Job | Status | Notes |
 | :-- | :-- | :-- |
@@ -7,11 +10,6 @@
 | FreeBSD Core (Cirrus) | [![Core](https://api.cirrus-ci.com/github/imakris/vnm_plot.svg?task=FreeBSD%20Core%20Build)](https://cirrus-ci.com/github/imakris/vnm_plot?task=FreeBSD%20Core%20Build) | Core only |
 | FreeBSD GLFW Example (Cirrus) | [![GLFW Example](https://api.cirrus-ci.com/github/imakris/vnm_plot.svg?task=FreeBSD%20GLFW%20Example)](https://cirrus-ci.com/github/imakris/vnm_plot?task=FreeBSD%20GLFW%20Example) | standalone_glfw |
 | FreeBSD Core+Text (Cirrus) | [![Core+Text](https://api.cirrus-ci.com/github/imakris/vnm_plot.svg?task=FreeBSD%20Core%2BText%20Build)](https://cirrus-ci.com/github/imakris/vnm_plot?task=FreeBSD%20Core%2BText%20Build) | Text enabled |
-
-A GPU-accelerated 2D time-series plotting library using OpenGL, with optional Qt Quick integration.
-
-![Function Plotter](function_plotter_example.png)
-<sub>function_plotter example</sub>
 
 ## Overview
 
