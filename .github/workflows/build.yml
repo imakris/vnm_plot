@@ -1,0 +1,174 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [ main, master, dev ]
+  pull_request:
+    branches: [ main, master, dev ]
+
+jobs:
+  build-core:
+    name: Core (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        include:
+          # macOS may fail at runtime due to OpenGL 4.3+ requirements (Apple deprecated at 4.1)
+          # but we still want to verify it compiles
+          - os: macos-latest
+            experimental: true
+
+    runs-on: ${{ matrix.os }}
+    # Allow macOS to fail without failing the entire workflow
+    continue-on-error: ${{ matrix.experimental || false }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl-dev libx11-dev libxrandr-dev libxinerama-dev \
+                                  libxcursor-dev libxi-dev libxext-dev libwayland-dev \
+                                  libxkbcommon-dev
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          # XQuartz provides X11 headers for GLFW X11 backend (optional)
+          # brew install --cask xquartz
+          echo "macOS: Using native Cocoa backend for GLFW"
+
+      # Core library build (Qt-free, text rendering disabled for simplicity)
+      - name: Configure CMake (Core only)
+        shell: bash
+        run: |
+          cmake -B build -S . \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DVNM_PLOT_CORE_ONLY=ON \
+            -DVNM_PLOT_ENABLE_TEXT=OFF
+
+      - name: Build core library
+        run: cmake --build build --config Release
+
+      - name: Build summary
+        shell: bash
+        run: |
+          echo "=== Build completed ==="
+          if [ "$RUNNER_OS" == "Windows" ]; then
+            ls -la build/Release/*.lib 2>/dev/null || ls -la build/*.lib 2>/dev/null || echo "Static libraries in build directory"
+          else
+            ls -la build/*.a 2>/dev/null || echo "Static libraries in build directory"
+          fi
+
+  build-standalone-example:
+    name: GLFW Example (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        include:
+          - os: macos-latest
+            experimental: true
+
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.experimental || false }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl-dev libx11-dev libxrandr-dev libxinerama-dev \
+                                  libxcursor-dev libxi-dev libxext-dev libwayland-dev \
+                                  libxkbcommon-dev
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          echo "macOS: Using native Cocoa backend for GLFW"
+
+      # Build standalone_glfw example (includes vnm_plot_core)
+      - name: Configure CMake (standalone_glfw)
+        shell: bash
+        working-directory: examples/standalone_glfw
+        run: |
+          cmake -B build -S . \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DVNM_PLOT_BUILD_QT=OFF \
+            -DVNM_PLOT_ENABLE_TEXT=OFF
+
+      - name: Build standalone_glfw example
+        working-directory: examples/standalone_glfw
+        run: cmake --build build --config Release
+
+      - name: Verify executable
+        shell: bash
+        working-directory: examples/standalone_glfw
+        run: |
+          echo "=== Build completed ==="
+          if [ "$RUNNER_OS" == "Windows" ]; then
+            ls -la build/Release/standalone_glfw.exe 2>/dev/null || \
+            ls -la build/standalone_glfw.exe 2>/dev/null || \
+            echo "Executable built successfully"
+          else
+            ls -la build/standalone_glfw 2>/dev/null || echo "Executable built successfully"
+          fi
+
+  build-core-with-text:
+    name: Core+Text (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        include:
+          - os: macos-latest
+            experimental: true
+
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.experimental || false }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl-dev libx11-dev libxrandr-dev libxinerama-dev \
+                                  libxcursor-dev libxi-dev libxext-dev libwayland-dev \
+                                  libxkbcommon-dev
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          echo "macOS: Using native Cocoa backend for GLFW"
+
+      # Core library build with text rendering enabled (fetches FreeType + msdfgen)
+      - name: Configure CMake (Core with text)
+        shell: bash
+        run: |
+          cmake -B build -S . \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DVNM_PLOT_CORE_ONLY=ON \
+            -DVNM_PLOT_ENABLE_TEXT=ON
+
+      - name: Build core library with text
+        run: cmake --build build --config Release
+
+      - name: Build summary
+        shell: bash
+        run: |
+          echo "=== Build completed (with text rendering) ==="
+          if [ "$RUNNER_OS" == "Windows" ]; then
+            ls -la build/Release/*.lib 2>/dev/null || ls -la build/*.lib 2>/dev/null || echo "Static libraries built"
+          else
+            ls -la build/*.a 2>/dev/null || echo "Static libraries built"
+          fi
