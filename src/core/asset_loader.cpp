@@ -44,11 +44,12 @@ bool Asset_loader::load_file(std::string_view path, ByteBuffer& out) const
         return false;
     }
 
-    const auto size = file.tellg();
-    if (size < 0) {
+    const auto pos = file.tellg();
+    if (pos < 0) {
         return false;
     }
 
+    const auto size = static_cast<std::streamsize>(pos);
     out.resize(static_cast<size_t>(size));
     file.seekg(0, std::ios::beg);
 
@@ -162,8 +163,17 @@ Asset_loader& default_asset_loader()
     return get_default_loader_instance();
 }
 
-// Note: init_embedded_assets() will be implemented in a separate file
-// (embedded_assets.cpp) that is generated or manually maintained with
-// the actual embedded data.
+void init_embedded_assets()
+{
+    // TODO: This function should register embedded assets with the default loader.
+    // In a full implementation, this would be generated or manually populated with:
+    //   auto& loader = default_asset_loader();
+    //   loader.register_embedded("shaders/generic_rect.vert", k_generic_rect_vert);
+    //   loader.register_embedded("shaders/generic_rect.geom", k_generic_rect_geom);
+    //   ... etc.
+    //
+    // For now, this is a stub. Assets will be loaded from the override directory
+    // or the Qt resource system (when using the Qt wrapper).
+}
 
 } // namespace vnm::plot::core

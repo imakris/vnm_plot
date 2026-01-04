@@ -80,7 +80,8 @@ else()
     set(GLATTER_SOURCE_DIR "${glatter_SOURCE_DIR}" CACHE PATH "Glatter source directory" FORCE)
 endif()
 
-# --- FreeType ---
+# --- FreeType (only needed for Qt wrapper with MSDF text rendering) ---
+if(VNM_PLOT_BUILD_QT)
 if(TARGET Freetype::Freetype)
     message(STATUS "vnm_plot: Using existing Freetype::Freetype target")
 elseif(TARGET freetype)
@@ -173,10 +174,10 @@ if(TARGET Freetype::Freetype)
     endif()
 endif()
 
-# --- msdfgen ---
+# --- msdfgen (only needed for Qt wrapper with MSDF text rendering) ---
 if(TARGET msdfgen::msdfgen-core AND TARGET msdfgen::msdfgen-ext)
     message(STATUS "vnm_plot: Using existing msdfgen targets")
-else()
+elseif(VNM_PLOT_BUILD_QT)
     message(STATUS "vnm_plot: Fetching msdfgen")
     FetchContent_Declare(msdfgen
         GIT_REPOSITORY https://github.com/Chlumsky/msdfgen.git
@@ -203,6 +204,8 @@ else()
         endforeach()
     endif()
 endif()
+
+endif() # VNM_PLOT_BUILD_QT (FreeType + msdfgen)
 
 # -----------------------------------------------------------------------------
 # Source files - Core (Qt-free)

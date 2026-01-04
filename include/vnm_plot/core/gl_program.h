@@ -17,6 +17,22 @@ using GLint = int;
 namespace vnm::plot::core {
 
 // -----------------------------------------------------------------------------
+// OpenGL Initialization
+// -----------------------------------------------------------------------------
+
+/// Initialize OpenGL extension loading via glatter.
+/// MUST be called once after an OpenGL context is current and before using
+/// any vnm_plot_core rendering functions.
+///
+/// Typical usage:
+/// - In Qt: Call from QQuickFramebufferObject::Renderer::render() on first frame
+/// - In GLFW: Call after glfwMakeContextCurrent() and before rendering
+///
+/// Returns true on success.
+/// Thread-safety: Must be called from the thread with the active GL context.
+[[nodiscard]] bool init_gl();
+
+// -----------------------------------------------------------------------------
 // GL_program
 // -----------------------------------------------------------------------------
 // A Qt-free wrapper for OpenGL shader programs.
