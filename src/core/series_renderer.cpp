@@ -469,8 +469,8 @@ void Series_renderer::set_common_uniforms(GLuint program, const glm::mat4& pmv, 
     glUniform1f(glGetUniformLocation(program, "y_offset"), 0.0f);
     glUniform1d(glGetUniformLocation(program, "t_min"), ctx.t0);
     glUniform1d(glGetUniformLocation(program, "t_max"), ctx.t1);
-    glUniform1f(glGetUniformLocation(program, "v_min"), ctx.v0);
-    glUniform1f(glGetUniformLocation(program, "v_max"), ctx.v1);
+    glUniform1d(glGetUniformLocation(program, "v_min"), static_cast<double>(ctx.v0));
+    glUniform1d(glGetUniformLocation(program, "v_max"), static_cast<double>(ctx.v1));
 
     // Line rendering options
     const bool snap = ctx.config ? ctx.config->snap_lines_to_pixels : true;
@@ -485,8 +485,8 @@ void Series_renderer::modify_uniforms_for_preview(GLuint program, const frame_co
 
     glUniform1f(glGetUniformLocation(program, "y_offset"), preview_y);
     glUniform1d(glGetUniformLocation(program, "height"), static_cast<double>(preview_height));
-    glUniform1f(glGetUniformLocation(program, "v_min"), ctx.preview_v0);
-    glUniform1f(glGetUniformLocation(program, "v_max"), ctx.preview_v1);
+    glUniform1d(glGetUniformLocation(program, "v_min"), static_cast<double>(ctx.preview_v0));
+    glUniform1d(glGetUniformLocation(program, "v_max"), static_cast<double>(ctx.preview_v1));
     glUniform1d(glGetUniformLocation(program, "t_min"), ctx.t_available_min);
     glUniform1d(glGetUniformLocation(program, "t_max"), ctx.t_available_max);
 }
