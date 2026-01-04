@@ -250,6 +250,7 @@ endif()
 set(VNM_PLOT_CORE_HEADERS
     # Core headers
     include/vnm_plot/core/core_types.h
+    include/vnm_plot/core/data_types.h
     include/vnm_plot/core/layout_types.h
     include/vnm_plot/core/render_types.h
     include/vnm_plot/core/constants.h
