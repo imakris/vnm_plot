@@ -428,7 +428,7 @@ ApplicationWindow {
             }
         }
 
-        // Row 3: Range controls with Fit V Range and Add Function on the right
+        // Row 3: Range controls with Fit Vertical and Add Function on the right
         RowLayout {
             Layout.fillWidth: true
             spacing: 12
@@ -553,7 +553,7 @@ ApplicationWindow {
 
             Button {
                 id: autoVButton
-                text: "Fit V Range"
+                text: "Fit Vertical"
                 Layout.preferredWidth: 70
                 Layout.preferredHeight: controlHeight
                 font.pixelSize: fontSize
