@@ -40,12 +40,12 @@ public:
     };
 
 private:
-    Font_renderer* m_fonts = nullptr;
+    [[maybe_unused]] Font_renderer* m_fonts = nullptr;
 
     // Cached timestamps to avoid repeated allocation/formatting
-    double m_last_t0 = -1.0;
-    double m_last_t1 = -1.0;
-    bool m_last_subsecond = false;
+    [[maybe_unused]] double m_last_t0 = -1.0;
+    [[maybe_unused]] double m_last_t1 = -1.0;
+    [[maybe_unused]] bool m_last_subsecond = false;
     std::string m_cached_from_ts;
     std::string m_cached_to_ts;
 
