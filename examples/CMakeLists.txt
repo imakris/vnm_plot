@@ -1,2 +1,3 @@
 add_subdirectory(hello_plot)
 add_subdirectory(function_plotter)
+add_subdirectory(standalone_glfw)

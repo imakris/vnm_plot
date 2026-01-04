@@ -153,7 +153,7 @@ cmake --build build
 
 - `vnm_plot_hello` - renders a sine wave using `Function_data_source`
 - `function_plotter` - multiple functions, per-series styles, expression evaluation via mexce
-- `standalone_glfw` - planned Qt-free validation example (not yet in tree)
+- `standalone_glfw` - Qt-free validation example using GLFW
 
 `function_plotter` depends on `mexce`. You can point at a local checkout by
 configuring with `-DMEXCE_LOCAL_PATH=...`.
