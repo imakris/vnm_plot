@@ -424,6 +424,16 @@ else()
     target_link_libraries(vnm_plot_core PUBLIC GL)
 endif()
 
+# GLX provides glX* symbols on GLVND-based systems (e.g., FreeBSD).
+if(TARGET OpenGL::GLX)
+    target_link_libraries(vnm_plot_core PUBLIC OpenGL::GLX)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "FreeBSD")
+    find_library(VNM_PLOT_GLX_LIB NAMES GLX GLX.so.0 PATHS /usr/local/lib /usr/lib)
+    if(VNM_PLOT_GLX_LIB)
+        target_link_libraries(vnm_plot_core PUBLIC ${VNM_PLOT_GLX_LIB})
+    endif()
+endif()
+
 # Platform-specific settings for core
 if(WIN32)
     target_compile_definitions(vnm_plot_core PRIVATE NOMINMAX)

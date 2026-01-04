@@ -13,6 +13,15 @@ if(TARGET OpenGL::OpenGL)
 elseif(TARGET OpenGL::GL)
     set(_vnm_opengl_target "OpenGL::GL")
 endif()
+set(_vnm_glx_target "")
+if(TARGET OpenGL::GLX)
+    set(_vnm_glx_target "OpenGL::GLX")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "FreeBSD")
+    find_file(_vnm_glx_target
+        NAMES libGLX.so libGLX.so.0
+        PATHS /usr/local/lib /usr/lib
+    )
+endif()
 
 if(NOT _vnm_opengl_target)
     # Provide fallback for systems without CMake OpenGL module
@@ -46,12 +55,17 @@ set(_vnm_core_lib "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_LIBDIR@/${_vnm_lib_prefi
 if(NOT TARGET vnm_plot::core AND EXISTS "${_vnm_core_lib}")
     add_library(vnm_plot::core STATIC IMPORTED)
     set(_vnm_gl_dep "${_vnm_opengl_target}")
+    set(_vnm_gl_deps "glm::glm;${_vnm_opengl_target}")
+    if(_vnm_glx_target)
+        set(_vnm_gl_deps "${_vnm_gl_deps};${_vnm_glx_target}")
+    endif()
     set_target_properties(vnm_plot::core PROPERTIES
         IMPORTED_LOCATION "${_vnm_core_lib}"
         INTERFACE_INCLUDE_DIRECTORIES "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_INCLUDEDIR@"
-        INTERFACE_LINK_LIBRARIES "glm::glm;${_vnm_gl_dep}"
+        INTERFACE_LINK_LIBRARIES "${_vnm_gl_deps}"
     )
     unset(_vnm_gl_dep)
+    unset(_vnm_gl_deps)
 endif()
 
 set(_vnm_qt_lib "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_LIBDIR@/${_vnm_lib_prefix}vnm_plot${_vnm_lib_suffix}")
@@ -70,5 +84,6 @@ unset(_vnm_core_lib)
 unset(_vnm_qt_lib)
 unset(_vnm_opengl_lib)
 unset(_vnm_opengl_target)
+unset(_vnm_glx_target)
 
 check_required_components(vnm_plot)
