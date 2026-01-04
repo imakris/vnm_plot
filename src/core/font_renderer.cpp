@@ -913,12 +913,11 @@ void Font_renderer::initialize(Asset_loader& asset_loader, int pixel_height, boo
     resources.destroy_gl();
 
     const auto font_digest = compute_font_digest();
-    const auto cache_path = cache_file_path(pixel_height, font_digest);
-
     const bool disk_cache = s_disk_cache_enabled.load(std::memory_order_relaxed);
 
     auto cached = get_cached_font(pixel_height);
     if (!cached && disk_cache) {
+        const auto cache_path = cache_file_path(pixel_height, font_digest);
         cached = load_cached_font_from_disk(cache_path, font_digest, pixel_height);
         if (cached) {
             store_cached_font(cached);
@@ -929,6 +928,7 @@ void Font_renderer::initialize(Asset_loader& asset_loader, int pixel_height, boo
         if (cached) {
             store_cached_font(cached);
             if (disk_cache) {
+                const auto cache_path = cache_file_path(pixel_height, font_digest);
                 save_cached_font_to_disk(cache_path, *cached);
             }
         }
