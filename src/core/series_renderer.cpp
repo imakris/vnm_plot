@@ -15,6 +15,17 @@ namespace vnm::plot::core {
 
 namespace {
 
+constexpr glm::vec4 k_default_series_color(0.16f, 0.45f, 0.64f, 1.0f);
+constexpr glm::vec4 k_default_series_color_dark(0.30f, 0.63f, 0.88f, 1.0f);
+constexpr float k_default_color_epsilon = 0.01f;
+
+bool is_default_series_color(const glm::vec4& color)
+{
+    return glm::all(glm::lessThan(
+        glm::abs(color - k_default_series_color),
+        glm::vec4(k_default_color_epsilon)));
+}
+
 bool compute_aux_metric_range(
     const series_data_t& series,
     const data_snapshot_t& snapshot,
@@ -597,9 +608,8 @@ void Series_renderer::render(
                 draw_color.w *= area_fill_alpha;
             }
             if (dark_mode) {
-                if (glm::all(glm::lessThan(glm::abs(draw_color - glm::vec4(0.16f, 0.45f, 0.64f, 1.0f)),
-                                           glm::vec4(0.01f)))) {
-                    draw_color = glm::vec4(0.30f, 0.63f, 0.88f, 1.0f);
+                if (is_default_series_color(draw_color)) {
+                    draw_color = k_default_series_color_dark;
                 }
             }
             glUniform4fv(glGetUniformLocation(program_id, "color"), 1, glm::value_ptr(draw_color));
