@@ -58,6 +58,7 @@ struct frame_layout_result_t
     double usable_width            = 0.0;
     double usable_height           = 0.0;
     double v_bar_width             = 0.0;
+    double h_bar_height            = 0.0;  // Horizontal bar height (for labels)
     float  max_v_label_text_width  = 0.f;
 
     std::vector<h_label_t> h_labels;

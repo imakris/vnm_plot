@@ -96,14 +96,35 @@ struct Data_access_policy
 };
 
 // -----------------------------------------------------------------------------
-// Display Styles
+// Display Styles (bit flags for combination)
 // -----------------------------------------------------------------------------
-enum class Display_style
+enum class Display_style : int
 {
-    LINE,
-    DOTS,
-    AREA
+    DOTS           = 0x1,
+    LINE           = 0x2,
+    AREA           = 0x4,
+    DOTS_LINE      = DOTS | LINE,
+    DOTS_AREA      = DOTS | AREA,
+    LINE_AREA      = LINE | AREA,
+    DOTS_LINE_AREA = DOTS | LINE | AREA,
+    COLORMAP_AREA  = 0x8
 };
+
+// Bit operators for Display_style
+inline Display_style operator|(Display_style a, Display_style b)
+{
+    return static_cast<Display_style>(static_cast<int>(a) | static_cast<int>(b));
+}
+
+inline Display_style operator&(Display_style a, Display_style b)
+{
+    return static_cast<Display_style>(static_cast<int>(a) & static_cast<int>(b));
+}
+
+inline bool operator!(Display_style s)
+{
+    return static_cast<int>(s) == 0;
+}
 
 // -----------------------------------------------------------------------------
 // Shader Set: identifies a shader program by asset names
@@ -134,11 +155,8 @@ struct shader_set_t
 // -----------------------------------------------------------------------------
 struct colormap_config_t
 {
-    bool enabled = false;
-    float min_value = 0.0f;
-    float max_value = 1.0f;
-    std::vector<glm::vec4> colors;
-    uint64_t revision = 0;  // Increment when colors change
+    std::vector<glm::vec4> samples;  // Color samples for the colormap
+    uint64_t revision = 0;           // Increment when samples change
 };
 
 // -----------------------------------------------------------------------------
