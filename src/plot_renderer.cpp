@@ -32,8 +32,6 @@
 
 namespace vnm::plot {
 
-namespace core = vnm::plot::core;
-
 namespace {
 
 bool parse_gl_version_from_string(int& major, int& minor)
@@ -150,7 +148,7 @@ core::snapshot_result_t::Status to_core_status(snapshot_result_t::Status status)
     return core::snapshot_result_t::Status::FAILED;
 }
 
-core::snapshot_result_t to_core_snapshot(const snapshot_result_t& result)
+core::snapshot_result_t to_core_snapshot(const vnm::plot::snapshot_result_t& result)
 {
     core::data_snapshot_t snapshot;
     snapshot.data = result.snapshot.data;
@@ -167,7 +165,7 @@ core::snapshot_result_t to_core_snapshot(const snapshot_result_t& result)
 class Data_source_adapter : public core::Data_source
 {
 public:
-    explicit Data_source_adapter(std::shared_ptr<Data_source> source)
+    explicit Data_source_adapter(std::shared_ptr<vnm::plot::Data_source> source)
         : m_source(std::move(source))
     {
     }
@@ -202,10 +200,10 @@ public:
         return m_source ? m_source->identity() : nullptr;
     }
 
-    const std::shared_ptr<Data_source>& source() const { return m_source; }
+    const std::shared_ptr<vnm::plot::Data_source>& source() const { return m_source; }
 
 private:
-    std::shared_ptr<Data_source> m_source;
+    std::shared_ptr<vnm::plot::Data_source> m_source;
 };
 
 core::frame_layout_result_t to_core_layout(
@@ -1307,7 +1305,7 @@ void Plot_renderer::render()
 
             if (series->data_source) {
                 auto& adapter = m_impl->core_source_cache[id];
-                if (!adapter || adapter->source() != series->data_source) {
+                if (!adapter || adapter->source().get() != series->data_source.get()) {
                     adapter = std::make_shared<Data_source_adapter>(series->data_source);
                 }
                 core_series->data_source = adapter;
