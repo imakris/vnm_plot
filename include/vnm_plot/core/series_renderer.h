@@ -85,12 +85,8 @@ private:
         vbo_view_state_t main_view;
         vbo_view_state_t preview_view;
 
-        const void* cached_data_identity = nullptr;
         double cached_aux_metric_min = 0.0;
         double cached_aux_metric_max = 1.0;
-        uint64_t cached_aux_metric_sequence = 0;
-        const void* cached_aux_metric_identity = nullptr;
-        bool has_cached_aux_metric_range = false;
     };
 
     struct view_render_result_t
