@@ -25,6 +25,25 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/EmbedAssets.cmake)
 # -----------------------------------------------------------------------------
 
 # OpenGL is required for core library (optional at configure time for header-only usage)
+if(CMAKE_SYSTEM_NAME STREQUAL "FreeBSD")
+    if(NOT OPENGL_opengl_LIBRARY AND NOT OPENGL_gl_LIBRARY)
+        find_file(_vnm_plot_glvnd_lib
+            NAMES libOpenGL.so libOpenGL.so.0
+            PATHS /usr/local/lib /usr/lib
+        )
+        find_file(_vnm_plot_gl_lib
+            NAMES libGL.so.1 libGL.so
+            PATHS /usr/local/lib /usr/lib
+        )
+        if(_vnm_plot_glvnd_lib)
+            set(OPENGL_opengl_LIBRARY "${_vnm_plot_glvnd_lib}" CACHE FILEPATH "" FORCE)
+        elseif(_vnm_plot_gl_lib)
+            set(OPENGL_gl_LIBRARY "${_vnm_plot_gl_lib}" CACHE FILEPATH "" FORCE)
+        endif()
+        unset(_vnm_plot_glvnd_lib)
+        unset(_vnm_plot_gl_lib)
+    endif()
+endif()
 find_package(OpenGL)
 
 # Qt6 is optional - only needed if building Qt wrapper
