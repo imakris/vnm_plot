@@ -91,9 +91,8 @@ else()
 endif()
 
 # --- FreeType + msdfgen (needed for MSDF text rendering) ---
-# Currently used by the Qt wrapper's font_renderer.
-# When font_renderer moves to core, these will be linked to vnm_plot_core.
-if(VNM_PLOT_ENABLE_TEXT AND VNM_PLOT_BUILD_QT)
+# Used by the core font_renderer for MSDF atlas generation.
+if(VNM_PLOT_ENABLE_TEXT)
 if(TARGET Freetype::Freetype)
     message(STATUS "vnm_plot: Using existing Freetype::Freetype target")
 elseif(TARGET freetype)
@@ -186,10 +185,10 @@ if(TARGET Freetype::Freetype)
     endif()
 endif()
 
-# --- msdfgen (only needed for Qt wrapper with MSDF text rendering) ---
+# --- msdfgen (needed for MSDF text rendering in core) ---
 if(TARGET msdfgen::msdfgen-core AND TARGET msdfgen::msdfgen-ext)
     message(STATUS "vnm_plot: Using existing msdfgen targets")
-elseif(VNM_PLOT_BUILD_QT)
+else()
     message(STATUS "vnm_plot: Fetching msdfgen")
     FetchContent_Declare(msdfgen
         GIT_REPOSITORY https://github.com/Chlumsky/msdfgen.git
@@ -217,7 +216,7 @@ elseif(VNM_PLOT_BUILD_QT)
     endif()
 endif()
 
-endif() # VNM_PLOT_ENABLE_TEXT AND VNM_PLOT_BUILD_QT (FreeType + msdfgen)
+endif() # VNM_PLOT_ENABLE_TEXT (FreeType + msdfgen)
 
 # -----------------------------------------------------------------------------
 # Source files - Core (Qt-free)
@@ -235,6 +234,13 @@ set(VNM_PLOT_CORE_SOURCES
     src/core/chrome_renderer.cpp
 )
 
+# Add core font renderer when text is enabled
+if(VNM_PLOT_ENABLE_TEXT)
+    list(APPEND VNM_PLOT_CORE_SOURCES
+        src/core/font_renderer.cpp
+    )
+endif()
+
 set(VNM_PLOT_CORE_HEADERS
     # Core headers
     include/vnm_plot/core/core_types.h
@@ -245,6 +251,7 @@ set(VNM_PLOT_CORE_HEADERS
     include/vnm_plot/core/algo.h
     include/vnm_plot/core/primitive_renderer.h
     include/vnm_plot/core/chrome_renderer.h
+    include/vnm_plot/core/font_renderer.h
     include/vnm_plot/core/gl_program.h
     include/vnm_plot/core/asset_loader.h
     include/vnm_plot/core/utf8_utils.h
@@ -392,6 +399,13 @@ endif()
 # Text rendering compile definition (available to consumers for conditional code)
 if(VNM_PLOT_ENABLE_TEXT)
     target_compile_definitions(vnm_plot_core PUBLIC VNM_PLOT_ENABLE_TEXT=1)
+
+    # Link MSDF text rendering dependencies
+    target_link_libraries(vnm_plot_core
+        PRIVATE
+            msdfgen::msdfgen-core
+            msdfgen::msdfgen-ext
+    )
 endif()
 
 # Compiler warnings for core
