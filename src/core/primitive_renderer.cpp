@@ -1,5 +1,6 @@
 #include <vnm_plot/core/primitive_renderer.h>
 #include <vnm_plot/core/asset_loader.h>
+#include <vnm_plot/plot_config.h>
 
 #include <glatter/glatter.h>
 #include <glm/gtc/type_ptr.hpp>

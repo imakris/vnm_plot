@@ -4,13 +4,16 @@
 // Qt-free renderer for basic primitives: rectangles and grid lines.
 
 #include "gl_program.h"
-#include "../plot_config.h"
-#include "../plot_types.h"
+#include "layout_types.h"
 
 #include <glm/glm.hpp>
 
 #include <memory>
 #include <vector>
+
+namespace vnm::plot {
+class Profiler;  // Forward declaration
+}
 
 namespace vnm::plot::core {
 
@@ -39,7 +42,7 @@ public:
     void cleanup_gl_resources();
 
     // Set profiler for performance tracking
-    void set_profiler(Profiler* profiler) { m_profiler = profiler; }
+    void set_profiler(vnm::plot::Profiler* profiler) { m_profiler = profiler; }
     void set_log_callback(GL_program::LogCallback callback);
 
     // --- Rect Pipeline ---
@@ -80,7 +83,7 @@ private:
 
     std::vector<rect_vertex_t> m_cpu_buffer;
     bool                       m_initialized = false;
-    Profiler*                  m_profiler    = nullptr;
+    vnm::plot::Profiler*       m_profiler    = nullptr;
     GL_program::LogCallback    m_log_error;
 
     static constexpr int k_rect_initial_quads = 256;
