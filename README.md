@@ -1,6 +1,6 @@
 # vnm_plot
-[![Build and Test](https://github.com/imakris/vnm_plot/actions/workflows/build.yml/badge.svg)](https://github.com/imakris/vnm_plot/actions/workflows/build.yml)
-[![FreeBSD (Cirrus CI)](https://api.cirrus-ci.com/github/imakris/vnm_plot.svg)](https://cirrus-ci.com/github/imakris/vnm_plot)
+CI (Linux/Windows): [![GitHub Actions: Core + GLFW + Core+Text](https://github.com/imakris/vnm_plot/actions/workflows/build.yml/badge.svg?branch=master)](https://github.com/imakris/vnm_plot/actions/workflows/build.yml)
+FreeBSD (Cirrus): [![Core](https://api.cirrus-ci.com/github/imakris/vnm_plot.svg?task=FreeBSD%20Core%20Build)](https://cirrus-ci.com/github/imakris/vnm_plot?task=FreeBSD%20Core%20Build) [![GLFW Example](https://api.cirrus-ci.com/github/imakris/vnm_plot.svg?task=FreeBSD%20GLFW%20Example)](https://cirrus-ci.com/github/imakris/vnm_plot?task=FreeBSD%20GLFW%20Example) [![Core+Text](https://api.cirrus-ci.com/github/imakris/vnm_plot.svg?task=FreeBSD%20Core%2BText%20Build)](https://cirrus-ci.com/github/imakris/vnm_plot?task=FreeBSD%20Core%2BText%20Build)
 
 A GPU-accelerated 2D time-series plotting library using OpenGL, with optional Qt Quick integration.
 
