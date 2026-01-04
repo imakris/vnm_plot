@@ -3,3 +3,6 @@
 
 # QtCreator user settings
 /examples/**/.qtcreator/
+
+# Claude workspace metadata
+.claude/
