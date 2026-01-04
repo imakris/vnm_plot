@@ -7,24 +7,19 @@ A GPU-accelerated 2D time-series plotting library using OpenGL, with Qt Quick in
 
 ## Overview
 
-vnm_plot renders time-series data using OpenGL geometry shaders. It supports Level-of-Detail (LOD) for handling large datasets—the renderer automatically selects an appropriate resolution based on the current zoom level.
+vnm_plot renders time-series data using OpenGL geometry shaders. It supports Level-of-Detail (LOD) for handling large datasets. The renderer automatically selects an appropriate resolution based on the current zoom level.
 
 The library uses a type-erased data interface (`Data_source` + `Data_access_policy`) so it can work with any sample type without templates in the rendering code.
 
 ## Architecture
 
 ```
-┌────────────────────────────────────────────────────────────────┐
-│                        Plot_widget                             │
-│                   (QQuickFramebufferObject)                    │
-├────────────────────────────────────────────────────────────────┤
-│                        Plot_renderer                           │
-│              (coordinates rendering on GL thread)              │
-├──────────────┬──────────────┬─────────────────┬────────────────┤
-│ Chrome       │ Series       │ Text            │ Font           │
-│ Renderer     │ Renderer     │ Renderer        │ Renderer       │
-│ (grid/axes)  │ (data)       │ (labels)        │ (MSDF glyphs)  │
-└──────────────┴──────────────┴─────────────────┴────────────────┘
+Plot_widget (QQuickFramebufferObject)
+  -> Plot_renderer (GL thread)
+     -> Chrome_renderer (grid and axes)
+     -> Series_renderer (data series)
+     -> Text_renderer (labels)
+     -> Font_renderer (MSDF glyphs)
 ```
 
 - `Plot_widget` is a `QQuickFramebufferObject` for use in QML
@@ -40,6 +35,7 @@ The library uses a type-erased data interface (`Data_source` + `Data_access_poli
 ```cpp
 #include <vnm_plot/vnm_plot.h>
 
+// plot_widget is a vnm::plot::Plot_widget* from QML or C++
 // Create data source and generate samples
 auto source = std::make_shared<vnm::plot::Function_data_source>();
 source->generate([](double x) { return std::sin(x); }, 0.0, 10.0, 1000);
@@ -59,6 +55,25 @@ series->get_range = policy.get_range;
 
 // Add to widget
 plot_widget->add_series(series->id, series);
+```
+
+### QML Quickstart
+
+Register the type in C++:
+
+```cpp
+qmlRegisterType<vnm::plot::Plot_widget>("VnmPlot", 1, 0, "PlotWidget");
+```
+
+Use it in QML:
+
+```qml
+import VnmPlot 1.0
+
+PlotWidget {
+    id: plot
+    anchors.fill: parent
+}
 ```
 
 ### Custom Sample Types
@@ -92,10 +107,10 @@ vnm::plot::Data_access_policy make_my_policy() {
 
 ### Display Styles
 
-- `DOTS` — points
-- `LINE` — connected line
-- `AREA` — filled area
-- `COLORMAP_AREA` — area colored by auxiliary metric
+- `DOTS` - points
+- `LINE` - connected line
+- `AREA` - filled area
+- `COLORMAP_AREA` - area colored by auxiliary metric
 - Combinations: `DOTS_LINE`, `LINE_AREA`, `DOTS_LINE_AREA`
 
 ## Building
@@ -117,8 +132,11 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DVNM_PLOT_BUILD_EXAMPLES=ON
 cmake --build build
 ```
 
-- `vnm_plot_hello` — renders a sine wave using `Function_data_source`
-- `function_plotter` — multiple functions, per-series styles, expression evaluation via mexce
+- `vnm_plot_hello` - renders a sine wave using `Function_data_source`
+- `function_plotter` - multiple functions, per-series styles, expression evaluation via mexce
+
+`function_plotter` depends on `mexce`. You can point at a local checkout by
+configuring with `-DMEXCE_LOCAL_PATH=...`.
 
 ## Configuration
 
