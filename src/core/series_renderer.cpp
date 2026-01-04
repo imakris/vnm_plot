@@ -335,76 +335,120 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
 {
     view_render_result_t result;
 
-    if (t_max <= t_min || width_px <= 0.0) {
+    if (scales.empty() || t_max <= t_min || width_px <= 0.0) {
         return result;
     }
 
-    const double base_pps = width_px / (t_max - t_min);
-    const std::size_t level = choose_level_from_base_pps(scales, view_state.last_lod_level, base_pps);
-    result.applied_level = level;
-    result.applied_pps = base_pps / (level < scales.size() ? static_cast<double>(scales[level]) : 1.0);
+    const std::size_t level_count = scales.size();
+    const std::size_t max_level_index = level_count > 0 ? level_count - 1 : 0;
+    std::size_t target_level = std::min<std::size_t>(view_state.last_lod_level, max_level_index);
 
-    auto snapshot_result = data_source.try_snapshot(level);
-    if (!snapshot_result) {
-        ++m_metrics.snapshot_failures;
-        return result;
-    }
+    constexpr int k_max_lod_attempts = 3;
 
-    const auto& snapshot = snapshot_result.snapshot;
-    if (!snapshot || snapshot.count == 0) {
-        return result;
-    }
+    for (int attempt = 0; attempt < k_max_lod_attempts; ++attempt) {
+        const std::size_t applied_level = std::min<std::size_t>(target_level, max_level_index);
+        const std::size_t applied_scale = scales[applied_level];
 
-    // Find visible range using binary search
-    const std::size_t first_idx = lower_bound_timestamp(snapshot, get_timestamp, t_min);
-    const std::size_t last_idx = upper_bound_timestamp(snapshot, get_timestamp, t_max);
+        auto snapshot_result = data_source.try_snapshot(applied_level);
+        if (!snapshot_result) {
+            view_state.last_lod_level = applied_level;
+            ++m_metrics.snapshot_failures;
 
-    if (first_idx >= last_idx) {
-        return result;
-    }
-
-    // Ensure VBO exists and has enough capacity
-    if (view_state.id == UINT_MAX) {
-        glGenBuffers(1, &view_state.id);
-    }
-
-    const std::size_t needed_bytes = snapshot.count * snapshot.stride;
-    const void* current_identity = data_source.identity();
-    const bool data_changed = (snapshot.sequence != view_state.last_sequence) ||
-                              (current_identity != view_state.cached_data_identity);
-
-    if (data_changed || view_state.last_ring_size < needed_bytes) {
-        glBindBuffer(GL_ARRAY_BUFFER, view_state.id);
-
-        if (view_state.last_ring_size < needed_bytes) {
-            // Allocate with some headroom
-            const std::size_t alloc_size = needed_bytes + needed_bytes / 4;
-            glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(alloc_size), nullptr, GL_DYNAMIC_DRAW);
-            view_state.last_ring_size = alloc_size;
-            ++m_metrics.vbo_reallocations;
-            m_metrics.bytes_allocated += alloc_size;
+            result.can_draw = (view_state.active_vbo != UINT_MAX && view_state.last_count > 0);
+            if (result.can_draw) {
+                result.first = view_state.last_first;
+                result.count = view_state.last_count;
+                result.applied_level = applied_level;
+            }
+            break;
         }
 
-        glBufferSubData(GL_ARRAY_BUFFER, 0, static_cast<GLsizeiptr>(snapshot.count * snapshot.stride), snapshot.data);
-        m_metrics.bytes_uploaded += snapshot.count * snapshot.stride;
+        const auto& snapshot = snapshot_result.snapshot;
+        if (!snapshot || snapshot.count == 0) {
+            view_state.last_lod_level = applied_level;
+            ++m_metrics.snapshot_failures;
+            break;
+        }
 
-        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        // Find visible range using binary search
+        std::size_t first_idx = 0;
+        std::size_t last_idx = snapshot.count;
+        if (get_timestamp) {
+            first_idx = lower_bound_timestamp(snapshot, get_timestamp, t_min);
+            if (first_idx > 0) {
+                --first_idx;
+            }
+            last_idx = upper_bound_timestamp(snapshot, get_timestamp, t_max);
+            last_idx = std::min(last_idx + 2, snapshot.count);
+        }
 
-        view_state.last_sequence = snapshot.sequence;
+        if (first_idx >= last_idx) {
+            return result;
+        }
+
+        const GLsizei count = static_cast<GLsizei>(last_idx - first_idx);
+        const std::size_t base_samples = (count > 0) ? static_cast<std::size_t>(count) * applied_scale : 0;
+        const double base_pps = (base_samples > 0)
+            ? width_px / static_cast<double>(base_samples)
+            : 0.0;
+
+        const std::size_t desired_level = choose_level_from_base_pps(scales, applied_level, base_pps);
+        if (desired_level != applied_level) {
+            target_level = desired_level;
+            continue;
+        }
+
+        // Ensure VBO exists and has enough capacity
+        if (view_state.id == UINT_MAX) {
+            glGenBuffers(1, &view_state.id);
+        }
+
+        const std::size_t needed_bytes = snapshot.count * snapshot.stride;
+        const void* current_identity = data_source.identity();
+
+        const bool region_changed = (view_state.last_ring_size < needed_bytes);
+        const bool seq_changed = (snapshot.sequence != view_state.last_sequence);
+        const bool lod_level_changed = (applied_level != view_state.last_lod_level);
+        const bool identity_changed = (current_identity != view_state.cached_data_identity);
+
+        const bool must_upload = region_changed || seq_changed || lod_level_changed || identity_changed;
+        if (must_upload) {
+            glBindBuffer(GL_ARRAY_BUFFER, view_state.id);
+
+            if (region_changed) {
+                const std::size_t alloc_size = needed_bytes + needed_bytes / 4;
+                glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(alloc_size), nullptr, GL_DYNAMIC_DRAW);
+                view_state.last_ring_size = alloc_size;
+                ++m_metrics.vbo_reallocations;
+                m_metrics.bytes_allocated += alloc_size;
+            }
+
+            glBufferSubData(GL_ARRAY_BUFFER, 0, static_cast<GLsizeiptr>(snapshot.count * snapshot.stride), snapshot.data);
+            m_metrics.bytes_uploaded += snapshot.count * snapshot.stride;
+
+            glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+            view_state.last_sequence = snapshot.sequence;
+            view_state.cached_data_identity = current_identity;
+        }
+
         view_state.last_snapshot_elements = snapshot.count;
-        view_state.cached_data_identity = current_identity;
         view_state.active_vbo = view_state.id;
+        view_state.last_first = static_cast<GLint>(first_idx);
+        view_state.last_count = count;
+
+        view_state.last_lod_level = applied_level;
+
+        result.can_draw = true;
+        result.first = view_state.last_first;
+        result.count = view_state.last_count;
+        result.applied_level = applied_level;
+        result.applied_pps = base_pps * static_cast<double>(applied_scale);
+        break;
     }
 
-    view_state.last_lod_level = level;
-
-    result.can_draw = true;
-    result.first = static_cast<GLint>(first_idx);
-    result.count = static_cast<GLsizei>(last_idx - first_idx);
-
-    view_state.last_first = result.first;
-    view_state.last_count = result.count;
-
+    (void)series_id;
+    (void)config;
     return result;
 }
 
@@ -452,6 +496,10 @@ void Series_renderer::render(
     if (layout.usable_width <= 0.0 || layout.usable_height <= 0.0) {
         return;
     }
+
+    const bool dark_mode = ctx.config ? ctx.config->dark_mode : false;
+    const float line_width = ctx.config ? static_cast<float>(ctx.config->line_width_px) : 1.0f;
+    const float area_fill_alpha = ctx.config ? static_cast<float>(ctx.config->area_fill_alpha) : 0.3f;
 
     // Cleanup stale VBO states for series no longer in the map
     for (auto it = m_vbo_states.begin(); it != m_vbo_states.end(); ) {
@@ -517,7 +565,24 @@ void Series_renderer::render(
             ctx.config);
 
         // Helper to draw one pass for a specific primitive style
-        auto draw_pass = [&](Display_style primitive_style, GLuint vbo_id, GLint first, GLsizei count, bool is_preview) {
+        auto draw_pass = [&](Display_style primitive_style,
+                             vbo_view_state_t& view_state,
+                             const view_render_result_t& view_result,
+                             bool is_preview) {
+            const GLsizei count = view_result.count;
+            if (count <= 0) {
+                return;
+            }
+
+            if (view_state.active_vbo == UINT_MAX) {
+                return;
+            }
+
+            const GLenum drawing_mode = (primitive_style == Display_style::DOTS) ? GL_POINTS : GL_LINE_STRIP;
+            if (drawing_mode == GL_LINE_STRIP && count < 2) {
+                return;
+            }
+
             // Get shader for this specific style
             const auto& pass_shader_set = s->shader_for(primitive_style);
             auto pass_shader = get_or_load_shader(pass_shader_set, ctx.config);
@@ -532,7 +597,27 @@ void Series_renderer::render(
             if (is_preview) {
                 modify_uniforms_for_preview(program_id, ctx);
             }
-            glUniform4fv(glGetUniformLocation(program_id, "color"), 1, glm::value_ptr(s->color));
+
+            glm::vec4 draw_color = s->color;
+            if (primitive_style == Display_style::AREA || primitive_style == Display_style::COLORMAP_AREA) {
+                draw_color.w *= area_fill_alpha;
+            }
+            if (dark_mode) {
+                if (glm::all(glm::lessThan(glm::abs(draw_color - glm::vec4(0.16f, 0.45f, 0.64f, 1.0f)),
+                                           glm::vec4(0.01f)))) {
+                    draw_color = glm::vec4(0.30f, 0.63f, 0.88f, 1.0f);
+                }
+            }
+            glUniform4fv(glGetUniformLocation(program_id, "color"), 1, glm::value_ptr(draw_color));
+
+            if (primitive_style == Display_style::AREA || primitive_style == Display_style::COLORMAP_AREA) {
+                glUniform1f(glGetUniformLocation(program_id, "line_width"), line_width);
+                glUniform4fv(glGetUniformLocation(program_id, "line_color"), 1, glm::value_ptr(draw_color));
+            }
+
+            if (const GLint loc = glGetUniformLocation(program_id, "u_line_px"); loc >= 0) {
+                glUniform1f(loc, line_width);
+            }
 
             if (s->access.bind_uniforms) {
                 s->access.bind_uniforms(program_id);
@@ -547,7 +632,7 @@ void Series_renderer::render(
                     glBindTexture(GL_TEXTURE_1D, colormap_tex);
                     glUniform1i(glGetUniformLocation(program_id, "colormap"), 0);
 
-                    auto snapshot = s->data_source->snapshot(main_result.applied_level);
+                    const auto snapshot = s->data_source->snapshot(view_result.applied_level);
                     if (snapshot) {
                         double aux_min = 0.0, aux_max = 1.0;
                         if (compute_aux_metric_range(*s, snapshot, aux_min, aux_max)) {
@@ -555,27 +640,41 @@ void Series_renderer::render(
                             vbo_state.cached_aux_metric_max = aux_max;
                         }
                     }
-                    glUniform1f(glGetUniformLocation(program_id, "aux_min"),
-                               static_cast<float>(vbo_state.cached_aux_metric_min));
-                    glUniform1f(glGetUniformLocation(program_id, "aux_max"),
-                               static_cast<float>(vbo_state.cached_aux_metric_max));
+                    const float aux_min_f = static_cast<float>(vbo_state.cached_aux_metric_min);
+                    const float aux_max_f = static_cast<float>(vbo_state.cached_aux_metric_max);
+                    const float aux_span = aux_max_f - aux_min_f;
+                    const float inv_aux_span = (std::abs(aux_span) > 1e-12f) ? (1.0f / aux_span) : 0.0f;
+
+                    glUniform1f(glGetUniformLocation(program_id, "aux_min"), aux_min_f);
+                    glUniform1f(glGetUniformLocation(program_id, "aux_max"), aux_max_f);
+                    if (const GLint loc = glGetUniformLocation(program_id, "u_volume_min"); loc >= 0) {
+                        glUniform1f(loc, aux_min_f);
+                    }
+                    if (const GLint loc = glGetUniformLocation(program_id, "u_inv_volume_span"); loc >= 0) {
+                        glUniform1f(loc, inv_aux_span);
+                    }
+                    if (const GLint loc = glGetUniformLocation(program_id, "u_colormap_tex"); loc >= 0) {
+                        glUniform1i(loc, 0);
+                    }
+                    const std::size_t applied_scale = (view_result.applied_level < scales.size())
+                        ? scales[view_result.applied_level]
+                        : 1;
+                    const float volume_scale = (applied_scale > 0) ? (1.0f / static_cast<float>(applied_scale)) : 1.0f;
+                    if (const GLint loc = glGetUniformLocation(program_id, "u_volume_scale"); loc >= 0) {
+                        glUniform1f(loc, volume_scale);
+                    }
                 }
             }
 
-            const GLuint vao = ensure_series_vao(primitive_style, vbo_id, *s);
+            const GLuint vao = ensure_series_vao(primitive_style, view_state.active_vbo, *s);
             glBindVertexArray(vao);
 
-            // Draw based on primitive style
-            if (primitive_style == Display_style::DOTS) {
-                glDrawArrays(GL_POINTS, first, count);
+            if (drawing_mode == GL_LINE_STRIP) {
+                glLineWidth(line_width);
             }
-            else if (primitive_style == Display_style::AREA || primitive_style == Display_style::COLORMAP_AREA) {
-                // Area rendering uses triangle strip in geometry shader
-                glDrawArrays(GL_LINE_STRIP, first, count);
-            }
-            else {
-                // LINE style
-                glDrawArrays(GL_LINE_STRIP, first, count);
+            glDrawArrays(drawing_mode, view_result.first, count);
+            if (drawing_mode == GL_LINE_STRIP) {
+                glLineWidth(1.0f);
             }
 
             glBindVertexArray(0);
@@ -589,23 +688,19 @@ void Series_renderer::render(
         if (main_result.can_draw) {
             // Handle colormap area first if present
             if (!!(s->style & Display_style::COLORMAP_AREA)) {
-                draw_pass(Display_style::COLORMAP_AREA, vbo_state.main_view.id,
-                         main_result.first, main_result.count, false);
+                draw_pass(Display_style::COLORMAP_AREA, vbo_state.main_view, main_result, false);
             }
             // Then area (rendered before lines so lines appear on top)
             if (!!(s->style & Display_style::AREA)) {
-                draw_pass(Display_style::AREA, vbo_state.main_view.id,
-                         main_result.first, main_result.count, false);
+                draw_pass(Display_style::AREA, vbo_state.main_view, main_result, false);
             }
             // Then lines
             if (!!(s->style & Display_style::LINE)) {
-                draw_pass(Display_style::LINE, vbo_state.main_view.id,
-                         main_result.first, main_result.count, false);
+                draw_pass(Display_style::LINE, vbo_state.main_view, main_result, false);
             }
             // Finally dots (on top)
             if (!!(s->style & Display_style::DOTS)) {
-                draw_pass(Display_style::DOTS, vbo_state.main_view.id,
-                         main_result.first, main_result.count, false);
+                draw_pass(Display_style::DOTS, vbo_state.main_view, main_result, false);
             }
         }
 
@@ -623,17 +718,17 @@ void Series_renderer::render(
 
             if (preview_result.can_draw) {
                 // Preview uses same multi-pass approach
+                if (!!(s->style & Display_style::COLORMAP_AREA)) {
+                    draw_pass(Display_style::COLORMAP_AREA, vbo_state.preview_view, preview_result, true);
+                }
                 if (!!(s->style & Display_style::AREA)) {
-                    draw_pass(Display_style::AREA, vbo_state.preview_view.id,
-                             preview_result.first, preview_result.count, true);
+                    draw_pass(Display_style::AREA, vbo_state.preview_view, preview_result, true);
                 }
                 if (!!(s->style & Display_style::LINE)) {
-                    draw_pass(Display_style::LINE, vbo_state.preview_view.id,
-                             preview_result.first, preview_result.count, true);
+                    draw_pass(Display_style::LINE, vbo_state.preview_view, preview_result, true);
                 }
                 if (!!(s->style & Display_style::DOTS)) {
-                    draw_pass(Display_style::DOTS, vbo_state.preview_view.id,
-                             preview_result.first, preview_result.count, true);
+                    draw_pass(Display_style::DOTS, vbo_state.preview_view, preview_result, true);
                 }
             }
         }
