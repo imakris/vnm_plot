@@ -2,7 +2,7 @@
 # FreeBSD is tested via Cirrus CI since GitHub Actions doesn't support it natively
 
 freebsd_instance:
-  image_family: freebsd-15-0
+  image_family: freebsd-15-0-amd64-ufs
 
 # =============================================================================
 # Tasks
