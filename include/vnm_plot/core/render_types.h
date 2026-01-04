@@ -28,6 +28,11 @@ struct Render_config
     double line_width_px        = 1.0;
     double area_fill_alpha      = 0.3;
 
+    // Timestamp formatting (optional)
+    // Parameters: timestamp (unix seconds), visible_range (seconds shown)
+    // Returns: formatted string for display
+    std::function<std::string(double timestamp, double visible_range)> format_timestamp;
+
     // Logging (optional)
     std::function<void(const std::string&)> log_error;
 };
@@ -69,6 +74,9 @@ struct frame_context_t
     double base_label_height_px   = 14.0;
     double adjusted_reserved_height = 0.0;
     double adjusted_preview_height  = 0.0;
+
+    // Display flags
+    bool show_info = false;
 
     // Configuration reference (may be null for minimal rendering)
     const Render_config* config = nullptr;

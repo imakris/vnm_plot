@@ -234,10 +234,16 @@ set(VNM_PLOT_CORE_SOURCES
     src/core/chrome_renderer.cpp
 )
 
-# Add core font renderer when text is enabled
+# Add core font/text renderers when text is enabled
 if(VNM_PLOT_ENABLE_TEXT)
     list(APPEND VNM_PLOT_CORE_SOURCES
         src/core/font_renderer.cpp
+        src/core/text_renderer.cpp
+    )
+else()
+    # Stub implementations for text-off builds
+    list(APPEND VNM_PLOT_CORE_SOURCES
+        src/core/text_renderer_stub.cpp
     )
 endif()
 
@@ -252,6 +258,7 @@ set(VNM_PLOT_CORE_HEADERS
     include/vnm_plot/core/primitive_renderer.h
     include/vnm_plot/core/chrome_renderer.h
     include/vnm_plot/core/font_renderer.h
+    include/vnm_plot/core/text_renderer.h
     include/vnm_plot/core/gl_program.h
     include/vnm_plot/core/asset_loader.h
     include/vnm_plot/core/utf8_utils.h
