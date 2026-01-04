@@ -7,7 +7,7 @@ freebsd_instance:
 # =============================================================================
 # Tasks
 # =============================================================================
-tasks:
+task:
   - name: "FreeBSD Core Build"
     install_script:
       - pkg install -y git cmake mesa-libs pkgconf libX11 libXrandr libXinerama libXcursor libXi libXext

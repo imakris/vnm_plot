@@ -42,7 +42,7 @@ jobs:
           # brew install --cask xquartz
           echo "macOS: Using native Cocoa backend for GLFW"
 
-      # Core library build (Qt-free, text rendering disabled for simplicity)
+      # Core library build (text rendering disabled for simplicity)
       - name: Configure CMake (Core only)
         shell: bash
         run: |
