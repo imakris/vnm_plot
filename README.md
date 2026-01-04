@@ -2,7 +2,8 @@
 ## CI Status
 | Job | Status | Notes |
 | :-- | :-- | :-- |
-| Linux/Windows (GitHub Actions) | [![Build and Test](https://github.com/imakris/vnm_plot/actions/workflows/build.yml/badge.svg?branch=master)](https://github.com/imakris/vnm_plot/actions/workflows/build.yml) | Core + GLFW + Core+Text |
+| Linux (GitHub Actions) | [![CI Linux](https://github.com/imakris/vnm_plot/actions/workflows/ci-linux.yml/badge.svg?branch=master)](https://github.com/imakris/vnm_plot/actions/workflows/ci-linux.yml) | Core + GLFW + Core+Text |
+| Windows (GitHub Actions) | [![CI Windows](https://github.com/imakris/vnm_plot/actions/workflows/ci-windows.yml/badge.svg?branch=master)](https://github.com/imakris/vnm_plot/actions/workflows/ci-windows.yml) | Core + GLFW + Core+Text |
 | FreeBSD Core (Cirrus) | [![Core](https://api.cirrus-ci.com/github/imakris/vnm_plot.svg?task=FreeBSD%20Core%20Build)](https://cirrus-ci.com/github/imakris/vnm_plot?task=FreeBSD%20Core%20Build) | Core only |
 | FreeBSD GLFW Example (Cirrus) | [![GLFW Example](https://api.cirrus-ci.com/github/imakris/vnm_plot.svg?task=FreeBSD%20GLFW%20Example)](https://cirrus-ci.com/github/imakris/vnm_plot?task=FreeBSD%20GLFW%20Example) | standalone_glfw |
 | FreeBSD Core+Text (Cirrus) | [![Core+Text](https://api.cirrus-ci.com/github/imakris/vnm_plot.svg?task=FreeBSD%20Core%2BText%20Build)](https://cirrus-ci.com/github/imakris/vnm_plot?task=FreeBSD%20Core%2BText%20Build) | Text enabled |

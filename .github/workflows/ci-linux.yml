@@ -1,4 +1,4 @@
-name: Build and Test
+name: CI Linux
 
 on:
   push:
@@ -8,34 +8,19 @@ on:
 
 jobs:
   build-core:
-    name: Core (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-
-    runs-on: ${{ matrix.os }}
-
+    name: Core (Linux)
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Install dependencies (Linux)
-        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libgl-dev libx11-dev libxrandr-dev libxinerama-dev \
                                   libxcursor-dev libxi-dev libxext-dev libwayland-dev \
                                   libxkbcommon-dev
 
-      - name: Install dependencies (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          # XQuartz provides X11 headers for GLFW X11 backend (optional)
-          # brew install --cask xquartz
-          echo "macOS: Using native Cocoa backend for GLFW"
-
-      # Core library build (text rendering disabled for simplicity)
       - name: Configure CMake (Core only)
         shell: bash
         run: |
@@ -51,39 +36,22 @@ jobs:
         shell: bash
         run: |
           echo "=== Build completed ==="
-          if [ "$RUNNER_OS" == "Windows" ]; then
-            ls -la build/Release/*.lib 2>/dev/null || ls -la build/*.lib 2>/dev/null || echo "Static libraries in build directory"
-          else
-            ls -la build/*.a 2>/dev/null || echo "Static libraries in build directory"
-          fi
+          ls -la build/*.a 2>/dev/null || echo "Static libraries in build directory"
 
   build-standalone-example:
-    name: GLFW Example (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-
-    runs-on: ${{ matrix.os }}
-
+    name: GLFW Example (Linux)
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Install dependencies (Linux)
-        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libgl-dev libx11-dev libxrandr-dev libxinerama-dev \
                                   libxcursor-dev libxi-dev libxext-dev libwayland-dev \
                                   libxkbcommon-dev
 
-      - name: Install dependencies (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          echo "macOS: Using native Cocoa backend for GLFW"
-
-      # Build standalone_glfw example (includes vnm_plot_core)
       - name: Configure CMake (standalone_glfw)
         shell: bash
         working-directory: examples/standalone_glfw
@@ -102,41 +70,22 @@ jobs:
         working-directory: examples/standalone_glfw
         run: |
           echo "=== Build completed ==="
-          if [ "$RUNNER_OS" == "Windows" ]; then
-            ls -la build/Release/standalone_glfw.exe 2>/dev/null || \
-            ls -la build/standalone_glfw.exe 2>/dev/null || \
-            echo "Executable built successfully"
-          else
-            ls -la build/standalone_glfw 2>/dev/null || echo "Executable built successfully"
-          fi
+          ls -la build/standalone_glfw 2>/dev/null || echo "Executable built successfully"
 
   build-core-with-text:
-    name: Core+Text (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-
-    runs-on: ${{ matrix.os }}
-
+    name: Core+Text (Linux)
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Install dependencies (Linux)
-        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libgl-dev libx11-dev libxrandr-dev libxinerama-dev \
                                   libxcursor-dev libxi-dev libxext-dev libwayland-dev \
                                   libxkbcommon-dev
 
-      - name: Install dependencies (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          echo "macOS: Using native Cocoa backend for GLFW"
-
-      # Core library build with text rendering enabled (fetches FreeType + msdfgen)
       - name: Configure CMake (Core with text)
         shell: bash
         run: |
@@ -152,8 +101,4 @@ jobs:
         shell: bash
         run: |
           echo "=== Build completed (with text rendering) ==="
-          if [ "$RUNNER_OS" == "Windows" ]; then
-            ls -la build/Release/*.lib 2>/dev/null || ls -la build/*.lib 2>/dev/null || echo "Static libraries built"
-          else
-            ls -la build/*.a 2>/dev/null || echo "Static libraries built"
-          fi
+          ls -la build/*.a 2>/dev/null || echo "Static libraries built"

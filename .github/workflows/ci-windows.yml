@@ -1,0 +1,87 @@
+name: CI Windows
+
+on:
+  push:
+    branches: [ main, master, dev ]
+  pull_request:
+    branches: [ main, master, dev ]
+
+jobs:
+  build-core:
+    name: Core (Windows)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure CMake (Core only)
+        shell: bash
+        run: |
+          cmake -B build -S . \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DVNM_PLOT_CORE_ONLY=ON \
+            -DVNM_PLOT_ENABLE_TEXT=OFF
+
+      - name: Build core library
+        run: cmake --build build --config Release
+
+      - name: Build summary
+        shell: bash
+        run: |
+          echo "=== Build completed ==="
+          ls -la build/Release/*.lib 2>/dev/null || ls -la build/*.lib 2>/dev/null || \
+            echo "Static libraries in build directory"
+
+  build-standalone-example:
+    name: GLFW Example (Windows)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure CMake (standalone_glfw)
+        shell: bash
+        working-directory: examples/standalone_glfw
+        run: |
+          cmake -B build -S . \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DVNM_PLOT_BUILD_QT=OFF \
+            -DVNM_PLOT_ENABLE_TEXT=OFF
+
+      - name: Build standalone_glfw example
+        working-directory: examples/standalone_glfw
+        run: cmake --build build --config Release
+
+      - name: Verify executable
+        shell: bash
+        working-directory: examples/standalone_glfw
+        run: |
+          echo "=== Build completed ==="
+          ls -la build/Release/standalone_glfw.exe 2>/dev/null || \
+          ls -la build/standalone_glfw.exe 2>/dev/null || \
+          echo "Executable built successfully"
+
+  build-core-with-text:
+    name: Core+Text (Windows)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure CMake (Core with text)
+        shell: bash
+        run: |
+          cmake -B build -S . \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DVNM_PLOT_CORE_ONLY=ON \
+            -DVNM_PLOT_ENABLE_TEXT=ON
+
+      - name: Build core library with text
+        run: cmake --build build --config Release
+
+      - name: Build summary
+        shell: bash
+        run: |
+          echo "=== Build completed (with text rendering) ==="
+          ls -la build/Release/*.lib 2>/dev/null || ls -la build/*.lib 2>/dev/null || \
+            echo "Static libraries built"
