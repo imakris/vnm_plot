@@ -197,6 +197,7 @@ int main()
     config.dark_mode = true;
     config.show_text = false;
     config.snap_lines_to_pixels = false;
+    config.line_width_px = 1.5;
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
