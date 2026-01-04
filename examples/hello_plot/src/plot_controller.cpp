@@ -46,7 +46,8 @@ void Plot_controller::set_plot_widget(vnm::plot::Plot_widget* widget)
         }
         m_plot_widget->set_t_range(k_x_min, k_x_max);
         m_plot_widget->set_available_t_range(k_x_min, k_x_max);
-        m_plot_widget->auto_adjust_view(false, k_auto_v_scale);
+        m_plot_widget->set_v_auto(false);
+        m_plot_widget->set_v_range(-1.3f, 1.3f);
         m_plot_widget->update();
     }
 
