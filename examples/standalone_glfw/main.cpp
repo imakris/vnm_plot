@@ -1,5 +1,6 @@
 #include <vnm_plot/core/asset_loader.h>
 #include <vnm_plot/core/chrome_renderer.h>
+#include <vnm_plot/core/color_palette.h>
 #include <vnm_plot/core/constants.h>
 #include <vnm_plot/core/gl_program.h>
 #include <vnm_plot/core/primitive_renderer.h>
