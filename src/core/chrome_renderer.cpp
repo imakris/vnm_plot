@@ -1,8 +1,8 @@
-#include <vnm_plot/renderers/chrome_renderer.h>
-#include <vnm_plot/renderers/primitive_renderer.h>
-#include <vnm_plot/color_palette.h>
-#include <vnm_plot/plot_algo.h>
-#include <vnm_plot/plot_config.h>
+#include <vnm_plot/core/chrome_renderer.h>
+#include <vnm_plot/core/primitive_renderer.h>
+#include <vnm_plot/core/color_palette.h>
+#include <vnm_plot/core/constants.h>
+#include <vnm_plot/core/algo.h>
 
 #include <glm/glm.hpp>
 
@@ -10,7 +10,7 @@
 #include <array>
 #include <cmath>
 
-namespace vnm::plot {
+namespace vnm::plot::core {
 
 namespace {
 
@@ -127,8 +127,6 @@ void Chrome_renderer::render_grid_and_backgrounds(
     const frame_context_t& ctx,
     Primitive_renderer& prims)
 {
-    VNM_PLOT_PROFILE_SCOPE(ctx.config ? ctx.config->profiler.get() : nullptr, "chrome.grid");
-
     const auto& pl = ctx.layout;
     const bool dark_mode = ctx.config ? ctx.config->dark_mode : false;
     const Color_palette palette = dark_mode ? Color_palette::dark() : Color_palette::light();
@@ -141,20 +139,20 @@ void Chrome_renderer::render_grid_and_backgrounds(
 
     // Background panes and separators
     prims.batch_rect(preview_background,
-        glm::vec4(0.f, float(ctx.win_h) - float(ctx.snapshot.adjusted_preview_height), float(ctx.win_w), float(ctx.win_h)));
+        glm::vec4(0.f, float(ctx.win_h) - float(ctx.adjusted_preview_height), float(ctx.win_w), float(ctx.win_h)));
 
     prims.batch_rect(h_label_color,
         glm::vec4(0.f, float(pl.usable_height),
-                  float(ctx.win_w), float(pl.usable_height + ctx.snapshot.base_label_height_px)));
+                  float(ctx.win_w), float(pl.usable_height + ctx.base_label_height_px)));
     prims.batch_rect(v_label_color,
         glm::vec4(float(pl.usable_width), 0.f,
                   float(pl.usable_width + pl.v_bar_width), float(pl.usable_height)));
     prims.batch_rect(separator_color,
-        glm::vec4(0.f, float(ctx.win_h) - float(ctx.snapshot.adjusted_reserved_height),
-                  float(ctx.win_w), float(ctx.win_h - ctx.snapshot.adjusted_reserved_height + 1.0)));
+        glm::vec4(0.f, float(ctx.win_h) - float(ctx.adjusted_reserved_height),
+                  float(ctx.win_w), float(ctx.win_h - ctx.adjusted_reserved_height + 1.0)));
     prims.batch_rect(separator_color,
-        glm::vec4(0.f, float(ctx.win_h) - float(ctx.snapshot.adjusted_preview_height + 1.0),
-                  float(ctx.win_w), float(ctx.win_h) - float(ctx.snapshot.adjusted_preview_height)));
+        glm::vec4(0.f, float(ctx.win_h) - float(ctx.adjusted_preview_height + 1.0),
+                  float(ctx.win_w), float(ctx.win_h) - float(ctx.adjusted_preview_height)));
 
     prims.flush_rects(ctx.pmv);
 
@@ -164,8 +162,8 @@ void Chrome_renderer::render_grid_and_backgrounds(
     const glm::vec2 main_origin = to_gl_origin(ctx, main_top_left, main_size);
 
     const grid_layer_params_t vertical_levels = calculate_grid_params(
-        double(ctx.v0), double(ctx.v1), pl.usable_height, ctx.snapshot.adjusted_font_px);
-    const grid_layer_params_t horizontal_levels = build_time_grid(ctx.t0, ctx.t1, pl.usable_width, ctx.snapshot.adjusted_font_px);
+        double(ctx.v0), double(ctx.v1), pl.usable_height, ctx.adjusted_font_px);
+    const grid_layer_params_t horizontal_levels = build_time_grid(ctx.t0, ctx.t1, pl.usable_width, ctx.adjusted_font_px);
 
     const grid_layer_params_t vertical_levels_gl = flip_grid_levels_y(vertical_levels, main_size.y);
     prims.draw_grid_shader(main_origin, main_size, grid_rgb, vertical_levels_gl, horizontal_levels);
@@ -232,9 +230,9 @@ void Chrome_renderer::render_grid_and_backgrounds(
         prims.draw_grid_shader(origin, size, grid_rgb, vertical_tick_levels_gl, empty_levels);
     }
 
-    if (ctx.snapshot.base_label_height_px > 0.5 && horizontal_tick_levels.count > 0) {
+    if (ctx.base_label_height_px > 0.5 && horizontal_tick_levels.count > 0) {
         const glm::vec2 top_left{0.0f, float(pl.usable_height)};
-        const glm::vec2 size{float(pl.usable_width), float(ctx.snapshot.base_label_height_px)};
+        const glm::vec2 size{float(pl.usable_width), float(ctx.base_label_height_px)};
         const glm::vec2 origin = to_gl_origin(ctx, top_left, size);
         prims.draw_grid_shader(origin, size, grid_rgb, empty_levels, horizontal_tick_levels);
     }
@@ -244,13 +242,11 @@ void Chrome_renderer::render_preview_overlay(
     const frame_context_t& ctx,
     Primitive_renderer& prims)
 {
-    VNM_PLOT_PROFILE_SCOPE(ctx.config ? ctx.config->profiler.get() : nullptr, "chrome.preview");
-
-    if (ctx.snapshot.adjusted_preview_height <= 0.) {
+    if (ctx.adjusted_preview_height <= 0.) {
         return;
     }
 
-    const double t_avail_span = ctx.snapshot.cfg.t_available_max - ctx.snapshot.cfg.t_available_min;
+    const double t_avail_span = ctx.t_available_max - ctx.t_available_min;
     if (t_avail_span <= 0) {
         return;
     }
@@ -261,16 +257,16 @@ void Chrome_renderer::render_preview_overlay(
     const glm::vec4 cover_color2 = palette.preview_cover_secondary;
     const glm::vec4 separator_color = palette.separator;
 
-    const double x0 = ctx.win_w * (ctx.t0 - ctx.snapshot.cfg.t_available_min) / t_avail_span;
-    const double x1 = ctx.win_w * (1.0 - (ctx.snapshot.cfg.t_available_max - ctx.t1) / t_avail_span);
+    const double x0 = ctx.win_w * (ctx.t0 - ctx.t_available_min) / t_avail_span;
+    const double x1 = ctx.win_w * (1.0 - (ctx.t_available_max - ctx.t1) / t_avail_span);
 
     const double dd = x1 - x0;
-    const double blh = ctx.snapshot.base_label_height_px;
+    const double blh = ctx.base_label_height_px;
     const double win_w = ctx.win_w;
     const double ptop = ctx.layout.usable_height + blh;
     const double pbtm = ctx.win_h;
 
-    const double pband_h = std::min(constants::k_preview_band_max_px, ctx.snapshot.adjusted_preview_height);
+    const double pband_h = std::min(constants::k_preview_band_max_px, ctx.adjusted_preview_height);
 
     if (dd >= constants::k_preview_min_window_px) {
         prims.batch_rect(cover_color, {0, float(ptop + pband_h), float(x0), float(pbtm - pband_h)});
@@ -293,4 +289,4 @@ void Chrome_renderer::render_preview_overlay(
     prims.batch_rect(separator_color, {float(x1), float(ptop + pband_h), float(x1 + 1), float(pbtm - pband_h)});
 }
 
-} // namespace vnm::plot
+} // namespace vnm::plot::core

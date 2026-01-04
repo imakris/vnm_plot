@@ -428,13 +428,13 @@ ApplicationWindow {
             }
         }
 
-        // Row 3: Range controls with Auto V and Add Function on the right
+        // Row 3: Range controls with Fit Vertical and Add Function on the right
         RowLayout {
             Layout.fillWidth: true
             spacing: 12
 
             Text {
-                text: "X min:"
+                text: "x min:"
                 font.pixelSize: fontSize
                 color: dimTextColor
                 Layout.alignment: Qt.AlignVCenter
@@ -492,7 +492,7 @@ ApplicationWindow {
             }
 
             Text {
-                text: "X max:"
+                text: "x max:"
                 font.pixelSize: fontSize
                 color: dimTextColor
                 Layout.alignment: Qt.AlignVCenter
@@ -553,7 +553,7 @@ ApplicationWindow {
 
             Button {
                 id: autoVButton
-                text: "Auto V"
+                text: "Fit Vertical"
                 Layout.preferredWidth: 70
                 Layout.preferredHeight: controlHeight
                 font.pixelSize: fontSize
@@ -638,12 +638,6 @@ ApplicationWindow {
         // Row 5: Footer
         RowLayout {
             Layout.fillWidth: true
-
-            Text {
-                text: "Functions: sin, cos, tan, exp, log, abs, sqrt, min, max | Constants: pi, e | Operators: + - * / ^"
-                color: "#666666"
-                font.pixelSize: 10
-            }
 
             Item { Layout.fillWidth: true }
 

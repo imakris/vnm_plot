@@ -1,7 +1,7 @@
 #pragma once
 
-// VNM Plot Library - Font Renderer
-// Encapsulates font loading, text measurement, and MSDF-based rendering.
+// VNM Plot Library - Core Font Renderer
+// Qt-free MSDF text rendering with font loading, measurement, and GPU rendering.
 
 #include <glm/glm.hpp>
 
@@ -10,9 +10,21 @@
 #include <memory>
 #include <string>
 
-class QByteArray;
+namespace vnm::plot::core {
 
-namespace vnm::plot {
+class Asset_loader;
+
+// -----------------------------------------------------------------------------
+// Font Cache Configuration
+// -----------------------------------------------------------------------------
+// Controls whether MSDF font data is persisted to disk for faster startup.
+
+// Enable or disable disk caching of MSDF font data (default: enabled).
+// Call before Font_renderer::initialize() to take effect.
+void set_font_disk_cache_enabled(bool enabled);
+
+// Returns true if disk caching is enabled.
+[[nodiscard]] bool font_disk_cache_enabled();
 
 // -----------------------------------------------------------------------------
 // Font Renderer
@@ -33,8 +45,9 @@ public:
 
     // Initializes the font system and ensures the thread-local resources are ready.
     // Must be called on a thread with an active OpenGL context before use.
+    // asset_loader: Provider for font and shader assets
     // force_rebuild recreates GL resources even if the pixel height matches.
-    void initialize(int pixel_height, bool force_rebuild = false);
+    void initialize(Asset_loader& asset_loader, int pixel_height, bool force_rebuild = false);
 
     // Returns true when the renderer is currently bound to a thread-local resource set.
     bool is_initialized() const;
@@ -90,4 +103,4 @@ private:
     std::unique_ptr<impl_t> m_impl;
 };
 
-} // namespace vnm::plot
+} // namespace vnm::plot::core

@@ -1,12 +1,10 @@
-#include <vnm_plot/renderers/font_renderer.h>
+#include <vnm_plot/core/font_renderer.h>
+#include <vnm_plot/core/asset_loader.h>
+#include <vnm_plot/core/gl_program.h>
+#include <vnm_plot/core/platform_paths.h>
+#include <vnm_plot/core/sha256.h>
+#include <vnm_plot/core/utf8_utils.h>
 #include <vnm_plot/internal/tls_registry.h>
-
-#include <QByteArray>
-#include <QCryptographicHash>
-#include <QFile>
-#include <QOpenGLShaderProgram>
-#include <QStandardPaths>
-#include <QString>
 
 #ifdef GL_GLEXT_VERSION
 #undef GL_GLEXT_VERSION
@@ -34,7 +32,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace vnm::plot {
+namespace vnm::plot::core {
 
 namespace {
 
@@ -43,6 +41,26 @@ constexpr double k_min_atlas_font_size = 48.0;
 constexpr float k_atlas_px_range = 2.0f;
 constexpr float k_sharpness_bias = 2.5f;
 constexpr int k_atlas_texture_size = 2048;
+
+std::atomic<bool> s_disk_cache_enabled{true};
+
+} // anonymous namespace
+
+// -----------------------------------------------------------------------------
+// Font Cache Configuration
+// -----------------------------------------------------------------------------
+
+void set_font_disk_cache_enabled(bool enabled)
+{
+    s_disk_cache_enabled.store(enabled, std::memory_order_relaxed);
+}
+
+bool font_disk_cache_enabled()
+{
+    return s_disk_cache_enabled.load(std::memory_order_relaxed);
+}
+
+namespace {
 
 struct vertex_buffer_t
 {
@@ -162,7 +180,7 @@ void vertex_buffer_clear(vertex_buffer_t* buffer)
 
 // --- Thread-Safe Global Font Storage ---
 // The raw .ttf file data. Loaded once and shared by all threads.
-QByteArray s_font_storage;
+std::vector<uint8_t> s_font_storage;
 // Mutex to protect the one-time lazy loading of the font data.
 static std::mutex s_font_storage_mutex;
 
@@ -207,7 +225,7 @@ struct thread_local_font_resources_t
 {
     GLuint m_texture = 0;
     vertex_buffer_t* m_buffer = nullptr;
-    std::shared_ptr<QOpenGLShaderProgram> m_shader_program;
+    std::unique_ptr<GL_program> m_shader_program;
     int m_pixel_height = 0;
     GLint m_tex_uniform_location = -1;
     GLint m_color_uniform_location = -1;
@@ -222,7 +240,7 @@ struct thread_local_font_resources_t
     std::unordered_map<char32_t, msdf_glyph_t> m_glyphs;
     std::unordered_map<msdf_kerning_key_t, float, msdf_kerning_key_hash_t, msdf_kerning_key_eq_t> m_kerning_px;
 
-    ~thread_local_font_resources_t() {}
+    ~thread_local_font_resources_t() = default;
 
     void destroy_gl()
     {
@@ -234,9 +252,7 @@ struct thread_local_font_resources_t
             vertex_buffer_delete(m_buffer);
             m_buffer = nullptr;
         }
-        if (m_shader_program) {
-            m_shader_program.reset();
-        }
+        m_shader_program.reset();
         m_tex_uniform_location = -1;
         m_color_uniform_location = -1;
         m_pmv_uniform_location = -1;
@@ -271,12 +287,11 @@ struct cached_font_data_t
     float monospace_advance_px = 0.f;
     bool monospace_advance_reliable = false;
     std::uint64_t cache_epoch = 0;
-    std::array<unsigned char, 32> font_digest{};
+    Sha256::Digest font_digest{};
 };
 
 static std::mutex s_cached_fonts_mutex;
 static std::unordered_map<int, std::shared_ptr<cached_font_data_t>> s_cached_fonts;
-static std::filesystem::path s_cache_dir;
 
 std::shared_ptr<cached_font_data_t> get_cached_font(int pixel_height)
 {
@@ -303,34 +318,6 @@ void store_cached_font(const std::shared_ptr<cached_font_data_t>& font)
 
     s_cached_fonts[font->pixel_height] = font;
 }
-
-std::array<unsigned char, 32> sha256_bytes(const QByteArray& data)
-{
-    QCryptographicHash hash(QCryptographicHash::Sha256);
-    hash.addData(data);
-    QByteArray digest = hash.result();
-    std::array<unsigned char, 32> out{};
-    std::copy(digest.cbegin(), digest.cend(), out.begin());
-    return out;
-}
-
-std::filesystem::path cache_file_path(int pixel_height, const std::array<unsigned char, 32>& font_digest)
-{
-    if (s_cache_dir.empty()) {
-        s_cache_dir = std::filesystem::path(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation).toStdWString());
-        std::error_code ec;
-        std::filesystem::create_directories(s_cache_dir, ec);
-    }
-    std::ostringstream oss;
-    oss << "msdf_cache_v" << k_cache_version << "_px" << pixel_height << "_font";
-    for (auto b : font_digest) {
-        oss << std::hex << std::setw(2) << std::setfill('0') << int(b);
-    }
-    oss << ".bin";
-    return s_cache_dir / oss.str();
-}
-
-std::vector<char32_t> utf8_to_codepoints(const char* utf8);
 
 const std::vector<char32_t>& glyph_codepoints()
 {
@@ -396,9 +383,9 @@ const std::vector<char32_t>& glyph_codepoints()
     return cp;
 }
 
-QByteArray glyph_seed_bytes()
+std::string glyph_seed_string()
 {
-    QByteArray seed;
+    std::string seed;
     const auto append = [&seed](const char* utf8) { seed.append(utf8); };
     append(" 0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~");
     append("\xC3\x80\xC3\x81\xC3\x82\xC3\x83\xC3\x84\xC3\x85\xC3\x86\xC3\x87\xC3\x88\xC3\x89\xC3\x8A"
@@ -431,17 +418,6 @@ QByteArray glyph_seed_bytes()
            "\xF0\x9F\x97\x97"
            "\xE2\x9C\x95");
     return seed;
-}
-
-std::vector<char32_t> utf8_to_codepoints(const char* utf8)
-{
-    const auto text = QString::fromUtf8(utf8).toUcs4();
-    std::vector<char32_t> out;
-    out.reserve(static_cast<std::size_t>(text.size()));
-    for (const auto ch : text) {
-        out.push_back(static_cast<char32_t>(ch));
-    }
-    return out;
 }
 
 void add_text_to_buffer(const char* text, glm::vec2* pen, thread_local_font_resources_t* res)
@@ -492,23 +468,49 @@ void add_text_to_buffer(const char* text, glm::vec2* pen, thread_local_font_reso
     }
 }
 
-std::array<unsigned char, 32> compute_font_digest()
+Sha256::Digest compute_font_digest()
 {
-    QByteArray payload;
-    payload.append(reinterpret_cast<const char*>(&k_cache_version), sizeof(k_cache_version));
-    payload.append(reinterpret_cast<const char*>(&k_min_atlas_font_size), sizeof(k_min_atlas_font_size));
-    payload.append(reinterpret_cast<const char*>(&k_atlas_px_range), sizeof(k_atlas_px_range));
-    payload.append(reinterpret_cast<const char*>(&k_sharpness_bias), sizeof(k_sharpness_bias));
-    payload.append(reinterpret_cast<const char*>(&k_atlas_texture_size), sizeof(k_atlas_texture_size));
-    payload.append(glyph_seed_bytes());
-    payload.append(s_font_storage);
-    return sha256_bytes(payload);
+    Sha256 ctx;
+    ctx.update(&k_cache_version, sizeof(k_cache_version));
+    ctx.update(&k_min_atlas_font_size, sizeof(k_min_atlas_font_size));
+    ctx.update(&k_atlas_px_range, sizeof(k_atlas_px_range));
+    ctx.update(&k_sharpness_bias, sizeof(k_sharpness_bias));
+    ctx.update(&k_atlas_texture_size, sizeof(k_atlas_texture_size));
+    ctx.update(glyph_seed_string());
+    ctx.update(s_font_storage);
+    return ctx.finalize();
+}
+
+std::filesystem::path cache_file_path(int pixel_height, const Sha256::Digest& font_digest)
+{
+    static std::filesystem::path s_cache_dir;
+
+    if (s_cache_dir.empty()) {
+        // Prefer cache directory for disposable MSDF artifacts
+        s_cache_dir = get_cache_directory();
+        if (s_cache_dir.empty()) {
+            // Fallback to data directory
+            s_cache_dir = get_data_directory();
+        }
+        if (s_cache_dir.empty()) {
+            // Last resort: current directory
+            s_cache_dir = std::filesystem::current_path() / ".vnm_plot_cache";
+            std::error_code ec;
+            std::filesystem::create_directories(s_cache_dir, ec);
+        }
+    }
+
+    std::ostringstream oss;
+    oss << "msdf_cache_v" << k_cache_version << "_px" << pixel_height << "_font";
+    oss << Sha256::to_hex(font_digest);
+    oss << ".bin";
+    return s_cache_dir / oss.str();
 }
 
 // Forward declarations for disk cache helpers
 std::shared_ptr<cached_font_data_t> load_cached_font_from_disk(
     const std::filesystem::path& path,
-    const std::array<unsigned char, 32>& expected_digest,
+    const Sha256::Digest& expected_digest,
     int pixel_height);
 
 void save_cached_font_to_disk(
@@ -517,7 +519,7 @@ void save_cached_font_to_disk(
 
 std::shared_ptr<cached_font_data_t> load_cached_font_from_disk(
     const std::filesystem::path& path,
-    const std::array<unsigned char, 32>& expected_digest,
+    const Sha256::Digest& expected_digest,
     int pixel_height)
 {
     std::ifstream in(path, std::ios::binary);
@@ -541,7 +543,7 @@ std::shared_ptr<cached_font_data_t> load_cached_font_from_disk(
         return nullptr;
     }
 
-    std::array<unsigned char, 32> digest{};
+    Sha256::Digest digest{};
     in.read(reinterpret_cast<char*>(digest.data()), digest.size());
     if (!in || digest != expected_digest) {
         return nullptr;
@@ -678,7 +680,7 @@ void save_cached_font_to_disk(
 
 std::shared_ptr<cached_font_data_t> build_font_cache(
     int pixel_height,
-    const std::array<unsigned char, 32>& font_digest,
+    const Sha256::Digest& font_digest,
     const std::function<void(const std::string&)>& log_error,
     const std::function<void(const std::string&)>& log_debug)
 {
@@ -694,7 +696,10 @@ std::shared_ptr<cached_font_data_t> build_font_cache(
         return nullptr;
     }
 
-    msdfgen::FontHandle* font_handle = msdfgen::loadFontData(ft, reinterpret_cast<const msdfgen::byte*>(s_font_storage.constData()), s_font_storage.size());
+    msdfgen::FontHandle* font_handle = msdfgen::loadFontData(
+        ft,
+        reinterpret_cast<const msdfgen::byte*>(s_font_storage.data()),
+        static_cast<int>(s_font_storage.size()));
     if (!font_handle) {
         if (log_error) {
             log_error("Failed to load font data for msdfgen");
@@ -884,7 +889,7 @@ bool Font_renderer::is_initialized() const
     return m_impl->m_resources != nullptr;
 }
 
-void Font_renderer::initialize(int pixel_height, bool force_rebuild)
+void Font_renderer::initialize(Asset_loader& asset_loader, int pixel_height, bool force_rebuild)
 {
     auto& resources = thread_local_resources();
     const bool tls_ready = (resources.m_pixel_height == pixel_height) &&
@@ -895,12 +900,12 @@ void Font_renderer::initialize(int pixel_height, bool force_rebuild)
         return;
     }
 
-    if (s_font_storage.isEmpty()) {
+    if (s_font_storage.empty()) {
         std::lock_guard<std::mutex> locker(s_font_storage_mutex);
-        if (s_font_storage.isEmpty()) {
-            QFile font_file(":/vnm_plot/fonts/monospace.ttf");
-            if (font_file.open(QIODevice::ReadOnly)) {
-                s_font_storage = font_file.readAll();
+        if (s_font_storage.empty()) {
+            auto font_data = asset_loader.load("fonts/monospace.ttf");
+            if (font_data) {
+                s_font_storage.assign(font_data->begin(), font_data->end());
             }
         }
     }
@@ -908,10 +913,11 @@ void Font_renderer::initialize(int pixel_height, bool force_rebuild)
     resources.destroy_gl();
 
     const auto font_digest = compute_font_digest();
-    const auto cache_path = cache_file_path(pixel_height, font_digest);
+    const bool disk_cache = s_disk_cache_enabled.load(std::memory_order_relaxed);
 
     auto cached = get_cached_font(pixel_height);
-    if (!cached) {
+    if (!cached && disk_cache) {
+        const auto cache_path = cache_file_path(pixel_height, font_digest);
         cached = load_cached_font_from_disk(cache_path, font_digest, pixel_height);
         if (cached) {
             store_cached_font(cached);
@@ -921,7 +927,10 @@ void Font_renderer::initialize(int pixel_height, bool force_rebuild)
         cached = build_font_cache(pixel_height, font_digest, m_impl->m_log_error, m_impl->m_log_debug);
         if (cached) {
             store_cached_font(cached);
-            save_cached_font_to_disk(cache_path, *cached);
+            if (disk_cache) {
+                const auto cache_path = cache_file_path(pixel_height, font_digest);
+                save_cached_font_to_disk(cache_path, *cached);
+            }
         }
     }
     if (!cached) {
@@ -956,21 +965,20 @@ void Font_renderer::initialize(int pixel_height, bool force_rebuild)
         GL_RGBA, GL_UNSIGNED_BYTE, cached->atlas_rgba.data()
     );
 
-    const auto sp = std::make_shared<QOpenGLShaderProgram>();
-    if (sp->addCacheableShaderFromSourceFile(QOpenGLShader::Vertex,   ":/vnm_plot/shaders/msdf_text.vert") &&
-        sp->addCacheableShaderFromSourceFile(QOpenGLShader::Fragment, ":/vnm_plot/shaders/msdf_text.frag") &&
-        sp->link())
-    {
-        res->m_shader_program = sp;
-        const GLuint program_id = res->m_shader_program->programId();
-        res->m_tex_uniform_location = glGetUniformLocation(program_id, "tex");
-        res->m_color_uniform_location = glGetUniformLocation(program_id, "color");
-        res->m_pmv_uniform_location = glGetUniformLocation(program_id, "pmv");
-        res->m_range_uniform_location = glGetUniformLocation(program_id, "px_range");
-    }
-    else {
-        if (m_impl->m_log_error) {
-            m_impl->m_log_error(QString("Font shader error: %1").arg(sp->log()).toStdString());
+    // Load and compile MSDF text shader
+    auto shader_sources = asset_loader.load_shader("shaders/msdf_text");
+    if (shader_sources) {
+        std::string vert_src(shader_sources->vertex.begin(), shader_sources->vertex.end());
+        std::string frag_src(shader_sources->fragment.begin(), shader_sources->fragment.end());
+
+        auto sp = create_gl_program(vert_src, "", frag_src, m_impl->m_log_error);
+        if (sp) {
+            res->m_shader_program = std::move(sp);
+            const GLuint program_id = res->m_shader_program->program_id();
+            res->m_tex_uniform_location = glGetUniformLocation(program_id, "tex");
+            res->m_color_uniform_location = glGetUniformLocation(program_id, "color");
+            res->m_pmv_uniform_location = glGetUniformLocation(program_id, "pmv");
+            res->m_range_uniform_location = glGetUniformLocation(program_id, "px_range");
         }
     }
 
@@ -1086,6 +1094,7 @@ void Font_renderer::draw_and_flush(const glm::mat4& pmv, const glm::vec4& color)
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, res->m_texture);
     res->m_shader_program->bind();
+
     if (res->m_tex_uniform_location >= 0) {
         glUniform1i(res->m_tex_uniform_location, 0);
     }
@@ -1103,4 +1112,4 @@ void Font_renderer::draw_and_flush(const glm::mat4& pmv, const glm::vec4& color)
     vertex_buffer_clear(res->m_buffer);
 }
 
-} // namespace vnm::plot
+} // namespace vnm::plot::core

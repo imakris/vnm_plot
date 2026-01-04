@@ -3,8 +3,8 @@
 layout(location =  0) uniform mat4    pmv;
 layout(location =  1) uniform double  t_min;
 layout(location =  2) uniform double  t_max;
-layout(location =  3) uniform double  v_min;
-layout(location =  4) uniform double  v_max;
+layout(location =  3) uniform float   v_min;
+layout(location =  4) uniform float   v_max;
 layout(location =  5) uniform double  width;
 layout(location =  6) uniform double  height;
 layout(location =  7) uniform float   y_offset;
@@ -39,16 +39,16 @@ void main()
 {
     // safe denominators
     double rt = max(t_max - t_min, 1e-30);
-    double rv = max(v_max - v_min, 1e-30);
+    double rv = max(double(v_max - v_min), 1e-30);
 
     // A
     double x0 = width  *      (gs_in[0].t - t_min) / rt;
-    double y0 = height * (1.0 - (double(gs_in[0].v) - v_min) / rv) + double(y_offset);
+    double y0 = height * (1.0 - (double(gs_in[0].v) - double(v_min)) / rv) + double(y_offset);
     emit_point(x0, y0);
 
     // B
     double x1 = width  *      (gs_in[1].t - t_min) / rt;
-    double y1 = height * (1.0 - (double(gs_in[1].v) - v_min) / rv) + double(y_offset);
+    double y1 = height * (1.0 - (double(gs_in[1].v) - double(v_min)) / rv) + double(y_offset);
     emit_point(x1, y1);
 
     EndPrimitive();

@@ -1,77 +1,40 @@
-#include <vnm_plot/renderers/primitive_renderer.h>
+#include <vnm_plot/core/primitive_renderer.h>
+#include <vnm_plot/core/asset_loader.h>
+#include <vnm_plot/plot_config.h>
 
 #include <glatter/glatter.h>
 #include <glm/gtc/type_ptr.hpp>
 
-#include <QOpenGLShaderProgram>
-
-namespace vnm::plot {
-
-namespace {
-
-std::unique_ptr<QOpenGLShaderProgram> load_shader_program(
-    const QString& vert,
-    const QString& geom,
-    const QString& frag,
-    const std::function<void(const std::string&)>& log_error)
-{
-    auto sp = std::make_unique<QOpenGLShaderProgram>();
-
-    if (!sp->addCacheableShaderFromSourceFile(QOpenGLShader::Vertex, vert)) {
-        if (log_error) {
-            log_error(QString("Vert shader error: %1").arg(sp->log()).toStdString());
-        }
-        return nullptr;
-    }
-    if (!geom.isEmpty() && !sp->addCacheableShaderFromSourceFile(QOpenGLShader::Geometry, geom)) {
-        if (log_error) {
-            log_error(QString("Geom shader error: %1").arg(sp->log()).toStdString());
-        }
-        return nullptr;
-    }
-    if (!sp->addCacheableShaderFromSourceFile(QOpenGLShader::Fragment, frag)) {
-        if (log_error) {
-            log_error(QString("Frag shader error: %1").arg(sp->log()).toStdString());
-        }
-        return nullptr;
-    }
-    if (!sp->link()) {
-        if (log_error) {
-            log_error(QString("Linker error: %1").arg(sp->log()).toStdString());
-        }
-        return nullptr;
-    }
-
-    return sp;
-}
-
-} // anonymous namespace
-
-struct Primitive_renderer::rect_vertex_t
-{
-    glm::vec4 color;
-    glm::vec4 rect_coords;  // x0, y0, x1, y1
-};
+namespace vnm::plot::core {
 
 Primitive_renderer::Primitive_renderer() = default;
 Primitive_renderer::~Primitive_renderer() = default;
 
-void Primitive_renderer::set_log_callbacks(const Plot_config* config)
+void Primitive_renderer::set_log_callback(GL_program::LogCallback callback)
 {
-    m_log_error = config ? config->log_error : nullptr;
+    m_log_error = std::move(callback);
 }
 
-bool Primitive_renderer::initialize()
+bool Primitive_renderer::initialize(Asset_loader& asset_loader)
 {
     if (m_initialized) {
         return true;
     }
 
-    // Load rect shader
-    m_sp_rects = load_shader_program(
-        ":/vnm_plot/shaders/generic_rect.vert",
-        ":/vnm_plot/shaders/generic_rect.geom",
-        ":/vnm_plot/shaders/generic_rect.frag",
+    // Load rect shader sources
+    auto rect_sources = asset_loader.load_shader("shaders/generic_rect");
+    if (!rect_sources) {
+        if (m_log_error) {
+            m_log_error("Failed to load generic_rect shader sources");
+        }
+        return false;
+    }
+
+    // Create rect shader program
+    m_sp_rects = create_gl_program(
+        rect_sources->vertex,
+        rect_sources->geometry,
+        rect_sources->fragment,
         m_log_error);
 
     if (!m_sp_rects) {
@@ -87,7 +50,7 @@ bool Primitive_renderer::initialize()
 
     const GLsizeiptr initial_bytes = k_rect_initial_quads * static_cast<GLsizeiptr>(sizeof(rect_vertex_t));
     glBufferData(GL_ARRAY_BUFFER, initial_bytes, nullptr, GL_STREAM_DRAW);
-    m_rects_pipe.capacity_bytes = initial_bytes;
+    m_rects_pipe.capacity_bytes = static_cast<size_t>(initial_bytes);
 
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, sizeof(rect_vertex_t),
@@ -99,11 +62,21 @@ bool Primitive_renderer::initialize()
     glBindVertexArray(0);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-    // Load grid shader
-    m_sp_grid = load_shader_program(
-        ":/vnm_plot/shaders/grid_quad.vert",
-        "",
-        ":/vnm_plot/shaders/grid_quad.frag",
+    // Load grid shader sources
+    auto grid_sources = asset_loader.load_shader("shaders/grid_quad");
+    if (!grid_sources) {
+        if (m_log_error) {
+            m_log_error("Failed to load grid_quad shader sources");
+        }
+        cleanup_gl_resources();
+        return false;
+    }
+
+    // Create grid shader program
+    m_sp_grid = create_gl_program(
+        grid_sources->vertex,
+        grid_sources->geometry,  // May be empty
+        grid_sources->fragment,
         m_log_error);
 
     if (!m_sp_grid) {
@@ -191,7 +164,7 @@ void Primitive_renderer::flush_rects(const glm::mat4& pmv)
 
     m_sp_rects->bind();
     glUniformMatrix4fv(
-        glGetUniformLocation(m_sp_rects->programId(), "pmv"),
+        m_sp_rects->uniform_location("pmv"),
         1, GL_FALSE, glm::value_ptr(pmv));
 
     glBindVertexArray(m_rects_pipe.vao);
@@ -220,7 +193,7 @@ void Primitive_renderer::draw_grid_shader(
 
     m_sp_grid->bind();
 
-    const GLuint pid = m_sp_grid->programId();
+    const GLuint pid = m_sp_grid->program_id();
 
     glUniform2f(glGetUniformLocation(pid, "plot_size_px"), size.x, size.y);
     glUniform2f(glGetUniformLocation(pid, "region_origin_px"), origin.x, origin.y);
@@ -254,4 +227,4 @@ void Primitive_renderer::draw_grid_shader(
     glDisable(GL_SCISSOR_TEST);
 }
 
-} // namespace vnm::plot
+} // namespace vnm::plot::core

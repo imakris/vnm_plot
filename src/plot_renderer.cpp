@@ -2,11 +2,14 @@
 #include <vnm_plot/plot_widget.h>
 #include <vnm_plot/color_palette.h>
 #include <vnm_plot/layout/layout_calculator.h>
-#include <vnm_plot/renderers/primitive_renderer.h>
-#include <vnm_plot/renderers/font_renderer.h>
-#include <vnm_plot/renderers/text_renderer.h>
-#include <vnm_plot/renderers/chrome_renderer.h>
-#include <vnm_plot/renderers/series_renderer.h>
+#include <vnm_plot/core/asset_loader.h>
+#include <vnm_plot/core/chrome_renderer.h>
+#include <vnm_plot/core/data_types.h>
+#include <vnm_plot/core/font_renderer.h>
+#include <vnm_plot/core/primitive_renderer.h>
+#include <vnm_plot/core/render_types.h>
+#include <vnm_plot/core/series_renderer.h>
+#include <vnm_plot/core/text_renderer.h>
 
 #include <glatter/glatter.h>
 #include <glm/glm.hpp>
@@ -22,6 +25,8 @@
 #include <cstdio>
 #include <limits>
 #include <shared_mutex>
+#include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -117,6 +122,144 @@ std::vector<std::size_t> compute_lod_scales(const Data_source& data_source)
         scales.push_back(scale);
     }
     return scales;
+}
+
+core::Display_style to_core_style(Display_style style)
+{
+    return static_cast<core::Display_style>(static_cast<int>(style));
+}
+
+std::string normalize_asset_name(std::string_view name)
+{
+    std::string_view out = name;
+    if (out.rfind("qrc:/", 0) == 0) {
+        out.remove_prefix(5);
+    }
+    else if (out.rfind(":/", 0) == 0) {
+        out.remove_prefix(2);
+    }
+    if (out.rfind("vnm_plot/", 0) == 0) {
+        out.remove_prefix(9);
+    }
+    return std::string(out);
+}
+
+core::shader_set_t to_core_shader_set(const shader_set_t& shader)
+{
+    core::shader_set_t res;
+    res.vert = normalize_asset_name(shader.vert);
+    res.geom = normalize_asset_name(shader.geom);
+    res.frag = normalize_asset_name(shader.frag);
+    return res;
+}
+
+core::snapshot_result_t::Status to_core_status(snapshot_result_t::Status status)
+{
+    switch (status) {
+        case snapshot_result_t::Status::OK:    return core::snapshot_result_t::Status::OK;
+        case snapshot_result_t::Status::EMPTY: return core::snapshot_result_t::Status::EMPTY;
+        case snapshot_result_t::Status::BUSY:  return core::snapshot_result_t::Status::BUSY;
+        case snapshot_result_t::Status::FAILED:return core::snapshot_result_t::Status::FAILED;
+    }
+    return core::snapshot_result_t::Status::FAILED;
+}
+
+core::snapshot_result_t to_core_snapshot(const vnm::plot::snapshot_result_t& result)
+{
+    core::data_snapshot_t snapshot;
+    snapshot.data = result.snapshot.data;
+    snapshot.count = result.snapshot.count;
+    snapshot.stride = result.snapshot.stride;
+    snapshot.sequence = result.snapshot.sequence;
+
+    core::snapshot_result_t res;
+    res.snapshot = snapshot;
+    res.status = to_core_status(result.status);
+    return res;
+}
+
+class Data_source_adapter : public core::Data_source
+{
+public:
+    explicit Data_source_adapter(std::shared_ptr<vnm::plot::Data_source> source)
+        : m_source(std::move(source))
+    {
+    }
+
+    core::snapshot_result_t try_snapshot(std::size_t lod_level = 0) override
+    {
+        if (!m_source) {
+            core::snapshot_result_t res;
+            res.status = core::snapshot_result_t::Status::FAILED;
+            return res;
+        }
+        return to_core_snapshot(m_source->try_snapshot(lod_level));
+    }
+
+    std::size_t lod_levels() const override
+    {
+        return m_source ? m_source->lod_levels() : 0;
+    }
+
+    std::size_t lod_scale(std::size_t level) const override
+    {
+        return m_source ? m_source->lod_scale(level) : 1;
+    }
+
+    std::size_t sample_stride() const override
+    {
+        return m_source ? m_source->sample_stride() : 0;
+    }
+
+    const void* identity() const override
+    {
+        return m_source ? m_source->identity() : nullptr;
+    }
+
+    const std::shared_ptr<vnm::plot::Data_source>& source() const { return m_source; }
+
+private:
+    std::shared_ptr<vnm::plot::Data_source> m_source;
+};
+
+core::frame_layout_result_t to_core_layout(
+    const frame_layout_result_t& layout,
+    double h_bar_height)
+{
+    core::frame_layout_result_t out;
+    out.usable_width = layout.usable_width;
+    out.usable_height = layout.usable_height;
+    out.v_bar_width = layout.v_bar_width;
+    out.h_bar_height = h_bar_height;
+    out.max_v_label_text_width = layout.max_v_label_text_width;
+
+    out.v_labels.reserve(layout.v_labels.size());
+    for (const auto& label : layout.v_labels) {
+        core::v_label_t out_label;
+        out_label.value = label.value;
+        out_label.y = label.y;
+        out_label.text = std::string(label.text.constData(), label.text.size());
+        out.v_labels.push_back(std::move(out_label));
+    }
+
+    out.h_labels.reserve(layout.h_labels.size());
+    for (const auto& label : layout.h_labels) {
+        core::h_label_t out_label;
+        out_label.value = label.value;
+        out_label.position = label.position;
+        out_label.text = std::string(label.text.constData(), label.text.size());
+        out.h_labels.push_back(std::move(out_label));
+    }
+
+    out.v_label_fixed_digits = layout.v_label_fixed_digits;
+    out.h_labels_subsecond = layout.h_labels_subsecond;
+    out.vertical_seed_index = layout.vertical_seed_index;
+    out.vertical_seed_step = layout.vertical_seed_step;
+    out.vertical_finest_step = layout.vertical_finest_step;
+    out.horizontal_seed_index = layout.horizontal_seed_index;
+    out.horizontal_seed_step = layout.horizontal_seed_step;
+
+    return out;
 }
 
 std::size_t choose_level_from_base_pps(
@@ -576,11 +719,16 @@ struct Plot_renderer::impl_t
     const Plot_widget* owner = nullptr;
 
     // Sub-renderers
-    Primitive_renderer primitives;
-    Font_renderer fonts;
-    std::unique_ptr<Text_renderer> text;
-    Chrome_renderer chrome;
-    Series_renderer series;
+    core::Primitive_renderer primitives;
+    core::Font_renderer fonts;
+    std::unique_ptr<core::Text_renderer> text;
+    core::Chrome_renderer chrome;
+    core::Series_renderer series;
+    core::Asset_loader asset_loader;
+    bool assets_initialized = false;
+
+    std::unordered_map<int, std::shared_ptr<core::series_data_t>> core_series_cache;
+    std::unordered_map<int, std::shared_ptr<Data_source_adapter>> core_source_cache;
 
     // Layout
     Layout_calculator layout_calc;
@@ -790,7 +938,7 @@ Plot_renderer::~Plot_renderer()
     if (m_impl->initialized) {
         m_impl->primitives.cleanup_gl_resources();
         m_impl->series.cleanup_gl_resources();
-        Font_renderer::cleanup_thread_resources();
+        core::Font_renderer::cleanup_thread_resources();
     }
 }
 
@@ -901,16 +1049,22 @@ void Plot_renderer::render()
             return;
         }
 
-        if (!m_impl->primitives.initialize()) {
+        if (!m_impl->assets_initialized) {
+            core::init_embedded_assets(m_impl->asset_loader);
+            m_impl->assets_initialized = true;
+        }
+
+        if (!m_impl->primitives.initialize(m_impl->asset_loader)) {
             notify_opengl_status(-3);
             return;
         }
+        m_impl->series.initialize(m_impl->asset_loader);
 
         const int font_px = static_cast<int>(std::round(m_impl->snapshot.adjusted_font_px));
-        m_impl->fonts.initialize(font_px);
+        m_impl->fonts.initialize(m_impl->asset_loader, font_px);
         m_impl->last_font_px = font_px;
 
-        m_impl->text = std::make_unique<Text_renderer>(&m_impl->fonts);
+        m_impl->text = std::make_unique<core::Text_renderer>(&m_impl->fonts);
 
         m_impl->initialized = true;
         notify_opengl_status(1);
@@ -918,7 +1072,7 @@ void Plot_renderer::render()
 
     const int desired_font_px = static_cast<int>(std::round(m_impl->snapshot.adjusted_font_px));
     if (desired_font_px > 0 && desired_font_px != m_impl->last_font_px) {
-        m_impl->fonts.initialize(desired_font_px, true);
+        m_impl->fonts.initialize(m_impl->asset_loader, desired_font_px, true);
         m_impl->last_font_px = desired_font_px;
     }
 
@@ -932,7 +1086,8 @@ void Plot_renderer::render()
 
     // Get configuration
     const Plot_config* config = &m_impl->snapshot.config;
-    m_impl->primitives.set_log_callbacks(config);
+    m_impl->asset_loader.set_log_callback(config ? config->log_error : nullptr);
+    m_impl->primitives.set_log_callback(config ? config->log_error : nullptr);
     m_impl->fonts.set_log_callbacks(
         config ? config->log_error : nullptr,
         config ? config->log_debug : nullptr);
@@ -1054,21 +1209,46 @@ void Plot_renderer::render()
     notify_hlabels_subsecond(frame_layout.h_labels_subsecond);
     m_impl->update_seed_history(v_span, t_span, frame_layout);
 
-    // Create frame context
-    frame_context_t ctx{
-        m_impl->snapshot,
-        frame_layout,
+    core::Render_config core_config;
+    if (config) {
+        core_config.dark_mode = config->dark_mode;
+        core_config.show_text = config->show_text;
+        core_config.snap_lines_to_pixels = config->snap_lines_to_pixels;
+        core_config.line_width_px = config->line_width_px;
+        core_config.area_fill_alpha = config->area_fill_alpha;
+        core_config.format_timestamp = config->format_timestamp
+            ? config->format_timestamp
+            : default_format_timestamp;
+        core_config.log_error = config->log_error;
+    }
+
+    const double h_bar_height = m_impl->snapshot.base_label_height_px + constants::k_scissor_pad_px;
+    const core::frame_layout_result_t core_layout = to_core_layout(frame_layout, h_bar_height);
+
+    core::frame_context_t core_ctx{
+        core_layout,
         v0,
         v1,
         preview_v0,
         preview_v1,
         m_impl->snapshot.cfg.t_min,
         m_impl->snapshot.cfg.t_max,
+        m_impl->snapshot.cfg.t_available_min,
+        m_impl->snapshot.cfg.t_available_max,
         win_w,
         win_h,
         glm::ortho(0.f, float(win_w), float(win_h), 0.f, -1.f, 1.f),
-        config
+        m_impl->snapshot.adjusted_font_px,
+        m_impl->snapshot.base_label_height_px,
+        m_impl->snapshot.adjusted_reserved_height,
+        m_impl->snapshot.adjusted_preview_height,
+        m_impl->snapshot.show_info,
+        config ? &core_config : nullptr
     };
+
+    core::frame_context_t series_ctx = core_ctx;
+    const double preview_scissor_pad = constants::k_scissor_pad_px;
+    series_ctx.adjusted_preview_height = std::max(0.0, core_ctx.adjusted_preview_height - preview_scissor_pad);
 
     // Clear to transparent - let QML provide the background color (matches Lumis behavior)
     const bool dark_mode = config ? config->dark_mode : false;
@@ -1096,21 +1276,87 @@ void Plot_renderer::render()
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     // Render chrome (backgrounds, grid)
-    m_impl->chrome.render_grid_and_backgrounds(ctx, m_impl->primitives);
+    m_impl->chrome.render_grid_and_backgrounds(core_ctx, m_impl->primitives);
 
     // Render series
     if (m_impl->owner) {
         std::shared_lock lock(m_impl->owner->m_series_mutex);
-        m_impl->series.render(ctx, m_impl->owner->m_series);
+        std::map<int, std::shared_ptr<core::series_data_t>> core_series_map;
+        std::unordered_set<int> seen_ids;
+        core_series_map.clear();
+        for (const auto& [id, series] : m_impl->owner->m_series) {
+            if (!series) {
+                continue;
+            }
+
+            seen_ids.insert(id);
+
+            auto& core_series = m_impl->core_series_cache[id];
+            if (!core_series) {
+                core_series = std::make_shared<core::series_data_t>();
+            }
+
+            core_series->id = id;
+            core_series->enabled = series->enabled;
+            core_series->style = to_core_style(series->style);
+            core_series->color = series->color;
+            core_series->colormap.samples = series->colormap.samples;
+            core_series->colormap.revision = series->colormap.revision;
+            core_series->shader_set = to_core_shader_set(series->shader_set);
+            core_series->shaders.clear();
+            for (const auto& [style, shader] : series->shader_sets) {
+                core_series->shaders.emplace(to_core_style(style), to_core_shader_set(shader));
+            }
+
+            core_series->access.get_timestamp = series->get_timestamp;
+            core_series->access.get_value = series->get_value;
+            core_series->access.get_range = series->get_range;
+            core_series->access.get_aux_metric = series->get_aux_metric;
+            core_series->access.setup_vertex_attributes = series->setup_vertex_attributes;
+            core_series->access.bind_uniforms = series->bind_uniforms;
+            core_series->access.layout_key = series->layout_key;
+            core_series->access.sample_stride = series->data_source
+                ? series->data_source->sample_stride()
+                : 0;
+
+            if (series->data_source) {
+                auto& adapter = m_impl->core_source_cache[id];
+                if (!adapter || adapter->source().get() != series->data_source.get()) {
+                    adapter = std::make_shared<Data_source_adapter>(series->data_source);
+                }
+                core_series->data_source = adapter;
+            } else {
+                core_series->data_source.reset();
+            }
+
+            core_series_map[id] = core_series;
+        }
+
+        for (auto it = m_impl->core_series_cache.begin(); it != m_impl->core_series_cache.end(); ) {
+            if (seen_ids.find(it->first) == seen_ids.end()) {
+                it = m_impl->core_series_cache.erase(it);
+            } else {
+                ++it;
+            }
+        }
+        for (auto it = m_impl->core_source_cache.begin(); it != m_impl->core_source_cache.end(); ) {
+            if (seen_ids.find(it->first) == seen_ids.end()) {
+                it = m_impl->core_source_cache.erase(it);
+            } else {
+                ++it;
+            }
+        }
+
+        m_impl->series.render(series_ctx, core_series_map);
     }
 
     // Render preview overlay
-    m_impl->chrome.render_preview_overlay(ctx, m_impl->primitives);
-    m_impl->primitives.flush_rects(ctx.pmv);
+    m_impl->chrome.render_preview_overlay(core_ctx, m_impl->primitives);
+    m_impl->primitives.flush_rects(core_ctx.pmv);
 
     // Render text labels
     if (m_impl->text && (!config || config->show_text)) {
-        const bool fades_active = m_impl->text->render(ctx, fade_v_labels, fade_h_labels);
+        const bool fades_active = m_impl->text->render(core_ctx, fade_v_labels, fade_h_labels);
         if (fades_active && m_impl->owner) {
             QMetaObject::invokeMethod(
                 const_cast<Plot_widget*>(m_impl->owner),

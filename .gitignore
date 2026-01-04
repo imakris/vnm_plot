@@ -1,4 +1,5 @@
 # Build outputs
+/build/
 /examples/build-*
 
 # QtCreator user settings
@@ -6,3 +7,4 @@
 
 # Claude workspace metadata
 .claude/
+/repo/

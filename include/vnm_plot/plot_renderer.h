@@ -5,7 +5,6 @@
 
 #include "plot_config.h"
 #include "render_types.h"
-#include "renderers/series_renderer.h"
 
 #include <QQuickFramebufferObject>
 
@@ -14,11 +13,6 @@
 class QOpenGLFramebufferObject;
 
 namespace vnm::plot {
-
-class Primitive_renderer;
-class Font_renderer;
-class Text_renderer;
-class Chrome_renderer;
 
 // Forward declare the widget
 class Plot_widget;

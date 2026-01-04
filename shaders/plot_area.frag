@@ -1,7 +1,7 @@
 #version 430
 
-layout(location =  3) uniform double  v_min;
-layout(location =  4) uniform double  v_max;
+layout(location =  3) uniform float   v_min;
+layout(location =  4) uniform float   v_max;
 layout(location =  6) uniform double  height;
 layout(location =  7) uniform float   y_offset;
 
@@ -25,8 +25,8 @@ void main(void)
     float y = gl_FragCoord.y-y_offset;
 
 
-    float vmin = float(v_min);
-    float vmax = float(v_max);
+    float vmin = v_min;
+    float vmax = v_max;
     float h    = float(height);
 
     float dmax = max(abs(vmin), abs(vmax));

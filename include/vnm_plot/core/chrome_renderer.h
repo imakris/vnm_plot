@@ -1,12 +1,12 @@
 #pragma once
 
-// VNM Plot Library - Chrome Renderer
-// Renders grid lines, background panes, and preview overlay.
+// VNM Plot Library - Core Chrome Renderer
+// Qt-free renderer for grid lines, background panes, and preview overlay.
 
-#include "../render_types.h"
-#include "../plot_types.h"
+#include "layout_types.h"
+#include "render_types.h"
 
-namespace vnm::plot {
+namespace vnm::plot::core {
 
 class Primitive_renderer;
 
@@ -30,4 +30,4 @@ private:
     grid_layer_params_t calculate_grid_params(double min, double max, double pixel_span, double font_px);
 };
 
-} // namespace vnm::plot
+} // namespace vnm::plot::core

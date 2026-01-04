@@ -1,16 +1,15 @@
 #pragma once
 
-// VNM Plot Library - Text Renderer
-// Renders axis labels and info overlay text with fade animations.
+// VNM Plot Library - Core Text Renderer
+// Qt-free text rendering for axis labels and info overlay with fade animations.
 
-#include "../render_types.h"
-
-#include <QByteArray>
+#include "render_types.h"
 
 #include <chrono>
 #include <map>
+#include <string>
 
-namespace vnm::plot {
+namespace vnm::plot::core {
 
 class Font_renderer;
 
@@ -30,7 +29,7 @@ public:
     {
         float alpha = 0.0f;
         int direction = 0; // +1 fade-in, -1 fade-out, 0 steady
-        QByteArray text;
+        std::string text;
     };
 
     struct axis_fade_tracker_t
@@ -47,8 +46,8 @@ private:
     double m_last_t0 = -1.0;
     double m_last_t1 = -1.0;
     bool m_last_subsecond = false;
-    QByteArray m_cached_from_ts;
-    QByteArray m_cached_to_ts;
+    std::string m_cached_from_ts;
+    std::string m_cached_to_ts;
 
     static constexpr float k_label_fade_duration_ms = 250.0f;
 
@@ -59,4 +58,4 @@ private:
     bool render_info_overlay(const frame_context_t& ctx, bool fade_labels);
 };
 
-} // namespace vnm::plot
+} // namespace vnm::plot::core
