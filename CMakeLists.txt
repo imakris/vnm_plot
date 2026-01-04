@@ -18,6 +18,7 @@ option(VNM_PLOT_CORE_ONLY "Build only the Qt-free core library" OFF)
 option(VNM_PLOT_ENABLE_TEXT "Enable MSDF text rendering (requires FreeType + msdfgen)" ON)
 
 include(FetchContent)
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/EmbedAssets.cmake)
 
 # -----------------------------------------------------------------------------
 # Find or fetch required dependencies
@@ -227,6 +228,7 @@ set(VNM_PLOT_CORE_SOURCES
     src/core/gl_program.cpp
     src/core/asset_loader.cpp
     src/core/utf8_utils.cpp
+    src/core/platform_paths.cpp
 
     # Core renderers
     src/core/primitive_renderer.cpp
@@ -246,6 +248,8 @@ set(VNM_PLOT_CORE_HEADERS
     include/vnm_plot/core/gl_program.h
     include/vnm_plot/core/asset_loader.h
     include/vnm_plot/core/utf8_utils.h
+    include/vnm_plot/core/sha256.h
+    include/vnm_plot/core/platform_paths.h
 )
 
 # -----------------------------------------------------------------------------
@@ -307,6 +311,39 @@ set(VNM_PLOT_HEADERS
 )
 
 # -----------------------------------------------------------------------------
+# Generate embedded assets (shaders, fonts) for core library
+# -----------------------------------------------------------------------------
+
+set(VNM_PLOT_EMBEDDED_ASSETS_OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/generated/embedded_assets.cpp")
+
+# Core shaders (always embedded)
+set(VNM_PLOT_CORE_ASSETS
+    "shaders/generic_rect.vert:shaders/generic_rect.vert"
+    "shaders/generic_rect.geom:shaders/generic_rect.geom"
+    "shaders/generic_rect.frag:shaders/generic_rect.frag"
+    "shaders/grid_quad.vert:shaders/grid_quad.vert"
+    "shaders/grid_quad.frag:shaders/grid_quad.frag"
+)
+
+# Text rendering assets (only when text is enabled)
+if(VNM_PLOT_ENABLE_TEXT)
+    list(APPEND VNM_PLOT_CORE_ASSETS
+        "shaders/msdf_text.vert:shaders/msdf_text.vert"
+        "shaders/msdf_text.frag:shaders/msdf_text.frag"
+        "fonts/monospace.ttf:fonts/monospace.ttf"
+    )
+endif()
+
+embed_assets(
+    OUTPUT "${VNM_PLOT_EMBEDDED_ASSETS_OUTPUT}"
+    NAMESPACE "vnm::plot::core"
+    ASSETS ${VNM_PLOT_CORE_ASSETS}
+)
+
+# Add generated file to core sources
+list(APPEND VNM_PLOT_CORE_SOURCES "${VNM_PLOT_EMBEDDED_ASSETS_OUTPUT}")
+
+# -----------------------------------------------------------------------------
 # Core Library target (Qt-free)
 # -----------------------------------------------------------------------------
 
@@ -323,6 +360,8 @@ target_include_directories(vnm_plot_core
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<BUILD_INTERFACE:${GLATTER_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
+    PRIVATE
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated>
 )
 
 target_compile_features(vnm_plot_core PUBLIC cxx_std_20)
