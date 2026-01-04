@@ -484,6 +484,7 @@ void Series_renderer::modify_uniforms_for_preview(GLuint program, const frame_co
     const float preview_height = static_cast<float>(ctx.adjusted_preview_height);
 
     glUniform1f(glGetUniformLocation(program, "y_offset"), preview_y);
+    glUniform1d(glGetUniformLocation(program, "width"), static_cast<double>(ctx.win_w));
     glUniform1d(glGetUniformLocation(program, "height"), static_cast<double>(preview_height));
     glUniform1f(glGetUniformLocation(program, "v_min"), ctx.preview_v0);
     glUniform1f(glGetUniformLocation(program, "v_max"), ctx.preview_v1);
@@ -507,6 +508,9 @@ void Series_renderer::render(
     const bool dark_mode = ctx.config ? ctx.config->dark_mode : false;
     const float line_width = ctx.config ? static_cast<float>(ctx.config->line_width_px) : 1.0f;
     const float area_fill_alpha = ctx.config ? static_cast<float>(ctx.config->area_fill_alpha) : 0.3f;
+    const auto to_gl_scissor_y = [&](double top, double height) -> GLint {
+        return static_cast<GLint>(lround(double(ctx.win_h) - (top + height)));
+    };
 
     // Cleanup stale VBO states for series no longer in the map
     for (auto it = m_vbo_states.begin(); it != m_vbo_states.end(); ) {
@@ -677,7 +681,46 @@ void Series_renderer::render(
             if (drawing_mode == GL_LINE_STRIP) {
                 glLineWidth(line_width);
             }
-            glDrawArrays(drawing_mode, view_result.first, count);
+
+            bool scissor_enabled = false;
+            bool do_draw = true;
+            if (is_preview) {
+                const double preview_height = ctx.adjusted_preview_height;
+                if (!(preview_height > 0.0)) {
+                    do_draw = false;
+                } else {
+                    const double preview_top = layout.usable_height + layout.h_bar_height;
+                    const GLint scissor_y = to_gl_scissor_y(preview_top, preview_height);
+                    const GLsizei scissor_h = static_cast<GLsizei>(lround(preview_height));
+                    if (scissor_h <= 0) {
+                        do_draw = false;
+                    } else {
+                        glEnable(GL_SCISSOR_TEST);
+                        glScissor(
+                            0,
+                            scissor_y,
+                            static_cast<GLsizei>(lround(ctx.win_w)),
+                            scissor_h);
+                        scissor_enabled = true;
+                    }
+                }
+            } else {
+                glEnable(GL_SCISSOR_TEST);
+                glScissor(
+                    0,
+                    to_gl_scissor_y(0.0, layout.usable_height),
+                    static_cast<GLsizei>(lround(layout.usable_width)),
+                    static_cast<GLsizei>(lround(layout.usable_height)));
+                scissor_enabled = true;
+            }
+
+            if (do_draw) {
+                glDrawArrays(drawing_mode, view_result.first, count);
+            }
+
+            if (scissor_enabled) {
+                glDisable(GL_SCISSOR_TEST);
+            }
             if (drawing_mode == GL_LINE_STRIP) {
                 glLineWidth(1.0f);
             }
@@ -717,7 +760,7 @@ void Series_renderer::render(
                 s->access.get_timestamp,
                 scales,
                 ctx.t_available_min, ctx.t_available_max,
-                layout.usable_width);
+                ctx.win_w);
 
             if (preview_result.can_draw) {
                 // Preview uses same multi-pass approach
