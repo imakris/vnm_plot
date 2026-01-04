@@ -277,29 +277,10 @@ set(VNM_PLOT_SOURCES
     # Layout
     src/layout/layout_calculator.cpp
 
-    # Renderers
-    src/renderers/primitive_renderer.cpp
-    src/renderers/chrome_renderer.cpp
-    src/renderers/series_renderer.cpp
-
     # Main components
     src/plot_renderer.cpp
     src/plot_widget.cpp
 )
-
-# Text rendering sources: use real or stub implementations
-if(VNM_PLOT_ENABLE_TEXT)
-    list(APPEND VNM_PLOT_SOURCES
-        src/renderers/font_renderer.cpp
-        src/renderers/text_renderer.cpp
-    )
-else()
-    # Stub implementations for text-off builds (maintains stable layout)
-    list(APPEND VNM_PLOT_SOURCES
-        src/renderers/font_renderer_stub.cpp
-        src/renderers/text_renderer_stub.cpp
-    )
-endif()
 
 set(VNM_PLOT_HEADERS
     # Public headers
@@ -316,12 +297,8 @@ set(VNM_PLOT_HEADERS
     # Layout headers
     include/vnm_plot/layout/layout_calculator.h
 
-    # Renderer headers
-    include/vnm_plot/renderers/chrome_renderer.h
-    include/vnm_plot/renderers/font_renderer.h
-    include/vnm_plot/renderers/primitive_renderer.h
+    # Series data header
     include/vnm_plot/renderers/series_renderer.h
-    include/vnm_plot/renderers/text_renderer.h
 
     # Internal headers
     include/vnm_plot/internal/tls_registry.h
@@ -340,6 +317,13 @@ set(VNM_PLOT_CORE_ASSETS
     "shaders/generic_rect.frag:shaders/generic_rect.frag"
     "shaders/grid_quad.vert:shaders/grid_quad.vert"
     "shaders/grid_quad.frag:shaders/grid_quad.frag"
+    "shaders/function_sample.vert:shaders/function_sample.vert"
+    "shaders/plot_line.geom:shaders/plot_line.geom"
+    "shaders/plot_line.frag:shaders/plot_line.frag"
+    "shaders/plot_dot.geom:shaders/plot_dot.geom"
+    "shaders/plot_dot.frag:shaders/plot_dot.frag"
+    "shaders/plot_area.geom:shaders/plot_area.geom"
+    "shaders/plot_area.frag:shaders/plot_area.frag"
 )
 
 # Text rendering assets (only when text is enabled)
