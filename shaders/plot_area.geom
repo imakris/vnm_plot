@@ -3,8 +3,8 @@
 layout(location =  0) uniform mat4    pmv;
 layout(location =  1) uniform double  t_min;
 layout(location =  2) uniform double  t_max;
-layout(location =  3) uniform double  v_min;
-layout(location =  4) uniform double  v_max;
+layout(location =  3) uniform float   v_min;
+layout(location =  4) uniform float   v_max;
 layout(location =  5) uniform double  width;
 layout(location =  6) uniform double  height;
 layout(location =  7) uniform float   y_offset;
@@ -49,7 +49,7 @@ void main()
 {
     float x, y;
     double r_t = t_max-t_min;
-    double r_v = v_max-v_min;
+    float r_v = v_max - v_min;
 
     float x0 = float(width * (gs_in[0].t-t_min)/r_t  );
     float x1 = float(width * (gs_in[1].t-t_min)/r_t  );
@@ -84,7 +84,7 @@ void main()
         }
     }
 
-    float color_denom = float(max(abs(v_min), abs(v_max)));
+    float color_denom = max(abs(v_min), abs(v_max));
 
     vec4 axis_color0 = color;
     vec4 axis_color1 = color;
@@ -107,10 +107,10 @@ void main()
     if (cv0 < 0) { v0_color = v0_color.zyxw; axis_color0 = axis_color0.zyxw; }
     if (cv1 < 0) { v1_color = v1_color.zyxw; axis_color1 = axis_color1.zyxw; }
 
-    float y0     = float(height * (1.lf-(cv0-v_min)/r_v) ) + y_offset;
-    float y1     = float(height * (1.lf-(cv1-v_min)/r_v) ) + y_offset;
+    float y0     = float(height * (1.lf - (cv0 - v_min) / r_v)) + y_offset;
+    float y1     = float(height * (1.lf - (cv1 - v_min) / r_v)) + y_offset;
     // Always anchor fill to data value 0.0, even if it is outside the current view range.
-    float y_axis = float(height * (1.lf-(0.0 - v_min)/r_v) ) + y_offset;
+    float y_axis = float(height * (1.lf - (0.0 - v_min) / r_v)) + y_offset;
     y_axis = clamp(y_axis, y_offset, y_offset + float(height));
 
     if (cv0 * cv1 > 0) {
