@@ -86,10 +86,12 @@ private:
 // Provides access to embedded default assets (shaders, fonts).
 // Populated at library initialization.
 
-// Get the global default asset loader with embedded assets
+// Get the global default asset loader with embedded assets.
+// Embedded assets are auto-registered on first access.
 [[nodiscard]] Asset_loader& default_asset_loader();
 
-// Initialize embedded assets (call once at startup, before using default_asset_loader)
-void init_embedded_assets();
+// Initialize embedded assets into the given loader.
+// (Called internally by default_asset_loader; defined in generated embedded_assets.cpp)
+void init_embedded_assets(Asset_loader& loader);
 
 } // namespace vnm::plot::core

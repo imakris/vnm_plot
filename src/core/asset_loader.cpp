@@ -165,8 +165,9 @@ Asset_loader& default_asset_loader()
 {
     auto& loader = get_default_loader_instance();
     // Auto-register embedded assets on first access
-    std::call_once(s_embedded_assets_init_flag, []() {
-        init_embedded_assets();
+    // We pass the loader directly to avoid re-entrancy (deadlock).
+    std::call_once(s_embedded_assets_init_flag, [&loader]() {
+        init_embedded_assets(loader);
     });
     return loader;
 }

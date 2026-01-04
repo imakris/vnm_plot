@@ -88,10 +88,9 @@ function(embed_assets)
 
     string(APPEND _content "} // anonymous namespace\n\n")
 
-    # Generate init_embedded_assets function
-    string(APPEND _content "void init_embedded_assets()\n")
+    # Generate init_embedded_assets function (takes loader by reference to avoid deadlock)
+    string(APPEND _content "void init_embedded_assets(Asset_loader& loader)\n")
     string(APPEND _content "{\n")
-    string(APPEND _content "    auto& loader = default_asset_loader();\n\n")
 
     foreach(_info ${_asset_info})
         string(REPLACE "|" ";" _parts "${_info}")
