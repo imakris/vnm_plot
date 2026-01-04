@@ -115,9 +115,14 @@ bool Text_renderer::render(const frame_context_t& ctx, bool fade_v_labels, bool 
         return false;
     }
 
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
     bool any_active = false;
     any_active |= render_axis_labels(ctx, fade_v_labels);
     any_active |= render_info_overlay(ctx, fade_h_labels);
+
+    glDisable(GL_BLEND);
     return any_active;
 }
 
