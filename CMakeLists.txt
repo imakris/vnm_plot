@@ -374,7 +374,9 @@ target_link_libraries(vnm_plot_core
 )
 
 # Link OpenGL (required at link time, optional at configure time)
-if(TARGET OpenGL::GL)
+if(TARGET OpenGL::OpenGL)
+    target_link_libraries(vnm_plot_core PUBLIC OpenGL::OpenGL)
+elseif(TARGET OpenGL::GL)
     target_link_libraries(vnm_plot_core PUBLIC OpenGL::GL)
 elseif(WIN32)
     target_link_libraries(vnm_plot_core PUBLIC opengl32)
@@ -382,7 +384,7 @@ elseif(APPLE)
     target_link_libraries(vnm_plot_core PUBLIC "-framework OpenGL")
 elseif(CMAKE_SYSTEM_NAME STREQUAL "FreeBSD")
     find_file(VNM_PLOT_GL_FILE
-        NAMES libGL.so.1 libGL.so
+        NAMES libOpenGL.so libOpenGL.so.0 libGL.so.1 libGL.so
         PATHS /usr/local/lib /usr/lib
     )
     if(VNM_PLOT_GL_FILE)
