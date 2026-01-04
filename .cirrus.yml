@@ -8,35 +8,36 @@ freebsd_instance:
 # Tasks
 # =============================================================================
 task:
-  - name: "FreeBSD Core Build"
-    install_script:
-      - pkg install -y git cmake mesa-libs pkgconf libX11 libXrandr libXinerama libXcursor libXi libXext
-    configure_script:
-      - cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DVNM_PLOT_CORE_ONLY=ON -DVNM_PLOT_ENABLE_TEXT=OFF
-    build_script:
-      - cmake --build build --config Release
-    summary_script:
-      - echo "=== FreeBSD Core Build Completed ==="
-      - ls -la build/*.a 2>/dev/null || echo "Static libraries built"
+  matrix:
+    - name: "FreeBSD Core Build"
+      install_script:
+        - pkg install -y git cmake mesa-libs pkgconf libX11 libXrandr libXinerama libXcursor libXi libXext
+      configure_script:
+        - cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DVNM_PLOT_CORE_ONLY=ON -DVNM_PLOT_ENABLE_TEXT=OFF
+      build_script:
+        - cmake --build build --config Release
+      summary_script:
+        - echo "=== FreeBSD Core Build Completed ==="
+        - ls -la build/*.a 2>/dev/null || echo "Static libraries built"
 
-  - name: "FreeBSD GLFW Example"
-    install_script:
-      - pkg install -y git cmake mesa-libs pkgconf libX11 libXrandr libXinerama libXcursor libXi libXext
-    configure_script:
-      - cd examples/standalone_glfw && cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DVNM_PLOT_BUILD_QT=OFF -DVNM_PLOT_ENABLE_TEXT=OFF
-    build_script:
-      - cd examples/standalone_glfw && cmake --build build --config Release
-    summary_script:
-      - echo "=== FreeBSD GLFW Example Build Completed ==="
-      - ls -la examples/standalone_glfw/build/standalone_glfw 2>/dev/null || echo "Executable built"
+    - name: "FreeBSD GLFW Example"
+      install_script:
+        - pkg install -y git cmake mesa-libs pkgconf libX11 libXrandr libXinerama libXcursor libXi libXext
+      configure_script:
+        - cd examples/standalone_glfw && cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DVNM_PLOT_BUILD_QT=OFF -DVNM_PLOT_ENABLE_TEXT=OFF
+      build_script:
+        - cd examples/standalone_glfw && cmake --build build --config Release
+      summary_script:
+        - echo "=== FreeBSD GLFW Example Build Completed ==="
+        - ls -la examples/standalone_glfw/build/standalone_glfw 2>/dev/null || echo "Executable built"
 
-  - name: "FreeBSD Core+Text Build"
-    install_script:
-      - pkg install -y git cmake mesa-libs pkgconf libX11 libXrandr libXinerama libXcursor libXi libXext
-    configure_script:
-      - cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DVNM_PLOT_CORE_ONLY=ON -DVNM_PLOT_ENABLE_TEXT=ON
-    build_script:
-      - cmake --build build --config Release
-    summary_script:
-      - echo "=== FreeBSD Core+Text Build Completed ==="
-      - ls -la build/*.a 2>/dev/null || echo "Static libraries built"
+    - name: "FreeBSD Core+Text Build"
+      install_script:
+        - pkg install -y git cmake mesa-libs pkgconf libX11 libXrandr libXinerama libXcursor libXi libXext
+      configure_script:
+        - cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DVNM_PLOT_CORE_ONLY=ON -DVNM_PLOT_ENABLE_TEXT=ON
+      build_script:
+        - cmake --build build --config Release
+      summary_script:
+        - echo "=== FreeBSD Core+Text Build Completed ==="
+        - ls -la build/*.a 2>/dev/null || echo "Static libraries built"

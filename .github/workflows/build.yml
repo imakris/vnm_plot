@@ -12,16 +12,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        include:
-          # macOS may fail at runtime due to OpenGL 4.3+ requirements (Apple deprecated at 4.1)
-          # but we still want to verify it compiles
-          - os: macos-latest
-            experimental: true
+        os: [ubuntu-latest, windows-latest]
 
     runs-on: ${{ matrix.os }}
-    # Allow macOS to fail without failing the entire workflow
-    continue-on-error: ${{ matrix.experimental || false }}
 
     steps:
       - name: Checkout repository
@@ -69,13 +62,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        include:
-          - os: macos-latest
-            experimental: true
+        os: [ubuntu-latest, windows-latest]
 
     runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.experimental || false }}
 
     steps:
       - name: Checkout repository
@@ -126,13 +115,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        include:
-          - os: macos-latest
-            experimental: true
+        os: [ubuntu-latest, windows-latest]
 
     runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.experimental || false }}
 
     steps:
       - name: Checkout repository

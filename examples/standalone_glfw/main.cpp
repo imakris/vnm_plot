@@ -21,6 +21,10 @@
 #include <memory>
 #include <vector>
 
+#ifdef Status
+#undef Status
+#endif
+
 namespace core = vnm::plot::core;
 
 struct Sample
