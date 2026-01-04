@@ -14,12 +14,12 @@ The library uses a type-erased data interface (`Data_source` + `Data_access_poli
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Plot_widget                              │
-│                   (QQuickFramebufferObject)                     │
-├─────────────────────────────────────────────────────────────────┤
-│                        Plot_renderer                            │
-│              (coordinates rendering on GL thread)               │
+┌────────────────────────────────────────────────────────────────┐
+│                        Plot_widget                             │
+│                   (QQuickFramebufferObject)                    │
+├────────────────────────────────────────────────────────────────┤
+│                        Plot_renderer                           │
+│              (coordinates rendering on GL thread)              │
 ├──────────────┬──────────────┬─────────────────┬────────────────┤
 │ Chrome       │ Series       │ Text            │ Font           │
 │ Renderer     │ Renderer     │ Renderer        │ Renderer       │
