@@ -196,6 +196,7 @@ int main()
     core::Render_config config;
     config.dark_mode = true;
     config.show_text = false;
+    config.snap_lines_to_pixels = false;
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
