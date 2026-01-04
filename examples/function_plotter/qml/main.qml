@@ -639,12 +639,6 @@ ApplicationWindow {
         RowLayout {
             Layout.fillWidth: true
 
-            Text {
-                text: "Functions: sin, cos, tan, exp, log, abs, sqrt, min, max | Constants: pi, e | Operators: + - * / ^"
-                color: "#666666"
-                font.pixelSize: 10
-            }
-
             Item { Layout.fillWidth: true }
 
             Text {
