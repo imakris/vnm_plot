@@ -13,7 +13,7 @@ task:
       install_script:
         - pkg install -y git cmake mesa-libs pkgconf libX11 libXrandr libXinerama libXcursor libXi libXext
       configure_script:
-        - cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DVNM_PLOT_CORE_ONLY=ON -DVNM_PLOT_ENABLE_TEXT=OFF
+      - cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DVNM_PLOT_CORE_ONLY=ON -DVNM_PLOT_ENABLE_TEXT=OFF -DCMAKE_C_FLAGS=-I/usr/local/include -DCMAKE_CXX_FLAGS=-I/usr/local/include
       build_script:
         - cmake --build build --config Release
       summary_script:
@@ -24,7 +24,7 @@ task:
       install_script:
         - pkg install -y git cmake mesa-libs pkgconf libX11 libXrandr libXinerama libXcursor libXi libXext
       configure_script:
-        - cd examples/standalone_glfw && cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DVNM_PLOT_BUILD_QT=OFF -DVNM_PLOT_ENABLE_TEXT=OFF
+      - cd examples/standalone_glfw && cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DVNM_PLOT_BUILD_QT=OFF -DVNM_PLOT_ENABLE_TEXT=OFF -DCMAKE_C_FLAGS=-I/usr/local/include -DCMAKE_CXX_FLAGS=-I/usr/local/include
       build_script:
         - cd examples/standalone_glfw && cmake --build build --config Release
       summary_script:
@@ -35,7 +35,7 @@ task:
       install_script:
         - pkg install -y git cmake mesa-libs pkgconf libX11 libXrandr libXinerama libXcursor libXi libXext
       configure_script:
-        - cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DVNM_PLOT_CORE_ONLY=ON -DVNM_PLOT_ENABLE_TEXT=ON
+      - cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DVNM_PLOT_CORE_ONLY=ON -DVNM_PLOT_ENABLE_TEXT=ON -DCMAKE_C_FLAGS=-I/usr/local/include -DCMAKE_CXX_FLAGS=-I/usr/local/include
       build_script:
         - cmake --build build --config Release
       summary_script:
