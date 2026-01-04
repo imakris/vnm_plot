@@ -172,8 +172,10 @@ void init_embedded_assets()
     //   loader.register_embedded("shaders/generic_rect.geom", k_generic_rect_geom);
     //   ... etc.
     //
-    // For now, this is a stub. Assets will be loaded from the override directory
-    // or the Qt resource system (when using the Qt wrapper).
+    // For now, this is a stub. Callers must either:
+    //   1. Set an override directory via default_asset_loader().set_override_directory()
+    //   2. Manually register embedded assets via register_embedded()
+    // Otherwise, asset loads will fail.
 }
 
 } // namespace vnm::plot::core

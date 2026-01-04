@@ -2,30 +2,23 @@
 
 #include <glatter/glatter.h>
 
-#include <atomic>
 #include <memory>
 #include <utility>
 
 namespace vnm::plot::core {
 
-namespace {
-std::atomic<bool> g_gl_initialized{false};
-} // anonymous namespace
-
 bool init_gl()
 {
-    // Allow idempotent calls, but only actually initialize once
-    if (g_gl_initialized.load(std::memory_order_acquire)) {
-        return true;
-    }
-
-    // Initialize glatter extension loading
-    // This must be called after an OpenGL context is current
+    // Initialize glatter extension loading.
+    // This must be called after an OpenGL context is current.
     // glatter_get_extension_support_GL() populates function pointers
-    // and returns a status struct (we just need to call it)
+    // and returns a status struct.
+    //
+    // We call this unconditionally every time init_gl() is invoked.
+    // This handles context recreation (e.g., Qt scene graph invalidation)
+    // and multi-context scenarios correctly. The overhead is negligible
+    // compared to a frame.
     (void)glatter_get_extension_support_GL();
-
-    g_gl_initialized.store(true, std::memory_order_release);
     return true;
 }
 

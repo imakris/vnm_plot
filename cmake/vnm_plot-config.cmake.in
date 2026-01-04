@@ -1,0 +1,27 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+# Find required dependencies
+find_dependency(glm)
+
+# Create imported targets if not already defined
+if(NOT TARGET vnm_plot::core)
+    add_library(vnm_plot::core STATIC IMPORTED)
+    set_target_properties(vnm_plot::core PROPERTIES
+        IMPORTED_LOCATION "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_LIBDIR@/libvnm_plot_core.a"
+        INTERFACE_INCLUDE_DIRECTORIES "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_INCLUDEDIR@"
+        INTERFACE_LINK_LIBRARIES "glm::glm"
+    )
+endif()
+
+if(NOT TARGET vnm_plot::vnm_plot AND EXISTS "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_LIBDIR@/libvnm_plot.a")
+    add_library(vnm_plot::vnm_plot STATIC IMPORTED)
+    set_target_properties(vnm_plot::vnm_plot PROPERTIES
+        IMPORTED_LOCATION "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_LIBDIR@/libvnm_plot.a"
+        INTERFACE_INCLUDE_DIRECTORIES "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_INCLUDEDIR@"
+        INTERFACE_LINK_LIBRARIES "vnm_plot::core"
+    )
+endif()
+
+check_required_components(vnm_plot)

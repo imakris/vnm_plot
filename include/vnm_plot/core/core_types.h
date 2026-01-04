@@ -51,6 +51,11 @@ using ByteView = std::string_view;
 // -----------------------------------------------------------------------------
 // Represents a reference to an asset (shader, font, etc.)
 // Can be either embedded data or a file path.
+//
+// LIFETIME WARNING: AssetRef stores std::string_view, not owned strings.
+// The caller must ensure that the underlying data outlives the AssetRef.
+// For embedded assets, this is typically safe (static storage duration).
+// For file paths, pass string literals or ensure the std::string outlives the AssetRef.
 struct AssetRef
 {
     enum class Type : uint8_t
