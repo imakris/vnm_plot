@@ -329,9 +329,7 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
     const std::vector<std::size_t>& scales,
     double t_min,
     double t_max,
-    double width_px,
-    int series_id,
-    const Render_config* config)
+    double width_px)
 {
     view_render_result_t result;
 
@@ -447,8 +445,6 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
         break;
     }
 
-    (void)series_id;
-    (void)config;
     return result;
 }
 
@@ -560,9 +556,7 @@ void Series_renderer::render(
             s->access.get_timestamp,
             scales,
             ctx.t0, ctx.t1,
-            layout.usable_width,
-            id,
-            ctx.config);
+            layout.usable_width);
 
         // Helper to draw one pass for a specific primitive style
         auto draw_pass = [&](Display_style primitive_style,
@@ -712,9 +706,7 @@ void Series_renderer::render(
                 s->access.get_timestamp,
                 scales,
                 ctx.t_available_min, ctx.t_available_max,
-                layout.usable_width,
-                id,
-                ctx.config);
+                layout.usable_width);
 
             if (preview_result.can_draw) {
                 // Preview uses same multi-pass approach

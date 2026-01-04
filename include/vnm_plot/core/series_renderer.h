@@ -150,9 +150,7 @@ private:
         const std::vector<std::size_t>& scales,
         double t_min,
         double t_max,
-        double width_px,
-        int series_id,
-        const Render_config* config);
+        double width_px);
 
     void set_common_uniforms(GLuint program, const glm::mat4& pmv, const frame_context_t& ctx);
     void modify_uniforms_for_preview(GLuint program, const frame_context_t& ctx);
