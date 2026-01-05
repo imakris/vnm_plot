@@ -312,45 +312,66 @@ std::size_t upper_bound_timestamp(
 // -----------------------------------------------------------------------------
 // LOD Level Selection
 // -----------------------------------------------------------------------------
-// Target-based LOD selection with hysteresis to prevent oscillation.
-// Chooses the LOD level that best achieves ~2 pixels per sample.
+// Level selection based on pixels-per-sample, using per-level subdivision
+// thresholds. This matches the pre-refactor behavior (Lumis).
 
 inline std::size_t choose_lod_level(
     const std::vector<std::size_t>& scales,
     std::size_t current_level,
     double base_pps)
 {
-    if (scales.empty() || base_pps <= 0.0) {
+    if (scales.empty() || !(base_pps > 0.0)) {
         return 0;
     }
 
-    // Target: ~2 pixels per LOD sample for good visual quality.
-    // base_pps = pixels per base sample (finest level).
-    // pixels_per_lod_sample = base_pps * scale.
-    // We want: base_pps * scale ≈ target_pps, so scale ≈ target_pps / base_pps.
-    constexpr double target_pps = 2.0;
-    const double desired_scale = target_pps / base_pps;
+    const std::size_t max_level = scales.size() - 1;
+    std::size_t level = std::min(current_level, max_level);
 
-    std::size_t best_level = 0;
-    for (std::size_t i = 0; i < scales.size(); ++i) {
-        if (static_cast<double>(scales[i]) <= desired_scale) {
-            best_level = i;
+    auto subdivision_between = [&](std::size_t lower, std::size_t higher) -> double {
+        if (higher >= scales.size() || lower >= scales.size()) {
+            return 0.0;
+        }
+        const double lower_scale = static_cast<double>(scales[lower]);
+        const double higher_scale = static_cast<double>(scales[higher]);
+        if (!(lower_scale > 0.0)) {
+            return 0.0;
+        }
+        return higher_scale / lower_scale;
+    };
+
+    auto level_pixels_per_sample = [&](std::size_t lvl) -> double {
+        if (lvl >= scales.size()) {
+            return 0.0;
+        }
+        return base_pps * static_cast<double>(scales[lvl]);
+    };
+
+    while (level + 1 < scales.size()) {
+        const double subdivision = subdivision_between(level, level + 1);
+        if (!(subdivision > 1.0)) {
+            break;
+        }
+        const double threshold_up = 1.0 / subdivision;
+        const double current_pps = level_pixels_per_sample(level);
+        if (current_pps < threshold_up) {
+            ++level;
+        }
+        else {
+            break;
         }
     }
 
-    // Hysteresis: don't change level unless there's significant benefit
-    if (current_level < scales.size()) {
-        // pixels per LOD sample at each level
-        const double current_pps = base_pps * static_cast<double>(scales[current_level]);
-        const double new_pps = base_pps * static_cast<double>(scales[best_level]);
-
-        // Only change if improvement is > 50% (new error < 50% of current error)
-        if (std::abs(new_pps - target_pps) > std::abs(current_pps - target_pps) * 0.5) {
-            return current_level;
+    while (level > 0) {
+        const double current_pps = level_pixels_per_sample(level);
+        if (current_pps > 1.0) {
+            --level;
+        }
+        else {
+            break;
         }
     }
 
-    return best_level;
+    return level;
 }
 
 } // namespace detail
