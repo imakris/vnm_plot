@@ -145,7 +145,7 @@ void Primitive_renderer::batch_rect(const glm::vec4& color, const glm::vec4& rec
 
 void Primitive_renderer::flush_rects(const glm::mat4& pmv)
 {
-    VNM_PLOT_PROFILE_SCOPE(m_profiler, "prims.flush_rects");
+    VNM_PLOT_PROFILE_SCOPE(m_profiler, "renderer.frame.prims.flush_rects");
 
     if (m_cpu_buffer.empty() || !m_sp_rects || m_rects_pipe.vbo == 0 || m_rects_pipe.vao == 0) {
         m_cpu_buffer.clear();
@@ -184,7 +184,7 @@ void Primitive_renderer::draw_grid_shader(
     const grid_layer_params_t& vertical_levels,
     const grid_layer_params_t& horizontal_levels)
 {
-    VNM_PLOT_PROFILE_SCOPE(m_profiler, "prims.draw_grid");
+    VNM_PLOT_PROFILE_SCOPE(m_profiler, "renderer.frame.prims.draw_grid");
 
     if (!m_sp_grid || m_grid_quad_pipe.vao == 0 || m_grid_quad_pipe.vbo == 0) {
         return;

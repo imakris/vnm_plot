@@ -27,6 +27,7 @@
 #include <limits>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <shared_mutex>
 #include <string>
 #include <string_view>
@@ -618,6 +619,9 @@ const frame_layout_result_t& Plot_renderer::impl_t::calculate_frame_layout(
     const double v_span = double(v1) - double(v0);
     const double t_span = t1 - t0;
     const Plot_config* config = &snapshot.config;
+    vnm::plot::Profiler* profiler = config ? config->profiler.get() : nullptr;
+
+    VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.calculate_layout.impl");
 
     Layout_cache::key_t cache_key;
     cache_key.v0 = v0;
@@ -632,8 +636,15 @@ const frame_layout_result_t& Plot_renderer::impl_t::calculate_frame_layout(
     cache_key.font_metrics_key = fonts.text_measure_cache_key();
 
     if (const auto* cached = layout_cache.try_get(cache_key)) {
+        VNM_PLOT_PROFILE_SCOPE(
+            profiler,
+            "renderer.frame.calculate_layout.impl.cache_hit");
         return *cached;
     }
+
+    VNM_PLOT_PROFILE_SCOPE(
+        profiler,
+        "renderer.frame.calculate_layout.impl.cache_miss");
 
     auto build_layout_params = [&](double vbar_width) {
         Layout_calculator::parameters_t layout_params;
@@ -714,27 +725,41 @@ const frame_layout_result_t& Plot_renderer::impl_t::calculate_frame_layout(
         // For this frame, continue using the current animated width,
         // which will converge toward measured_vbar_width via the widget's timer.
         // Recalculate layout with current animated width to keep labels consistent.
-        layout_params = build_layout_params(effective_vbar_width);
-        layout_result = layout_calc.calculate(layout_params);
+        {
+            VNM_PLOT_PROFILE_SCOPE(
+                profiler,
+                "renderer.frame.calculate_layout.impl.cache_miss.pass2");
+            layout_params = build_layout_params(effective_vbar_width);
+            layout_result = layout_calc.calculate(layout_params);
+        }
     }
 
-    frame_layout_result_t frame_layout;
-    frame_layout.usable_width = win_w - effective_vbar_width;
-    frame_layout.usable_height = usable_height;
-    frame_layout.v_bar_width = effective_vbar_width;
-    frame_layout.h_bar_height = snapshot.base_label_height_px + k_scissor_pad_px;
-    frame_layout.max_v_label_text_width = layout_result.max_v_label_text_width;
-    frame_layout.v_labels = std::move(layout_result.v_labels);
-    frame_layout.h_labels = std::move(layout_result.h_labels);
-    frame_layout.v_label_fixed_digits = layout_result.v_label_fixed_digits;
-    frame_layout.h_labels_subsecond = layout_result.h_labels_subsecond;
-    frame_layout.vertical_seed_index = layout_result.vertical_seed_index;
-    frame_layout.vertical_seed_step = layout_result.vertical_seed_step;
-    frame_layout.vertical_finest_step = layout_result.vertical_finest_step;
-    frame_layout.horizontal_seed_index = layout_result.horizontal_seed_index;
-    frame_layout.horizontal_seed_step = layout_result.horizontal_seed_step;
+    {
+        VNM_PLOT_PROFILE_SCOPE(
+            profiler,
+            "renderer.frame.calculate_layout.impl.cache_miss.assemble");
 
-    return layout_cache.store(cache_key, std::move(frame_layout));
+        frame_layout_result_t frame_layout;
+        frame_layout.usable_width = win_w - effective_vbar_width;
+        frame_layout.usable_height = usable_height;
+        frame_layout.v_bar_width = effective_vbar_width;
+        frame_layout.h_bar_height = snapshot.base_label_height_px + k_scissor_pad_px;
+        frame_layout.max_v_label_text_width = layout_result.max_v_label_text_width;
+        frame_layout.v_labels = std::move(layout_result.v_labels);
+        frame_layout.h_labels = std::move(layout_result.h_labels);
+        frame_layout.v_label_fixed_digits = layout_result.v_label_fixed_digits;
+        frame_layout.h_labels_subsecond = layout_result.h_labels_subsecond;
+        frame_layout.vertical_seed_index = layout_result.vertical_seed_index;
+        frame_layout.vertical_seed_step = layout_result.vertical_seed_step;
+        frame_layout.vertical_finest_step = layout_result.vertical_finest_step;
+        frame_layout.horizontal_seed_index = layout_result.horizontal_seed_index;
+        frame_layout.horizontal_seed_step = layout_result.horizontal_seed_step;
+
+        VNM_PLOT_PROFILE_SCOPE(
+            profiler,
+            "renderer.frame.calculate_layout.impl.cache_miss.finalize");
+        return layout_cache.store(cache_key, std::move(frame_layout));
+    }
 }
 
 void Plot_renderer::impl_t::update_seed_history(
@@ -880,13 +905,6 @@ void Plot_renderer::render()
         return;
     }
 
-    m_impl->asset_loader.set_log_callback(config ? config->log_error : nullptr);
-    m_impl->primitives.set_log_callback(config ? config->log_error : nullptr);
-    m_impl->primitives.set_profiler(profiler);
-    m_impl->fonts.set_log_callbacks(
-        config ? config->log_error : nullptr,
-        config ? config->log_debug : nullptr);
-
     auto register_assets_if_needed = [&]() {
         if (!config || !config->register_assets) {
             return;
@@ -937,14 +955,26 @@ void Plot_renderer::render()
     VNM_PLOT_PROFILE_SCOPE(profiler, "renderer");
     VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame");
 
-    if (m_impl->assets_initialized) {
-        register_assets_if_needed();
-    }
+    {
+        VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.config_sync");
 
-    const int desired_font_px = static_cast<int>(std::round(m_impl->snapshot.adjusted_font_px));
-    if (desired_font_px > 0 && desired_font_px != m_impl->last_font_px) {
-        m_impl->fonts.initialize(m_impl->asset_loader, desired_font_px, true);
-        m_impl->last_font_px = desired_font_px;
+        if (m_impl->assets_initialized) {
+            register_assets_if_needed();
+        }
+
+        const int desired_font_px = static_cast<int>(std::round(m_impl->snapshot.adjusted_font_px));
+        if (desired_font_px > 0 && desired_font_px != m_impl->last_font_px) {
+            m_impl->fonts.initialize(m_impl->asset_loader, desired_font_px, true);
+            m_impl->last_font_px = desired_font_px;
+        }
+
+        // Get configuration
+        m_impl->asset_loader.set_log_callback(config ? config->log_error : nullptr);
+        m_impl->primitives.set_log_callback(config ? config->log_error : nullptr);
+        m_impl->primitives.set_profiler(profiler);
+        m_impl->fonts.set_log_callbacks(
+            config ? config->log_error : nullptr,
+            config ? config->log_debug : nullptr);
     }
 
     // Get viewport size
@@ -955,112 +985,125 @@ void Plot_renderer::render()
         return;
     }
 
-    // Calculate layout
-    const double usable_width = win_w - m_impl->snapshot.vbar_width_pixels;
-
-    // Determine v-range
     float v0 = 0.0f;
     float v1 = 0.0f;
     float preview_v0 = 0.0f;
     float preview_v1 = 0.0f;
-    const Auto_v_range_mode auto_mode =
-        config ? config->auto_v_range_mode : Auto_v_range_mode::GLOBAL;
-    const double auto_v_extra_scale = config ? config->auto_v_range_extra_scale : 0.0;
-    const bool can_use_series = (m_impl->owner != nullptr);
-    const auto apply_auto_padding = [&](float& v_min, float& v_max) {
-        if (!(auto_v_extra_scale > 0.0)) {
-            return;
-        }
+    {
+        VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.range_calc");
 
-        const double span = double(v_max) - double(v_min);
-        if (!(span > 0.0)) {
-            return;
-        }
+        // Calculate layout
+        const double usable_width = win_w - m_impl->snapshot.vbar_width_pixels;
 
-        const double center = 0.5 * (double(v_min) + double(v_max));
-        const double padded_span = span * (1.0 + auto_v_extra_scale);
-        v_min = static_cast<float>(center - padded_span * 0.5);
-        v_max = static_cast<float>(center + padded_span * 0.5);
-    };
-    if (can_use_series) {
-        std::shared_lock lock(m_impl->owner->m_series_mutex);
-        if (m_impl->snapshot.v_auto) {
-            if (auto_mode == Auto_v_range_mode::VISIBLE) {
-                auto [auto_v0, auto_v1] = compute_visible_v_range(
-                    m_impl->owner->m_series,
-                    m_impl->v_range_cache,
-                    m_impl->snapshot.cfg.t_min,
-                    m_impl->snapshot.cfg.t_max,
-                    usable_width,
-                    m_impl->snapshot.cfg.v_min,
-                    m_impl->snapshot.cfg.v_max);
-                v0 = auto_v0;
-                v1 = auto_v1;
-                apply_auto_padding(v0, v1);
+        // Determine v-range
+        const Auto_v_range_mode auto_mode =
+            config ? config->auto_v_range_mode : Auto_v_range_mode::GLOBAL;
+        const double auto_v_extra_scale = config ? config->auto_v_range_extra_scale : 0.0;
+        const bool can_use_series = (m_impl->owner != nullptr);
+        const auto apply_auto_padding = [&](float& v_min, float& v_max) {
+            if (!(auto_v_extra_scale > 0.0)) {
+                return;
+            }
+
+            const double span = double(v_max) - double(v_min);
+            if (!(span > 0.0)) {
+                return;
+            }
+
+            const double center = 0.5 * (double(v_min) + double(v_max));
+            const double padded_span = span * (1.0 + auto_v_extra_scale);
+            v_min = static_cast<float>(center - padded_span * 0.5);
+            v_max = static_cast<float>(center + padded_span * 0.5);
+        };
+        if (can_use_series) {
+            std::shared_lock lock(m_impl->owner->m_series_mutex);
+            if (m_impl->snapshot.v_auto) {
+                if (auto_mode == Auto_v_range_mode::VISIBLE) {
+                    auto [auto_v0, auto_v1] = compute_visible_v_range(
+                        m_impl->owner->m_series,
+                        m_impl->v_range_cache,
+                        m_impl->snapshot.cfg.t_min,
+                        m_impl->snapshot.cfg.t_max,
+                        usable_width,
+                        m_impl->snapshot.cfg.v_min,
+                        m_impl->snapshot.cfg.v_max);
+                    v0 = auto_v0;
+                    v1 = auto_v1;
+                    apply_auto_padding(v0, v1);
+                }
+                else {
+                    auto [auto_v0, auto_v1] = compute_global_v_range(
+                        m_impl->owner->m_series,
+                        m_impl->v_range_cache,
+                        auto_mode == Auto_v_range_mode::GLOBAL_LOD,
+                        m_impl->snapshot.cfg.v_min,
+                        m_impl->snapshot.cfg.v_max);
+                    v0 = auto_v0;
+                    v1 = auto_v1;
+                    apply_auto_padding(v0, v1);
+                }
             }
             else {
-                auto [auto_v0, auto_v1] = compute_global_v_range(
-                    m_impl->owner->m_series,
-                    m_impl->v_range_cache,
-                    auto_mode == Auto_v_range_mode::GLOBAL_LOD,
-                    m_impl->snapshot.cfg.v_min,
-                    m_impl->snapshot.cfg.v_max);
-                v0 = auto_v0;
-                v1 = auto_v1;
-                apply_auto_padding(v0, v1);
+                v0 = m_impl->snapshot.cfg.v_manual_min;
+                v1 = m_impl->snapshot.cfg.v_manual_max;
             }
+
+            auto [auto_preview_v0, auto_preview_v1] = compute_global_v_range(
+                m_impl->owner->m_series,
+                m_impl->v_range_cache,
+                true,
+                m_impl->snapshot.cfg.v_min,
+                m_impl->snapshot.cfg.v_max);
+            preview_v0 = auto_preview_v0;
+            preview_v1 = auto_preview_v1;
+            apply_auto_padding(preview_v0, preview_v1);
+        }
+        else
+        if (m_impl->snapshot.v_auto) {
+            v0 = m_impl->snapshot.cfg.v_min;
+            v1 = m_impl->snapshot.cfg.v_max;
+            preview_v0 = v0;
+            preview_v1 = v1;
         }
         else {
             v0 = m_impl->snapshot.cfg.v_manual_min;
             v1 = m_impl->snapshot.cfg.v_manual_max;
+            preview_v0 = v0;
+            preview_v1 = v1;
         }
 
-        auto [auto_preview_v0, auto_preview_v1] = compute_global_v_range(
-            m_impl->owner->m_series,
-            m_impl->v_range_cache,
-            true,
-            m_impl->snapshot.cfg.v_min,
-            m_impl->snapshot.cfg.v_max);
-        preview_v0 = auto_preview_v0;
-        preview_v1 = auto_preview_v1;
-        apply_auto_padding(preview_v0, preview_v1);
-    }
-    else
-    if (m_impl->snapshot.v_auto) {
-        v0 = m_impl->snapshot.cfg.v_min;
-        v1 = m_impl->snapshot.cfg.v_max;
-        preview_v0 = v0;
-        preview_v1 = v1;
-    }
-    else {
-        v0 = m_impl->snapshot.cfg.v_manual_min;
-        v1 = m_impl->snapshot.cfg.v_manual_max;
-        preview_v0 = v0;
-        preview_v1 = v1;
-    }
-
-    if (m_impl->snapshot.v_auto && m_impl->owner) {
-        // Sync auto range back to the widget so QML reads match the render range.
-        constexpr float k_eps = 1e-6f;
-        if (std::abs(v0 - m_impl->snapshot.cfg.v_min) > k_eps ||
-            std::abs(v1 - m_impl->snapshot.cfg.v_max) > k_eps)
-        {
-            QMetaObject::invokeMethod(
-                const_cast<Plot_widget*>(m_impl->owner),
-                "set_auto_v_range_from_renderer",
-                Qt::QueuedConnection,
-                Q_ARG(float, v0),
-                Q_ARG(float, v1));
+        if (m_impl->snapshot.v_auto && m_impl->owner) {
+            // Sync auto range back to the widget so QML reads match the render range.
+            constexpr float k_eps = 1e-6f;
+            if (std::abs(v0 - m_impl->snapshot.cfg.v_min) > k_eps ||
+                std::abs(v1 - m_impl->snapshot.cfg.v_max) > k_eps)
+            {
+                QMetaObject::invokeMethod(
+                    const_cast<Plot_widget*>(m_impl->owner),
+                    "set_auto_v_range_from_renderer",
+                    Qt::QueuedConnection,
+                    Q_ARG(float, v0),
+                    Q_ARG(float, v1));
+            }
         }
     }
 
-    const double prev_v_span = m_impl->last_vertical_span;
-    const double prev_t_span = m_impl->last_horizontal_span;
-    const double v_span = double(v1) - double(v0);
-    const double t_span = m_impl->snapshot.cfg.t_max - m_impl->snapshot.cfg.t_min;
+    double prev_v_span = 0.0;
+    double prev_t_span = 0.0;
+    double v_span = 0.0;
+    double t_span = 0.0;
+    bool fade_v_labels = false;
+    bool fade_h_labels = false;
+    {
+        VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.layout_prep");
+        prev_v_span = m_impl->last_vertical_span;
+        prev_t_span = m_impl->last_horizontal_span;
+        v_span = double(v1) - double(v0);
+        t_span = m_impl->snapshot.cfg.t_max - m_impl->snapshot.cfg.t_min;
 
-    const bool fade_v_labels = (prev_v_span > 0.0) && !spans_approx_equal(v_span, prev_v_span);
-    const bool fade_h_labels = (prev_t_span > 0.0) && !spans_approx_equal(t_span, prev_t_span);
+        fade_v_labels = (prev_v_span > 0.0) && !spans_approx_equal(v_span, prev_v_span);
+        fade_h_labels = (prev_t_span > 0.0) && !spans_approx_equal(t_span, prev_t_span);
+    }
 
     const frame_layout_result_t& frame_layout = [&]() -> const frame_layout_result_t& {
         VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.calculate_layout");
@@ -1072,145 +1115,167 @@ void Plot_renderer::render()
             win_w,
             win_h);
     }();
-    notify_hlabels_subsecond(frame_layout.h_labels_subsecond);
-    m_impl->update_seed_history(v_span, t_span, frame_layout);
-
-    Render_config core_config;
-    if (config) {
-        core_config.dark_mode = config->dark_mode;
-        core_config.show_text = config->show_text;
-        core_config.snap_lines_to_pixels = config->snap_lines_to_pixels;
-        core_config.line_width_px = config->line_width_px;
-        core_config.area_fill_alpha = config->area_fill_alpha;
-        core_config.format_timestamp = config->format_timestamp
-            ? config->format_timestamp
-            : default_format_timestamp;
-        core_config.log_debug = config->log_debug;
-        core_config.log_error = config->log_error;
-        core_config.profiler = profiler;
+    {
+        VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.layout_finalize");
+        notify_hlabels_subsecond(frame_layout.h_labels_subsecond);
+        m_impl->update_seed_history(v_span, t_span, frame_layout);
     }
 
-    frame_context_t core_ctx{
-        frame_layout,
-        v0,
-        v1,
-        preview_v0,
-        preview_v1,
-        m_impl->snapshot.cfg.t_min,
-        m_impl->snapshot.cfg.t_max,
-        m_impl->snapshot.cfg.t_available_min,
-        m_impl->snapshot.cfg.t_available_max,
-        win_w,
-        win_h,
-        glm::ortho(0.f, float(win_w), float(win_h), 0.f, -1.f, 1.f),
-        m_impl->snapshot.adjusted_font_px,
-        m_impl->snapshot.base_label_height_px,
-        m_impl->snapshot.adjusted_reserved_height,
-        m_impl->snapshot.adjusted_preview_height,
-        m_impl->snapshot.show_info,
-        config ? &core_config : nullptr
-    };
+    Render_config core_config;
+    frame_context_t core_ctx = [&]() -> frame_context_t {
+        VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.context_build");
+        if (config) {
+            VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.context_build.config");
+            core_config.dark_mode = config->dark_mode;
+            core_config.show_text = config->show_text;
+            core_config.snap_lines_to_pixels = config->snap_lines_to_pixels;
+            core_config.line_width_px = config->line_width_px;
+            core_config.area_fill_alpha = config->area_fill_alpha;
+            core_config.format_timestamp = config->format_timestamp
+                ? config->format_timestamp
+                : default_format_timestamp;
+            core_config.log_debug = config->log_debug;
+            core_config.log_error = config->log_error;
+            core_config.profiler = profiler;
+        }
 
-    frame_context_t series_ctx = core_ctx;
-    const double preview_scissor_pad = k_scissor_pad_px;
-    series_ctx.adjusted_preview_height = std::max(0.0, core_ctx.adjusted_preview_height - preview_scissor_pad);
+        VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.context_build.core_ctx");
+        return frame_context_t{
+            frame_layout,
+            v0,
+            v1,
+            preview_v0,
+            preview_v1,
+            m_impl->snapshot.cfg.t_min,
+            m_impl->snapshot.cfg.t_max,
+            m_impl->snapshot.cfg.t_available_min,
+            m_impl->snapshot.cfg.t_available_max,
+            win_w,
+            win_h,
+            glm::ortho(0.f, float(win_w), float(win_h), 0.f, -1.f, 1.f),
+            m_impl->snapshot.adjusted_font_px,
+            m_impl->snapshot.base_label_height_px,
+            m_impl->snapshot.adjusted_reserved_height,
+            m_impl->snapshot.adjusted_preview_height,
+            m_impl->snapshot.show_info,
+            config ? &core_config : nullptr
+        };
+    }();
+
+    frame_context_t series_ctx = [&]() -> frame_context_t {
+        VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.context_build.series_ctx");
+        frame_context_t ctx = core_ctx;
+        const double preview_scissor_pad = k_scissor_pad_px;
+        ctx.adjusted_preview_height =
+            std::max(0.0, ctx.adjusted_preview_height - preview_scissor_pad);
+        return ctx;
+    }();
 
     // Clear to transparent - let QML provide the background color (matches Lumis behavior)
     const bool dark_mode = config ? config->dark_mode : false;
     const bool clear_to_transparent = config ? config->clear_to_transparent : false;
     const Color_palette palette =
         dark_mode ? Color_palette::dark() : Color_palette::light();
-    if (clear_to_transparent) {
-        glClearColor(0.f, 0.f, 0.f, 0.f);
-    }
-    else {
-        glClearColor(
-            palette.background.r,
-            palette.background.g,
-            palette.background.b,
-            palette.background.a);
-    }
-    glClear(GL_COLOR_BUFFER_BIT);
+    GLboolean was_multisample = GL_FALSE;
+    {
+        VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.gl_setup");
+        if (clear_to_transparent) {
+            glClearColor(0.f, 0.f, 0.f, 0.f);
+        }
+        else {
+            glClearColor(
+                palette.background.r,
+                palette.background.g,
+                palette.background.b,
+                palette.background.a);
+        }
+        glClear(GL_COLOR_BUFFER_BIT);
 
-    const GLboolean was_multisample = glIsEnabled(GL_MULTISAMPLE);
-    if (!was_multisample) {
-        glEnable(GL_MULTISAMPLE);
-    }
+        was_multisample = glIsEnabled(GL_MULTISAMPLE);
+        if (!was_multisample) {
+            glEnable(GL_MULTISAMPLE);
+        }
 
-    // Enable blending
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        // Enable blending
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    }
 
     // Render chrome (backgrounds, grid)
-    {
-        VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.chrome");
-        m_impl->chrome.render_grid_and_backgrounds(core_ctx, m_impl->primitives);
-    }
+    m_impl->chrome.render_grid_and_backgrounds(core_ctx, m_impl->primitives);
 
     // Render series
     if (m_impl->owner) {
         VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.execute_passes");
-        std::shared_lock lock(m_impl->owner->m_series_mutex);
+        std::shared_lock lock(m_impl->owner->m_series_mutex, std::defer_lock);
+        {
+            VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.execute_passes.lock");
+            lock.lock();
+        }
         std::map<int, std::shared_ptr<series_data_t>> core_series_map;
         std::unordered_set<int> seen_ids;
-        core_series_map.clear();
-        for (const auto& [id, series] : m_impl->owner->m_series) {
-            if (!series) {
-                continue;
+        {
+            VNM_PLOT_PROFILE_SCOPE(
+                profiler,
+                "renderer.frame.execute_passes.series_prepare");
+            core_series_map.clear();
+            for (const auto& [id, series] : m_impl->owner->m_series) {
+                if (!series) {
+                    continue;
+                }
+
+                seen_ids.insert(id);
+
+                auto& core_series = m_impl->core_series_cache[id];
+                if (!core_series) {
+                    core_series = std::make_shared<series_data_t>();
+                }
+
+                // Copy basic fields (types are now unified, no conversion needed)
+                core_series->id = id;
+                core_series->enabled = series->enabled;
+                core_series->style = series->style;
+                core_series->color = series->color;
+                core_series->colormap = series->colormap;
+
+                // Normalize shader paths (remove qrc:/ prefixes for embedded asset lookup)
+                core_series->shader_set = normalize_shader_set(series->shader_set);
+                core_series->shaders.clear();
+                for (const auto& [style, shader] : series->shaders) {
+                    core_series->shaders.emplace(style, normalize_shader_set(shader));
+                }
+
+                // Copy access policy (types are now unified)
+                core_series->access = series->access;
+
+                // Use data source directly (types are now unified, no adapter needed)
+                core_series->data_source = series->data_source;
+
+                core_series_map[id] = core_series;
             }
 
-            seen_ids.insert(id);
-
-            auto& core_series = m_impl->core_series_cache[id];
-            if (!core_series) {
-                core_series = std::make_shared<series_data_t>();
+            // Cleanup stale cache entries
+            for (auto it = m_impl->core_series_cache.begin(); it != m_impl->core_series_cache.end(); ) {
+                if (seen_ids.find(it->first) == seen_ids.end()) {
+                    it = m_impl->core_series_cache.erase(it);
+                }
+                else {
+                    ++it;
+                }
             }
-
-            // Copy basic fields (types are now unified, no conversion needed)
-            core_series->id = id;
-            core_series->enabled = series->enabled;
-            core_series->style = series->style;
-            core_series->color = series->color;
-            core_series->colormap = series->colormap;
-
-            // Normalize shader paths (remove qrc:/ prefixes for embedded asset lookup)
-            core_series->shader_set = normalize_shader_set(series->shader_set);
-            core_series->shaders.clear();
-            for (const auto& [style, shader] : series->shaders) {
-                core_series->shaders.emplace(style, normalize_shader_set(shader));
-            }
-
-            // Copy access policy (types are now unified)
-            core_series->access = series->access;
-
-            // Use data source directly (types are now unified, no adapter needed)
-            core_series->data_source = series->data_source;
-
-            core_series_map[id] = core_series;
         }
 
-        // Cleanup stale cache entries
-        for (auto it = m_impl->core_series_cache.begin(); it != m_impl->core_series_cache.end(); ) {
-            if (seen_ids.find(it->first) == seen_ids.end()) {
-                it = m_impl->core_series_cache.erase(it);
-            }
-            else {
-                ++it;
-            }
+        {
+            VNM_PLOT_PROFILE_SCOPE(
+                profiler,
+                "renderer.frame.execute_passes.series_render");
+            m_impl->series.render(series_ctx, core_series_map);
         }
-
-        m_impl->series.render(series_ctx, core_series_map);
     }
 
     // Render preview overlay
-    {
-        VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.chrome");
-        m_impl->chrome.render_preview_overlay(core_ctx, m_impl->primitives);
-    }
-    {
-        VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.prims");
-        m_impl->primitives.flush_rects(core_ctx.pmv);
-    }
+    m_impl->chrome.render_preview_overlay(core_ctx, m_impl->primitives);
+    m_impl->primitives.flush_rects(core_ctx.pmv);
 
     // Render text labels
     if (m_impl->text && (!config || config->show_text)) {
@@ -1224,9 +1289,12 @@ void Plot_renderer::render()
         }
     }
 
-    glDisable(GL_BLEND);
-    if (!was_multisample) {
-        glDisable(GL_MULTISAMPLE);
+    {
+        VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.gl_cleanup");
+        glDisable(GL_BLEND);
+        if (!was_multisample) {
+            glDisable(GL_MULTISAMPLE);
+        }
     }
 }
 

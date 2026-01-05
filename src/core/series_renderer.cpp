@@ -260,7 +260,8 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
     const std::vector<std::size_t>& scales,
     double t_min,
     double t_max,
-    double width_px)
+    double width_px,
+    vnm::plot::Profiler* profiler)
 {
     view_render_result_t result;
 
@@ -329,41 +330,77 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
             continue;
         }
 
-        // Ensure VBO exists and has enough capacity
-        if (view_state.id == UINT_MAX) {
-            glGenBuffers(1, &view_state.id);
-        }
-
-        const std::size_t needed_bytes = snapshot.count * snapshot.stride;
-        const void* current_identity = data_source.identity();
-
-        const bool region_changed = (view_state.last_ring_size < needed_bytes);
-        const bool seq_changed = (snapshot.sequence != view_state.last_sequence);
-        const bool lod_level_changed = (applied_level != view_state.last_lod_level);
-        const bool identity_changed = (current_identity != view_state.cached_data_identity);
-
-        const bool must_upload = region_changed || seq_changed || lod_level_changed || identity_changed;
-        if (must_upload) {
-            glBindBuffer(GL_ARRAY_BUFFER, view_state.id);
-
-            if (region_changed) {
-                const std::size_t alloc_size = needed_bytes + needed_bytes / 4;
-                glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(alloc_size), nullptr, GL_DYNAMIC_DRAW);
-                view_state.last_ring_size = alloc_size;
-                ++m_metrics.vbo_reallocations;
-                m_metrics.bytes_allocated += alloc_size;
+        {
+            VNM_PLOT_PROFILE_SCOPE(
+                profiler,
+                "renderer.frame.execute_passes.render_data_series.series.cpu_prepare");
+            // Ensure VBO exists and has enough capacity
+            {
+                VNM_PLOT_PROFILE_SCOPE(
+                    profiler,
+                    "renderer.frame.execute_passes.render_data_series.series.cpu_prepare.ensure_vbo");
+                if (view_state.id == UINT_MAX) {
+                    glGenBuffers(1, &view_state.id);
+                }
             }
 
-            glBufferSubData(GL_ARRAY_BUFFER, 0, static_cast<GLsizeiptr>(snapshot.count * snapshot.stride), snapshot.data);
-            m_metrics.bytes_uploaded += snapshot.count * snapshot.stride;
+            std::size_t needed_bytes = 0;
+            const void* current_identity = nullptr;
+            bool region_changed = false;
+            bool seq_changed = false;
+            bool lod_level_changed = false;
+            bool identity_changed = false;
+            bool must_upload = false;
+            {
+                VNM_PLOT_PROFILE_SCOPE(
+                    profiler,
+                    "renderer.frame.execute_passes.render_data_series.series.cpu_prepare.state_check");
+                needed_bytes = snapshot.count * snapshot.stride;
+                current_identity = data_source.identity();
 
-            glBindBuffer(GL_ARRAY_BUFFER, 0);
+                region_changed = (view_state.last_ring_size < needed_bytes);
+                seq_changed = (snapshot.sequence != view_state.last_sequence);
+                lod_level_changed = (applied_level != view_state.last_lod_level);
+                identity_changed = (current_identity != view_state.cached_data_identity);
 
-            view_state.last_sequence = snapshot.sequence;
-            view_state.cached_data_identity = current_identity;
+                must_upload = region_changed || seq_changed || lod_level_changed || identity_changed;
+            }
+            if (must_upload) {
+                VNM_PLOT_PROFILE_SCOPE(
+                    profiler,
+                    "renderer.frame.execute_passes.render_data_series.series.cpu_prepare.vbo_manage");
+                glBindBuffer(GL_ARRAY_BUFFER, view_state.id);
+
+                if (region_changed) {
+                    const std::size_t alloc_size = needed_bytes + needed_bytes / 4;
+                    glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(alloc_size), nullptr, GL_DYNAMIC_DRAW);
+                    view_state.last_ring_size = alloc_size;
+                    ++m_metrics.vbo_reallocations;
+                    m_metrics.bytes_allocated += alloc_size;
+                }
+
+                glBufferSubData(GL_ARRAY_BUFFER, 0, static_cast<GLsizeiptr>(snapshot.count * snapshot.stride), snapshot.data);
+                m_metrics.bytes_uploaded += snapshot.count * snapshot.stride;
+
+                glBindBuffer(GL_ARRAY_BUFFER, 0);
+            }
+
+            if (must_upload) {
+                VNM_PLOT_PROFILE_SCOPE(
+                    profiler,
+                    "renderer.frame.execute_passes.render_data_series.series.cpu_prepare.upload_state");
+                view_state.last_sequence = snapshot.sequence;
+                view_state.cached_data_identity = current_identity;
+            }
+
+            {
+                VNM_PLOT_PROFILE_SCOPE(
+                    profiler,
+                    "renderer.frame.execute_passes.render_data_series.series.cpu_prepare.state_update");
+                view_state.last_snapshot_elements = snapshot.count;
+            }
         }
 
-        view_state.last_snapshot_elements = snapshot.count;
         view_state.active_vbo = view_state.id;
         view_state.last_first = static_cast<GLint>(first_idx);
         view_state.last_count = count;
@@ -430,64 +467,92 @@ void Series_renderer::render(
     vnm::plot::Profiler* profiler = ctx.config ? ctx.config->profiler : nullptr;
     VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.execute_passes.render_data_series");
 
-    const bool dark_mode = ctx.config ? ctx.config->dark_mode : false;
-    const float line_width = ctx.config ? static_cast<float>(ctx.config->line_width_px) : 1.0f;
-    const float area_fill_alpha = ctx.config ? static_cast<float>(ctx.config->area_fill_alpha) : 0.3f;
+    bool dark_mode = false;
+    float line_width = 1.0f;
+    float area_fill_alpha = 0.3f;
+    {
+        VNM_PLOT_PROFILE_SCOPE(
+            profiler,
+            "renderer.frame.execute_passes.render_data_series.setup");
+        dark_mode = ctx.config ? ctx.config->dark_mode : false;
+        line_width = ctx.config ? static_cast<float>(ctx.config->line_width_px) : 1.0f;
+        area_fill_alpha = ctx.config ? static_cast<float>(ctx.config->area_fill_alpha) : 0.3f;
+    }
     const auto to_gl_scissor_y = [&](double top, double height) -> GLint {
         return static_cast<GLint>(lround(double(ctx.win_h) - (top + height)));
     };
 
     // Cleanup stale VBO states for series no longer in the map
-    for (auto it = m_vbo_states.begin(); it != m_vbo_states.end(); ) {
-        if (series.find(it->first) == series.end()) {
-            auto& state = it->second;
-            for (auto* view : {&state.main_view, &state.preview_view}) {
-                if (view->id != UINT_MAX) {
-                    glDeleteBuffers(1, &view->id);
+    {
+        VNM_PLOT_PROFILE_SCOPE(
+            profiler,
+            "renderer.frame.execute_passes.render_data_series.cleanup_vbos");
+        for (auto it = m_vbo_states.begin(); it != m_vbo_states.end(); ) {
+            if (series.find(it->first) == series.end()) {
+                auto& state = it->second;
+                for (auto* view : {&state.main_view, &state.preview_view}) {
+                    if (view->id != UINT_MAX) {
+                        glDeleteBuffers(1, &view->id);
+                    }
                 }
+                it = m_vbo_states.erase(it);
             }
-            it = m_vbo_states.erase(it);
-        }
-        else {
-            ++it;
+            else {
+                ++it;
+            }
         }
     }
 
     // Cleanup stale colormap textures
-    for (auto it = m_colormap_textures.begin(); it != m_colormap_textures.end(); ) {
-        bool found = false;
-        for (const auto& [_, s] : series) {
-            if (s.get() == it->first) {
-                found = true;
-                break;
+    {
+        VNM_PLOT_PROFILE_SCOPE(
+            profiler,
+            "renderer.frame.execute_passes.render_data_series.cleanup_colormaps");
+        for (auto it = m_colormap_textures.begin(); it != m_colormap_textures.end(); ) {
+            bool found = false;
+            for (const auto& [_, s] : series) {
+                if (s.get() == it->first) {
+                    found = true;
+                    break;
+                }
             }
-        }
-        if (!found) {
-            if (it->second.texture != 0) {
-                glDeleteTextures(1, &it->second.texture);
+            if (!found) {
+                if (it->second.texture != 0) {
+                    glDeleteTextures(1, &it->second.texture);
+                }
+                it = m_colormap_textures.erase(it);
             }
-            it = m_colormap_textures.erase(it);
-        }
-        else {
-            ++it;
+            else {
+                ++it;
+            }
         }
     }
 
-    const GLboolean was_blend = glIsEnabled(GL_BLEND);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    GLboolean was_blend = GL_FALSE;
+    {
+        VNM_PLOT_PROFILE_SCOPE(
+            profiler,
+            "renderer.frame.execute_passes.render_data_series.blend_setup");
+        was_blend = glIsEnabled(GL_BLEND);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    }
 
     for (const auto& [id, s] : series) {
+        VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.execute_passes.render_data_series.series");
         if (!s || !s->enabled || !s->data_source) {
             continue;
         }
 
-        VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.execute_passes.render_data_series.series");
-
         auto& vbo_state = m_vbo_states[id];
 
         // Build LOD scales vector using shared helper
-        const std::vector<std::size_t> scales = compute_lod_scales(*s->data_source);
+        const std::vector<std::size_t> scales = [&]() {
+            VNM_PLOT_PROFILE_SCOPE(
+                profiler,
+                "renderer.frame.execute_passes.render_data_series.series.prepare");
+            return compute_lod_scales(*s->data_source);
+        }();
 
         // Process main view
         const std::size_t prev_lod_level = vbo_state.main_view.last_lod_level;
@@ -501,7 +566,8 @@ void Series_renderer::render(
                 s->access.get_timestamp,
                 scales,
                 ctx.t0, ctx.t1,
-                layout.usable_width);
+                layout.usable_width,
+                profiler);
         }();
         if (ctx.config && ctx.config->log_debug &&
             main_result.can_draw &&
@@ -518,6 +584,9 @@ void Series_renderer::render(
                              vbo_view_state_t& view_state,
                              const view_render_result_t& view_result,
                              bool is_preview) {
+            VNM_PLOT_PROFILE_SCOPE(
+                profiler,
+                "renderer.frame.execute_passes.render_data_series.series.draw_pass");
             const GLsizei count = view_result.count;
             if (count <= 0) {
                 return;
@@ -580,12 +649,23 @@ void Series_renderer::render(
                     glBindTexture(GL_TEXTURE_1D, colormap_tex);
                     glUniform1i(glGetUniformLocation(program_id, "colormap"), 0);
 
-                    const auto snapshot = s->data_source->snapshot(view_result.applied_level);
+                    data_snapshot_t snapshot;
+                    {
+                        VNM_PLOT_PROFILE_SCOPE(
+                            profiler,
+                            "renderer.frame.execute_passes.render_data_series.series.ensure_full_resolution_aux_metric_range");
+                        snapshot = s->data_source->snapshot(view_result.applied_level);
+                    }
                     if (snapshot) {
                         double aux_min = 0.0, aux_max = 1.0;
-                        if (compute_aux_metric_range(*s, snapshot, aux_min, aux_max)) {
-                            vbo_state.cached_aux_metric_min = aux_min;
-                            vbo_state.cached_aux_metric_max = aux_max;
+                        {
+                            VNM_PLOT_PROFILE_SCOPE(
+                                profiler,
+                                "renderer.frame.execute_passes.render_data_series.series.compute_aux_metric_range");
+                            if (compute_aux_metric_range(*s, snapshot, aux_min, aux_max)) {
+                                vbo_state.cached_aux_metric_min = aux_min;
+                                vbo_state.cached_aux_metric_max = aux_max;
+                            }
                         }
                     }
                     const float aux_min_f = static_cast<float>(vbo_state.cached_aux_metric_min);
@@ -709,7 +789,8 @@ void Series_renderer::render(
                     s->access.get_timestamp,
                     scales,
                     ctx.t_available_min, ctx.t_available_max,
-                    ctx.win_w);
+                    ctx.win_w,
+                    profiler);
             }();
 
             if (preview_result.can_draw) {
@@ -730,9 +811,14 @@ void Series_renderer::render(
         }
     }
 
-    glUseProgram(0);
-    if (!was_blend) {
-        glDisable(GL_BLEND);
+    {
+        VNM_PLOT_PROFILE_SCOPE(
+            profiler,
+            "renderer.frame.execute_passes.render_data_series.blend_cleanup");
+        glUseProgram(0);
+        if (!was_blend) {
+            glDisable(GL_BLEND);
+        }
     }
 }
 

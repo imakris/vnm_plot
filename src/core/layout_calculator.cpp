@@ -412,204 +412,303 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
 {
     result_t res;
 
-    // Optional profiling
-    VNM_PLOT_PROFILE_SCOPE(params.profiler, "layout.calculate");
+    vnm::plot::Profiler* profiler = params.profiler;
+    VNM_PLOT_PROFILE_SCOPE(
+        profiler,
+        "renderer.frame.calculate_layout.impl.cache_miss.pass1");
 
     // --- Vertical (V) Axis Label Selection ---
-    const double v_span = double(params.v_max) - double(params.v_min);
+    double v_span = 0.0;
+    {
+        VNM_PLOT_PROFILE_SCOPE(
+            profiler,
+            "renderer.frame.calculate_layout.impl.cache_miss.pass1.v_span");
+        v_span = double(params.v_max) - double(params.v_min);
+    }
     if (v_span > 0.0 && params.usable_height > 0.0) {
-        VNM_PLOT_PROFILE_SCOPE(params.profiler, "layout.vertical_axis");
+        VNM_PLOT_PROFILE_SCOPE(
+            profiler,
+            "renderer.frame.calculate_layout.impl.cache_miss.pass1.vertical_axis");
 
         const int divs[2] = {5, 2};
         double step = 1.0;
         double test = 0.0;
         int i = 16;
-
-        const auto validate_seed = [&](double seed_step, int seed_index) {
-            if (!(seed_step > 0.0)) {
-                return false;
-            }
-            const double upper = seed_step * divs[seed_index & 1];
-            const double lower = seed_step / divs[(seed_index - 1) & 1];
-            if (!std::isfinite(upper) || !std::isfinite(lower)) {
-                return false;
-            }
-            const double tol = std::max(1e-6, std::abs(v_span) * 1e-6);
-            return (lower - tol) <= v_span && v_span <= (upper + tol);
-        };
-
-        bool used_seed = false;
-        if (params.has_vertical_seed && params.vertical_seed_index >= 0) {
-            if (validate_seed(params.vertical_seed_step, params.vertical_seed_index)) {
-                step = params.vertical_seed_step;
-                i = params.vertical_seed_index;
-                used_seed = true;
-            }
-        }
-
-        if (!used_seed) {
-            for (; (test = step * divs[i & 1]) < v_span; ++i) {
-                step = test;
-            }
-            for (; (test = step / divs[(i - 1) & 1]) > v_span; --i) {
-                step = test;
-            }
-        }
-
-        const int initial_level_index = i;
-        const double initial_level_step = step;
-
-        const double px_per_unit = params.usable_height / v_span;
-        const auto y_of = [&](double v) {
-            return float(params.usable_height - (v - double(params.v_min)) * px_per_unit);
-        };
+        int initial_level_index = 0;
+        double initial_level_step = 0.0;
+        double px_per_unit = 0.0;
+        float k_min_gap = 0.0f;
+        double finest_step_accepted = 0.0;
 
         auto& accepted_boxes = m_scratch_accepted_boxes;
         auto& level          = m_scratch_level;
         auto& accepted_y     = m_scratch_accepted_y;
-        accepted_boxes.clear();
-        level.clear();
-        accepted_y.clear();
 
         constexpr float k_coincide = 1.0f;
-        const float k_min_gap = static_cast<float>(params.adjusted_font_size_in_pixels + 10.0f);
 
-        double finest_step_accepted = step;
+        {
+            VNM_PLOT_PROFILE_SCOPE(
+                profiler,
+                "renderer.frame.calculate_layout.impl.cache_miss.pass1.vertical_axis.setup");
+            const auto validate_seed = [&](double seed_step, int seed_index) {
+                if (!(seed_step > 0.0)) {
+                    return false;
+                }
+                const double upper = seed_step * divs[seed_index & 1];
+                const double lower = seed_step / divs[(seed_index - 1) & 1];
+                if (!std::isfinite(upper) || !std::isfinite(lower)) {
+                    return false;
+                }
+                const double tol = std::max(1e-6, std::abs(v_span) * 1e-6);
+                return (lower - tol) <= v_span && v_span <= (upper + tol);
+            };
+
+            bool used_seed = false;
+            if (params.has_vertical_seed && params.vertical_seed_index >= 0) {
+                if (validate_seed(params.vertical_seed_step, params.vertical_seed_index)) {
+                    step = params.vertical_seed_step;
+                    i = params.vertical_seed_index;
+                    used_seed = true;
+                }
+            }
+
+            if (!used_seed) {
+                for (; (test = step * divs[i & 1]) < v_span; ++i) {
+                    step = test;
+                }
+                for (; (test = step / divs[(i - 1) & 1]) > v_span; --i) {
+                    step = test;
+                }
+            }
+
+            initial_level_index = i;
+            initial_level_step = step;
+            px_per_unit = params.usable_height / v_span;
+
+            accepted_boxes.clear();
+            level.clear();
+            accepted_y.clear();
+
+            k_min_gap = static_cast<float>(params.adjusted_font_size_in_pixels + 10.0f);
+            finest_step_accepted = step;
+        }
+
+        const auto y_of = [&](double v) {
+            return float(params.usable_height - (v - double(params.v_min)) * px_per_unit);
+        };
 
         for (int guard = 0; guard < 64; ++guard) {
-            level.clear();
-            const double shift  = get_shift(step, double(params.v_min));
-            const double extend = step;
-            const int j_min = static_cast<int>(std::ceil((-extend - shift) / step - 1e-9));
-            const int j_max = static_cast<int>(std::floor((v_span + extend - shift) / step + 1e-9));
-
+            double shift = 0.0;
+            double extend = 0.0;
+            int j_min = 0;
+            int j_max = 0;
             auto& this_vals = m_scratch_vals;
-            this_vals.clear();
-            this_vals.reserve(j_max - j_min + 1);
             bool skip_level_due_to_conflict = false;
 
-            for (int j = j_min; j <= j_max; ++j) {
-                const double v = double(params.v_min) + shift + j * step;
-                const float y = y_of(v);
+            {
+                VNM_PLOT_PROFILE_SCOPE(
+                    profiler,
+                    "renderer.frame.calculate_layout.impl.cache_miss.pass1.vertical_axis.iter_prep");
+                level.clear();
+                shift = get_shift(step, double(params.v_min));
+                extend = step;
+                j_min = static_cast<int>(std::ceil((-extend - shift) / step - 1e-9));
+                j_max = static_cast<int>(std::floor((v_span + extend - shift) / step + 1e-9));
+                this_vals.clear();
+                this_vals.reserve(j_max - j_min + 1);
+            }
 
-                if (y <= 0.f || y >= float(params.label_visible_height)) {
-                    continue;
-                }
+            {
+                VNM_PLOT_PROFILE_SCOPE(
+                    profiler,
+                    "renderer.frame.calculate_layout.impl.cache_miss.pass1.vertical_axis.scan");
+                for (int j = j_min; j <= j_max; ++j) {
+                    const double v = double(params.v_min) + shift + j * step;
+                    const float y = y_of(v);
 
-                bool coincides = false;
-                for (float ay : accepted_y) {
-                    if (std::fabs(ay - y) < k_coincide) {
-                        coincides = true;
-                        break;
+                    if (y <= 0.f || y >= float(params.label_visible_height)) {
+                        continue;
                     }
-                }
 
-                if (!coincides) {
-                    if (!this_vals.empty()) {
-                        const float prev_y = this_vals.back().second;
-                        if (std::fabs(prev_y - y) < k_min_gap) {
-                            skip_level_due_to_conflict = true;
+                    bool coincides = false;
+                    for (float ay : accepted_y) {
+                        if (std::fabs(ay - y) < k_coincide) {
+                            coincides = true;
                             break;
                         }
                     }
-                    this_vals.emplace_back(v, y);
-                }
-            }
 
-            if (skip_level_due_to_conflict) {
-                this_vals.clear();
-            }
-
-            if (!skip_level_due_to_conflict) {
-                for (const auto& vy : this_vals) {
-                    level.emplace_back(vy.second - 0.5f * k_min_gap, vy.second + 0.5f * k_min_gap);
-                }
-                std::sort(level.begin(), level.end());
-
-                bool level_fits = false;
-                if (!level.empty()) {
-                    level_fits = fits_with_gap(level, accepted_boxes, 10.0f);
-                }
-
-                if (level_fits) {
-                    finest_step_accepted = std::min(finest_step_accepted, step);
-                    for (size_t k = 0; k < this_vals.size(); ++k) {
-                        res.v_labels.push_back({this_vals[k].first, this_vals[k].second, {}});
-                        accepted_boxes.push_back(level[k]);
-                        accepted_y.push_back(this_vals[k].second);
+                    if (!coincides) {
+                        if (!this_vals.empty()) {
+                            const float prev_y = this_vals.back().second;
+                            if (std::fabs(prev_y - y) < k_min_gap) {
+                                skip_level_due_to_conflict = true;
+                                break;
+                            }
+                        }
+                        this_vals.emplace_back(v, y);
                     }
-                    std::inplace_merge(
-                        accepted_boxes.begin(),
-                        accepted_boxes.end() - level.size(),
-                        accepted_boxes.end());
                 }
             }
 
-            --i;
-            step /= divs[i & 1];
-            if (step * px_per_unit < 2.0) {
-                break;
+            {
+                VNM_PLOT_PROFILE_SCOPE(
+                    profiler,
+                    "renderer.frame.calculate_layout.impl.cache_miss.pass1.vertical_axis.resolve");
+                if (skip_level_due_to_conflict) {
+                    this_vals.clear();
+                }
+
+                if (!skip_level_due_to_conflict) {
+                    bool level_fits = false;
+                    {
+                        VNM_PLOT_PROFILE_SCOPE(
+                            profiler,
+                            "renderer.frame.calculate_layout.impl.cache_miss.pass1.vertical_axis.level_build");
+                        for (const auto& vy : this_vals) {
+                            level.emplace_back(vy.second - 0.5f * k_min_gap, vy.second + 0.5f * k_min_gap);
+                        }
+                        std::sort(level.begin(), level.end());
+                    }
+
+                    if (!level.empty()) {
+                        VNM_PLOT_PROFILE_SCOPE(
+                            profiler,
+                            "renderer.frame.calculate_layout.impl.cache_miss.pass1.vertical_axis.fits_with_gap");
+                        level_fits = fits_with_gap(level, accepted_boxes, 10.0f);
+                    }
+
+                    if (level_fits) {
+                        VNM_PLOT_PROFILE_SCOPE(
+                            profiler,
+                            "renderer.frame.calculate_layout.impl.cache_miss.pass1.vertical_axis.accept");
+                        finest_step_accepted = std::min(finest_step_accepted, step);
+                        for (size_t k = 0; k < this_vals.size(); ++k) {
+                            res.v_labels.push_back({this_vals[k].first, this_vals[k].second, {}});
+                            accepted_boxes.push_back(level[k]);
+                            accepted_y.push_back(this_vals[k].second);
+                        }
+                        std::inplace_merge(
+                            accepted_boxes.begin(),
+                            accepted_boxes.end() - level.size(),
+                            accepted_boxes.end());
+                    }
+                }
+            }
+
+            {
+                VNM_PLOT_PROFILE_SCOPE(
+                    profiler,
+                    "renderer.frame.calculate_layout.impl.cache_miss.pass1.vertical_axis.advance");
+                --i;
+                step /= divs[i & 1];
+                if (step * px_per_unit < 2.0) {
+                    break;
+                }
             }
         }
 
-        res.vertical_seed_index = initial_level_index;
-        res.vertical_seed_step  = initial_level_step;
-        res.vertical_finest_step = finest_step_accepted;
-
-        res.v_label_fixed_digits = std::max(0, params.get_required_fixed_digits_func(finest_step_accepted));
-
-        auto& vals = m_scratch_vals_d;
-        vals.clear();
-        vals.reserve(res.v_labels.size());
-        for (const auto& e : res.v_labels) {
-            vals.push_back(e.value);
+        {
+            VNM_PLOT_PROFILE_SCOPE(
+                profiler,
+                "renderer.frame.calculate_layout.impl.cache_miss.pass1.vertical_axis.finalize");
+            res.vertical_seed_index = initial_level_index;
+            res.vertical_seed_step  = initial_level_step;
+            res.vertical_finest_step = finest_step_accepted;
         }
 
-        if (!any_fractional_at_precision(vals, res.v_label_fixed_digits)) {
-            res.v_label_fixed_digits = 0;
-        }
-        else {
-            res.v_label_fixed_digits = trim_trailing_zero_decimals(vals, res.v_label_fixed_digits);
+        {
+            VNM_PLOT_PROFILE_SCOPE(
+                profiler,
+                "renderer.frame.calculate_layout.impl.cache_miss.pass1.vertical_axis.fixed_digits");
+            res.v_label_fixed_digits = std::max(0, params.get_required_fixed_digits_func(finest_step_accepted));
+
+            auto& vals = m_scratch_vals_d;
+            vals.clear();
+            vals.reserve(res.v_labels.size());
+            for (const auto& e : res.v_labels) {
+                vals.push_back(e.value);
+            }
+
+            if (!any_fractional_at_precision(vals, res.v_label_fixed_digits)) {
+                res.v_label_fixed_digits = 0;
+            }
+            else {
+                res.v_label_fixed_digits = trim_trailing_zero_decimals(vals, res.v_label_fixed_digits);
+            }
         }
 
         // Format and measure labels
-        res.max_v_label_text_width = 0.f;
-        const float advance = std::max(params.monospace_char_advance_px, 0.f);
-        const bool use_monospace = params.monospace_advance_is_reliable && advance > 0.f;
+        float advance = 0.f;
+        bool use_monospace = false;
+        {
+            VNM_PLOT_PROFILE_SCOPE(
+                profiler,
+                "renderer.frame.calculate_layout.impl.cache_miss.pass1.vertical_axis.label_prep");
+            res.max_v_label_text_width = 0.f;
+            advance = std::max(params.monospace_char_advance_px, 0.f);
+            use_monospace = params.monospace_advance_is_reliable && advance > 0.f;
+        }
 
-        for (auto& e : res.v_labels) {
-            std::string text = format_axis_fixed_or_int(e.value, res.v_label_fixed_digits);
-            if (text.empty() || text[0] != '-') {
-                text.insert(text.begin(), ' ');
-            }
+        {
+            VNM_PLOT_PROFILE_SCOPE(
+                profiler,
+                "renderer.frame.calculate_layout.impl.cache_miss.pass1.vertical_axis.measure_text");
+            for (auto& e : res.v_labels) {
+                std::string text = format_axis_fixed_or_int(e.value, res.v_label_fixed_digits);
+                if (text.empty() || text[0] != '-') {
+                    text.insert(text.begin(), ' ');
+                }
 
-            float width = 0.f;
-            if (use_monospace) {
-                width = advance * float(text.size());
-            }
-            else if (params.measure_text_func) {
-                width = params.measure_text_func(text.c_str());
-                if (width <= 0.f && advance > 0.f) {
+                float width = 0.f;
+                if (use_monospace) {
                     width = advance * float(text.size());
                 }
-            }
-            else {
-                width = advance * float(text.size());
-            }
+                else if (params.measure_text_func) {
+                    width = params.measure_text_func(text.c_str());
+                    if (width <= 0.f && advance > 0.f) {
+                        width = advance * float(text.size());
+                    }
+                }
+                else {
+                    width = advance * float(text.size());
+                }
 
-            res.max_v_label_text_width = std::max(res.max_v_label_text_width, width);
-            e.text = std::move(text);
+                res.max_v_label_text_width = std::max(res.max_v_label_text_width, width);
+                e.text = std::move(text);
+            }
         }
     }
 
     // --- Horizontal (T) Axis Label Selection ---
-    const double t_range = params.t_max - params.t_min;
+    double t_range = 0.0;
+    {
+        VNM_PLOT_PROFILE_SCOPE(
+            profiler,
+            "renderer.frame.calculate_layout.impl.cache_miss.pass1.t_range");
+        t_range = params.t_max - params.t_min;
+    }
     if (t_range > 0.0 && params.usable_width > 0.0f) {
-        VNM_PLOT_PROFILE_SCOPE(params.profiler, "layout.horizontal_axis");
+        VNM_PLOT_PROFILE_SCOPE(
+            profiler,
+            "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis");
 
-        const double px_per_t = params.usable_width / t_range;
         constexpr float k_coincide = 1.0f;
         const float min_gap = 10.0f;
+
+        double px_per_t = 0.0;
+        float advance = 0.f;
+        bool use_monospace = false;
+        std::vector<double> steps;
+        {
+            VNM_PLOT_PROFILE_SCOPE(
+                profiler,
+                "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis.prep");
+            px_per_t = params.usable_width / t_range;
+            advance = std::max(params.monospace_char_advance_px, 0.f);
+            use_monospace = params.monospace_advance_is_reliable && advance > 0.f;
+            steps = build_time_steps_covering(t_range);
+        }
 
         const auto x_of_t = [&](double tt) -> float {
             return float((tt - params.t_min) * px_per_t);
@@ -622,26 +721,28 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
             return params.format_timestamp_func(t, t_range);
         };
 
-        const float advance = std::max(params.monospace_char_advance_px, 0.f);
-        const bool use_monospace = params.monospace_advance_is_reliable && advance > 0.f;
-
         std::vector<std::pair<float, float>> accepted;
         std::vector<std::pair<float, float>> level;
-        const auto steps = build_time_steps_covering(t_range);
 
         int si = -1;
-        if (params.has_horizontal_seed &&
-            params.horizontal_seed_index >= 0 &&
-            params.horizontal_seed_index < static_cast<int>(steps.size()))
         {
-            const double seeded_step = steps[params.horizontal_seed_index];
-            const double ref = std::max(1e-6, std::max(std::abs(seeded_step), std::abs(params.horizontal_seed_step)));
-            if (std::abs(seeded_step - params.horizontal_seed_step) <= ref * 1e-6) {
-                si = params.horizontal_seed_index;
+            VNM_PLOT_PROFILE_SCOPE(
+                profiler,
+                "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis.setup");
+            if (params.has_horizontal_seed &&
+                params.horizontal_seed_index >= 0 &&
+                params.horizontal_seed_index < static_cast<int>(steps.size()))
+            {
+                const double seeded_step = steps[params.horizontal_seed_index];
+                const double ref = std::max(1e-6, std::max(std::abs(seeded_step), std::abs(params.horizontal_seed_step)));
+                if (std::abs(seeded_step - params.horizontal_seed_step) <= ref * 1e-6) {
+                    si = params.horizontal_seed_index;
+                }
             }
-        }
-        if (si < 0) {
-            si = std::max(0, find_time_step_start_index(steps, t_range));
+            if (si < 0) {
+                si = std::max(0, find_time_step_start_index(steps, t_range));
+            }
+            level.reserve(32);
         }
 
         const int start_si     = si;
@@ -650,13 +751,16 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
         bool any_level  = false;
         bool any_subsec = false;
 
-        level.reserve(32);
-
         for (; si >= 0; --si) {
             const double step = steps[si];
 
-            if (step * px_per_t < min_gap) {
-                break;
+            {
+                VNM_PLOT_PROFILE_SCOPE(
+                    profiler,
+                    "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis.step_guard");
+                if (step * px_per_t < min_gap) {
+                    break;
+                }
             }
 
             struct cand
@@ -668,41 +772,64 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
                 std::string fallback;
             };
             std::vector<cand> candidates;
-            candidates.reserve(64);
+            float right_vis = 0.0f;
+            float pixel_step = 0.0f;
+            float optimistic_width = 0.0f;
+            float estimated_label_width = 0.0f;
+            double t_start = 0.0;
+            {
+                VNM_PLOT_PROFILE_SCOPE(
+                    profiler,
+                    "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis.step_prep");
+                candidates.reserve(64);
 
-            const float right_vis  = float(params.usable_width + params.vbar_width);
-            const float pixel_step = static_cast<float>(step * px_per_t);
-            if (pixel_step <= 0.f) {
-                continue;
+                right_vis = float(params.usable_width + params.vbar_width);
+                pixel_step = static_cast<float>(step * px_per_t);
+                if (pixel_step <= 0.f) {
+                    continue;
+                }
+
+                optimistic_width = use_monospace ? advance * 4.f : min_gap;
+                if (pixel_step < (optimistic_width + min_gap)) {
+                    break;
+                }
+
+                // Estimate timestamp label width (e.g. "1970-01-01 02:30:00" = 19 chars).
+                estimated_label_width = (advance > 0.f) ? advance * 20.f : (min_gap * 10.f);
+
+                // Start tick generation early enough that labels whose right edge is still visible
+                // are included. A label at anchor x extends visually to x + k_text_margin_px + width.
+                // Using floor (not ceil) plus a width-based margin ensures we don't skip visible labels
+                // when t_min crosses a step boundary during panning.
+                const float label_extent_px = estimated_label_width + k_text_margin_px;
+                const double left_steps =
+                    static_cast<double>(label_extent_px) / static_cast<double>(pixel_step);
+                const int64_t k_min = static_cast<int64_t>(
+                    std::floor((params.t_min / step) - 1.0 - left_steps));
+                t_start = k_min * step;
             }
 
-            const float optimistic_width = use_monospace ? advance * 4.f : min_gap;
-            if (pixel_step < (optimistic_width + min_gap)) {
-                break;
+            size_t format_signature = 0;
+            {
+                VNM_PLOT_PROFILE_SCOPE(
+                    profiler,
+                    "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis.format_labels.signature_build");
+                format_signature = format_signature_cache().get_or_compute(step, t_range, params);
             }
 
-            // Estimate timestamp label width (e.g. "1970-01-01 02:30:00" = 19 chars).
-            const float estimated_label_width = (advance > 0.f) ? advance * 20.f : (min_gap * 10.f);
-
-            // Start tick generation early enough that labels whose right edge is still visible
-            // are included. A label at anchor x extends visually to x + k_text_margin_px + width.
-            // Using floor (not ceil) plus a width-based margin ensures we don't skip visible labels
-            // when t_min crosses a step boundary during panning.
-            const float label_extent_px = estimated_label_width + k_text_margin_px;
-            const double left_steps = static_cast<double>(label_extent_px) / static_cast<double>(pixel_step);
-            const int64_t k_min = static_cast<int64_t>(std::floor((params.t_min / step) - 1.0 - left_steps));
-            const double t_start = k_min * step;
-
-            const size_t format_signature = format_signature_cache().get_or_compute(step, t_range, params);
-
-            timestamp_label_cache().set_context(
-                step,
-                t_range,
-                params.measure_text_cache_key,
-                advance,
-                params.monospace_advance_is_reliable,
-                params.adjusted_font_size_in_pixels,
-                format_signature);
+            {
+                VNM_PLOT_PROFILE_SCOPE(
+                    profiler,
+                    "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis.cache_context");
+                timestamp_label_cache().set_context(
+                    step,
+                    t_range,
+                    params.measure_text_cache_key,
+                    advance,
+                    params.monospace_advance_is_reliable,
+                    params.adjusted_font_size_in_pixels,
+                    format_signature);
+            }
 
             int64_t tick_index = 0;
             double t = t_start;
@@ -711,137 +838,204 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
             float prev_candidate_x1 = std::numeric_limits<float>::lowest();
             bool step_invalid = false;
 
-            while (t <= params.t_max + step) {
-                const float x = x_of_t(t);
-                if (x >= right_vis) {
-                    break;
-                }
-
-                cand candidate{t, x, x, x, {}};
-                // Use conservative width estimate for skip optimization.
-                // Must be at least as large as actual label width to avoid skipping visible labels.
-                const float skip_width = std::max(last_width, estimated_label_width);
-                // Account for text margin: visual right edge is at x + k_text_margin_px + width.
-                // Skip only when visual right edge is fully offscreen (< 0).
-                if (x + k_text_margin_px + skip_width <= 0.f) {
-                    const int skip = std::max(1, int(std::ceil(skip_width / pixel_step)));
-                    tick_index += skip;
-                    t = t_start + tick_index * step;
-                    continue;
-                }
-
-                const bool anchor_taken = has_anchor_within(accepted, x, k_coincide);
-
-                if (anchor_taken) {
-                    const int skip = std::max(1, int(std::ceil(min_gap / pixel_step)));
-                    tick_index += skip;
-                    t = t_start + tick_index * step;
-                    continue;
-                }
-
-                if (have_prev_candidate && x < prev_candidate_x1 + min_gap) {
-                    step_invalid = true;
-                    candidates.clear();
-                    break;
-                }
-
-                float w = 0.0f;
-                const Cached_label* cached = nullptr;
-                const bool cache_hit = timestamp_label_cache().try_get(t, cached);
-
-                if (cache_hit) {
-                    w = cached->width;
-                }
-                else {
-                    std::string label = label_text(t);
-
-                    if (use_monospace) {
-                        w = advance * float(label.size());
+            {
+                VNM_PLOT_PROFILE_SCOPE(
+                    profiler,
+                    "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis.format_labels");
+                while (t <= params.t_max + step) {
+                    VNM_PLOT_PROFILE_SCOPE(
+                        profiler,
+                        "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis.format_labels.candidate_loop");
+                    const float x = x_of_t(t);
+                    if (x >= right_vis) {
+                        break;
                     }
-                    else if (params.measure_text_func) {
-                        w = params.measure_text_func(label.c_str());
-                        if (w <= 0.f && advance > 0.f) {
-                            w = advance * float(label.size());
-                        }
+
+                    cand candidate{t, x, x, x, {}};
+                    // Use conservative width estimate for skip optimization.
+                    // Must be at least as large as actual label width to avoid skipping visible labels.
+                    const float skip_width = std::max(last_width, estimated_label_width);
+                    // Account for text margin: visual right edge is at x + k_text_margin_px + width.
+                    // Skip only when visual right edge is fully offscreen (< 0).
+                    if (x + k_text_margin_px + skip_width <= 0.f) {
+                        const int skip = std::max(1, int(std::ceil(skip_width / pixel_step)));
+                        tick_index += skip;
+                        t = t_start + tick_index * step;
+                        continue;
+                    }
+
+                    bool anchor_taken = false;
+                    {
+                        VNM_PLOT_PROFILE_SCOPE(
+                            profiler,
+                            "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis.format_labels.anchor_check");
+                        anchor_taken = has_anchor_within(accepted, x, k_coincide);
+                    }
+
+                    if (anchor_taken) {
+                        const int skip = std::max(1, int(std::ceil(min_gap / pixel_step)));
+                        tick_index += skip;
+                        t = t_start + tick_index * step;
+                        continue;
+                    }
+
+                    if (have_prev_candidate && x < prev_candidate_x1 + min_gap) {
+                        step_invalid = true;
+                        candidates.clear();
+                        break;
+                    }
+
+                    float w = 0.0f;
+                    const Cached_label* cached = nullptr;
+                    const bool cache_hit = timestamp_label_cache().try_get(t, cached);
+
+                    if (cache_hit) {
+                        VNM_PLOT_PROFILE_SCOPE(
+                            profiler,
+                            "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis.format_labels.cache_hit_lookup");
+                        VNM_PLOT_PROFILE_SCOPE(
+                            profiler,
+                            "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis.format_labels.cache_hit_count");
+                        w = cached->width;
                     }
                     else {
-                        w = advance * float(label.size());
+                        VNM_PLOT_PROFILE_SCOPE(
+                            profiler,
+                            "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis.format_labels.cache_miss_lookup");
+                        VNM_PLOT_PROFILE_SCOPE(
+                            profiler,
+                            "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis.format_labels.cache_miss_count");
+                        std::string label;
+                        {
+                            VNM_PLOT_PROFILE_SCOPE(
+                                profiler,
+                                "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis.format_labels.format_timestamp");
+                            label = label_text(t);
+                        }
+
+                        if (use_monospace) {
+                            w = advance * float(label.size());
+                        }
+                        else if (params.measure_text_func) {
+                            VNM_PLOT_PROFILE_SCOPE(
+                                profiler,
+                                "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis.format_labels.measure_text");
+                            w = params.measure_text_func(label.c_str());
+                            if (w <= 0.f && advance > 0.f) {
+                                w = advance * float(label.size());
+                            }
+                        }
+                        else {
+                            w = advance * float(label.size());
+                        }
+
+                        candidate.fallback = label;
+                        std::string cache_bytes = candidate.fallback;
+                        timestamp_label_cache().store(t, std::move(cache_bytes), w);
                     }
 
-                    candidate.fallback = label;
-                    std::string cache_bytes = candidate.fallback;
-                    timestamp_label_cache().store(t, std::move(cache_bytes), w);
-                }
+                    last_width = std::max(w, optimistic_width);
+                    if (w + min_gap > pixel_step) {
+                        step_invalid = true;
+                        candidates.clear();
+                        break;
+                    }
+                    // Account for text margin: visual right edge is at x + k_text_margin_px + w.
+                    // Cull only when visual right edge is fully offscreen (< 0).
+                    if (x + k_text_margin_px + w <= 0.f) {
+                        const int skip = std::max(1, int(std::ceil(w / pixel_step)));
+                        tick_index += skip;
+                        t = t_start + tick_index * step;
+                        continue;
+                    }
+                    if (have_prev_candidate && x < prev_candidate_x1 + min_gap) {
+                        step_invalid = true;
+                        candidates.clear();
+                        break;
+                    }
 
-                last_width = std::max(w, optimistic_width);
-                if (w + min_gap > pixel_step) {
-                    step_invalid = true;
-                    candidates.clear();
-                    break;
-                }
-                // Account for text margin: visual right edge is at x + k_text_margin_px + w.
-                // Cull only when visual right edge is fully offscreen (< 0).
-                if (x + k_text_margin_px + w <= 0.f) {
-                    const int skip = std::max(1, int(std::ceil(w / pixel_step)));
+                    candidate.x1 = x + w;
+                    candidates.push_back(std::move(candidate));
+                    have_prev_candidate = true;
+                    prev_candidate_x1 = x + w;
+
+                    const float required_spacing = w + min_gap;
+                    const int skip = std::max(1, int(std::ceil(required_spacing / pixel_step)));
                     tick_index += skip;
                     t = t_start + tick_index * step;
+                }
+            }
+
+            {
+                VNM_PLOT_PROFILE_SCOPE(
+                    profiler,
+                    "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis.step_checks");
+                if (step_invalid) {
                     continue;
                 }
-                if (have_prev_candidate && x < prev_candidate_x1 + min_gap) {
-                    step_invalid = true;
-                    candidates.clear();
-                    break;
-                }
 
-                candidate.x1 = x + w;
-                candidates.push_back(std::move(candidate));
-                have_prev_candidate = true;
-                prev_candidate_x1 = x + w;
-
-                const float required_spacing = w + min_gap;
-                const int skip = std::max(1, int(std::ceil(required_spacing / pixel_step)));
-                tick_index += skip;
-                t = t_start + tick_index * step;
-            }
-
-            if (step_invalid) {
-                continue;
-            }
-
-            if (candidates.empty()) {
-                continue;
-            }
-
-            // Filter out anchors already taken
-            auto write_it = candidates.begin();
-            for (auto it = candidates.begin(); it != candidates.end(); ++it) {
-                const bool anchor_taken = has_anchor_within(accepted, it->x_anchor, k_coincide);
-                if (anchor_taken) {
+                if (candidates.empty()) {
                     continue;
                 }
-                if (write_it != it) {
-                    *write_it = std::move(*it);
+            }
+
+            {
+                VNM_PLOT_PROFILE_SCOPE(
+                    profiler,
+                    "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis.arrange_labels");
+
+                // Filter out anchors already taken
+                {
+                    VNM_PLOT_PROFILE_SCOPE(
+                        profiler,
+                        "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis.arrange_labels.anchor_filter");
+                    auto write_it = candidates.begin();
+                    for (auto it = candidates.begin(); it != candidates.end(); ++it) {
+                        const bool anchor_taken = has_anchor_within(accepted, it->x_anchor, k_coincide);
+                        if (anchor_taken) {
+                            continue;
+                        }
+                        if (write_it != it) {
+                            *write_it = std::move(*it);
+                        }
+                        ++write_it;
+                    }
+                    candidates.erase(write_it, candidates.end());
                 }
-                ++write_it;
-            }
-            candidates.erase(write_it, candidates.end());
-
-            if (candidates.empty()) {
-                continue;
             }
 
-            level.clear();
-            level.reserve(candidates.size());
-            for (const auto& c : candidates) {
-                level.emplace_back(c.x0, c.x1);
+            {
+                VNM_PLOT_PROFILE_SCOPE(
+                    profiler,
+                    "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis.arrange_checks");
+                if (candidates.empty()) {
+                    continue;
+                }
+            }
+
+            {
+                VNM_PLOT_PROFILE_SCOPE(
+                    profiler,
+                    "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis.level_build");
+                level.clear();
+                level.reserve(candidates.size());
+                for (const auto& c : candidates) {
+                    level.emplace_back(c.x0, c.x1);
+                }
             }
 
             bool level_fits = false;
             if (!level.empty()) {
+                VNM_PLOT_PROFILE_SCOPE(
+                    profiler,
+                    "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis.fits_with_gap");
                 level_fits = fits_with_gap(level, accepted, min_gap);
             }
 
             if (level_fits) {
+                VNM_PLOT_PROFILE_SCOPE(
+                    profiler,
+                    "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis.emit_labels");
                 any_level = true;
                 if (step < 1.0) {
                     any_subsec = true;
@@ -884,12 +1078,17 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
             }
         }
 
-        if (any_level) {
-            res.h_labels_subsecond = any_subsec;
-        }
+        {
+            VNM_PLOT_PROFILE_SCOPE(
+                profiler,
+                "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis.finalize");
+            if (any_level) {
+                res.h_labels_subsecond = any_subsec;
+            }
 
-        res.horizontal_seed_index = start_si;
-        res.horizontal_seed_step  = start_step;
+            res.horizontal_seed_index = start_si;
+            res.horizontal_seed_step  = start_step;
+        }
     }
 
     return res;

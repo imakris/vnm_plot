@@ -2,6 +2,7 @@
 #include <vnm_plot/core/primitive_renderer.h>
 #include <vnm_plot/core/color_palette.h>
 #include <vnm_plot/core/constants.h>
+#include <vnm_plot/core/plot_config.h>
 #include <vnm_plot/core/algo.h>
 
 #include <glm/glm.hpp>
@@ -128,6 +129,10 @@ void Chrome_renderer::render_grid_and_backgrounds(
     const frame_context_t& ctx,
     Primitive_renderer& prims)
 {
+    vnm::plot::Profiler* profiler = ctx.config ? ctx.config->profiler : nullptr;
+    VNM_PLOT_PROFILE_SCOPE(
+        profiler,
+        "renderer.frame.chrome.grid_and_backgrounds");
     const auto& pl = ctx.layout;
     const bool dark_mode = ctx.config ? ctx.config->dark_mode : false;
     const Color_palette palette = dark_mode ? Color_palette::dark() : Color_palette::light();
@@ -249,6 +254,10 @@ void Chrome_renderer::render_preview_overlay(
     const frame_context_t& ctx,
     Primitive_renderer& prims)
 {
+    vnm::plot::Profiler* profiler = ctx.config ? ctx.config->profiler : nullptr;
+    VNM_PLOT_PROFILE_SCOPE(
+        profiler,
+        "renderer.frame.chrome.preview_overlay");
     if (ctx.adjusted_preview_height <= 0.) {
         return;
     }
