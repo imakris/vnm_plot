@@ -1,11 +1,12 @@
 #include <vnm_plot/core/primitive_renderer.h>
 #include <vnm_plot/core/asset_loader.h>
-#include <vnm_plot/plot_config.h>
+#include <vnm_plot/core/constants.h>
+#include <vnm_plot/core/plot_config.h>
 
 #include <glatter/glatter.h>
 #include <glm/gtc/type_ptr.hpp>
 
-namespace vnm::plot::core {
+namespace vnm::plot {
 
 Primitive_renderer::Primitive_renderer() = default;
 Primitive_renderer::~Primitive_renderer() = default;
@@ -48,7 +49,7 @@ bool Primitive_renderer::initialize(Asset_loader& asset_loader)
     glBindVertexArray(m_rects_pipe.vao);
     glBindBuffer(GL_ARRAY_BUFFER, m_rects_pipe.vbo);
 
-    const GLsizeiptr initial_bytes = k_rect_initial_quads * static_cast<GLsizeiptr>(sizeof(rect_vertex_t));
+    const GLsizeiptr initial_bytes = detail::k_rect_initial_quads * static_cast<GLsizeiptr>(sizeof(rect_vertex_t));
     glBufferData(GL_ARRAY_BUFFER, initial_bytes, nullptr, GL_STREAM_DRAW);
     m_rects_pipe.capacity_bytes = static_cast<size_t>(initial_bytes);
 
@@ -136,7 +137,7 @@ void Primitive_renderer::cleanup_gl_resources()
 void Primitive_renderer::batch_rect(const glm::vec4& color, const glm::vec4& rect_coords)
 {
     if (m_cpu_buffer.size() == m_cpu_buffer.capacity()) {
-        m_cpu_buffer.reserve(m_cpu_buffer.size() + k_rect_initial_quads);
+        m_cpu_buffer.reserve(m_cpu_buffer.size() + detail::k_rect_initial_quads);
     }
     m_cpu_buffer.push_back({color, rect_coords});
 }
@@ -227,4 +228,4 @@ void Primitive_renderer::draw_grid_shader(
     glDisable(GL_SCISSOR_TEST);
 }
 
-} // namespace vnm::plot::core
+} // namespace vnm::plot

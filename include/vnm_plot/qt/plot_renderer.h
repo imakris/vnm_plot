@@ -3,9 +3,6 @@
 // VNM Plot Library - Plot Renderer
 // Coordinates all sub-renderers to draw a complete plot.
 
-#include "plot_config.h"
-#include "render_types.h"
-
 #include <QQuickFramebufferObject>
 
 #include <memory>
@@ -43,3 +40,6 @@ private:
 };
 
 } // namespace vnm::plot
+
+
+

@@ -12,7 +12,7 @@
 #include <string_view>
 #include <vector>
 
-namespace vnm::plot::core {
+namespace vnm::plot {
 
 // -----------------------------------------------------------------------------
 // SHA256 Hash
@@ -247,4 +247,4 @@ private:
     size_t m_buf_len;
 };
 
-} // namespace vnm::plot::core
+} // namespace vnm::plot

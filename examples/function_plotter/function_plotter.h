@@ -4,9 +4,7 @@
 // A Qt Quick component that evaluates mathematical expressions using mexce
 // and displays them using vnm_plot.
 
-#include <vnm_plot/function_sample.h>
-#include <vnm_plot/data_source.h>
-#include <vnm_plot/plot_widget.h>
+#include <vnm_plot/vnm_plot.h>
 
 #include <QtCore/QAbstractListModel>
 #include <QtCore/QMetaType>
@@ -98,7 +96,7 @@ private:
     void set_is_playing(bool playing);
     void setup_series();
     void update_series_color();
-    void set_style_flag(vnm::plot::core::Display_style flag, bool enabled);
+    void set_style_flag(vnm::plot::Display_style flag, bool enabled);
 
     Function_plotter* m_plotter;
     std::unique_ptr<mexce::evaluator> m_evaluator;

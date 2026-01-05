@@ -1,7 +1,6 @@
 #include "plot_controller.h"
 
-#include <vnm_plot/plot_interaction_item.h>
-#include <vnm_plot/plot_widget.h>
+#include <vnm_plot/vnm_plot.h>
 
 #include <QtCore/QCoreApplication>
 #include <QtGui/QGuiApplication>

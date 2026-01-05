@@ -1,4 +1,4 @@
-#include <vnm_plot/plot_interaction_item.h>
+#include <vnm_plot/qt/plot_interaction_item.h>
 
 #include <QMouseEvent>
 #include <QWheelEvent>

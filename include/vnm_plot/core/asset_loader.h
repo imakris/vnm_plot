@@ -3,7 +3,7 @@
 // VNM Plot Library - Asset Loader
 // Qt-free asset loading with embedded defaults and optional file overrides.
 
-#include "core_types.h"
+#include "types.h"
 
 #include <functional>
 #include <optional>
@@ -12,7 +12,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace vnm::plot::core {
+namespace vnm::plot {
 
 // -----------------------------------------------------------------------------
 // Asset_loader
@@ -94,4 +94,4 @@ private:
 // (Called internally by default_asset_loader; defined in generated embedded_assets.cpp)
 void init_embedded_assets(Asset_loader& loader);
 
-} // namespace vnm::plot::core
+} // namespace vnm::plot

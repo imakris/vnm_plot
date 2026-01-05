@@ -3,13 +3,13 @@
 // VNM Plot Library - Core Text Renderer
 // Qt-free text rendering for axis labels and info overlay with fade animations.
 
-#include "render_types.h"
+#include "types.h"
 
 #include <chrono>
 #include <map>
 #include <string>
 
-namespace vnm::plot::core {
+namespace vnm::plot {
 
 class Font_renderer;
 
@@ -58,4 +58,4 @@ private:
     bool render_info_overlay(const frame_context_t& ctx, bool fade_labels);
 };
 
-} // namespace vnm::plot::core
+} // namespace vnm::plot

@@ -1,7 +1,7 @@
 #include <vnm_plot/core/layout_calculator.h>
 #include <vnm_plot/core/algo.h>
 #include <vnm_plot/core/constants.h>
-#include <vnm_plot/plot_config.h>
+#include <vnm_plot/core/plot_config.h>
 
 #include <algorithm>
 #include <array>
@@ -17,7 +17,7 @@
 #include <utility>
 #include <vector>
 
-namespace vnm::plot::core {
+namespace vnm::plot {
 
 namespace {
 
@@ -477,7 +477,7 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
 
         for (int guard = 0; guard < 64; ++guard) {
             level.clear();
-            const double shift  = algo::get_shift(step, double(params.v_min));
+            const double shift  = detail::get_shift(step, double(params.v_min));
             const double extend = step;
             const int j_min = static_cast<int>(std::ceil((-extend - shift) / step - 1e-9));
             const int j_max = static_cast<int>(std::floor((v_span + extend - shift) / step + 1e-9));
@@ -564,11 +564,11 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
             vals.push_back(e.value);
         }
 
-        if (!algo::any_fractional_at_precision(vals, res.v_label_fixed_digits)) {
+        if (!detail::any_fractional_at_precision(vals, res.v_label_fixed_digits)) {
             res.v_label_fixed_digits = 0;
         }
         else {
-            res.v_label_fixed_digits = algo::trim_trailing_zero_decimals(vals, res.v_label_fixed_digits);
+            res.v_label_fixed_digits = detail::trim_trailing_zero_decimals(vals, res.v_label_fixed_digits);
         }
 
         // Format and measure labels
@@ -577,7 +577,7 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
         const bool use_monospace = params.monospace_advance_is_reliable && advance > 0.f;
 
         for (auto& e : res.v_labels) {
-            std::string text = algo::format_axis_fixed_or_int(e.value, res.v_label_fixed_digits);
+            std::string text = format_axis_fixed_or_int(e.value, res.v_label_fixed_digits);
             if (text.empty() || text[0] != '-') {
                 text.insert(text.begin(), ' ');
             }
@@ -626,7 +626,7 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
 
         std::vector<std::pair<float, float>> accepted;
         std::vector<std::pair<float, float>> level;
-        const auto steps = algo::build_time_steps_covering(t_range);
+        const auto steps = detail::build_time_steps_covering(t_range);
 
         int si = -1;
         if (params.has_horizontal_seed &&
@@ -640,7 +640,7 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
             }
         }
         if (si < 0) {
-            si = std::max(0, algo::find_time_step_start_index(steps, t_range));
+            si = std::max(0, detail::find_time_step_start_index(steps, t_range));
         }
 
         const int start_si     = si;
@@ -687,7 +687,7 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
             // are included. A label at anchor x extends visually to x + k_text_margin_px + width.
             // Using floor (not ceil) plus a width-based margin ensures we don't skip visible labels
             // when t_min crosses a step boundary during panning.
-            const float label_extent_px = estimated_label_width + constants::k_text_margin_px;
+            const float label_extent_px = estimated_label_width + detail::k_text_margin_px;
             const double left_steps = static_cast<double>(label_extent_px) / static_cast<double>(pixel_step);
             const int64_t k_min = static_cast<int64_t>(std::floor((params.t_min / step) - 1.0 - left_steps));
             const double t_start = k_min * step;
@@ -722,7 +722,7 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
                 const float skip_width = std::max(last_width, estimated_label_width);
                 // Account for text margin: visual right edge is at x + k_text_margin_px + width.
                 // Skip only when visual right edge is fully offscreen (< 0).
-                if (x + constants::k_text_margin_px + skip_width <= 0.f) {
+                if (x + detail::k_text_margin_px + skip_width <= 0.f) {
                     const int skip = std::max(1, int(std::ceil(skip_width / pixel_step)));
                     tick_index += skip;
                     t = t_start + tick_index * step;
@@ -780,7 +780,7 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
                 }
                 // Account for text margin: visual right edge is at x + k_text_margin_px + w.
                 // Cull only when visual right edge is fully offscreen (< 0).
-                if (x + constants::k_text_margin_px + w <= 0.f) {
+                if (x + detail::k_text_margin_px + w <= 0.f) {
                     const int skip = std::max(1, int(std::ceil(w / pixel_step)));
                     tick_index += skip;
                     t = t_start + tick_index * step;
@@ -900,4 +900,4 @@ void shutdown_layout_caches()
     g_format_cache.reset();
 }
 
-} // namespace vnm::plot::core
+} // namespace vnm::plot

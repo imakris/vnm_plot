@@ -6,7 +6,7 @@
 #include <filesystem>
 #include <string>
 
-namespace vnm::plot::core {
+namespace vnm::plot {
 
 // -----------------------------------------------------------------------------
 // Cache Directory
@@ -38,4 +38,4 @@ void set_app_name(const std::string& name);
 // Get the current application name
 [[nodiscard]] const std::string& get_app_name();
 
-} // namespace vnm::plot::core
+} // namespace vnm::plot

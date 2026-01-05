@@ -1,8 +1,16 @@
 #pragma once
 
-// VNM Plot Library - Core Algorithm Utilities
+// VNM Plot Library - Algorithm Utilities
 // Small, header-only helpers for axis calculations and formatting.
 // Pure C++ with no framework dependencies.
+//
+// Public API (vnm::plot):
+//   - format_axis_fixed_or_int: Format numeric values for axis labels
+//
+// Internal API (vnm::plot::detail):
+//   - Grid/time step calculation helpers
+//   - Binary search for timestamps
+//   - LOD selection algorithms
 
 #include <algorithm>
 #include <cmath>
@@ -14,13 +22,14 @@
 #include <string>
 #include <vector>
 
-namespace vnm::plot::core::algo {
+namespace vnm::plot {
 
-// -----------------------------------------------------------------------------
-// Number Formatting
-// -----------------------------------------------------------------------------
+// =============================================================================
+// Public API
+// =============================================================================
 
 // Format a numeric value with either integer or fixed precision.
+// Used for axis label formatting. Can be used in custom format_timestamp callbacks.
 inline std::string format_axis_fixed_or_int(double v, int digits)
 {
     if (digits <= 0) {
@@ -50,6 +59,12 @@ inline std::string format_axis_fixed_or_int(double v, int digits)
 
     return s;
 }
+
+// =============================================================================
+// Internal Implementation Details
+// =============================================================================
+
+namespace detail {
 
 // -----------------------------------------------------------------------------
 // Decimal Analysis
@@ -109,7 +124,9 @@ inline int trim_trailing_zero_decimals(const std::vector<double>& values, int di
 template<typename ContainerT>
 inline std::size_t circular_index(const ContainerT& c, int index)
 {
-    if (c.empty()) return 0;
+    if (c.empty()) {
+        return 0;
+    }
 
     const auto size_as_int = static_cast<int>(c.size());
     int remainder = index % size_as_int;
@@ -178,7 +195,9 @@ inline std::vector<double> build_time_steps_covering(double max_span)
 // Find index of largest step <= t_range.
 inline int find_time_step_start_index(const std::vector<double>& steps, double t_range)
 {
-    if (steps.empty()) return -1;
+    if (steps.empty()) {
+        return -1;
+    }
 
     int idx = 0;
     while (idx + 1 < static_cast<int>(steps.size()) && steps[idx + 1] <= t_range) {
@@ -334,4 +353,5 @@ inline std::size_t choose_lod_level(
     return best_level;
 }
 
-} // namespace vnm::plot::core::algo
+} // namespace detail
+} // namespace vnm::plot

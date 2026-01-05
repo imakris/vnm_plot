@@ -15,7 +15,9 @@ A GPU-accelerated 2D time-series plotting library using OpenGL, with optional Qt
 
 vnm_plot renders time-series data using OpenGL geometry shaders. It supports Level-of-Detail (LOD) for handling large datasets. The renderer automatically selects an appropriate resolution based on the current zoom level.
 
-The library uses a type-erased data interface (`Data_source` + `Data_access_policy`) so it can work with any sample type without templates in the rendering code.
+The library uses a type-erased data interface (`vnm::plot::Data_source` + `vnm::plot::Data_access_policy`) so it can work with any sample type without templates in the rendering code.
+
+Public header: include `#include <vnm_plot/vnm_plot.h>` only. It exposes core types unconditionally, and the Qt widgets when built with Qt (`VNM_PLOT_WITH_QT`).
 
 ## Architecture
 
@@ -71,6 +73,8 @@ plot_widget->add_series(series->id, series);
 Register the type in C++:
 
 ```cpp
+#include <vnm_plot/vnm_plot.h>
+
 qmlRegisterType<vnm::plot::Plot_widget>("VnmPlot", 1, 0, "PlotWidget");
 ```
 
@@ -87,7 +91,7 @@ PlotWidget {
 
 ### Custom Sample Types
 
-Implement a `Data_access_policy` to tell the renderer how to read your samples:
+Implement a `vnm::plot::Data_access_policy` to tell the renderer how to read your samples:
 
 ```cpp
 struct my_sample_t {

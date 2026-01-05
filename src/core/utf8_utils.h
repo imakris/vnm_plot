@@ -8,7 +8,7 @@
 #include <string_view>
 #include <vector>
 
-namespace vnm::plot::core {
+namespace vnm::plot {
 
 // -----------------------------------------------------------------------------
 // UTF-8 to Unicode Code Point Conversion
@@ -71,4 +71,4 @@ std::string_view trim(std::string_view str) noexcept;
 [[nodiscard]]
 std::vector<std::string_view> split(std::string_view str, char delim);
 
-} // namespace vnm::plot::core
+} // namespace vnm::plot

@@ -1,7 +1,6 @@
 #pragma once
 
-#include <vnm_plot/function_sample.h>
-#include <vnm_plot/plot_widget.h>
+#include <vnm_plot/vnm_plot.h>
 
 #include <QtCore/QObject>
 

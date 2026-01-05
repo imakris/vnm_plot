@@ -3,8 +3,7 @@
 // VNM Plot Library - Core Series Renderer
 // Qt-free series data rendering with LOD support.
 
-#include "data_types.h"
-#include "render_types.h"
+#include "types.h"
 
 #include <glatter/glatter.h>
 
@@ -16,7 +15,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace vnm::plot::core {
+namespace vnm::plot {
 
 class Asset_loader;
 class GL_program;
@@ -147,4 +146,4 @@ private:
     void modify_uniforms_for_preview(GLuint program, const frame_context_t& ctx);
 };
 
-} // namespace vnm::plot::core
+} // namespace vnm::plot

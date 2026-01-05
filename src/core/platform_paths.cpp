@@ -1,4 +1,4 @@
-#include <vnm_plot/core/platform_paths.h>
+#include "platform_paths.h"
 
 #include <cstdlib>
 
@@ -7,7 +7,7 @@
 #include <windows.h>
 #endif
 
-namespace vnm::plot::core {
+namespace vnm::plot {
 
 namespace {
 
@@ -134,4 +134,4 @@ const std::string& get_app_name()
     return s_app_name;
 }
 
-} // namespace vnm::plot::core
+} // namespace vnm::plot

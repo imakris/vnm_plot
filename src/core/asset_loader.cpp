@@ -6,7 +6,7 @@
 #include <mutex>
 #include <utility>
 
-namespace vnm::plot::core {
+namespace vnm::plot {
 
 Asset_loader::Asset_loader() = default;
 Asset_loader::~Asset_loader() = default;
@@ -174,4 +174,4 @@ Asset_loader& default_asset_loader()
 
 // Note: init_embedded_assets() is defined in the generated embedded_assets.cpp
 
-} // namespace vnm::plot::core
+} // namespace vnm::plot

@@ -5,7 +5,7 @@
 #include <vnm_plot/core/text_renderer.h>
 #include <vnm_plot/core/font_renderer.h>
 
-namespace vnm::plot::core {
+namespace vnm::plot {
 
 Text_renderer::Text_renderer(Font_renderer* fr)
     : m_fonts(fr)
@@ -30,4 +30,4 @@ bool Text_renderer::render_info_overlay(const frame_context_t& /*ctx*/, bool /*f
     return false;
 }
 
-} // namespace vnm::plot::core
+} // namespace vnm::plot

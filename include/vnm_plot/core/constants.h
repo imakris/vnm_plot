@@ -1,9 +1,10 @@
 #pragma once
 
-// VNM Plot Library - Core Constants
+// VNM Plot Library - Internal Constants
 // Rendering and layout constants used by the core library.
+// These are implementation details and should not be used directly.
 
-namespace vnm::plot::core::constants {
+namespace vnm::plot::detail {
 
 // Layout metrics
 constexpr float k_v_label_horizontal_padding_px = 6.0f;
@@ -55,4 +56,4 @@ constexpr int    k_rect_initial_quads            = 256;
 constexpr float  k_pixel_snap = 0.5f;
 constexpr double k_eps        = 1e-6;
 
-} // namespace vnm::plot::core::constants
+} // namespace vnm::plot::detail

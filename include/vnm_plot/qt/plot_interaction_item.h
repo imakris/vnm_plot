@@ -1,6 +1,6 @@
 #pragma once
 
-#include <vnm_plot/plot_widget.h>
+#include <vnm_plot/qt/plot_widget.h>
 
 #include <QBasicTimer>
 #include <QQuickItem>

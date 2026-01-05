@@ -270,11 +270,10 @@ endif()
 
 set(VNM_PLOT_CORE_HEADERS
     # Core headers
-    include/vnm_plot/core/core_types.h
-    include/vnm_plot/core/data_types.h
-    include/vnm_plot/core/layout_types.h
+    include/vnm_plot/core/types.h
+    include/vnm_plot/core/plot_config.h
+    include/vnm_plot/core/function_sample.h
     include/vnm_plot/core/layout_calculator.h
-    include/vnm_plot/core/render_types.h
     include/vnm_plot/core/constants.h
     include/vnm_plot/core/color_palette.h
     include/vnm_plot/core/algo.h
@@ -285,9 +284,6 @@ set(VNM_PLOT_CORE_HEADERS
     include/vnm_plot/core/series_renderer.h
     include/vnm_plot/core/gl_program.h
     include/vnm_plot/core/asset_loader.h
-    include/vnm_plot/core/utf8_utils.h
-    include/vnm_plot/core/sha256.h
-    include/vnm_plot/core/platform_paths.h
 )
 
 # -----------------------------------------------------------------------------
@@ -296,23 +292,16 @@ set(VNM_PLOT_CORE_HEADERS
 
 set(VNM_PLOT_SOURCES
     # Main components
-    src/plot_renderer.cpp
-    src/plot_widget.cpp
-    src/plot_interaction_item.cpp
+    src/qt/plot_renderer.cpp
+    src/qt/plot_widget.cpp
+    src/qt/plot_interaction_item.cpp
 )
 
 set(VNM_PLOT_HEADERS
     # Public headers
-    include/vnm_plot/data_source.h
-    include/vnm_plot/function_sample.h
-    include/vnm_plot/plot_config.h
-    include/vnm_plot/plot_renderer.h
-    include/vnm_plot/plot_widget.h
-    include/vnm_plot/plot_interaction_item.h
-    include/vnm_plot/render_types.h
-
-    # Internal headers
-    include/vnm_plot/core/tls_registry.h
+    include/vnm_plot/qt/plot_renderer.h
+    include/vnm_plot/qt/plot_widget.h
+    include/vnm_plot/qt/plot_interaction_item.h
 )
 
 # -----------------------------------------------------------------------------
@@ -348,7 +337,7 @@ endif()
 
 embed_assets(
     OUTPUT "${VNM_PLOT_EMBEDDED_ASSETS_OUTPUT}"
-    NAMESPACE "vnm::plot::core"
+    NAMESPACE "vnm::plot"
     ASSETS ${VNM_PLOT_CORE_ASSETS}
 )
 
@@ -485,6 +474,8 @@ if(VNM_PLOT_BUILD_QT)
     )
 
     target_compile_features(vnm_plot PUBLIC cxx_std_20)
+
+    target_compile_definitions(vnm_plot PUBLIC VNM_PLOT_WITH_QT=1)
 
     # Link dependencies
     target_link_libraries(vnm_plot

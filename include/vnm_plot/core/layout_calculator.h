@@ -3,7 +3,7 @@
 // Computes axis labels, grid positions, and layout metrics.
 // This is pure computational logic with no OpenGL dependencies.
 
-#include "layout_types.h"
+#include "types.h"
 
 #include <cstdint>
 #include <functional>
@@ -15,7 +15,7 @@ namespace vnm::plot {
 class Profiler;
 }
 
-namespace vnm::plot::core {
+namespace vnm::plot {
 
 // -----------------------------------------------------------------------------
 // Layout Calculator
@@ -105,4 +105,4 @@ private:
 // Shutdown caches (call during application shutdown)
 void shutdown_layout_caches();
 
-} // namespace vnm::plot::core
+} // namespace vnm::plot

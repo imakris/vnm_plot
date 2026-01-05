@@ -7,7 +7,7 @@
 #include <mutex>
 #include <utility>
 
-namespace vnm::plot::tls {
+namespace vnm::plot {
 
 // Simple helper that provides a per-thread instance of T backed by a registry
 // so we can destroy all instances in a defined shutdown phase instead of
@@ -73,4 +73,4 @@ private:
     std::list<registry_entry_t> m_entries;
 };
 
-} // namespace vnm::plot::tls
+} // namespace vnm::plot

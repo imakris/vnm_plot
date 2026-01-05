@@ -4,7 +4,7 @@
 // Qt-free renderer for basic primitives: rectangles and grid lines.
 
 #include "gl_program.h"
-#include "layout_types.h"
+#include "types.h"
 
 #include <glm/glm.hpp>
 
@@ -15,7 +15,7 @@ namespace vnm::plot {
 class Profiler;  // Forward declaration
 }
 
-namespace vnm::plot::core {
+namespace vnm::plot {
 
 class Asset_loader;
 
@@ -89,4 +89,4 @@ private:
     static constexpr int k_rect_initial_quads = 256;
 };
 
-} // namespace vnm::plot::core
+} // namespace vnm::plot

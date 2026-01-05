@@ -1,15 +1,13 @@
-#include <vnm_plot/plot_renderer.h>
-#include <vnm_plot/plot_widget.h>
+#include <vnm_plot/qt/plot_renderer.h>
+#include <vnm_plot/qt/plot_widget.h>
 #include <vnm_plot/core/color_palette.h>
 #include <vnm_plot/core/constants.h>
 #include <vnm_plot/core/layout_calculator.h>
 #include <vnm_plot/core/algo.h>
 #include <vnm_plot/core/asset_loader.h>
 #include <vnm_plot/core/chrome_renderer.h>
-#include <vnm_plot/core/data_types.h>
 #include <vnm_plot/core/font_renderer.h>
 #include <vnm_plot/core/primitive_renderer.h>
-#include <vnm_plot/core/render_types.h>
 #include <vnm_plot/core/series_renderer.h>
 #include <vnm_plot/core/text_renderer.h>
 
@@ -26,6 +24,8 @@
 #include <cmath>
 #include <cstdio>
 #include <limits>
+#include <map>
+#include <memory>
 #include <shared_mutex>
 #include <string>
 #include <string_view>
@@ -129,9 +129,9 @@ std::string normalize_asset_name(std::string_view name)
     return std::string(out);
 }
 
-core::shader_set_t normalize_shader_set(const core::shader_set_t& shader)
+shader_set_t normalize_shader_set(const shader_set_t& shader)
 {
-    core::shader_set_t res;
+    shader_set_t res;
     res.vert = normalize_asset_name(shader.vert);
     res.geom = normalize_asset_name(shader.geom);
     res.frag = normalize_asset_name(shader.frag);
@@ -464,13 +464,13 @@ std::pair<float, float> compute_visible_v_range(
             continue;
         }
 
-        const std::vector<std::size_t> scales = core::algo::compute_lod_scales(*series->data_source);
+        const std::vector<std::size_t> scales = compute_lod_scales(*series->data_source);
         const std::size_t base_scale = scales.empty() ? 1 : scales[0];
         const std::size_t base_samples = count0 * base_scale;
         const double base_pps = (base_samples > 0 && width_px > 0.0)
             ? width_px / static_cast<double>(base_samples)
             : 0.0;
-        const std::size_t desired_level = core::algo::choose_lod_level(scales, 0, base_pps);
+        const std::size_t desired_level = choose_lod_level(scales, 0, base_pps);
 
         std::size_t applied_level = desired_level;
         auto snapshot = series->data_source->snapshot(applied_level);
@@ -533,22 +533,40 @@ std::pair<float, float> compute_visible_v_range(
 
 struct Plot_renderer::impl_t
 {
+    struct render_snapshot_t
+    {
+        data_config_t cfg;
+        bool visible = false;
+        bool show_info = false;
+        bool v_auto = true;
+
+        Plot_config config;
+
+        std::map<int, std::shared_ptr<Data_source>> data;
+
+        double adjusted_font_px = 12.0;
+        double base_label_height_px = 14.0;
+        double vbar_width_pixels = 0.0;
+        double adjusted_reserved_height = 0.0;
+        double adjusted_preview_height = 0.0;
+    };
+
     const Plot_widget* owner = nullptr;
 
     // Sub-renderers
-    core::Primitive_renderer primitives;
-    core::Font_renderer fonts;
-    std::unique_ptr<core::Text_renderer> text;
-    core::Chrome_renderer chrome;
-    core::Series_renderer series;
-    core::Asset_loader asset_loader;
+    Primitive_renderer primitives;
+    Font_renderer fonts;
+    std::unique_ptr<Text_renderer> text;
+    Chrome_renderer chrome;
+    Series_renderer series;
+    Asset_loader asset_loader;
     bool assets_initialized = false;
 
-    std::unordered_map<int, std::shared_ptr<core::series_data_t>> core_series_cache;
+    std::unordered_map<int, std::shared_ptr<series_data_t>> core_series_cache;
 
     // Layout
-    core::Layout_calculator layout_calc;
-    core::Layout_cache layout_cache;
+    Layout_calculator layout_calc;
+    Layout_cache layout_cache;
 
     // State
     render_snapshot_t snapshot;
@@ -571,7 +589,7 @@ struct Plot_renderer::impl_t
     double last_horizontal_seed_step = 0.0;
     int last_horizontal_seed_index = -1;
 
-    const core::frame_layout_result_t& calculate_frame_layout(
+    const frame_layout_result_t& calculate_frame_layout(
         float v0,
         float v1,
         double t0,
@@ -582,10 +600,10 @@ struct Plot_renderer::impl_t
     void update_seed_history(
         double v_span,
         double t_span,
-        const core::frame_layout_result_t& layout);
+        const frame_layout_result_t& layout);
 };
 
-const core::frame_layout_result_t& Plot_renderer::impl_t::calculate_frame_layout(
+const frame_layout_result_t& Plot_renderer::impl_t::calculate_frame_layout(
     float v0,
     float v1,
     double t0,
@@ -598,12 +616,12 @@ const core::frame_layout_result_t& Plot_renderer::impl_t::calculate_frame_layout
     const double t_span = t1 - t0;
     const Plot_config* config = &snapshot.config;
 
-    core::Layout_cache::key_t cache_key;
+    Layout_cache::key_t cache_key;
     cache_key.v0 = v0;
     cache_key.v1 = v1;
     cache_key.t0 = t0;
     cache_key.t1 = t1;
-    cache_key.viewport_size = core::Size2i{win_w, win_h};
+    cache_key.viewport_size = Size2i{win_w, win_h};
     cache_key.adjusted_reserved_height = snapshot.adjusted_reserved_height;
     cache_key.adjusted_preview_height = snapshot.adjusted_preview_height;
     cache_key.adjusted_font_size_in_pixels = snapshot.adjusted_font_px;
@@ -615,7 +633,7 @@ const core::frame_layout_result_t& Plot_renderer::impl_t::calculate_frame_layout
     }
 
     auto build_layout_params = [&](double vbar_width) {
-        core::Layout_calculator::parameters_t layout_params;
+        Layout_calculator::parameters_t layout_params;
 
         layout_params.v_min = v0;
         layout_params.v_max = v1;
@@ -632,7 +650,7 @@ const core::frame_layout_result_t& Plot_renderer::impl_t::calculate_frame_layout
         layout_params.measure_text_func = [this](const char* text) {
             return fonts.measure_text_px(text);
         };
-        layout_params.h_label_vertical_nudge_factor = core::constants::k_h_label_vertical_nudge_px;
+        layout_params.h_label_vertical_nudge_factor = k_h_label_vertical_nudge_px;
 
         if (v_span > 0.0 &&
             last_vertical_seed_index >= 0 &&
@@ -660,7 +678,7 @@ const core::frame_layout_result_t& Plot_renderer::impl_t::calculate_frame_layout
                 if (config->format_timestamp) {
                     return config->format_timestamp(ts, range);
                 }
-                return core::algo::format_axis_fixed_or_int(ts, 3);
+                return format_axis_fixed_or_int(ts, 3);
             };
             layout_params.profiler = config->profiler.get();
         }
@@ -672,14 +690,14 @@ const core::frame_layout_result_t& Plot_renderer::impl_t::calculate_frame_layout
     auto layout_result = layout_calc.calculate(layout_params);
 
     const double measured_vbar_width = std::max(
-        core::constants::k_vbar_min_width_px_d,
-        double(layout_result.max_v_label_text_width) + core::constants::k_v_label_horizontal_padding_px);
+        detail::k_vbar_min_width_px_d,
+        double(layout_result.max_v_label_text_width) + detail::k_v_label_horizontal_padding_px);
 
     // If measured width differs significantly, notify widget to animate towards it.
     // Continue using the current animated width for this frame - the animation will
     // progress smoothly on subsequent frames via the widget's timer.
     double effective_vbar_width = snapshot.vbar_width_pixels;
-    if (std::abs(snapshot.vbar_width_pixels - measured_vbar_width) > core::constants::k_vbar_width_change_threshold_d)
+    if (std::abs(snapshot.vbar_width_pixels - measured_vbar_width) > detail::k_vbar_width_change_threshold_d)
     {
         // Notify widget to animate to new width
         if (owner) {
@@ -697,11 +715,11 @@ const core::frame_layout_result_t& Plot_renderer::impl_t::calculate_frame_layout
         layout_result = layout_calc.calculate(layout_params);
     }
 
-    core::frame_layout_result_t frame_layout;
+    frame_layout_result_t frame_layout;
     frame_layout.usable_width = win_w - effective_vbar_width;
     frame_layout.usable_height = usable_height;
     frame_layout.v_bar_width = effective_vbar_width;
-    frame_layout.h_bar_height = snapshot.base_label_height_px + core::constants::k_scissor_pad_px;
+    frame_layout.h_bar_height = snapshot.base_label_height_px + k_scissor_pad_px;
     frame_layout.max_v_label_text_width = layout_result.max_v_label_text_width;
     frame_layout.v_labels = std::move(layout_result.v_labels);
     frame_layout.h_labels = std::move(layout_result.h_labels);
@@ -719,7 +737,7 @@ const core::frame_layout_result_t& Plot_renderer::impl_t::calculate_frame_layout
 void Plot_renderer::impl_t::update_seed_history(
     double v_span,
     double t_span,
-    const core::frame_layout_result_t& layout)
+    const frame_layout_result_t& layout)
 {
     if (v_span > 0.0) {
         last_vertical_span = v_span;
@@ -755,7 +773,7 @@ Plot_renderer::~Plot_renderer()
     if (m_impl->initialized) {
         m_impl->primitives.cleanup_gl_resources();
         m_impl->series.cleanup_gl_resources();
-        core::Font_renderer::cleanup_thread_resources();
+        Font_renderer::cleanup_thread_resources();
     }
 }
 
@@ -867,7 +885,7 @@ void Plot_renderer::render()
         }
 
         if (!m_impl->assets_initialized) {
-            core::init_embedded_assets(m_impl->asset_loader);
+            init_embedded_assets(m_impl->asset_loader);
             m_impl->assets_initialized = true;
         }
 
@@ -881,7 +899,7 @@ void Plot_renderer::render()
         m_impl->fonts.initialize(m_impl->asset_loader, font_px);
         m_impl->last_font_px = font_px;
 
-        m_impl->text = std::make_unique<core::Text_renderer>(&m_impl->fonts);
+        m_impl->text = std::make_unique<Text_renderer>(&m_impl->fonts);
 
         m_impl->initialized = true;
         notify_opengl_status(1);
@@ -1016,7 +1034,7 @@ void Plot_renderer::render()
     const bool fade_v_labels = (prev_v_span > 0.0) && !spans_approx_equal(v_span, prev_v_span);
     const bool fade_h_labels = (prev_t_span > 0.0) && !spans_approx_equal(t_span, prev_t_span);
 
-    const core::frame_layout_result_t& frame_layout = m_impl->calculate_frame_layout(
+    const frame_layout_result_t& frame_layout = m_impl->calculate_frame_layout(
         v0,
         v1,
         m_impl->snapshot.cfg.t_min,
@@ -1026,7 +1044,7 @@ void Plot_renderer::render()
     notify_hlabels_subsecond(frame_layout.h_labels_subsecond);
     m_impl->update_seed_history(v_span, t_span, frame_layout);
 
-    core::Render_config core_config;
+    Render_config core_config;
     if (config) {
         core_config.dark_mode = config->dark_mode;
         core_config.show_text = config->show_text;
@@ -1039,7 +1057,7 @@ void Plot_renderer::render()
         core_config.log_error = config->log_error;
     }
 
-    core::frame_context_t core_ctx{
+    frame_context_t core_ctx{
         frame_layout,
         v0,
         v1,
@@ -1060,15 +1078,15 @@ void Plot_renderer::render()
         config ? &core_config : nullptr
     };
 
-    core::frame_context_t series_ctx = core_ctx;
-    const double preview_scissor_pad = core::constants::k_scissor_pad_px;
+    frame_context_t series_ctx = core_ctx;
+    const double preview_scissor_pad = k_scissor_pad_px;
     series_ctx.adjusted_preview_height = std::max(0.0, core_ctx.adjusted_preview_height - preview_scissor_pad);
 
     // Clear to transparent - let QML provide the background color (matches Lumis behavior)
     const bool dark_mode = config ? config->dark_mode : false;
     const bool clear_to_transparent = config ? config->clear_to_transparent : false;
-    const core::Color_palette palette =
-        dark_mode ? core::Color_palette::dark() : core::Color_palette::light();
+    const Color_palette palette =
+        dark_mode ? Color_palette::dark() : Color_palette::light();
     if (clear_to_transparent) {
         glClearColor(0.f, 0.f, 0.f, 0.f);
     }
@@ -1096,7 +1114,7 @@ void Plot_renderer::render()
     // Render series
     if (m_impl->owner) {
         std::shared_lock lock(m_impl->owner->m_series_mutex);
-        std::map<int, std::shared_ptr<core::series_data_t>> core_series_map;
+        std::map<int, std::shared_ptr<series_data_t>> core_series_map;
         std::unordered_set<int> seen_ids;
         core_series_map.clear();
         for (const auto& [id, series] : m_impl->owner->m_series) {
@@ -1108,7 +1126,7 @@ void Plot_renderer::render()
 
             auto& core_series = m_impl->core_series_cache[id];
             if (!core_series) {
-                core_series = std::make_shared<core::series_data_t>();
+                core_series = std::make_shared<series_data_t>();
             }
 
             // Copy basic fields (types are now unified, no conversion needed)
@@ -1174,7 +1192,7 @@ QOpenGLFramebufferObject* Plot_renderer::createFramebufferObject(const QSize& si
     m_impl->viewport_height = size.height();
 
     QOpenGLFramebufferObjectFormat format;
-    format.setSamples(core::constants::k_msaa_samples);
+    format.setSamples(k_msaa_samples);
     format.setAttachment(QOpenGLFramebufferObject::CombinedDepthStencil);
     format.setInternalTextureFormat(GL_RGBA8);
     return new QOpenGLFramebufferObject(size, format);

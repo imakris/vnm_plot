@@ -1,8 +1,4 @@
 #include "function_plotter.h"
-
-#include <vnm_plot/core/algo.h>
-#include <vnm_plot/plot_config.h>
-
 #include <QDebug>
 
 #include <QAudio>
@@ -72,9 +68,9 @@ bool use_scientific_for_range(double range, int digits)
     const double b = range;
     const double c = -range;
 
-    const std::string fixed_a = vnm::plot::core::algo::format_axis_fixed_or_int(a, digits);
-    const std::string fixed_b = vnm::plot::core::algo::format_axis_fixed_or_int(b, digits);
-    const std::string fixed_c = vnm::plot::core::algo::format_axis_fixed_or_int(c, digits);
+    const std::string fixed_a = vnm::plot::format_axis_fixed_or_int(a, digits);
+    const std::string fixed_b = vnm::plot::format_axis_fixed_or_int(b, digits);
+    const std::string fixed_c = vnm::plot::format_axis_fixed_or_int(c, digits);
 
     const std::string sci_a = format_axis_scientific(a, digits);
     const std::string sci_b = format_axis_scientific(b, digits);
@@ -203,7 +199,7 @@ bool Function_entry::show_dots() const
     if (!m_series) {
         return false;
     }
-    return static_cast<int>(m_series->style) & static_cast<int>(vnm::plot::core::Display_style::DOTS);
+    return static_cast<int>(m_series->style) & static_cast<int>(vnm::plot::Display_style::DOTS);
 }
 
 bool Function_entry::show_line() const
@@ -211,7 +207,7 @@ bool Function_entry::show_line() const
     if (!m_series) {
         return true;  // Default
     }
-    return static_cast<int>(m_series->style) & static_cast<int>(vnm::plot::core::Display_style::LINE);
+    return static_cast<int>(m_series->style) & static_cast<int>(vnm::plot::Display_style::LINE);
 }
 
 bool Function_entry::show_area() const
@@ -219,10 +215,10 @@ bool Function_entry::show_area() const
     if (!m_series) {
         return false;
     }
-    return static_cast<int>(m_series->style) & static_cast<int>(vnm::plot::core::Display_style::AREA);
+    return static_cast<int>(m_series->style) & static_cast<int>(vnm::plot::Display_style::AREA);
 }
 
-void Function_entry::set_style_flag(vnm::plot::core::Display_style flag, bool enabled)
+void Function_entry::set_style_flag(vnm::plot::Display_style flag, bool enabled)
 {
     if (!m_series) {
         return;
@@ -243,9 +239,9 @@ void Function_entry::set_style_flag(vnm::plot::core::Display_style flag, bool en
     }
     // Ensure at least one style is active
     if (style == 0) {
-        style = static_cast<int>(vnm::plot::core::Display_style::LINE);
+        style = static_cast<int>(vnm::plot::Display_style::LINE);
     }
-    m_series->style = static_cast<vnm::plot::core::Display_style>(style);
+    m_series->style = static_cast<vnm::plot::Display_style>(style);
 
     if (m_plotter) {
         if (auto* widget = m_plotter->plot_widget()) {
@@ -257,17 +253,17 @@ void Function_entry::set_style_flag(vnm::plot::core::Display_style flag, bool en
 
 void Function_entry::set_show_dots(bool v)
 {
-    set_style_flag(vnm::plot::core::Display_style::DOTS, v);
+    set_style_flag(vnm::plot::Display_style::DOTS, v);
 }
 
 void Function_entry::set_show_line(bool v)
 {
-    set_style_flag(vnm::plot::core::Display_style::LINE, v);
+    set_style_flag(vnm::plot::Display_style::LINE, v);
 }
 
 void Function_entry::set_show_area(bool v)
 {
-    set_style_flag(vnm::plot::core::Display_style::AREA, v);
+    set_style_flag(vnm::plot::Display_style::AREA, v);
 }
 
 void Function_entry::generate_samples(double x_min, double x_max)
@@ -526,7 +522,7 @@ void Function_entry::setup_series()
     m_series = std::make_shared<vnm::plot::series_data_t>();
     m_series->id = m_series_id;
     m_series->enabled = true;
-    m_series->style = vnm::plot::core::Display_style::LINE;
+    m_series->style = vnm::plot::Display_style::LINE;
 
     update_series_color();
 
@@ -545,17 +541,17 @@ void Function_entry::setup_series()
     // Configure shaders for each display style.
     // The renderer uses shaders map directly for multi-pass rendering.
     const char* vert = ":/vnm_plot/shaders/function_sample.vert";
-    m_series->shaders[vnm::plot::core::Display_style::DOTS] = {
+    m_series->shaders[vnm::plot::Display_style::DOTS] = {
         vert,
         ":/vnm_plot/shaders/plot_dot.geom",
         ":/vnm_plot/shaders/plot_dot.frag"
     };
-    m_series->shaders[vnm::plot::core::Display_style::AREA] = {
+    m_series->shaders[vnm::plot::Display_style::AREA] = {
         vert,
         ":/vnm_plot/shaders/plot_area.geom",
         ":/vnm_plot/shaders/plot_line.frag"
     };
-    m_series->shaders[vnm::plot::core::Display_style::LINE] = {
+    m_series->shaders[vnm::plot::Display_style::LINE] = {
         vert,
         ":/vnm_plot/shaders/plot_line.geom",
         ":/vnm_plot/shaders/plot_line.frag"
@@ -934,7 +930,7 @@ void Function_plotter::configure_plot_widget()
             return format_axis_scientific(x, digits);
         }
 
-        return vnm::plot::core::algo::format_axis_fixed_or_int(x, digits);
+        return vnm::plot::format_axis_fixed_or_int(x, digits);
     };
 
     m_plot_widget->set_config(config);

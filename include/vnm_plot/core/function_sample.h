@@ -3,7 +3,7 @@
 // VNM Plot Library - Function Sample Type
 // A simple sample type for plotting mathematical functions y = f(x).
 
-#include "data_source.h"
+#include <vnm_plot/core/types.h>
 
 #include <cmath>
 #include <functional>

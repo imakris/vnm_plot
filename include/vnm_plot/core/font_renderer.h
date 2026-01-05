@@ -10,7 +10,7 @@
 #include <memory>
 #include <string>
 
-namespace vnm::plot::core {
+namespace vnm::plot {
 
 class Asset_loader;
 
@@ -103,4 +103,4 @@ private:
     std::unique_ptr<impl_t> m_impl;
 };
 
-} // namespace vnm::plot::core
+} // namespace vnm::plot

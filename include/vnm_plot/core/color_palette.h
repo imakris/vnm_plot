@@ -5,7 +5,7 @@
 
 #include <glm/vec4.hpp>
 
-namespace vnm::plot::core {
+namespace vnm::plot {
 
 // -----------------------------------------------------------------------------
 // Color Utilities
@@ -122,4 +122,4 @@ struct Color_palette
     }
 };
 
-} // namespace vnm::plot::core
+} // namespace vnm::plot

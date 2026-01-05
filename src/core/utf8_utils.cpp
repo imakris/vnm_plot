@@ -1,8 +1,8 @@
-#include <vnm_plot/core/utf8_utils.h>
+#include "utf8_utils.h"
 
 #include <algorithm>
 
-namespace vnm::plot::core {
+namespace vnm::plot {
 
 namespace {
 
@@ -250,4 +250,4 @@ std::vector<std::string_view> split(std::string_view str, char delim)
     return result;
 }
 
-} // namespace vnm::plot::core
+} // namespace vnm::plot

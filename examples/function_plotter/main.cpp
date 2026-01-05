@@ -6,8 +6,7 @@
 
 #include "function_plotter.h"
 
-#include <vnm_plot/plot_widget.h>
-#include <vnm_plot/plot_interaction_item.h>
+#include <vnm_plot/vnm_plot.h>
 
 #include <QtGui/QGuiApplication>
 #include <QtGui/QIcon>

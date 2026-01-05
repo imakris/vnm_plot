@@ -10,7 +10,7 @@
 #include <cstdio>
 #include <unordered_set>
 
-namespace vnm::plot::core {
+namespace vnm::plot {
 
 namespace {
 
@@ -132,8 +132,8 @@ bool Text_renderer::render_axis_labels(const frame_context_t& ctx, bool fade_lab
     const bool dark_mode = ctx.config ? ctx.config->dark_mode : false;
     const glm::vec4 font_color = dark_mode ? glm::vec4(1.f, 1.f, 1.f, 1.f) : glm::vec4(0.f, 0.f, 0.f, 1.f);
 
-    const float right_edge_x = static_cast<float>(pl.usable_width + pl.v_bar_width - constants::k_v_label_horizontal_padding_px);
-    const float min_x = static_cast<float>(pl.usable_width + constants::k_text_margin_px);
+    const float right_edge_x = static_cast<float>(pl.usable_width + pl.v_bar_width - detail::k_v_label_horizontal_padding_px);
+    const float min_x = static_cast<float>(pl.usable_width + detail::k_text_margin_px);
     const float baseline_off = m_fonts->baseline_offset_px();
     const double v_span = double(ctx.v1) - double(ctx.v0);
 
@@ -153,8 +153,8 @@ bool Text_renderer::render_axis_labels(const frame_context_t& ctx, bool fade_lab
         const float label_y = static_cast<float>(pl.usable_height - (value - double(ctx.v0)) * px_per_unit);
 
         const float baseline_target =
-            label_y - constants::k_scissor_pad_px
-                    - constants::k_v_label_vertical_nudge_px * static_cast<float>(ctx.adjusted_font_px);
+            label_y - detail::k_scissor_pad_px
+                    - detail::k_v_label_vertical_nudge_px * static_cast<float>(ctx.adjusted_font_px);
         const float pen_y = baseline_target - baseline_off;
 
         const float text_width = m_fonts->measure_text_px(state.text.c_str());
@@ -163,8 +163,8 @@ bool Text_renderer::render_axis_labels(const frame_context_t& ctx, bool fade_lab
             pen_x = min_x;
         }
 
-        const float snapped_x = std::floor(pen_x + constants::k_pixel_snap);
-        const float snapped_y = std::floor(pen_y + constants::k_pixel_snap);
+        const float snapped_x = std::floor(pen_x + detail::k_pixel_snap);
+        const float snapped_y = std::floor(pen_y + detail::k_pixel_snap);
 
         glm::vec4 color = font_color;
         color.a *= state.alpha;
@@ -213,8 +213,8 @@ bool Text_renderer::render_info_overlay(const frame_context_t& ctx, bool fade_la
 
         const double px_per_unit = pl.usable_width / t_span;
         const float x_anchor = static_cast<float>((t - ctx.t0) * px_per_unit);
-        const float pen_x = x_anchor + constants::k_text_margin_px;
-        const float pen_y = static_cast<float>(pl.usable_height + constants::k_h_label_vertical_nudge_px * ctx.adjusted_font_px);
+        const float pen_x = x_anchor + detail::k_text_margin_px;
+        const float pen_y = static_cast<float>(pl.usable_height + detail::k_h_label_vertical_nudge_px * ctx.adjusted_font_px);
 
         glm::vec4 color = font_color;
         color.a *= state.alpha;
@@ -251,22 +251,22 @@ bool Text_renderer::render_info_overlay(const frame_context_t& ctx, bool fade_la
 
         const double rh = ctx.adjusted_reserved_height;
         float llt = static_cast<float>(ctx.win_h) - static_cast<float>(rh)
-                  - static_cast<float>(ctx.adjusted_font_px * 4 * constants::k_line_spacing)
+                  - static_cast<float>(ctx.adjusted_font_px * 4 * detail::k_line_spacing)
                   + overlay_baseline;
 
         // High
-        std::snprintf(buf, sizeof(buf), "High: %.*f", constants::k_value_decimals, ctx.v1);
-        m_fonts->batch_text(constants::k_overlay_left_px, llt, buf);
+        std::snprintf(buf, sizeof(buf), "High: %.*f", detail::k_value_decimals, ctx.v1);
+        m_fonts->batch_text(detail::k_overlay_left_px, llt, buf);
 
         // Low
-        llt += static_cast<float>(ctx.adjusted_font_px * constants::k_line_spacing);
-        std::snprintf(buf, sizeof(buf), "Low:  %.*f", constants::k_value_decimals, ctx.v0);
-        m_fonts->batch_text(constants::k_overlay_left_px, llt, buf);
+        llt += static_cast<float>(ctx.adjusted_font_px * detail::k_line_spacing);
+        std::snprintf(buf, sizeof(buf), "Low:  %.*f", detail::k_value_decimals, ctx.v0);
+        m_fonts->batch_text(detail::k_overlay_left_px, llt, buf);
 
         // From timestamp
-        llt += static_cast<float>(ctx.adjusted_font_px * constants::k_line_spacing);
+        llt += static_cast<float>(ctx.adjusted_font_px * detail::k_line_spacing);
         const char* prefix_from = "From: ";
-        m_fonts->batch_text(constants::k_overlay_left_px, llt, prefix_from);
+        m_fonts->batch_text(detail::k_overlay_left_px, llt, prefix_from);
         const float offset_from = m_fonts->measure_text_px(prefix_from);
 
         const bool timestamp_style_changed = (pl.h_labels_subsecond != m_last_subsecond);
@@ -290,18 +290,18 @@ bool Text_renderer::render_info_overlay(const frame_context_t& ctx, bool fade_la
             m_last_t1 = ctx.t1;
             m_last_subsecond = pl.h_labels_subsecond;
         }
-        m_fonts->batch_text(constants::k_overlay_left_px + offset_from, llt, m_cached_from_ts.c_str());
+        m_fonts->batch_text(detail::k_overlay_left_px + offset_from, llt, m_cached_from_ts.c_str());
 
         // To timestamp
-        llt += static_cast<float>(ctx.adjusted_font_px * constants::k_line_spacing);
+        llt += static_cast<float>(ctx.adjusted_font_px * detail::k_line_spacing);
         const char* prefix_to = "To:   ";
-        m_fonts->batch_text(constants::k_overlay_left_px, llt, prefix_to);
+        m_fonts->batch_text(detail::k_overlay_left_px, llt, prefix_to);
         const float offset_to = m_fonts->measure_text_px(prefix_to);
-        m_fonts->batch_text(constants::k_overlay_left_px + offset_to, llt, m_cached_to_ts.c_str());
+        m_fonts->batch_text(detail::k_overlay_left_px + offset_to, llt, m_cached_to_ts.c_str());
     }
 
     m_fonts->draw_and_flush(ctx.pmv, font_color);
     return any_active;
 }
 
-} // namespace vnm::plot::core
+} // namespace vnm::plot

@@ -1,7 +1,4 @@
 #include "plot_controller.h"
-
-#include <vnm_plot/plot_config.h>
-
 #include <glatter/glatter.h>
 #include <glm/vec4.hpp>
 
@@ -59,7 +56,7 @@ void Plot_controller::setup_series()
     m_series = std::make_shared<vnm::plot::series_data_t>();
     m_series->id = 1;
     m_series->enabled = true;
-    m_series->style = vnm::plot::core::Display_style::LINE;
+    m_series->style = vnm::plot::Display_style::LINE;
     m_series->color = glm::vec4(0.2f, 0.7f, 0.9f, 1.0f);
 
     // Set up access policy for sample extraction

@@ -1,10 +1,10 @@
 #include <vnm_plot/core/font_renderer.h>
 #include <vnm_plot/core/asset_loader.h>
 #include <vnm_plot/core/gl_program.h>
-#include <vnm_plot/core/platform_paths.h>
-#include <vnm_plot/core/sha256.h>
-#include <vnm_plot/core/utf8_utils.h>
-#include <vnm_plot/core/tls_registry.h>
+#include "platform_paths.h"
+#include "sha256.h"
+#include "utf8_utils.h"
+#include "tls_registry.h"
 
 #ifdef GL_GLEXT_VERSION
 #undef GL_GLEXT_VERSION
@@ -32,7 +32,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace vnm::plot::core {
+namespace vnm::plot {
 
 namespace {
 
@@ -260,9 +260,9 @@ struct thread_local_font_resources_t
     }
 };
 
-tls::Thread_local_registry<thread_local_font_resources_t>& font_registry()
+Thread_local_registry<thread_local_font_resources_t>& font_registry()
 {
-    static tls::Thread_local_registry<thread_local_font_resources_t> registry;
+    static Thread_local_registry<thread_local_font_resources_t> registry;
     return registry;
 }
 
@@ -1090,4 +1090,4 @@ void Font_renderer::draw_and_flush(const glm::mat4& pmv, const glm::vec4& color)
     vertex_buffer_clear(res->m_buffer);
 }
 
-} // namespace vnm::plot::core
+} // namespace vnm::plot

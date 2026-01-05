@@ -10,7 +10,7 @@
 #include <array>
 #include <cmath>
 
-namespace vnm::plot::core {
+namespace vnm::plot {
 
 namespace {
 
@@ -22,16 +22,16 @@ grid_layer_params_t build_time_grid(double t_min, double t_max, double width_px,
         return levels;
     }
 
-    const double cell_span_min = font_px * constants::k_cell_span_min_factor;
-    const double fade_den = std::max<double>(1e-6, font_px * (constants::k_cell_span_max_factor - constants::k_cell_span_min_factor));
+    const double cell_span_min = font_px * detail::k_cell_span_min_factor;
+    const double fade_den = std::max<double>(1e-6, font_px * (detail::k_cell_span_max_factor - detail::k_cell_span_min_factor));
     const auto compute_alpha = [&](float spacing_px) -> float {
         const double fade = (double(spacing_px) - cell_span_min) / fade_den;
-        return static_cast<float>(std::clamp(fade, 0.0, 1.0) * constants::k_grid_line_alpha_base);
+        return static_cast<float>(std::clamp(fade, 0.0, 1.0) * detail::k_grid_line_alpha_base);
     };
 
     const double px_per_unit = width_px / range;
-    const auto steps = algo::build_time_steps_covering(range);
-    int idx = std::max(0, algo::find_time_step_start_index(steps, range));
+    const auto steps = detail::build_time_steps_covering(range);
+    int idx = std::max(0, detail::find_time_step_start_index(steps, range));
     while (idx + 1 < static_cast<int>(steps.size()) && steps[idx] * px_per_unit < cell_span_min) {
         ++idx;
     }
@@ -42,12 +42,12 @@ grid_layer_params_t build_time_grid(double t_min, double t_max, double width_px,
         if (spacing_px < cell_span_min) {
             break;
         }
-        const double shift_units = algo::get_shift(step, t_min);
+        const double shift_units = detail::get_shift(step, t_min);
         levels.spacing_px[levels.count] = spacing_px;
         levels.start_px[levels.count] = static_cast<float>(shift_units * px_per_unit);
         const float a = compute_alpha(spacing_px);
         levels.alpha[levels.count] = a;
-        levels.thickness_px[levels.count] = 0.6f + 0.6f * (a / constants::k_grid_line_alpha_base);
+        levels.thickness_px[levels.count] = 0.6f + 0.6f * (a / detail::k_grid_line_alpha_base);
         ++levels.count;
     }
 
@@ -90,34 +90,34 @@ grid_layer_params_t Chrome_renderer::calculate_grid_params(
     double step = 1.0;
     int idx = 16;
     double probe = 0.0;
-    for (; (probe = step * om_div[algo::circular_index(om_div, idx)]) < range; ++idx) {
+    for (; (probe = step * om_div[detail::circular_index(om_div, idx)]) < range; ++idx) {
         step = probe;
     }
-    for (; (probe = step / om_div[algo::circular_index(om_div, idx - 1)]) > range; --idx) {
+    for (; (probe = step / om_div[detail::circular_index(om_div, idx - 1)]) > range; --idx) {
         step = probe;
     }
 
-    const double cell_span_min = font_px * constants::k_cell_span_min_factor;
-    const double cell_span_max = font_px * constants::k_cell_span_max_factor;
+    const double cell_span_min = font_px * detail::k_cell_span_min_factor;
+    const double cell_span_max = font_px * detail::k_cell_span_max_factor;
     const double fade_den = std::max<double>(1e-6, cell_span_max - cell_span_min);
     const double px_per_unit = pixel_span / range;
 
     const auto compute_alpha = [&](float spacing_px) -> float {
         const double fade = (double(spacing_px) - cell_span_min) / fade_den;
-        return static_cast<float>(std::clamp(fade, 0.0, 1.0) * constants::k_grid_line_alpha_base);
+        return static_cast<float>(std::clamp(fade, 0.0, 1.0) * detail::k_grid_line_alpha_base);
     };
 
     while (levels.count < grid_layer_params_t::k_max_levels && step * px_per_unit >= cell_span_min) {
         const float spacing_px = static_cast<float>(step * px_per_unit);
-        const double shift_units = algo::get_shift(step, min);
+        const double shift_units = detail::get_shift(step, min);
         levels.spacing_px[levels.count] = spacing_px;
         levels.start_px[levels.count] = static_cast<float>(pixel_span - shift_units * px_per_unit);
         const float a = compute_alpha(spacing_px);
         levels.alpha[levels.count] = a;
-        levels.thickness_px[levels.count] = 0.6f + 0.6f * (a / constants::k_grid_line_alpha_base);
+        levels.thickness_px[levels.count] = 0.6f + 0.6f * (a / detail::k_grid_line_alpha_base);
         ++levels.count;
 
-        step /= om_div[algo::circular_index(om_div, --idx)];
+        step /= om_div[detail::circular_index(om_div, --idx)];
     }
 
     return levels;
@@ -169,7 +169,7 @@ void Chrome_renderer::render_grid_and_backgrounds(
     prims.draw_grid_shader(main_origin, main_size, grid_rgb, vertical_levels_gl, horizontal_levels);
 
     const auto match_level_properties = [](float pos, const grid_layer_params_t& levels) -> std::pair<float, float> {
-        float alpha = constants::k_grid_line_alpha_base;
+        float alpha = detail::k_grid_line_alpha_base;
         float thick = 0.8f;
         for (int i = 0; i < levels.count; ++i) {
             const float spacing = levels.spacing_px[i];
@@ -272,14 +272,14 @@ void Chrome_renderer::render_preview_overlay(
     const double ptop = ctx.layout.usable_height + blh;
     const double pbtm = ctx.win_h;
 
-    const double pband_h = std::min(constants::k_preview_band_max_px, ctx.adjusted_preview_height);
+    const double pband_h = std::min(detail::k_preview_band_max_px, ctx.adjusted_preview_height);
 
-    if (dd >= constants::k_preview_min_window_px) {
+    if (dd >= detail::k_preview_min_window_px) {
         prims.batch_rect(cover_color, {0, float(ptop + pband_h), float(x0), float(pbtm - pband_h)});
         prims.batch_rect(cover_color, {float(x1), float(ptop + pband_h), float(win_w), float(pbtm - pband_h)});
     }
     else {
-        const double xx = 0.5 * (constants::k_preview_min_window_px - dd);
+        const double xx = 0.5 * (detail::k_preview_min_window_px - dd);
         prims.batch_rect(cover_color, {float(0 - xx), float(ptop + pband_h), float(x0 - xx), float(pbtm - pband_h)});
         prims.batch_rect(cover_color, {float(x1 + xx), float(ptop + pband_h), float(win_w + xx), float(pbtm - pband_h)});
         prims.batch_rect(cover_color2, {float(x0 - xx), float(ptop + pband_h), float(x0), float(pbtm - pband_h)});
@@ -295,4 +295,4 @@ void Chrome_renderer::render_preview_overlay(
     prims.batch_rect(separator_color, {float(x1), float(ptop + pband_h), float(x1 + 1), float(pbtm - pband_h)});
 }
 
-} // namespace vnm::plot::core
+} // namespace vnm::plot

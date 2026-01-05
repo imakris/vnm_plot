@@ -5,7 +5,7 @@
 #include <memory>
 #include <utility>
 
-namespace vnm::plot::core {
+namespace vnm::plot {
 
 bool init_gl()
 {
@@ -278,4 +278,4 @@ std::unique_ptr<GL_program> create_gl_program(
     return program;
 }
 
-} // namespace vnm::plot::core
+} // namespace vnm::plot

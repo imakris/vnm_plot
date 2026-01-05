@@ -3,7 +3,7 @@
 // VNM Plot Library - GL Program
 // Qt-free OpenGL shader program wrapper.
 
-#include "core_types.h"
+#include "types.h"
 
 #include <functional>
 #include <memory>
@@ -14,7 +14,7 @@
 using GLuint = unsigned int;
 using GLint = int;
 
-namespace vnm::plot::core {
+namespace vnm::plot {
 
 // -----------------------------------------------------------------------------
 // OpenGL Initialization
@@ -106,4 +106,4 @@ std::unique_ptr<GL_program> create_gl_program(
     std::string_view frag_source,
     const GL_program::LogCallback& log_error = nullptr);
 
-} // namespace vnm::plot::core
+} // namespace vnm::plot

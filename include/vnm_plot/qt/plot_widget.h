@@ -3,8 +3,8 @@
 // VNM Plot Library - Plot Widget
 // QQuickFramebufferObject-based plot widget for Qt Quick.
 
-#include "plot_config.h"
-#include "data_source.h"
+#include <vnm_plot/core/types.h>
+#include <vnm_plot/core/plot_config.h>
 
 #include <QBasicTimer>
 #include <QElapsedTimer>
@@ -160,7 +160,7 @@ private:
     mutable std::shared_mutex m_config_mutex;
 
     // Data configuration
-    core::data_config_t m_data_cfg;
+    data_config_t m_data_cfg;
     mutable std::shared_mutex m_data_cfg_mutex;
 
     // Series data
