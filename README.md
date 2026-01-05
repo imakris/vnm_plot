@@ -58,11 +58,9 @@ series->data_source = source;
 series->style = vnm::plot::Display_style::LINE;
 series->color = glm::vec4(0.2f, 0.6f, 1.0f, 1.0f);
 
-// Set up accessors
+// Set up access policy
 auto policy = vnm::plot::make_function_sample_policy();
-series->get_timestamp = policy.get_timestamp;
-series->get_value = policy.get_value;
-series->get_range = policy.get_range;
+series->access = policy;
 
 // Add to widget
 plot_widget->add_series(series->id, series);
@@ -114,6 +112,10 @@ vnm::plot::Data_access_policy make_my_policy() {
     p.sample_stride = sizeof(my_sample_t);
     return p;
 }
+
+// Assign policy to a series
+auto series = std::make_shared<vnm::plot::series_data_t>();
+series->access = make_my_policy();
 ```
 
 ### Display Styles
