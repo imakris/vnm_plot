@@ -5,13 +5,13 @@ Item {
     id: root
 
     property alias plotWidget: plot
-    property bool darkMode: false
+    // Optional override; when unset (null), PlotWidget retains its own setting.
+    property var darkMode: null
     property bool interactionEnabled: true
 
     PlotWidget {
         id: plot
         anchors.fill: parent
-        dark_mode: root.darkMode
     }
 
     PlotIndicator {
@@ -28,5 +28,17 @@ Item {
 
         onMousePositionChanged: (x, y) => indicator.updateMousePosition(x, y)
         onMouseExited: indicator.setMouseInPlot(false)
+    }
+
+    Component.onCompleted: {
+        if (root.darkMode !== null) {
+            plot.dark_mode = root.darkMode
+        }
+    }
+
+    onDarkModeChanged: {
+        if (root.darkMode !== null) {
+            plot.dark_mode = root.darkMode
+        }
     }
 }
