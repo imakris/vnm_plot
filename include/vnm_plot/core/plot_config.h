@@ -44,7 +44,6 @@ class Profile_scope
 {
 public:
     Profile_scope(Profiler* profiler, const char* name)
-
     :
         m_profiler(profiler)
     {

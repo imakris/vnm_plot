@@ -552,43 +552,42 @@ struct Plot_renderer::impl_t
         double adjusted_preview_height = 0.0;
     };
 
-    const Plot_widget* owner = nullptr;
-
-    // Sub-renderers
+    // Field order optimized to minimize padding (clang-tidy warning).
+    Asset_loader asset_loader;
     Primitive_renderer primitives;
+    render_snapshot_t snapshot;
+    const Plot_widget* owner = nullptr;
     Font_renderer fonts;
     std::unique_ptr<Text_renderer> text;
-    Chrome_renderer chrome;
-    Series_renderer series;
-    Asset_loader asset_loader;
-    bool assets_initialized = false;
+
+    double last_vertical_span = 0.0;
+    double last_vertical_seed_step = 0.0;
+    double last_horizontal_span = 0.0;
+    double last_horizontal_seed_step = 0.0;
 
     std::unordered_map<int, std::shared_ptr<series_data_t>> core_series_cache;
+    std::unordered_map<int, series_minmax_cache_t> v_range_cache;
 
-    // Layout
     Layout_calculator layout_calc;
+    Series_renderer series;
     Layout_cache layout_cache;
 
-    // State
-    render_snapshot_t snapshot;
-    bool initialized = false;
-    bool init_failed = false;
     int init_failed_status = 0;
     int last_font_px = 0;
     int viewport_width = 0;
     int viewport_height = 0;
-    std::unordered_map<int, series_minmax_cache_t> v_range_cache;
+    int last_opengl_status = std::numeric_limits<int>::min();
+    int last_hlabels_subsecond = -1;
+    int last_vertical_seed_index = -1;
+    int last_horizontal_seed_index = -1;
+
+    Chrome_renderer chrome;
+    bool assets_initialized = false;
+    bool initialized = false;
+    bool init_failed = false;
     bool methods_checked = false;
     bool has_opengl_status_method = false;
     bool has_hlabels_subsecond_method = false;
-    int last_opengl_status = std::numeric_limits<int>::min();
-    int last_hlabels_subsecond = -1;
-    double last_vertical_span = 0.0;
-    double last_vertical_seed_step = 0.0;
-    int last_vertical_seed_index = -1;
-    double last_horizontal_span = 0.0;
-    double last_horizontal_seed_step = 0.0;
-    int last_horizontal_seed_index = -1;
 
     const frame_layout_result_t& calculate_frame_layout(
         float v0,
