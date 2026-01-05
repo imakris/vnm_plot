@@ -1074,9 +1074,9 @@ void Plot_renderer::render()
 
         if (m_impl->snapshot.v_auto && m_impl->owner) {
             // Sync auto range back to the widget so QML reads match the render range.
-            constexpr float k_eps = 1e-6f;
-            if (std::abs(v0 - m_impl->snapshot.cfg.v_min) > k_eps ||
-                std::abs(v1 - m_impl->snapshot.cfg.v_max) > k_eps)
+            constexpr float k_auto_v_eps = 1e-6f;
+            if (std::abs(v0 - m_impl->snapshot.cfg.v_min) > k_auto_v_eps ||
+                std::abs(v1 - m_impl->snapshot.cfg.v_max) > k_auto_v_eps)
             {
                 QMetaObject::invokeMethod(
                     const_cast<Plot_widget*>(m_impl->owner),

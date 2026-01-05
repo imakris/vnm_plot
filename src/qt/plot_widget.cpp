@@ -367,12 +367,12 @@ void Plot_widget::set_auto_v_range_from_renderer(float v_min, float v_max)
         return;
     }
 
-    constexpr float k_eps = 1e-6f;
+    constexpr float k_auto_v_eps = 1e-6f;
     bool changed = false;
     {
         std::unique_lock lock(m_data_cfg_mutex);
-        if (std::abs(m_data_cfg.v_min - v_min) > k_eps ||
-            std::abs(m_data_cfg.v_max - v_max) > k_eps)
+        if (std::abs(m_data_cfg.v_min - v_min) > k_auto_v_eps ||
+            std::abs(m_data_cfg.v_max - v_max) > k_auto_v_eps)
         {
             m_data_cfg.v_min = v_min;
             m_data_cfg.v_max = v_max;
