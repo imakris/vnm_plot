@@ -25,7 +25,9 @@ inline std::string format_axis_fixed_or_int(double v, int digits)
 {
     if (digits <= 0) {
         const std::int64_t iv = std::llround(v);
-        if (iv == 0) return "0";
+        if (iv == 0) {
+            return "0";
+        }
         return std::to_string(iv);
     }
 
@@ -200,7 +202,8 @@ std::size_t lower_bound_timestamp(
         const void* sample = base + mid * stride;
         if (get_timestamp(sample) < t) {
             lo = mid + 1;
-        } else {
+        }
+        else {
             hi = mid;
         }
     }
@@ -229,7 +232,8 @@ std::size_t upper_bound_timestamp(
         const void* sample = base + mid * stride;
         if (get_timestamp(sample) <= t) {
             lo = mid + 1;
-        } else {
+        }
+        else {
             hi = mid;
         }
     }

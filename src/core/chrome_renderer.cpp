@@ -177,7 +177,9 @@ void Chrome_renderer::render_grid_and_backgrounds(
                 continue;
             }
             double wrapped = std::fmod(double(pos) - double(levels.start_px[i]), double(spacing));
-            if (wrapped < 0.0) wrapped += double(spacing);
+            if (wrapped < 0.0) {
+                wrapped += double(spacing);
+            }
             const double dist = std::min(wrapped, double(spacing) - wrapped);
             if (dist <= 0.35) {
                 alpha = levels.alpha[i];
@@ -191,7 +193,9 @@ void Chrome_renderer::render_grid_and_backgrounds(
     const auto build_vertical_tick_levels = [&](const std::vector<v_label_t>& labels, const grid_layer_params_t& main_levels) {
         grid_layer_params_t ticks;
         for (const auto& label : labels) {
-            if (ticks.count >= grid_layer_params_t::k_max_levels) break;
+            if (ticks.count >= grid_layer_params_t::k_max_levels) {
+                break;
+            }
             const float pos = label.y;
             const auto props = match_level_properties(pos, main_levels);
             ticks.spacing_px[ticks.count] = 1e6f;
@@ -206,7 +210,9 @@ void Chrome_renderer::render_grid_and_backgrounds(
     const auto build_horizontal_tick_levels = [&](const std::vector<h_label_t>& labels, const grid_layer_params_t& main_levels) {
         grid_layer_params_t ticks;
         for (const auto& label : labels) {
-            if (ticks.count >= grid_layer_params_t::k_max_levels) break;
+            if (ticks.count >= grid_layer_params_t::k_max_levels) {
+                break;
+            }
             const float pos = label.position.x;
             const auto props = match_level_properties(pos, main_levels);
             ticks.spacing_px[ticks.count] = 1e6f;

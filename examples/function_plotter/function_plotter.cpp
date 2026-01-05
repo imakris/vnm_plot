@@ -123,7 +123,9 @@ Function_entry::~Function_entry()
 
 int Function_entry::index() const
 {
-    if (!m_plotter) return -1;
+    if (!m_plotter) {
+        return -1;
+    }
 
     for (int i = 0; i < m_plotter->function_count(); ++i) {
         if (m_plotter->get_function(i) == this) {
@@ -199,38 +201,51 @@ void Function_entry::set_num_samples(int n)
 
 bool Function_entry::show_dots() const
 {
-    if (!m_series) return false;
+    if (!m_series) {
+        return false;
+    }
     return static_cast<int>(m_series->style) & static_cast<int>(vnm::plot::Display_style::DOTS);
 }
 
 bool Function_entry::show_line() const
 {
-    if (!m_series) return true;  // Default
+    if (!m_series) {
+        return true;  // Default
+    }
     return static_cast<int>(m_series->style) & static_cast<int>(vnm::plot::Display_style::LINE);
 }
 
 bool Function_entry::show_area() const
 {
-    if (!m_series) return false;
+    if (!m_series) {
+        return false;
+    }
     return static_cast<int>(m_series->style) & static_cast<int>(vnm::plot::Display_style::AREA);
 }
 
 void Function_entry::set_style_flag(vnm::plot::Display_style flag, bool enabled)
 {
-    if (!m_series) return;
+    if (!m_series) {
+        return;
+    }
 
     const int flag_int = static_cast<int>(flag);
     const bool currently_set = static_cast<int>(m_series->style) & flag_int;
-    if (currently_set == enabled) return;
+    if (currently_set == enabled) {
+        return;
+    }
 
     int style = static_cast<int>(m_series->style);
     if (enabled) {
         style |= flag_int;
-    } else {
+    }
+    else {
         style &= ~flag_int;
     }
     // Ensure at least one style is active
-    if (style == 0) style = static_cast<int>(vnm::plot::Display_style::LINE);
+    if (style == 0) {
+        style = static_cast<int>(vnm::plot::Display_style::LINE);
+    }
     m_series->style = static_cast<vnm::plot::Display_style>(style);
 
     if (m_plotter) {

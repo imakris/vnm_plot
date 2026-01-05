@@ -305,7 +305,9 @@ std::shared_ptr<cached_font_data_t> get_cached_font(int pixel_height)
 
 void store_cached_font(const std::shared_ptr<cached_font_data_t>& font)
 {
-    if (!font) return;
+    if (!font) {
+        return;
+    }
     std::lock_guard<std::mutex> lock(s_cached_fonts_mutex);
 
     constexpr std::size_t k_max_cached_fonts = 64;

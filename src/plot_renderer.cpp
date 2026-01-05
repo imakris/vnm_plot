@@ -1178,7 +1178,8 @@ void Plot_renderer::render()
         for (auto it = m_impl->core_series_cache.begin(); it != m_impl->core_series_cache.end(); ) {
             if (seen_ids.find(it->first) == seen_ids.end()) {
                 it = m_impl->core_series_cache.erase(it);
-            } else {
+            }
+            else {
                 ++it;
             }
         }

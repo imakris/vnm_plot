@@ -168,10 +168,18 @@ size_t utf8_length(std::string_view utf8) noexcept
 bool is_printable(char32_t cp) noexcept
 {
     // Basic printable check (covers ASCII and common Unicode)
-    if (cp < 0x20) return false;           // Control characters
-    if (cp == 0x7F) return false;          // DEL
-    if (cp >= 0x80 && cp < 0xA0) return false; // C1 control characters
-    if (cp > 0x10FFFF) return false;       // Beyond Unicode
+    if (cp < 0x20) {
+        return false;  // Control characters
+    }
+    if (cp == 0x7F) {
+        return false;  // DEL
+    }
+    if (cp >= 0x80 && cp < 0xA0) {
+        return false;  // C1 control characters
+    }
+    if (cp > 0x10FFFF) {
+        return false;  // Beyond Unicode
+    }
     return true;
 }
 

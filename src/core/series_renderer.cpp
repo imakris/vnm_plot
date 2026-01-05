@@ -82,7 +82,9 @@ void Series_renderer::initialize(Asset_loader& asset_loader)
 void Series_renderer::cleanup_gl_resources()
 {
     for (auto* pipe : {m_pipe_line.get(), m_pipe_dots.get(), m_pipe_area.get(), m_pipe_colormap.get()}) {
-        if (!pipe) continue;
+        if (!pipe) {
+            continue;
+        }
         for (auto& [_, entry] : pipe->by_layout) {
             if (entry.vao != 0) {
                 glDeleteVertexArrays(1, &entry.vao);
@@ -440,7 +442,8 @@ void Series_renderer::render(
                 }
             }
             it = m_vbo_states.erase(it);
-        } else {
+        }
+        else {
             ++it;
         }
     }
@@ -459,7 +462,8 @@ void Series_renderer::render(
                 glDeleteTextures(1, &it->second.texture);
             }
             it = m_colormap_textures.erase(it);
-        } else {
+        }
+        else {
             ++it;
         }
     }
@@ -601,13 +605,15 @@ void Series_renderer::render(
                 const double preview_height = ctx.adjusted_preview_height;
                 if (!(preview_height > 0.0)) {
                     do_draw = false;
-                } else {
+                }
+                else {
                     const double preview_top = layout.usable_height + layout.h_bar_height;
                     const GLint scissor_y = to_gl_scissor_y(preview_top, preview_height);
                     const GLsizei scissor_h = static_cast<GLsizei>(lround(preview_height));
                     if (scissor_h <= 0) {
                         do_draw = false;
-                    } else {
+                    }
+                    else {
                         glEnable(GL_SCISSOR_TEST);
                         glScissor(
                             0,
@@ -617,7 +623,8 @@ void Series_renderer::render(
                         scissor_enabled = true;
                     }
                 }
-            } else {
+            }
+            else {
                 glEnable(GL_SCISSOR_TEST);
                 glScissor(
                     0,

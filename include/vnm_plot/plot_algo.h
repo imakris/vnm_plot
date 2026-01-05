@@ -35,7 +35,9 @@ using core::algo::choose_lod_level;
 // Check if any value has non-zero fractional part at the given precision.
 inline bool any_fractional_at_precision(const std::vector<double>& values, int digits)
 {
-    if (digits <= 0) return false;
+    if (digits <= 0) {
+        return false;
+    }
 
     const double scale = std::pow(10.0, double(digits));
     const double eps = 0.5 / scale;
@@ -52,7 +54,9 @@ inline bool any_fractional_at_precision(const std::vector<double>& values, int d
 // Returns true if all values' last decimal digit is zero at given precision.
 inline bool trailing_zero_decimal_for_all(const std::vector<double>& values, int digits)
 {
-    if (digits <= 0) return false;
+    if (digits <= 0) {
+        return false;
+    }
 
     const double scale = std::pow(10.0, double(digits));
     for (double v : values) {
@@ -80,13 +84,13 @@ inline int trim_trailing_zero_decimals(const std::vector<double>& values, int di
 
 // Concept: type has a .timestamp field convertible to double
 template<typename T>
-concept HasTimestamp = requires(T v) {
+concept Has_timestamp = requires(T v) {
     { v.timestamp } -> std::convertible_to<double>;
 };
 
 // Find the sample at or just before time t using binary search.
 // This is a convenience wrapper for types with a .timestamp member.
-template<HasTimestamp T>
+template<Has_timestamp T>
 inline T* binary_search_time(T* p_begin, T* p_end, double t)
 {
     T* bound = std::upper_bound(

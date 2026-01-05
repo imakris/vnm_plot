@@ -137,8 +137,12 @@ struct shader_set_t
 
     bool operator<(const shader_set_t& other) const
     {
-        if (vert != other.vert) return vert < other.vert;
-        if (geom != other.geom) return geom < other.geom;
+        if (vert != other.vert) {
+            return vert < other.vert;
+        }
+        if (geom != other.geom) {
+            return geom < other.geom;
+        }
         return frag < other.frag;
     }
 
