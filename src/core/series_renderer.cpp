@@ -3,6 +3,7 @@
 #include <vnm_plot/core/asset_loader.h>
 #include <vnm_plot/core/gl_program.h>
 #include <vnm_plot/core/constants.h>
+#include <vnm_plot/core/plot_config.h>
 
 #include <glatter/glatter.h>
 #include <glm/gtc/type_ptr.hpp>
@@ -426,6 +427,9 @@ void Series_renderer::render(
         return;
     }
 
+    vnm::plot::Profiler* profiler = ctx.config ? ctx.config->profiler : nullptr;
+    VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.execute_passes.render_data_series");
+
     const bool dark_mode = ctx.config ? ctx.config->dark_mode : false;
     const float line_width = ctx.config ? static_cast<float>(ctx.config->line_width_px) : 1.0f;
     const float area_fill_alpha = ctx.config ? static_cast<float>(ctx.config->area_fill_alpha) : 0.3f;
@@ -478,19 +482,36 @@ void Series_renderer::render(
             continue;
         }
 
+        VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.execute_passes.render_data_series.series");
+
         auto& vbo_state = m_vbo_states[id];
 
         // Build LOD scales vector using shared helper
         const std::vector<std::size_t> scales = compute_lod_scales(*s->data_source);
 
         // Process main view
-        auto main_result = process_view(
-            vbo_state.main_view,
-            *s->data_source,
-            s->access.get_timestamp,
-            scales,
-            ctx.t0, ctx.t1,
-            layout.usable_width);
+        const std::size_t prev_lod_level = vbo_state.main_view.last_lod_level;
+        auto main_result = [&]() {
+            VNM_PLOT_PROFILE_SCOPE(
+                profiler,
+                "renderer.frame.execute_passes.render_data_series.series.process_view");
+            return process_view(
+                vbo_state.main_view,
+                *s->data_source,
+                s->access.get_timestamp,
+                scales,
+                ctx.t0, ctx.t1,
+                layout.usable_width);
+        }();
+        if (ctx.config && ctx.config->log_debug &&
+            main_result.can_draw &&
+            main_result.applied_level != prev_lod_level)
+        {
+            std::string message = "LOD selection: series=" + std::to_string(id)
+                + " level=" + std::to_string(main_result.applied_level)
+                + " pps=" + std::to_string(main_result.applied_pps);
+            ctx.config->log_debug(message);
+        }
 
         // Helper to draw one pass for a specific primitive style
         auto draw_pass = [&](Display_style primitive_style,
@@ -636,6 +657,9 @@ void Series_renderer::render(
             }
 
             if (do_draw) {
+                VNM_PLOT_PROFILE_SCOPE(
+                    profiler,
+                    "renderer.frame.execute_passes.render_data_series.series.gpu_issue");
                 glDrawArrays(drawing_mode, view_result.first, count);
             }
 
@@ -675,13 +699,18 @@ void Series_renderer::render(
 
         // Process preview view if visible
         if (ctx.adjusted_preview_height > 0.0) {
-            auto preview_result = process_view(
-                vbo_state.preview_view,
-                *s->data_source,
-                s->access.get_timestamp,
-                scales,
-                ctx.t_available_min, ctx.t_available_max,
-                ctx.win_w);
+            auto preview_result = [&]() {
+                VNM_PLOT_PROFILE_SCOPE(
+                    profiler,
+                    "renderer.frame.execute_passes.render_data_series.series.process_view");
+                return process_view(
+                    vbo_state.preview_view,
+                    *s->data_source,
+                    s->access.get_timestamp,
+                    scales,
+                    ctx.t_available_min, ctx.t_available_max,
+                    ctx.win_w);
+            }();
 
             if (preview_result.can_draw) {
                 // Preview uses same multi-pass approach

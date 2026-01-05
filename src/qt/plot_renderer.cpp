@@ -22,6 +22,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <limits>
 #include <map>
@@ -580,9 +581,11 @@ struct Plot_renderer::impl_t
     int last_hlabels_subsecond = -1;
     int last_vertical_seed_index = -1;
     int last_horizontal_seed_index = -1;
+    std::uint32_t assets_revision = 0;
 
     Chrome_renderer chrome;
     bool assets_initialized = false;
+    bool assets_registered = false;
     bool initialized = false;
     bool init_failed = false;
     bool methods_checked = false;
@@ -861,6 +864,11 @@ void Plot_renderer::render()
             Q_ARG(bool, subsecond));
     };
 
+    const Plot_config* config = &m_impl->snapshot.config;
+    vnm::plot::Profiler* profiler = (config && config->profiler)
+        ? config->profiler.get()
+        : nullptr;
+
     if (!m_impl->snapshot.visible) {
         return;
     }
@@ -871,6 +879,26 @@ void Plot_renderer::render()
         }
         return;
     }
+
+    m_impl->asset_loader.set_log_callback(config ? config->log_error : nullptr);
+    m_impl->primitives.set_log_callback(config ? config->log_error : nullptr);
+    m_impl->primitives.set_profiler(profiler);
+    m_impl->fonts.set_log_callbacks(
+        config ? config->log_error : nullptr,
+        config ? config->log_debug : nullptr);
+
+    auto register_assets_if_needed = [&]() {
+        if (!config || !config->register_assets) {
+            return;
+        }
+        const std::uint32_t desired_revision = config->assets_revision;
+        if (m_impl->assets_registered && m_impl->assets_revision == desired_revision) {
+            return;
+        }
+        config->register_assets(m_impl->asset_loader);
+        m_impl->assets_registered = true;
+        m_impl->assets_revision = desired_revision;
+    };
 
     // Initialize GL resources on first render
     if (!m_impl->initialized) {
@@ -888,6 +916,7 @@ void Plot_renderer::render()
             init_embedded_assets(m_impl->asset_loader);
             m_impl->assets_initialized = true;
         }
+        register_assets_if_needed();
 
         if (!m_impl->primitives.initialize(m_impl->asset_loader)) {
             notify_opengl_status(-3);
@@ -905,6 +934,13 @@ void Plot_renderer::render()
         notify_opengl_status(1);
     }
 
+    VNM_PLOT_PROFILE_SCOPE(profiler, "renderer");
+    VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame");
+
+    if (m_impl->assets_initialized) {
+        register_assets_if_needed();
+    }
+
     const int desired_font_px = static_cast<int>(std::round(m_impl->snapshot.adjusted_font_px));
     if (desired_font_px > 0 && desired_font_px != m_impl->last_font_px) {
         m_impl->fonts.initialize(m_impl->asset_loader, desired_font_px, true);
@@ -918,14 +954,6 @@ void Plot_renderer::render()
     if (win_w <= 0 || win_h <= 0) {
         return;
     }
-
-    // Get configuration
-    const Plot_config* config = &m_impl->snapshot.config;
-    m_impl->asset_loader.set_log_callback(config ? config->log_error : nullptr);
-    m_impl->primitives.set_log_callback(config ? config->log_error : nullptr);
-    m_impl->fonts.set_log_callbacks(
-        config ? config->log_error : nullptr,
-        config ? config->log_debug : nullptr);
 
     // Calculate layout
     const double usable_width = win_w - m_impl->snapshot.vbar_width_pixels;
@@ -1034,13 +1062,16 @@ void Plot_renderer::render()
     const bool fade_v_labels = (prev_v_span > 0.0) && !spans_approx_equal(v_span, prev_v_span);
     const bool fade_h_labels = (prev_t_span > 0.0) && !spans_approx_equal(t_span, prev_t_span);
 
-    const frame_layout_result_t& frame_layout = m_impl->calculate_frame_layout(
-        v0,
-        v1,
-        m_impl->snapshot.cfg.t_min,
-        m_impl->snapshot.cfg.t_max,
-        win_w,
-        win_h);
+    const frame_layout_result_t& frame_layout = [&]() -> const frame_layout_result_t& {
+        VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.calculate_layout");
+        return m_impl->calculate_frame_layout(
+            v0,
+            v1,
+            m_impl->snapshot.cfg.t_min,
+            m_impl->snapshot.cfg.t_max,
+            win_w,
+            win_h);
+    }();
     notify_hlabels_subsecond(frame_layout.h_labels_subsecond);
     m_impl->update_seed_history(v_span, t_span, frame_layout);
 
@@ -1054,7 +1085,9 @@ void Plot_renderer::render()
         core_config.format_timestamp = config->format_timestamp
             ? config->format_timestamp
             : default_format_timestamp;
+        core_config.log_debug = config->log_debug;
         core_config.log_error = config->log_error;
+        core_config.profiler = profiler;
     }
 
     frame_context_t core_ctx{
@@ -1109,10 +1142,14 @@ void Plot_renderer::render()
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     // Render chrome (backgrounds, grid)
-    m_impl->chrome.render_grid_and_backgrounds(core_ctx, m_impl->primitives);
+    {
+        VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.chrome");
+        m_impl->chrome.render_grid_and_backgrounds(core_ctx, m_impl->primitives);
+    }
 
     // Render series
     if (m_impl->owner) {
+        VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.execute_passes");
         std::shared_lock lock(m_impl->owner->m_series_mutex);
         std::map<int, std::shared_ptr<series_data_t>> core_series_map;
         std::unordered_set<int> seen_ids;
@@ -1166,11 +1203,18 @@ void Plot_renderer::render()
     }
 
     // Render preview overlay
-    m_impl->chrome.render_preview_overlay(core_ctx, m_impl->primitives);
-    m_impl->primitives.flush_rects(core_ctx.pmv);
+    {
+        VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.chrome");
+        m_impl->chrome.render_preview_overlay(core_ctx, m_impl->primitives);
+    }
+    {
+        VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.prims");
+        m_impl->primitives.flush_rects(core_ctx.pmv);
+    }
 
     // Render text labels
     if (m_impl->text && (!config || config->show_text)) {
+        VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.text_overlay");
         const bool fades_active = m_impl->text->render(core_ctx, fade_v_labels, fade_h_labels);
         if (fades_active && m_impl->owner) {
             QMetaObject::invokeMethod(

@@ -70,6 +70,8 @@ public:
     // Set the plot configuration
     void set_config(const Plot_config& config);
     Plot_config config() const;
+    // Force asset re-registration on the renderer.
+    Q_INVOKABLE void reset_assets();
 
     // Dark mode
     bool dark_mode() const;

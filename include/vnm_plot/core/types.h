@@ -15,6 +15,7 @@
 #include <glm/vec4.hpp>
 
 namespace vnm::plot {
+class Profiler;
 // -----------------------------------------------------------------------------
 // Size2i - Replacement for QSize
 // -----------------------------------------------------------------------------
@@ -480,7 +481,9 @@ struct Render_config
     double area_fill_alpha      = 0.3;
 
     std::function<std::string(double timestamp, double visible_range)> format_timestamp;
+    std::function<void(const std::string&)> log_debug;
     std::function<void(const std::string&)> log_error;
+    Profiler* profiler = nullptr;
 };
 
 struct frame_context_t

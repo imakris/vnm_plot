@@ -5,12 +5,15 @@
 // This allows vnm_plot to work without Lumis dependencies while
 // still being customizable by the host application.
 
+#include <cstdint>
 #include <ctime>
 #include <functional>
 #include <memory>
 #include <string>
 
 namespace vnm::plot {
+
+class Asset_loader;
 
 // -----------------------------------------------------------------------------
 // Auto V-Range Mode
@@ -104,6 +107,12 @@ struct Plot_config
     // Hook for debug messages (e.g., LOD selection).
     std::function<void(const std::string&)> log_debug;
     std::function<void(const std::string&)> log_error;
+
+    // --- Asset Loading (optional) ---
+    // Hook for registering additional embedded assets on the renderer loader.
+    std::function<void(Asset_loader&)> register_assets;
+    // Bump to force re-registration of assets (e.g., hot-swap shaders).
+    std::uint32_t assets_revision = 0;
 
     // --- Preview Bar ---
     double preview_height_px = 0.0;  // 0 = auto, >0 = fixed height

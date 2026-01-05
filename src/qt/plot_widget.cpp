@@ -138,6 +138,15 @@ Plot_config Plot_widget::config() const
     return m_config;
 }
 
+void Plot_widget::reset_assets()
+{
+    {
+        std::unique_lock lock(m_config_mutex);
+        ++m_config.assets_revision;
+    }
+    update();
+}
+
 bool Plot_widget::dark_mode() const
 {
     std::shared_lock lock(m_config_mutex);
