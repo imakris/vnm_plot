@@ -113,11 +113,6 @@ struct series_minmax_cache_t
     std::vector<lod_minmax_cache_t> lods;
 };
 
-core::Display_style to_core_style(Display_style style)
-{
-    return static_cast<core::Display_style>(static_cast<int>(style));
-}
-
 std::string normalize_asset_name(std::string_view name)
 {
     std::string_view out = name;
@@ -133,83 +128,14 @@ std::string normalize_asset_name(std::string_view name)
     return std::string(out);
 }
 
-core::shader_set_t to_core_shader_set(const shader_set_t& shader)
+shader_set_t normalize_shader_set(const shader_set_t& shader)
 {
-    core::shader_set_t res;
+    shader_set_t res;
     res.vert = normalize_asset_name(shader.vert);
     res.geom = normalize_asset_name(shader.geom);
     res.frag = normalize_asset_name(shader.frag);
     return res;
 }
-
-core::snapshot_result_t::Status to_core_status(snapshot_result_t::Status status)
-{
-    switch (status) {
-        case snapshot_result_t::Status::OK:    return core::snapshot_result_t::Status::OK;
-        case snapshot_result_t::Status::EMPTY: return core::snapshot_result_t::Status::EMPTY;
-        case snapshot_result_t::Status::BUSY:  return core::snapshot_result_t::Status::BUSY;
-        case snapshot_result_t::Status::FAILED:return core::snapshot_result_t::Status::FAILED;
-    }
-    return core::snapshot_result_t::Status::FAILED;
-}
-
-core::snapshot_result_t to_core_snapshot(const vnm::plot::snapshot_result_t& result)
-{
-    core::data_snapshot_t snapshot;
-    snapshot.data = result.snapshot.data;
-    snapshot.count = result.snapshot.count;
-    snapshot.stride = result.snapshot.stride;
-    snapshot.sequence = result.snapshot.sequence;
-
-    core::snapshot_result_t res;
-    res.snapshot = snapshot;
-    res.status = to_core_status(result.status);
-    return res;
-}
-
-class Data_source_adapter : public core::Data_source
-{
-public:
-    explicit Data_source_adapter(std::shared_ptr<vnm::plot::Data_source> source)
-        : m_source(std::move(source))
-    {
-    }
-
-    core::snapshot_result_t try_snapshot(std::size_t lod_level = 0) override
-    {
-        if (!m_source) {
-            core::snapshot_result_t res;
-            res.status = core::snapshot_result_t::Status::FAILED;
-            return res;
-        }
-        return to_core_snapshot(m_source->try_snapshot(lod_level));
-    }
-
-    std::size_t lod_levels() const override
-    {
-        return m_source ? m_source->lod_levels() : 0;
-    }
-
-    std::size_t lod_scale(std::size_t level) const override
-    {
-        return m_source ? m_source->lod_scale(level) : 1;
-    }
-
-    std::size_t sample_stride() const override
-    {
-        return m_source ? m_source->sample_stride() : 0;
-    }
-
-    const void* identity() const override
-    {
-        return m_source ? m_source->identity() : nullptr;
-    }
-
-    const std::shared_ptr<vnm::plot::Data_source>& source() const { return m_source; }
-
-private:
-    std::shared_ptr<vnm::plot::Data_source> m_source;
-};
 
 core::frame_layout_result_t to_core_layout(
     const frame_layout_result_t& layout,
@@ -316,7 +242,7 @@ bool compute_snapshot_minmax(
     float& out_min,
     float& out_max)
 {
-    if (!series.get_value && !series.get_range) {
+    if (!series.access.get_value && !series.access.get_range) {
         return false;
     }
 
@@ -333,7 +259,7 @@ bool compute_snapshot_minmax(
         const void* sample = base + i * snapshot.stride;
 
         float low, high;
-        if (series.get_range) {
+        if (series.access.get_range) {
             auto [lo, hi] = series.get_range(sample);
             low = lo;
             high = hi;
@@ -372,7 +298,7 @@ bool find_window_indices(
     start_idx = 0;
     end_idx = snapshot.count;
 
-    if (!series.get_timestamp || !snapshot || snapshot.count == 0 || snapshot.stride == 0) {
+    if (!series.access.get_timestamp || !snapshot || snapshot.count == 0 || snapshot.stride == 0) {
         return false;
     }
 
@@ -431,7 +357,7 @@ bool compute_window_minmax(
     float& out_min,
     float& out_max)
 {
-    if (!series.get_value && !series.get_range) {
+    if (!series.access.get_value && !series.access.get_range) {
         return false;
     }
 
@@ -452,7 +378,7 @@ bool compute_window_minmax(
         const void* sample = base + i * snapshot.stride;
 
         float low, high;
-        if (series.get_range) {
+        if (series.access.get_range) {
             auto [lo, hi] = series.get_range(sample);
             low = lo;
             high = hi;
@@ -540,7 +466,7 @@ std::pair<float, float> compute_global_v_range(
         if (!series || !series->enabled || !series->data_source) {
             continue;
         }
-        if (!series->get_value && !series->get_range) {
+        if (!series->access.get_value && !series->access.get_range) {
             continue;
         }
 
@@ -607,10 +533,10 @@ std::pair<float, float> compute_visible_v_range(
         if (!series || !series->enabled || !series->data_source) {
             continue;
         }
-        if (!series->get_timestamp) {
+        if (!series->access.get_timestamp) {
             continue;
         }
-        if (!series->get_value && !series->get_range) {
+        if (!series->access.get_value && !series->access.get_range) {
             continue;
         }
 
@@ -717,7 +643,6 @@ struct Plot_renderer::impl_t
     bool assets_initialized = false;
 
     std::unordered_map<int, std::shared_ptr<core::series_data_t>> core_series_cache;
-    std::unordered_map<int, std::shared_ptr<Data_source_adapter>> core_source_cache;
 
     // Layout
     Layout_calculator layout_calc;
@@ -1285,52 +1210,33 @@ void Plot_renderer::render()
                 core_series = std::make_shared<core::series_data_t>();
             }
 
+            // Copy basic fields (types are now unified, no conversion needed)
             core_series->id = id;
             core_series->enabled = series->enabled;
-            core_series->style = to_core_style(series->style);
+            core_series->style = series->style;
             core_series->color = series->color;
-            core_series->colormap.samples = series->colormap.samples;
-            core_series->colormap.revision = series->colormap.revision;
-            core_series->shader_set = to_core_shader_set(series->shader_set);
+            core_series->colormap = series->colormap;
+
+            // Normalize shader paths (remove qrc:/ prefixes for embedded asset lookup)
+            core_series->shader_set = normalize_shader_set(series->shader_set);
             core_series->shaders.clear();
-            for (const auto& [style, shader] : series->shader_sets) {
-                core_series->shaders.emplace(to_core_style(style), to_core_shader_set(shader));
+            for (const auto& [style, shader] : series->shaders) {
+                core_series->shaders.emplace(style, normalize_shader_set(shader));
             }
 
-            core_series->access.get_timestamp = series->get_timestamp;
-            core_series->access.get_value = series->get_value;
-            core_series->access.get_range = series->get_range;
-            core_series->access.get_aux_metric = series->get_aux_metric;
-            core_series->access.setup_vertex_attributes = series->setup_vertex_attributes;
-            core_series->access.bind_uniforms = series->bind_uniforms;
-            core_series->access.layout_key = series->layout_key;
-            core_series->access.sample_stride = series->data_source
-                ? series->data_source->sample_stride()
-                : 0;
+            // Copy access policy (types are now unified)
+            core_series->access = series->access;
 
-            if (series->data_source) {
-                auto& adapter = m_impl->core_source_cache[id];
-                if (!adapter || adapter->source().get() != series->data_source.get()) {
-                    adapter = std::make_shared<Data_source_adapter>(series->data_source);
-                }
-                core_series->data_source = adapter;
-            } else {
-                core_series->data_source.reset();
-            }
+            // Use data source directly (types are now unified, no adapter needed)
+            core_series->data_source = series->data_source;
 
             core_series_map[id] = core_series;
         }
 
+        // Cleanup stale cache entries
         for (auto it = m_impl->core_series_cache.begin(); it != m_impl->core_series_cache.end(); ) {
             if (seen_ids.find(it->first) == seen_ids.end()) {
                 it = m_impl->core_series_cache.erase(it);
-            } else {
-                ++it;
-            }
-        }
-        for (auto it = m_impl->core_source_cache.begin(); it != m_impl->core_source_cache.end(); ) {
-            if (seen_ids.find(it->first) == seen_ids.end()) {
-                it = m_impl->core_source_cache.erase(it);
             } else {
                 ++it;
             }

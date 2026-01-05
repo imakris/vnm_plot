@@ -387,6 +387,12 @@ std::string glyph_seed_string()
 {
     // Derive seed string from glyph_codepoints() to ensure consistency.
     // The seed is used for font cache digest computation.
+    //
+    // Note: glyph_codepoints() returns sorted/unique codepoints, so the
+    // resulting UTF-8 string differs from the original insertion order.
+    // This changes the font cache digest, causing a one-time cache
+    // regeneration on upgrade. This is acceptable as the cache is
+    // automatically rebuilt when the digest mismatches.
     return codepoints_to_utf8(glyph_codepoints());
 }
 

@@ -62,15 +62,16 @@ void Plot_controller::setup_series()
     m_series->style = vnm::plot::Display_style::LINE;
     m_series->color = glm::vec4(0.2f, 0.7f, 0.9f, 1.0f);
 
-    m_series->get_timestamp = [](const void* sample) -> double {
+    // Set up access policy for sample extraction
+    m_series->access.get_timestamp = [](const void* sample) -> double {
         return static_cast<const vnm::plot::function_sample_t*>(sample)->x;
     };
 
-    m_series->get_value = [](const void* sample) -> float {
+    m_series->access.get_value = [](const void* sample) -> float {
         return static_cast<const vnm::plot::function_sample_t*>(sample)->y;
     };
 
-    m_series->get_range = [](const void* sample) -> std::pair<float, float> {
+    m_series->access.get_range = [](const void* sample) -> std::pair<float, float> {
         const auto* s = static_cast<const vnm::plot::function_sample_t*>(sample);
         return {s->y_min, s->y_max};
     };
@@ -81,9 +82,9 @@ void Plot_controller::setup_series()
         ":/vnm_plot/shaders/plot_line.frag"
     };
 
-    m_series->layout_key = 0x1001;
+    m_series->access.layout_key = 0x1001;
 
-    m_series->setup_vertex_attributes = []() {
+    m_series->access.setup_vertex_attributes = []() {
         glVertexAttribLPointer(0, 1, GL_DOUBLE, sizeof(vnm::plot::function_sample_t),
             reinterpret_cast<void*>(offsetof(vnm::plot::function_sample_t, x)));
         glEnableVertexAttribArray(0);

@@ -727,7 +727,7 @@ void Plot_widget::auto_adjust_view(bool adjust_t, double extra_v_scale, bool anc
     }
 
     for (const auto& series : sources) {
-        if (!series || !series->data_source || !series->get_timestamp) {
+        if (!series || !series->data_source || !series->access.get_timestamp) {
             continue;
         }
 
@@ -752,11 +752,11 @@ void Plot_widget::auto_adjust_view(bool adjust_t, double extra_v_scale, bool anc
 
             float low = 0.0f;
             float high = 0.0f;
-            if (series->get_range) {
+            if (series->access.get_range) {
                 std::tie(low, high) = series->get_range(sample);
             }
             else
-            if (series->get_value) {
+            if (series->access.get_value) {
                 low = series->get_value(sample);
                 high = low;
             }
@@ -881,7 +881,7 @@ QVariantList Plot_widget::get_indicator_samples(double x, double plot_width, dou
         if (!series || !series->enabled) {
             continue;
         }
-        if (!series->data_source || !series->get_timestamp || !series->get_value) {
+        if (!series->data_source || !series->access.get_timestamp || !series->access.get_value) {
             continue;
         }
 

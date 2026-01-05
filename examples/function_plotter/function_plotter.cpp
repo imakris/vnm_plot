@@ -516,43 +516,43 @@ void Function_entry::setup_series()
 
     update_series_color();
 
-    // Set up timestamp accessor (x value from function_sample_t)
-    m_series->get_timestamp = [](const void* sample) -> double {
+    // Set up access policy for sample extraction
+    m_series->access.get_timestamp = [](const void* sample) -> double {
         return static_cast<const vnm::plot::function_sample_t*>(sample)->x;
     };
-    m_series->get_value = [](const void* sample) -> float {
+    m_series->access.get_value = [](const void* sample) -> float {
         return static_cast<const vnm::plot::function_sample_t*>(sample)->y;
     };
-    m_series->get_range = [](const void* sample) -> std::pair<float, float> {
+    m_series->access.get_range = [](const void* sample) -> std::pair<float, float> {
         const auto* s = static_cast<const vnm::plot::function_sample_t*>(sample);
         return {s->y_min, s->y_max};
     };
 
     // Configure shaders for each display style.
-    // The renderer uses shader_sets directly for multi-pass rendering.
+    // The renderer uses shaders map directly for multi-pass rendering.
     const char* vert = ":/vnm_plot/shaders/function_sample.vert";
-    m_series->shader_sets[vnm::plot::Display_style::DOTS] = {
+    m_series->shaders[vnm::plot::Display_style::DOTS] = {
         vert,
         ":/vnm_plot/shaders/plot_dot.geom",
         ":/vnm_plot/shaders/plot_dot.frag"
     };
-    m_series->shader_sets[vnm::plot::Display_style::AREA] = {
+    m_series->shaders[vnm::plot::Display_style::AREA] = {
         vert,
         ":/vnm_plot/shaders/plot_area.geom",
         ":/vnm_plot/shaders/plot_line.frag"
     };
-    m_series->shader_sets[vnm::plot::Display_style::LINE] = {
+    m_series->shaders[vnm::plot::Display_style::LINE] = {
         vert,
         ":/vnm_plot/shaders/plot_line.geom",
         ":/vnm_plot/shaders/plot_line.frag"
     };
 
     // Layout key for function_sample_t (must be unique for this vertex layout)
-    m_series->layout_key = 0x1001;
+    m_series->access.layout_key = 0x1001;
 
     // Set up vertex attributes for function_sample_t:
     // struct { double x; float y; float y_min; float y_max; }
-    m_series->setup_vertex_attributes = []() {
+    m_series->access.setup_vertex_attributes = []() {
         // Attribute 0: double x (uses 2 slots for dvec1)
         glVertexAttribLPointer(0, 1, GL_DOUBLE, sizeof(vnm::plot::function_sample_t),
             reinterpret_cast<void*>(offsetof(vnm::plot::function_sample_t, x)));

@@ -291,26 +291,21 @@ void Plot_interaction_item::wheelEvent(QWheelEvent* event)
 
 void Plot_interaction_item::hoverEnterEvent(QHoverEvent* event)
 {
-    if (!m_interaction_enabled) {
-        return;
-    }
+    // Always emit hover signals regardless of interactionEnabled.
+    // The indicator (value display) should work even when pan/zoom is disabled.
     emit mousePositionChanged(event->position().x(), event->position().y());
 }
 
 void Plot_interaction_item::hoverLeaveEvent(QHoverEvent* event)
 {
     Q_UNUSED(event)
-    if (!m_interaction_enabled) {
-        return;
-    }
+    // Always emit mouseExited regardless of interactionEnabled.
     emit mouseExited();
 }
 
 void Plot_interaction_item::hoverMoveEvent(QHoverEvent* event)
 {
-    if (!m_interaction_enabled) {
-        return;
-    }
+    // Always emit hover signals regardless of interactionEnabled.
     emit mousePositionChanged(event->position().x(), event->position().y());
 }
 

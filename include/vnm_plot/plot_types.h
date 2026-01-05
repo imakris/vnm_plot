@@ -1,7 +1,9 @@
 #pragma once
 
-// VNM Plot Library - Core Types
-// Display styles, configuration structures, and common types.
+// VNM Plot Library - Plot Types
+// Re-exports core types and provides wrapper-specific configuration structures.
+
+#include <vnm_plot/core/data_types.h>
 
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
@@ -15,29 +17,12 @@
 namespace vnm::plot {
 
 // -----------------------------------------------------------------------------
-// Display Styles
+// Re-exported Core Types
 // -----------------------------------------------------------------------------
-enum class Display_style : int
-{
-    DOTS           = 0x1,
-    LINE           = 0x2,
-    AREA           = 0x4,
-    DOTS_LINE      = DOTS | LINE,
-    DOTS_AREA      = DOTS | AREA,
-    LINE_AREA      = LINE | AREA,
-    DOTS_LINE_AREA = DOTS | LINE | AREA,
-    COLORMAP_AREA  = 0x8
-};
-
-inline Display_style operator|(Display_style a, Display_style b)
-{
-    return static_cast<Display_style>(static_cast<int>(a) | static_cast<int>(b));
-}
-
-inline bool operator&(Display_style a, Display_style b)
-{
-    return (static_cast<int>(a) & static_cast<int>(b)) != 0;
-}
+// These types are defined in core and re-exported here for wrapper-level code.
+using Display_style    = core::Display_style;
+using shader_set_t     = core::shader_set_t;
+using colormap_config_t = core::colormap_config_t;
 
 // -----------------------------------------------------------------------------
 // Time Follow Mode
@@ -68,41 +53,6 @@ struct data_config_t
 
     // Bar width for OHLC-style charts
     double vbar_width = 150.;
-};
-
-// -----------------------------------------------------------------------------
-// Colormap Configuration
-// -----------------------------------------------------------------------------
-struct colormap_config_t
-{
-    std::vector<glm::vec4> samples;
-    uint64_t               revision = 0;
-};
-
-// -----------------------------------------------------------------------------
-// Shader Set
-// -----------------------------------------------------------------------------
-struct shader_set_t
-{
-    std::string vert;
-    std::string geom;
-    std::string frag;
-
-    bool operator<(const shader_set_t& other) const
-    {
-        if (vert != other.vert) {
-            return vert < other.vert;
-        }
-        if (geom != other.geom) {
-            return geom < other.geom;
-        }
-        return frag < other.frag;
-    }
-
-    bool operator==(const shader_set_t& other) const
-    {
-        return vert == other.vert && geom == other.geom && frag == other.frag;
-    }
 };
 
 // -----------------------------------------------------------------------------

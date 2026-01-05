@@ -155,6 +155,10 @@ inline float min_v_span_for(float a, float b)
 // Compute LOD scales vector from a data source.
 // Works with any type that has lod_levels() and lod_scale(level) methods.
 // Each scale represents the subsampling factor at that LOD level.
+//
+// Note: Scales are clamped to >= 1 to prevent division-by-zero and other
+// edge cases downstream. A scale of 0 is semantically invalid (would mean
+// "zero samples per coarse sample"). Data sources should always return >= 1.
 template<typename DataSourceT>
 std::vector<std::size_t> compute_lod_scales(const DataSourceT& data_source)
 {
