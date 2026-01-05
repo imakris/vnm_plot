@@ -18,5 +18,8 @@
         <file alias="shaders/plot_area.frag">shaders/plot_area.frag</file>
         <!-- Fonts -->
         <file alias="fonts/monospace.ttf">fonts/monospace.ttf</file>
+        <!-- QML Components -->
+        <file alias="qml/VnmPlot/qmldir">qml/VnmPlot/qmldir</file>
+        <file alias="qml/VnmPlot/PlotIndicator.qml">qml/VnmPlot/PlotIndicator.qml</file>
     </qresource>
 </RCC>

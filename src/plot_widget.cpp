@@ -7,6 +7,9 @@
 #include <QQuickWindow>
 #include <QScreen>
 
+#include <QColor>
+#include <QVariantMap>
+
 #include <algorithm>
 #include <cstdint>
 #include <cmath>
@@ -837,6 +840,146 @@ bool Plot_widget::can_zoom_in() const
 {
     std::shared_lock lock(m_data_cfg_mutex);
     return (m_data_cfg.t_max - m_data_cfg.t_min) > 0.1;
+}
+
+QVariantList Plot_widget::get_indicator_samples(double x, double plot_width, double plot_height) const
+{
+    QVariantList result;
+
+    if (plot_width <= 0.0 || plot_height <= 0.0) {
+        return result;
+    }
+
+    double tmin = 0.0;
+    double tmax = 0.0;
+    float vmin = 0.0f;
+    float vmax = 0.0f;
+    {
+        std::shared_lock lock(m_data_cfg_mutex);
+        tmin = m_data_cfg.t_min;
+        tmax = m_data_cfg.t_max;
+        if (m_v_auto.load(std::memory_order_acquire)) {
+            vmin = m_data_cfg.v_min;
+            vmax = m_data_cfg.v_max;
+        }
+        else {
+            vmin = m_data_cfg.v_manual_min;
+            vmax = m_data_cfg.v_manual_max;
+        }
+    }
+
+    const double t_span = tmax - tmin;
+    const float v_span = vmax - vmin;
+
+    if (t_span <= 0.0 || v_span <= 0.0f) {
+        return result;
+    }
+
+    auto series_map = get_series_snapshot();
+
+    for (const auto& [id, series] : series_map) {
+        if (!series || !series->enabled) {
+            continue;
+        }
+        if (!series->data_source || !series->get_timestamp || !series->get_value) {
+            continue;
+        }
+
+        auto snap = series->data_source->snapshot(0);
+        if (!snap || snap.count == 0 || snap.stride == 0) {
+            continue;
+        }
+
+        const std::size_t count = snap.count;
+        const auto* base = static_cast<const std::uint8_t*>(snap.data);
+
+        const double first_ts = series->get_timestamp(base);
+        const double last_ts = series->get_timestamp(base + (count - 1) * snap.stride);
+        const bool ascending = first_ts <= last_ts;
+
+        std::size_t lo = 0;
+        std::size_t hi = count - 1;
+        while (lo < hi) {
+            std::size_t mid = (lo + hi) / 2;
+            const double ts = series->get_timestamp(base + mid * snap.stride);
+            if (ascending ? (ts < x) : (ts > x)) {
+                lo = mid + 1;
+            }
+            else {
+                hi = mid;
+            }
+        }
+
+        std::size_t i0 = 0;
+        std::size_t i1 = 0;
+
+        if (count > 1) {
+            if (ascending) {
+                if (x <= first_ts) {
+                    i0 = 0;
+                    i1 = 0;
+                }
+                else if (x >= last_ts) {
+                    i0 = count - 1;
+                    i1 = count - 1;
+                }
+                else {
+                    i0 = lo > 0 ? lo - 1 : 0;
+                    i1 = lo;
+                }
+            }
+            else {
+                if (x >= first_ts) {
+                    i0 = 0;
+                    i1 = 0;
+                }
+                else if (x <= last_ts) {
+                    i0 = count - 1;
+                    i1 = count - 1;
+                }
+                else {
+                    i0 = lo > 0 ? lo - 1 : 0;
+                    i1 = lo;
+                }
+            }
+        }
+
+        const double x0 = series->get_timestamp(base + i0 * snap.stride);
+        const double x1 = series->get_timestamp(base + i1 * snap.stride);
+        const double y0 = static_cast<double>(series->get_value(base + i0 * snap.stride));
+        const double y1 = static_cast<double>(series->get_value(base + i1 * snap.stride));
+
+        double y = y0;
+        const double denom = x1 - x0;
+        if (i0 != i1 && std::abs(denom) > 1e-15) {
+            double t = (x - x0) / denom;
+            t = std::clamp(t, 0.0, 1.0);
+            y = y0 + t * (y1 - y0);
+        }
+
+        double px = (x - tmin) / t_span * plot_width;
+        double py = (1.0 - (y - vmin) / v_span) * plot_height;
+
+        px = std::clamp(px, 0.0, plot_width);
+        py = std::clamp(py, 0.0, plot_height);
+
+        QColor color(
+            static_cast<int>(series->color.r * 255.0f),
+            static_cast<int>(series->color.g * 255.0f),
+            static_cast<int>(series->color.b * 255.0f),
+            static_cast<int>(series->color.a * 255.0f)
+        );
+
+        QVariantMap entry;
+        entry["x"] = x;
+        entry["y"] = y;
+        entry["px"] = px;
+        entry["py"] = py;
+        entry["color"] = color;
+        result.append(entry);
+    }
+
+    return result;
 }
 
 std::pair<float, float> Plot_widget::manual_v_range() const

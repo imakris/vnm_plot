@@ -8,21 +8,6 @@ Item {
 
     property alias plot_widget: vnm_plot
     property bool has_mouse: false
-    property var indicator_samples: []
-    property real last_mouse_x: 0
-
-    // Clear indicator when view limits change (they become stale)
-    Connections {
-        target: vnm_plot
-        function onV_limits_changed() {
-            control.indicator_samples = []
-            indicator_canvas.requestPaint()
-        }
-        function onT_limits_changed() {
-            control.indicator_samples = []
-            indicator_canvas.requestPaint()
-        }
-    }
 
     // Preview height animation state (DIP).
     property real preview_height: 0
@@ -153,147 +138,6 @@ Item {
         dark_mode: true
     }
 
-    // Returns the number of decimal places required to display values with `n`
-    // significant digits, given a typical value span.
-    function decimals_for_span(span, n) {
-        if (!isFinite(span) || span === 0) {
-            return n
-        }
-        var absSpan = Math.abs(span)
-        var raw = -Math.log10(absSpan)
-        var i = Math.max(0, Math.ceil(raw))
-        if (!isFinite(i) || i > 20) i = 20
-        return i + n - 1
-    }
-
-    // Indicator Canvas - draws dots and value labels at cursor position
-    Canvas {
-        id: indicator_canvas
-        anchors.fill: parent
-        anchors.bottomMargin: vnm_plot.reserved_height
-        anchors.rightMargin: vbar_width_effective
-        renderTarget: Canvas.FramebufferObject
-        renderStrategy: Canvas.Threaded
-        z: 100
-
-        onPaint: {
-            var ctx = getContext("2d")
-            ctx.clearRect(0, 0, width, height)
-            ctx.lineWidth = 1
-
-            if (!control.has_mouse || control.indicator_samples.length === 0) {
-                return
-            }
-
-            var samples = control.indicator_samples
-            if (samples.length === 0) {
-                return
-            }
-
-            // Use the pre-calculated pixel x position from the first sample
-            var xLine = samples[0].px
-            var xVal = samples[0].x
-
-            // Draw vertical line
-            ctx.strokeStyle = "#ffffff"
-            ctx.beginPath()
-            ctx.moveTo(xLine, 0)
-            ctx.lineTo(xLine, height)
-            ctx.stroke()
-            ctx.closePath()
-
-            // Prepare labels
-            var tspan = vnm_plot.t_max - vnm_plot.t_min
-            var vspan = vnm_plot.v_max - vnm_plot.v_min
-            var dry = Math.max(3, decimals_for_span(vspan, 3))
-            var drx = Math.max(3, decimals_for_span(tspan, 3))
-            var x_txt = xVal.toFixed(drx)
-            var PI = Math.PI
-            var bulletChar = "\u2022"
-
-            var lines = []
-            var maxValueWidth = ctx.measureText(x_txt).width
-
-            for (var i = 0; i < samples.length; ++i) {
-                var s = samples[i]
-                var vtxt = s.y.toFixed(dry)
-                var w = ctx.measureText(vtxt).width
-                if (w > maxValueWidth) maxValueWidth = w
-
-                lines.push({
-                    value: vtxt,
-                    color: s.color,
-                    px: s.px,
-                    py: s.py
-                })
-            }
-
-            var showBullet = (lines.length > 1)
-            var lineHeight = 18
-            var boxPaddingX = 8
-            var boxPaddingY = 6
-            var bulletWidth = showBullet ? ctx.measureText(bulletChar).width + 4 : 0
-            var textWidth = Math.max(ctx.measureText(x_txt).width, bulletWidth + maxValueWidth)
-
-            var x0 = (xLine > width / 2) ? xLine - 10 - textWidth - boxPaddingX * 2 : xLine + 10
-            var x1 = x0 + textWidth + boxPaddingX * 2
-            var y0 = 10
-            var y1 = y0 + boxPaddingY * 2 + lineHeight * (lines.length + 1)
-
-            // Background box
-            ctx.strokeStyle = "#ffffff"
-            ctx.fillStyle = "#ccdadada"
-            ctx.beginPath()
-            ctx.moveTo(x0, y0)
-            ctx.lineTo(x1, y0)
-            ctx.lineTo(x1, y1)
-            ctx.lineTo(x0, y1)
-            ctx.lineTo(x0, y0)
-            ctx.fill()
-            ctx.closePath()
-
-            // Header line with x value
-            ctx.fillStyle = "#000000"
-            ctx.beginPath()
-            ctx.fillText(x_txt, x0 + boxPaddingX, y0 + boxPaddingY + lineHeight)
-            ctx.fill()
-            ctx.closePath()
-
-            // Per-function lines
-            for (var li = 0; li < lines.length; ++li) {
-                var ly = y0 + boxPaddingY + lineHeight * (li + 2)
-                var line = lines[li]
-
-                if (showBullet) {
-                    ctx.fillStyle = line.color
-                    ctx.beginPath()
-                    ctx.fillText(bulletChar, x0 + boxPaddingX, ly)
-                    ctx.fill()
-                    ctx.closePath()
-                }
-
-                ctx.fillStyle = "#000000"
-                ctx.beginPath()
-                ctx.fillText(line.value, x0 + boxPaddingX + bulletWidth, ly)
-                ctx.fill()
-                ctx.closePath()
-            }
-
-            // Draw dots at each sample using pre-calculated pixel coordinates
-            for (var di = 0; di < lines.length; ++di) {
-                var sx = lines[di].px
-                var sy = lines[di].py
-                ctx.strokeStyle = "#ffffffff"
-                ctx.fillStyle = lines[di].color
-                ctx.beginPath()
-                ctx.arc(sx, sy, 4, 0, 2 * PI, false)
-                ctx.fill()
-                ctx.stroke()
-                ctx.closePath()
-            }
-        }
-    }
-
     MouseArea {
         id: ma
         anchors.fill: parent
@@ -306,25 +150,7 @@ Item {
         property real dragging_preview_start: 0
 
         onEntered: { control.has_mouse = true }
-        onExited: { control.has_mouse = false; indicator_canvas.requestPaint() }
-
-        function update_indicator(mouseX) {
-            if (!control.has_mouse || mouseX < 0 || mouseX > control.usable_width) {
-                control.indicator_samples = []
-                indicator_canvas.requestPaint()
-                return
-            }
-
-            // Convert mouse X to data X
-            var tmin = vnm_plot.t_min
-            var tmax = vnm_plot.t_max
-            var tspan = tmax - tmin
-            if (tspan <= 0) return
-
-            var xVal = tmin + (mouseX / control.usable_width) * tspan
-            control.indicator_samples = functionPlotter.get_samples_at_x(xVal, control.usable_width, control.usable_height)
-            indicator_canvas.requestPaint()
-        }
+        onExited: { control.has_mouse = false }
 
         onPressed: function(mouse) {
             if (mouse.button !== Qt.LeftButton) {
@@ -354,10 +180,7 @@ Item {
         }
 
         onPositionChanged: function(mouse) {
-            // Update indicator on mouse move (if not dragging)
-            if (!dragging && !dragging_preview) {
-                update_indicator(mouse.x)
-            }
+            indicator.updateMousePosition(mouse.x, mouse.y)
 
             if (dragging) {
                 const mods = mouse.modifiers
@@ -438,6 +261,12 @@ Item {
 
             wheel.accepted = true
         }
+    }
+
+    PlotIndicator {
+        id: indicator
+        anchors.fill: parent
+        plotWidget: vnm_plot
     }
 
     Component.onCompleted: {

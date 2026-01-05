@@ -48,6 +48,9 @@ int main(int argc, char* argv[])
     // Set up QML engine
     QQmlApplicationEngine engine;
 
+    // Add vnm_plot QML module import path
+    engine.addImportPath("qrc:/vnm_plot/qml");
+
     // Expose the plotter to QML
     engine.rootContext()->setContextProperty("functionPlotter", &plotter);
 

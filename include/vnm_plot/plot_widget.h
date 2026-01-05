@@ -12,6 +12,8 @@
 #include <QElapsedTimer>
 #include <QQuickFramebufferObject>
 
+#include <QVariantList>
+
 #include <atomic>
 #include <map>
 #include <memory>
@@ -129,6 +131,8 @@ public:
     Q_INVOKABLE void set_preview_height_max(double v);
     Q_INVOKABLE void set_show_if_calculated_preview_height_below_min(bool v);
     Q_INVOKABLE void set_preview_height_steps(int steps);
+
+    Q_INVOKABLE QVariantList get_indicator_samples(double x, double plot_width, double plot_height) const;
 
     // --- Qt Quick FBO Interface ---
 
