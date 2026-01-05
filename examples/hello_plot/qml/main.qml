@@ -11,13 +11,13 @@ Window {
     title: "vnm_plot hello"
     color: "#0b0d12"
 
-    PlotWidget {
-        id: plot
+    PlotView {
+        id: plotView
         anchors.fill: parent
-        Component.onCompleted: update_dpi_scaling_factor()
+        Component.onCompleted: plotWidget.update_dpi_scaling_factor()
     }
 
     PlotController {
-        plot_widget: plot
+        plot_widget: plotView.plotWidget
     }
 }
