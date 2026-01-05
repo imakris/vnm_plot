@@ -13,6 +13,7 @@
 // Forward declare GL types to avoid including GL headers in this header
 using GLuint = unsigned int;
 using GLint = int;
+using GLsizei = int;
 
 namespace vnm::plot {
 
