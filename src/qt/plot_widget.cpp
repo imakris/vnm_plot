@@ -67,6 +67,7 @@ double dpi_scaling_for_window([[maybe_unused]] void* native_handle)
 } // anonymous namespace
 
 namespace vnm::plot {
+using namespace detail;
 
 Plot_widget::Plot_widget()
     : QQuickFramebufferObject()
@@ -326,7 +327,7 @@ void Plot_widget::set_vbar_width_from_renderer(double px)
     const double current = m_vbar_width_px.load(std::memory_order_acquire);
     const double target = px;
 
-    if (std::abs(target - current) <= detail::k_vbar_width_change_threshold_d &&
+    if (std::abs(target - current) <= k_vbar_width_change_threshold_d &&
         !m_vbar_width_timer.isActive())
     {
         return;
@@ -653,7 +654,7 @@ void Plot_widget::zoom_value(float pivot, float scale)
 
 void Plot_widget::adjust_v_to_target(float target_vmin, float target_vmax)
 {
-    const float min_span = detail::min_v_span_for(target_vmin, target_vmax);
+    const float min_span = min_v_span_for(target_vmin, target_vmax);
     if (target_vmax - target_vmin < min_span) {
         const float mid = 0.5f * (target_vmax + target_vmin);
         target_vmin = mid - 0.5f * min_span;
@@ -787,7 +788,7 @@ void Plot_widget::auto_adjust_view(bool adjust_t, double extra_v_scale, bool anc
     const double base_span = std::max(0.0, agg.vmax - agg.vmin);
     double span = base_span * scale;
     const double min_span = static_cast<double>(
-        detail::min_v_span_for(static_cast<float>(agg.vmin), static_cast<float>(agg.vmax)));
+        min_v_span_for(static_cast<float>(agg.vmin), static_cast<float>(agg.vmax)));
     if (!(span > min_span)) {
         span = std::max(span, min_span);
     }

@@ -34,6 +34,7 @@
 #include <vector>
 
 namespace vnm::plot {
+using namespace detail;
 
 namespace {
 
@@ -690,14 +691,14 @@ const frame_layout_result_t& Plot_renderer::impl_t::calculate_frame_layout(
     auto layout_result = layout_calc.calculate(layout_params);
 
     const double measured_vbar_width = std::max(
-        detail::k_vbar_min_width_px_d,
-        double(layout_result.max_v_label_text_width) + detail::k_v_label_horizontal_padding_px);
+        k_vbar_min_width_px_d,
+        double(layout_result.max_v_label_text_width) + k_v_label_horizontal_padding_px);
 
     // If measured width differs significantly, notify widget to animate towards it.
     // Continue using the current animated width for this frame - the animation will
     // progress smoothly on subsequent frames via the widget's timer.
     double effective_vbar_width = snapshot.vbar_width_pixels;
-    if (std::abs(snapshot.vbar_width_pixels - measured_vbar_width) > detail::k_vbar_width_change_threshold_d)
+    if (std::abs(snapshot.vbar_width_pixels - measured_vbar_width) > k_vbar_width_change_threshold_d)
     {
         // Notify widget to animate to new width
         if (owner) {

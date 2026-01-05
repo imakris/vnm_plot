@@ -26,7 +26,6 @@ struct function_sample_t
     function_sample_t(double x_, float y_) : x(x_), y(y_), y_min(y_), y_max(y_) {}
 
     function_sample_t(double x_, float y_, float y_min_, float y_max_)
-
     :
         x(x_),
         y(y_),
@@ -100,15 +99,9 @@ public:
             float y_hi = fn_max(x);
 
             // Handle NaN/Inf
-            if (!std::isfinite(y)) {
-                y = 0.0f;
-            }
-            if (!std::isfinite(y_lo)) {
-                y_lo = y;
-            }
-            if (!std::isfinite(y_hi)) {
-                y_hi = y;
-            }
+            if (!std::isfinite(y))    { y    = 0.0f; }
+            if (!std::isfinite(y_lo)) { y_lo = y;    }
+            if (!std::isfinite(y_hi)) { y_hi = y;    }
 
             samples.emplace_back(x, y, y_lo, y_hi);
         }

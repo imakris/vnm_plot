@@ -293,17 +293,17 @@ struct colormap_config_t
 // -----------------------------------------------------------------------------
 struct data_config_t
 {
-    float v_min        = -1.f;
-    float v_max        = 1.f;
-    float v_manual_min = 0.f;
-    float v_manual_max = 5.f;
+    float  v_min           = -1.f;
+    float  v_max           = 1.f;
+    float  v_manual_min    = 0.f;
+    float  v_manual_max    = 5.f;
 
     double t_min           = 5000.;
     double t_max           = 10000.;
     double t_available_min = 0.;
     double t_available_max = 10000.;
 
-    double vbar_width = 150.;
+    double vbar_width      = 150.;
 };
 
 // -----------------------------------------------------------------------------
@@ -393,14 +393,14 @@ struct frame_layout_result_t
     std::vector<h_label_t> h_labels;
     std::vector<v_label_t> v_labels;
 
-    int    v_label_fixed_digits   = 0;
-    bool   h_labels_subsecond     = false;
+    int    v_label_fixed_digits    = 0;
+    bool   h_labels_subsecond      = false;
 
-    int    vertical_seed_index    = -1;
-    double vertical_seed_step     = 0.0;
-    double vertical_finest_step   = 0.0;
-    int    horizontal_seed_index  = -1;
-    double horizontal_seed_step   = 0.0;
+    int    vertical_seed_index     = -1;
+    double vertical_seed_step      = 0.0;
+    double vertical_finest_step    = 0.0;
+    int    horizontal_seed_index   = -1;
+    double horizontal_seed_step    = 0.0;
 };
 
 /// Key for layout caching. Layout is recomputed only when this key changes.

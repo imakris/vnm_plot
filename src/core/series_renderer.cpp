@@ -13,6 +13,7 @@
 #include <unordered_set>
 
 namespace vnm::plot {
+using namespace detail;
 
 namespace {
 
@@ -301,12 +302,12 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
         std::size_t first_idx = 0;
         std::size_t last_idx = snapshot.count;
         if (get_timestamp) {
-            first_idx = detail::lower_bound_timestamp(
+            first_idx = lower_bound_timestamp(
                 snapshot.data, snapshot.count, snapshot.stride, get_timestamp, t_min);
             if (first_idx > 0) {
                 --first_idx;
             }
-            last_idx = detail::upper_bound_timestamp(
+            last_idx = upper_bound_timestamp(
                 snapshot.data, snapshot.count, snapshot.stride, get_timestamp, t_max);
             last_idx = std::min(last_idx + 2, snapshot.count);
         }
@@ -321,7 +322,7 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
             ? width_px / static_cast<double>(base_samples)
             : 0.0;
 
-        const std::size_t desired_level = detail::choose_lod_level(scales, applied_level, base_pps);
+        const std::size_t desired_level = choose_lod_level(scales, applied_level, base_pps);
         if (desired_level != applied_level) {
             target_level = desired_level;
             continue;
@@ -480,7 +481,7 @@ void Series_renderer::render(
         auto& vbo_state = m_vbo_states[id];
 
         // Build LOD scales vector using shared helper
-        const std::vector<std::size_t> scales = detail::compute_lod_scales(*s->data_source);
+        const std::vector<std::size_t> scales = compute_lod_scales(*s->data_source);
 
         // Process main view
         auto main_result = process_view(

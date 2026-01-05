@@ -48,21 +48,21 @@ public:
         bool      monospace_advance_is_reliable = false;
 
         // Callbacks for metrics and formatting
-        std::function<int(double)>              get_required_fixed_digits_func;
+        std::function<int(double)>                 get_required_fixed_digits_func;
         std::function<std::string(double, double)> format_timestamp_func;
-        std::function<float(const char*)>       measure_text_func;
+        std::function<float(const char*)>          measure_text_func;
 
         // Optional profiler (from Plot_config)
         vnm::plot::Profiler* profiler = nullptr;
 
         // Seed hints for incremental computation
-        bool   has_vertical_seed     = false;
-        int    vertical_seed_index   = -1;
-        double vertical_seed_step    = 0.0;
+        bool   has_vertical_seed      = false;
+        int    vertical_seed_index    = -1;
+        double vertical_seed_step     = 0.0;
 
-        bool   has_horizontal_seed   = false;
-        int    horizontal_seed_index = -1;
-        double horizontal_seed_step  = 0.0;
+        bool   has_horizontal_seed    = false;
+        int    horizontal_seed_index  = -1;
+        double horizontal_seed_step   = 0.0;
     };
 
     // Calculation result
