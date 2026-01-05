@@ -62,57 +62,6 @@ bool compute_aux_metric_range(
     return true;
 }
 
-// Binary search for timestamp in snapshot
-std::size_t lower_bound_timestamp(
-    const data_snapshot_t& snapshot,
-    const std::function<double(const void*)>& get_timestamp,
-    double t)
-{
-    if (!snapshot || snapshot.count == 0) {
-        return 0;
-    }
-
-    const auto* base = static_cast<const std::uint8_t*>(snapshot.data);
-    std::size_t lo = 0;
-    std::size_t hi = snapshot.count;
-
-    while (lo < hi) {
-        std::size_t mid = lo + (hi - lo) / 2;
-        const void* sample = base + mid * snapshot.stride;
-        if (get_timestamp(sample) < t) {
-            lo = mid + 1;
-        } else {
-            hi = mid;
-        }
-    }
-    return lo;
-}
-
-std::size_t upper_bound_timestamp(
-    const data_snapshot_t& snapshot,
-    const std::function<double(const void*)>& get_timestamp,
-    double t)
-{
-    if (!snapshot || snapshot.count == 0) {
-        return 0;
-    }
-
-    const auto* base = static_cast<const std::uint8_t*>(snapshot.data);
-    std::size_t lo = 0;
-    std::size_t hi = snapshot.count;
-
-    while (lo < hi) {
-        std::size_t mid = lo + (hi - lo) / 2;
-        const void* sample = base + mid * snapshot.stride;
-        if (get_timestamp(sample) <= t) {
-            lo = mid + 1;
-        } else {
-            hi = mid;
-        }
-    }
-    return lo;
-}
-
 } // anonymous namespace
 
 Series_renderer::Series_renderer()
@@ -300,40 +249,6 @@ std::shared_ptr<GL_program> Series_renderer::get_or_load_shader(
     return shared_sp;
 }
 
-std::size_t Series_renderer::choose_level_from_base_pps(
-    const std::vector<std::size_t>& scales,
-    std::size_t current_level,
-    double base_pps)
-{
-    if (scales.empty() || base_pps <= 0.0) {
-        return 0;
-    }
-
-    // Target: ~2 pixels per sample for good visual quality
-    constexpr double target_pps = 2.0;
-    const double desired_scale = base_pps / target_pps;
-
-    std::size_t best_level = 0;
-    for (std::size_t i = 0; i < scales.size(); ++i) {
-        if (static_cast<double>(scales[i]) <= desired_scale) {
-            best_level = i;
-        }
-    }
-
-    // Hysteresis: don't change level unless there's significant benefit
-    if (current_level < scales.size()) {
-        const double current_pps = base_pps / static_cast<double>(scales[current_level]);
-        const double new_pps = base_pps / static_cast<double>(scales[best_level]);
-
-        // Only change if improvement is > 50%
-        if (std::abs(new_pps - target_pps) < std::abs(current_pps - target_pps) * 0.5) {
-            return current_level;
-        }
-    }
-
-    return best_level;
-}
-
 Series_renderer::view_render_result_t Series_renderer::process_view(
     vbo_view_state_t& view_state,
     Data_source& data_source,
@@ -384,11 +299,13 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
         std::size_t first_idx = 0;
         std::size_t last_idx = snapshot.count;
         if (get_timestamp) {
-            first_idx = lower_bound_timestamp(snapshot, get_timestamp, t_min);
+            first_idx = algo::lower_bound_timestamp(
+                snapshot.data, snapshot.count, snapshot.stride, get_timestamp, t_min);
             if (first_idx > 0) {
                 --first_idx;
             }
-            last_idx = upper_bound_timestamp(snapshot, get_timestamp, t_max);
+            last_idx = algo::upper_bound_timestamp(
+                snapshot.data, snapshot.count, snapshot.stride, get_timestamp, t_max);
             last_idx = std::min(last_idx + 2, snapshot.count);
         }
 
@@ -402,7 +319,7 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
             ? width_px / static_cast<double>(base_samples)
             : 0.0;
 
-        const std::size_t desired_level = choose_level_from_base_pps(scales, applied_level, base_pps);
+        const std::size_t desired_level = algo::choose_lod_level(scales, applied_level, base_pps);
         if (desired_level != applied_level) {
             target_level = desired_level;
             continue;

@@ -177,65 +177,6 @@ core::frame_layout_result_t to_core_layout(
     return out;
 }
 
-std::size_t choose_level_from_base_pps(
-    const std::vector<std::size_t>& scales,
-    std::size_t current_level,
-    double base_pps)
-{
-    if (scales.empty() || !(base_pps > 0.0)) {
-        return 0;
-    }
-
-    const std::size_t max_level = scales.size() - 1;
-    std::size_t level = std::min(current_level, max_level);
-
-    auto subdivision_between = [&](std::size_t lower, std::size_t higher) -> double {
-        if (higher >= scales.size() || lower >= scales.size()) {
-            return 0.0;
-        }
-        const double lower_scale = static_cast<double>(scales[lower]);
-        const double higher_scale = static_cast<double>(scales[higher]);
-        if (!(lower_scale > 0.0)) {
-            return 0.0;
-        }
-        return higher_scale / lower_scale;
-    };
-
-    auto level_pixels_per_sample = [&](std::size_t lvl) -> double {
-        if (lvl >= scales.size()) {
-            return 0.0;
-        }
-        return base_pps * static_cast<double>(scales[lvl]);
-    };
-
-    while (level + 1 < scales.size()) {
-        const double subdivision = subdivision_between(level, level + 1);
-        if (!(subdivision > 1.0)) {
-            break;
-        }
-        const double threshold_up = 1.0 / subdivision;
-        const double current_pps = level_pixels_per_sample(level);
-        if (current_pps < threshold_up) {
-            ++level;
-        }
-        else {
-            break;
-        }
-    }
-
-    while (level > 0) {
-        const double current_pps = level_pixels_per_sample(level);
-        if (current_pps > 1.0) {
-            --level;
-        }
-        else {
-            break;
-        }
-    }
-
-    return level;
-}
-
 bool compute_snapshot_minmax(
     const series_data_t& series,
     const data_snapshot_t& snapshot,
@@ -568,7 +509,7 @@ std::pair<float, float> compute_visible_v_range(
         const double base_pps = (base_samples > 0 && width_px > 0.0)
             ? width_px / static_cast<double>(base_samples)
             : 0.0;
-        const std::size_t desired_level = choose_level_from_base_pps(scales, 0, base_pps);
+        const std::size_t desired_level = core::algo::choose_lod_level(scales, 0, base_pps);
 
         std::size_t applied_level = desired_level;
         auto snapshot = series->data_source->snapshot(applied_level);

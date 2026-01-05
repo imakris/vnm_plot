@@ -172,4 +172,112 @@ std::vector<std::size_t> compute_lod_scales(const DataSourceT& data_source)
     return scales;
 }
 
+// -----------------------------------------------------------------------------
+// Binary Search for Timestamps
+// -----------------------------------------------------------------------------
+// These functions perform binary search on a contiguous array of samples,
+// using a callback to extract timestamps. Assumes ascending timestamp order.
+
+// Returns index of first sample with timestamp >= t (lower_bound semantics).
+template<typename GetTimestampFn>
+std::size_t lower_bound_timestamp(
+    const void* data,
+    std::size_t count,
+    std::size_t stride,
+    GetTimestampFn&& get_timestamp,
+    double t)
+{
+    if (data == nullptr || count == 0) {
+        return 0;
+    }
+
+    const auto* base = static_cast<const std::uint8_t*>(data);
+    std::size_t lo = 0;
+    std::size_t hi = count;
+
+    while (lo < hi) {
+        std::size_t mid = lo + (hi - lo) / 2;
+        const void* sample = base + mid * stride;
+        if (get_timestamp(sample) < t) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    return lo;
+}
+
+// Returns index of first sample with timestamp > t (upper_bound semantics).
+template<typename GetTimestampFn>
+std::size_t upper_bound_timestamp(
+    const void* data,
+    std::size_t count,
+    std::size_t stride,
+    GetTimestampFn&& get_timestamp,
+    double t)
+{
+    if (data == nullptr || count == 0) {
+        return 0;
+    }
+
+    const auto* base = static_cast<const std::uint8_t*>(data);
+    std::size_t lo = 0;
+    std::size_t hi = count;
+
+    while (lo < hi) {
+        std::size_t mid = lo + (hi - lo) / 2;
+        const void* sample = base + mid * stride;
+        if (get_timestamp(sample) <= t) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    return lo;
+}
+
+// -----------------------------------------------------------------------------
+// LOD Level Selection
+// -----------------------------------------------------------------------------
+// Target-based LOD selection with hysteresis to prevent oscillation.
+// Chooses the LOD level that best achieves ~2 pixels per sample.
+
+inline std::size_t choose_lod_level(
+    const std::vector<std::size_t>& scales,
+    std::size_t current_level,
+    double base_pps)
+{
+    if (scales.empty() || base_pps <= 0.0) {
+        return 0;
+    }
+
+    // Target: ~2 pixels per LOD sample for good visual quality.
+    // base_pps = pixels per base sample (finest level).
+    // pixels_per_lod_sample = base_pps * scale.
+    // We want: base_pps * scale ≈ target_pps, so scale ≈ target_pps / base_pps.
+    constexpr double target_pps = 2.0;
+    const double desired_scale = target_pps / base_pps;
+
+    std::size_t best_level = 0;
+    for (std::size_t i = 0; i < scales.size(); ++i) {
+        if (static_cast<double>(scales[i]) <= desired_scale) {
+            best_level = i;
+        }
+    }
+
+    // Hysteresis: don't change level unless there's significant benefit
+    if (current_level < scales.size()) {
+        // pixels per LOD sample at each level
+        const double current_pps = base_pps * static_cast<double>(scales[current_level]);
+        const double new_pps = base_pps * static_cast<double>(scales[best_level]);
+
+        // Only change if improvement is > 50% (new error < 50% of current error)
+        if (std::abs(new_pps - target_pps) > std::abs(current_pps - target_pps) * 0.5) {
+            return current_level;
+        }
+    }
+
+    return best_level;
+}
+
 } // namespace vnm::plot::core::algo

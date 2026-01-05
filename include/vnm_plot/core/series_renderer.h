@@ -134,11 +134,6 @@ private:
     GLuint ensure_series_vao(Display_style style, GLuint vbo, const series_data_t& series);
     GLuint ensure_colormap_texture(const series_data_t& series);
 
-    static std::size_t choose_level_from_base_pps(
-        const std::vector<std::size_t>& scales,
-        std::size_t current_level,
-        double base_pps);
-
     view_render_result_t process_view(
         vbo_view_state_t& view_state,
         Data_source& data_source,
