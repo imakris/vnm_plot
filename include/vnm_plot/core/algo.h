@@ -312,8 +312,8 @@ std::size_t upper_bound_timestamp(
 // -----------------------------------------------------------------------------
 // LOD Level Selection
 // -----------------------------------------------------------------------------
-// Level selection based on pixels-per-sample, using per-level subdivision
-// thresholds. This matches the pre-refactor behavior (Lumis).
+// Level selection based on pixels-per-sample, without hysteresis.
+// Chooses the LOD level whose pixels-per-sample is closest to 1.0.
 
 inline std::size_t choose_lod_level(
     const std::vector<std::size_t>& scales,
@@ -323,55 +323,22 @@ inline std::size_t choose_lod_level(
     if (scales.empty() || !(base_pps > 0.0)) {
         return 0;
     }
+    (void)current_level;
 
-    const std::size_t max_level = scales.size() - 1;
-    std::size_t level = std::min(current_level, max_level);
+    constexpr double target_pps = 1.0;
+    std::size_t best_level = 0;
+    double best_error = std::abs(base_pps * static_cast<double>(scales[0]) - target_pps);
 
-    auto subdivision_between = [&](std::size_t lower, std::size_t higher) -> double {
-        if (higher >= scales.size() || lower >= scales.size()) {
-            return 0.0;
-        }
-        const double lower_scale = static_cast<double>(scales[lower]);
-        const double higher_scale = static_cast<double>(scales[higher]);
-        if (!(lower_scale > 0.0)) {
-            return 0.0;
-        }
-        return higher_scale / lower_scale;
-    };
-
-    auto level_pixels_per_sample = [&](std::size_t lvl) -> double {
-        if (lvl >= scales.size()) {
-            return 0.0;
-        }
-        return base_pps * static_cast<double>(scales[lvl]);
-    };
-
-    while (level + 1 < scales.size()) {
-        const double subdivision = subdivision_between(level, level + 1);
-        if (!(subdivision > 1.0)) {
-            break;
-        }
-        const double threshold_up = 1.0 / subdivision;
-        const double current_pps = level_pixels_per_sample(level);
-        if (current_pps < threshold_up) {
-            ++level;
-        }
-        else {
-            break;
+    for (std::size_t i = 1; i < scales.size(); ++i) {
+        const double pps = base_pps * static_cast<double>(scales[i]);
+        const double error = std::abs(pps - target_pps);
+        if (error < best_error) {
+            best_error = error;
+            best_level = i;
         }
     }
 
-    while (level > 0) {
-        const double current_pps = level_pixels_per_sample(level);
-        if (current_pps > 1.0) {
-            --level;
-        }
-        else {
-            break;
-        }
-    }
-
-    return level;
+    return best_level;
 }
 
 } // namespace detail
