@@ -164,6 +164,27 @@ struct colormap_config_t
 };
 
 // -----------------------------------------------------------------------------
+// Data Configuration
+// -----------------------------------------------------------------------------
+struct data_config_t
+{
+    // Value (vertical) range
+    float v_min        = -1.f;
+    float v_max        = 1.f;
+    float v_manual_min = 0.f;
+    float v_manual_max = 5.f;
+
+    // Time (horizontal) range
+    double t_min           = 5000.;
+    double t_max           = 10000.;
+    double t_available_min = 0.;
+    double t_available_max = 10000.;
+
+    // Bar width for OHLC-style charts
+    double vbar_width = 150.;
+};
+
+// -----------------------------------------------------------------------------
 // series_data_t: Unified series descriptor using Data_access_policy
 // -----------------------------------------------------------------------------
 struct series_data_t

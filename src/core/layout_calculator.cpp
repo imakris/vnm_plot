@@ -1,27 +1,23 @@
-#include <vnm_plot/layout/layout_calculator.h>
-#include <vnm_plot/color_palette.h>
+#include <vnm_plot/core/layout_calculator.h>
+#include <vnm_plot/core/algo.h>
+#include <vnm_plot/core/constants.h>
+#include <vnm_plot/plot_config.h>
 
 #include <algorithm>
 #include <array>
-#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <functional>
 #include <iterator>
 #include <limits>
-#include <mutex>
+#include <memory>
 #include <type_traits>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
-#include <QByteArray>
-#include <QChar>
-#include <QString>
-
-namespace vnm::plot {
+namespace vnm::plot::core {
 
 namespace {
 
@@ -37,8 +33,8 @@ static auto to_ieee_bits(T value)
 
 struct Cached_label
 {
-    QByteArray bytes;
-    float      width = 0.0f;
+    std::string bytes;
+    float       width = 0.0f;
 };
 
 // Thread-local timestamp label cache
@@ -120,7 +116,7 @@ public:
         return true;
     }
 
-    void store(double t, QByteArray&& bytes, float width)
+    void store(double t, std::string&& bytes, float width)
     {
         if (!m_active) {
             return;
@@ -160,7 +156,7 @@ private:
         size_t operator()(const Context_key& key) const noexcept
         {
             auto combine = [](size_t seed, size_t value) {
-                seed ^= value + 0x9e3779b97f4a7c15ULL + (seed << 6) + (seed >> 2);
+                seed ^= value + 0x9e3779b97f4a7c15ULL + (seed << 6) + (seed >> 22);
                 return seed;
             };
             size_t seed = std::hash<uint64_t>{}(key.step_bits);
@@ -207,27 +203,27 @@ public:
             return it->second.signature;
         }
 
-        QString signature_text;
+        std::string signature_text;
         signature_text.reserve(96);
 
         static constexpr std::array<double, 3> k_samples = {0.0, 0.123456789, 12345.6789};
 
         bool first = true;
         for (double sample : k_samples) {
-            QString text = params.format_timestamp_func(sample, range);
-            for (int i = 0; i < text.size(); ++i) {
-                if (text[i].isDigit()) {
-                    text[i] = QChar(u'0');
+            std::string text = params.format_timestamp_func(sample, range);
+            for (char& ch : text) {
+                if (ch >= '0' && ch <= '9') {
+                    ch = '0';
                 }
             }
             if (!first) {
-                signature_text.append(QChar(u'|'));
+                signature_text.push_back('|');
             }
-            signature_text.append(text);
+            signature_text += text;
             first = false;
         }
 
-        const size_t signature = qHash(signature_text);
+        const size_t signature = std::hash<std::string>{}(signature_text);
         insert_entry(key, signature);
         return signature;
     }
@@ -254,7 +250,7 @@ private:
         size_t operator()(const Key& key) const noexcept
         {
             auto combine = [](size_t seed, size_t value) {
-                seed ^= value + 0x9e3779b97f4a7c15ULL + (seed << 6) + (seed >> 2);
+                seed ^= value + 0x9e3779b97f4a7c15ULL + (seed << 6) + (seed >> 22);
                 return seed;
             };
             size_t seed = std::hash<uint64_t>{}(key.step_bits);
@@ -376,7 +372,7 @@ bool has_anchor_within(
     return false;
 }
 
-} // anonymous namespace
+} // namespace
 
 bool Layout_calculator::fits_with_gap(
     const std::vector<std::pair<float, float>>& level,
@@ -475,7 +471,7 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
         accepted_y.clear();
 
         constexpr float k_coincide = 1.0f;
-        const float k_min_gap = params.adjusted_font_size_in_pixels + 10.0f;
+        const float k_min_gap = static_cast<float>(params.adjusted_font_size_in_pixels + 10.0f);
 
         double finest_step_accepted = step;
 
@@ -577,23 +573,21 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
 
         // Format and measure labels
         res.max_v_label_text_width = 0.f;
-        const float advance     = std::max(params.monospace_char_advance_px, 0.f);
+        const float advance = std::max(params.monospace_char_advance_px, 0.f);
         const bool use_monospace = params.monospace_advance_is_reliable && advance > 0.f;
 
         for (auto& e : res.v_labels) {
-            QString text = QString::fromStdString(
-                algo::format_axis_fixed_or_int(e.value, res.v_label_fixed_digits));
-            if (!text.startsWith('-')) {
-                text.prepend(' ');
+            std::string text = algo::format_axis_fixed_or_int(e.value, res.v_label_fixed_digits);
+            if (text.empty() || text[0] != '-') {
+                text.insert(text.begin(), ' ');
             }
-            QByteArray utf8 = text.toUtf8();
-            float width = 0.f;
 
+            float width = 0.f;
             if (use_monospace) {
                 width = advance * float(text.size());
             }
             else if (params.measure_text_func) {
-                width = params.measure_text_func(utf8.constData());
+                width = params.measure_text_func(text.c_str());
                 if (width <= 0.f && advance > 0.f) {
                     width = advance * float(text.size());
                 }
@@ -603,7 +597,7 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
             }
 
             res.max_v_label_text_width = std::max(res.max_v_label_text_width, width);
-            e.text = std::move(utf8);
+            e.text = std::move(text);
         }
     }
 
@@ -620,7 +614,10 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
             return float((tt - params.t_min) * px_per_t);
         };
 
-        const auto label_text = [&](double t) -> QString {
+        const auto label_text = [&](double t) -> std::string {
+            if (!params.format_timestamp_func) {
+                return {};
+            }
             return params.format_timestamp_func(t, t_range);
         };
 
@@ -663,11 +660,11 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
 
             struct cand
             {
-                double     t;
-                float      x0;
-                float      x1;
-                float      x_anchor;
-                QByteArray fallback;
+                double      t;
+                float       x0;
+                float       x1;
+                float       x_anchor;
+                std::string fallback;
             };
             std::vector<cand> candidates;
             candidates.reserve(64);
@@ -755,14 +752,13 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
                     w = cached->width;
                 }
                 else {
-                    QString label = label_text(t);
-                    QByteArray bytes = label.toUtf8();
+                    std::string label = label_text(t);
 
                     if (use_monospace) {
                         w = advance * float(label.size());
                     }
                     else if (params.measure_text_func) {
-                        w = params.measure_text_func(bytes.constData());
+                        w = params.measure_text_func(label.c_str());
                         if (w <= 0.f && advance > 0.f) {
                             w = advance * float(label.size());
                         }
@@ -771,8 +767,8 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
                         w = advance * float(label.size());
                     }
 
-                    candidate.fallback = bytes;
-                    QByteArray cache_bytes = candidate.fallback;
+                    candidate.fallback = label;
+                    std::string cache_bytes = candidate.fallback;
                     timestamp_label_cache().store(t, std::move(cache_bytes), w);
                 }
 
@@ -851,24 +847,24 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
                 }
 
                 for (auto& candidate : candidates) {
-                    QByteArray label_bytes;
+                    std::string label_bytes;
                     const Cached_label* cached_label = nullptr;
                     if (timestamp_label_cache().try_get(candidate.t, cached_label) && cached_label) {
                         label_bytes = cached_label->bytes;
                     }
-                    else if (!candidate.fallback.isEmpty()) {
+                    else if (!candidate.fallback.empty()) {
                         label_bytes = candidate.fallback;
-                        QByteArray cache_bytes = label_bytes;
+                        std::string cache_bytes = label_bytes;
                         timestamp_label_cache().store(candidate.t, std::move(cache_bytes), candidate.x1 - candidate.x0);
                     }
                     else {
-                        QString label = label_text(candidate.t);
-                        label_bytes = label.toUtf8();
-                        QByteArray cache_bytes = label_bytes;
+                        std::string label = label_text(candidate.t);
+                        label_bytes = label;
+                        std::string cache_bytes = label_bytes;
                         timestamp_label_cache().store(candidate.t, std::move(cache_bytes), candidate.x1 - candidate.x0);
                     }
 
-                    if (label_bytes.isEmpty()) {
+                    if (label_bytes.empty()) {
                         continue;
                     }
 
@@ -876,8 +872,9 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
                         candidate.t,
                         glm::vec2(
                             candidate.x_anchor,
-                            float(params.usable_height + params.h_label_vertical_nudge_factor * params.adjusted_font_size_in_pixels)),
-                        label_bytes
+                            float(params.usable_height + params.h_label_vertical_nudge_factor *
+                                params.adjusted_font_size_in_pixels)),
+                        std::move(label_bytes)
                     });
                 }
 
@@ -903,4 +900,4 @@ void shutdown_layout_caches()
     g_format_cache.reset();
 }
 
-} // namespace vnm::plot
+} // namespace vnm::plot::core

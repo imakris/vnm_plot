@@ -247,6 +247,7 @@ set(VNM_PLOT_CORE_SOURCES
     src/core/asset_loader.cpp
     src/core/utf8_utils.cpp
     src/core/platform_paths.cpp
+    src/core/layout_calculator.cpp
 
     # Core renderers
     src/core/primitive_renderer.cpp
@@ -272,6 +273,7 @@ set(VNM_PLOT_CORE_HEADERS
     include/vnm_plot/core/core_types.h
     include/vnm_plot/core/data_types.h
     include/vnm_plot/core/layout_types.h
+    include/vnm_plot/core/layout_calculator.h
     include/vnm_plot/core/render_types.h
     include/vnm_plot/core/constants.h
     include/vnm_plot/core/color_palette.h
@@ -293,9 +295,6 @@ set(VNM_PLOT_CORE_HEADERS
 # -----------------------------------------------------------------------------
 
 set(VNM_PLOT_SOURCES
-    # Layout
-    src/layout/layout_calculator.cpp
-
     # Main components
     src/plot_renderer.cpp
     src/plot_widget.cpp
@@ -306,20 +305,11 @@ set(VNM_PLOT_HEADERS
     # Public headers
     include/vnm_plot/data_source.h
     include/vnm_plot/function_sample.h
-    include/vnm_plot/plot_algo.h
     include/vnm_plot/plot_config.h
     include/vnm_plot/plot_renderer.h
-    include/vnm_plot/plot_types.h
     include/vnm_plot/plot_widget.h
     include/vnm_plot/plot_interaction_item.h
     include/vnm_plot/render_types.h
-    include/vnm_plot/color_palette.h
-
-    # Layout headers
-    include/vnm_plot/layout/layout_calculator.h
-
-    # Series data header
-    include/vnm_plot/renderers/series_renderer.h
 
     # Internal headers
     include/vnm_plot/core/tls_registry.h

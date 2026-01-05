@@ -20,8 +20,6 @@
 //   source->generate([](double x) { return std::sin(x); }, 0, 10, 1000);
 
 #include "data_source.h"
-#include "plot_types.h"
-#include "plot_algo.h"
 #include "function_sample.h"
 
 namespace vnm::plot {

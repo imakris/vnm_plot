@@ -7,7 +7,6 @@
 // This header re-exports core types and provides wrapper-specific utilities.
 
 #include <vnm_plot/core/data_types.h>
-#include "plot_types.h"
 
 #include <cstddef>
 #include <cstdint>

@@ -1,7 +1,8 @@
 #include <vnm_plot/plot_renderer.h>
 #include <vnm_plot/plot_widget.h>
-#include <vnm_plot/color_palette.h>
-#include <vnm_plot/layout/layout_calculator.h>
+#include <vnm_plot/core/color_palette.h>
+#include <vnm_plot/core/constants.h>
+#include <vnm_plot/core/layout_calculator.h>
 #include <vnm_plot/core/algo.h>
 #include <vnm_plot/core/asset_loader.h>
 #include <vnm_plot/core/chrome_renderer.h>
@@ -128,53 +129,13 @@ std::string normalize_asset_name(std::string_view name)
     return std::string(out);
 }
 
-shader_set_t normalize_shader_set(const shader_set_t& shader)
+core::shader_set_t normalize_shader_set(const core::shader_set_t& shader)
 {
-    shader_set_t res;
+    core::shader_set_t res;
     res.vert = normalize_asset_name(shader.vert);
     res.geom = normalize_asset_name(shader.geom);
     res.frag = normalize_asset_name(shader.frag);
     return res;
-}
-
-core::frame_layout_result_t to_core_layout(
-    const frame_layout_result_t& layout,
-    double h_bar_height)
-{
-    core::frame_layout_result_t out;
-    out.usable_width = layout.usable_width;
-    out.usable_height = layout.usable_height;
-    out.v_bar_width = layout.v_bar_width;
-    out.h_bar_height = h_bar_height;
-    out.max_v_label_text_width = layout.max_v_label_text_width;
-
-    out.v_labels.reserve(layout.v_labels.size());
-    for (const auto& label : layout.v_labels) {
-        core::v_label_t out_label;
-        out_label.value = label.value;
-        out_label.y = label.y;
-        out_label.text = std::string(label.text.constData(), label.text.size());
-        out.v_labels.push_back(std::move(out_label));
-    }
-
-    out.h_labels.reserve(layout.h_labels.size());
-    for (const auto& label : layout.h_labels) {
-        core::h_label_t out_label;
-        out_label.value = label.value;
-        out_label.position = label.position;
-        out_label.text = std::string(label.text.constData(), label.text.size());
-        out.h_labels.push_back(std::move(out_label));
-    }
-
-    out.v_label_fixed_digits = layout.v_label_fixed_digits;
-    out.h_labels_subsecond = layout.h_labels_subsecond;
-    out.vertical_seed_index = layout.vertical_seed_index;
-    out.vertical_seed_step = layout.vertical_seed_step;
-    out.vertical_finest_step = layout.vertical_finest_step;
-    out.horizontal_seed_index = layout.horizontal_seed_index;
-    out.horizontal_seed_step = layout.horizontal_seed_step;
-
-    return out;
 }
 
 bool compute_snapshot_minmax(
@@ -586,8 +547,8 @@ struct Plot_renderer::impl_t
     std::unordered_map<int, std::shared_ptr<core::series_data_t>> core_series_cache;
 
     // Layout
-    Layout_calculator layout_calc;
-    Layout_cache layout_cache;
+    core::Layout_calculator layout_calc;
+    core::Layout_cache layout_cache;
 
     // State
     render_snapshot_t snapshot;
@@ -610,7 +571,7 @@ struct Plot_renderer::impl_t
     double last_horizontal_seed_step = 0.0;
     int last_horizontal_seed_index = -1;
 
-    const frame_layout_result_t& calculate_frame_layout(
+    const core::frame_layout_result_t& calculate_frame_layout(
         float v0,
         float v1,
         double t0,
@@ -621,10 +582,10 @@ struct Plot_renderer::impl_t
     void update_seed_history(
         double v_span,
         double t_span,
-        const frame_layout_result_t& layout);
+        const core::frame_layout_result_t& layout);
 };
 
-const frame_layout_result_t& Plot_renderer::impl_t::calculate_frame_layout(
+const core::frame_layout_result_t& Plot_renderer::impl_t::calculate_frame_layout(
     float v0,
     float v1,
     double t0,
@@ -637,12 +598,12 @@ const frame_layout_result_t& Plot_renderer::impl_t::calculate_frame_layout(
     const double t_span = t1 - t0;
     const Plot_config* config = &snapshot.config;
 
-    Layout_cache::key_t cache_key;
+    core::Layout_cache::key_t cache_key;
     cache_key.v0 = v0;
     cache_key.v1 = v1;
     cache_key.t0 = t0;
     cache_key.t1 = t1;
-    cache_key.viewport_size = QSize(win_w, win_h);
+    cache_key.viewport_size = core::Size2i{win_w, win_h};
     cache_key.adjusted_reserved_height = snapshot.adjusted_reserved_height;
     cache_key.adjusted_preview_height = snapshot.adjusted_preview_height;
     cache_key.adjusted_font_size_in_pixels = snapshot.adjusted_font_px;
@@ -654,7 +615,7 @@ const frame_layout_result_t& Plot_renderer::impl_t::calculate_frame_layout(
     }
 
     auto build_layout_params = [&](double vbar_width) {
-        Layout_calculator::parameters_t layout_params;
+        core::Layout_calculator::parameters_t layout_params;
 
         layout_params.v_min = v0;
         layout_params.v_max = v1;
@@ -671,7 +632,7 @@ const frame_layout_result_t& Plot_renderer::impl_t::calculate_frame_layout(
         layout_params.measure_text_func = [this](const char* text) {
             return fonts.measure_text_px(text);
         };
-        layout_params.h_label_vertical_nudge_factor = constants::k_h_label_vertical_nudge_px;
+        layout_params.h_label_vertical_nudge_factor = core::constants::k_h_label_vertical_nudge_px;
 
         if (v_span > 0.0 &&
             last_vertical_seed_index >= 0 &&
@@ -695,11 +656,11 @@ const frame_layout_result_t& Plot_renderer::impl_t::calculate_frame_layout(
 
         if (config) {
             layout_params.get_required_fixed_digits_func = [](double) { return 2; };
-            layout_params.format_timestamp_func = [config](double ts, double range) -> QString {
+            layout_params.format_timestamp_func = [config](double ts, double range) -> std::string {
                 if (config->format_timestamp) {
-                    return QString::fromStdString(config->format_timestamp(ts, range));
+                    return config->format_timestamp(ts, range);
                 }
-                return QString::number(ts, 'f', 3);
+                return core::algo::format_axis_fixed_or_int(ts, 3);
             };
             layout_params.profiler = config->profiler.get();
         }
@@ -711,14 +672,14 @@ const frame_layout_result_t& Plot_renderer::impl_t::calculate_frame_layout(
     auto layout_result = layout_calc.calculate(layout_params);
 
     const double measured_vbar_width = std::max(
-        constants::k_vbar_min_width_px_d,
-        double(layout_result.max_v_label_text_width) + constants::k_v_label_horizontal_padding_px);
+        core::constants::k_vbar_min_width_px_d,
+        double(layout_result.max_v_label_text_width) + core::constants::k_v_label_horizontal_padding_px);
 
     // If measured width differs significantly, notify widget to animate towards it.
     // Continue using the current animated width for this frame - the animation will
     // progress smoothly on subsequent frames via the widget's timer.
     double effective_vbar_width = snapshot.vbar_width_pixels;
-    if (std::abs(snapshot.vbar_width_pixels - measured_vbar_width) > constants::k_vbar_width_change_threshold_d)
+    if (std::abs(snapshot.vbar_width_pixels - measured_vbar_width) > core::constants::k_vbar_width_change_threshold_d)
     {
         // Notify widget to animate to new width
         if (owner) {
@@ -736,10 +697,11 @@ const frame_layout_result_t& Plot_renderer::impl_t::calculate_frame_layout(
         layout_result = layout_calc.calculate(layout_params);
     }
 
-    frame_layout_result_t frame_layout;
+    core::frame_layout_result_t frame_layout;
     frame_layout.usable_width = win_w - effective_vbar_width;
     frame_layout.usable_height = usable_height;
     frame_layout.v_bar_width = effective_vbar_width;
+    frame_layout.h_bar_height = snapshot.base_label_height_px + core::constants::k_scissor_pad_px;
     frame_layout.max_v_label_text_width = layout_result.max_v_label_text_width;
     frame_layout.v_labels = std::move(layout_result.v_labels);
     frame_layout.h_labels = std::move(layout_result.h_labels);
@@ -757,7 +719,7 @@ const frame_layout_result_t& Plot_renderer::impl_t::calculate_frame_layout(
 void Plot_renderer::impl_t::update_seed_history(
     double v_span,
     double t_span,
-    const frame_layout_result_t& layout)
+    const core::frame_layout_result_t& layout)
 {
     if (v_span > 0.0) {
         last_vertical_span = v_span;
@@ -1054,7 +1016,7 @@ void Plot_renderer::render()
     const bool fade_v_labels = (prev_v_span > 0.0) && !spans_approx_equal(v_span, prev_v_span);
     const bool fade_h_labels = (prev_t_span > 0.0) && !spans_approx_equal(t_span, prev_t_span);
 
-    const frame_layout_result_t& frame_layout = m_impl->calculate_frame_layout(
+    const core::frame_layout_result_t& frame_layout = m_impl->calculate_frame_layout(
         v0,
         v1,
         m_impl->snapshot.cfg.t_min,
@@ -1077,11 +1039,8 @@ void Plot_renderer::render()
         core_config.log_error = config->log_error;
     }
 
-    const double h_bar_height = m_impl->snapshot.base_label_height_px + constants::k_scissor_pad_px;
-    const core::frame_layout_result_t core_layout = to_core_layout(frame_layout, h_bar_height);
-
     core::frame_context_t core_ctx{
-        core_layout,
+        frame_layout,
         v0,
         v1,
         preview_v0,
@@ -1102,13 +1061,14 @@ void Plot_renderer::render()
     };
 
     core::frame_context_t series_ctx = core_ctx;
-    const double preview_scissor_pad = constants::k_scissor_pad_px;
+    const double preview_scissor_pad = core::constants::k_scissor_pad_px;
     series_ctx.adjusted_preview_height = std::max(0.0, core_ctx.adjusted_preview_height - preview_scissor_pad);
 
     // Clear to transparent - let QML provide the background color (matches Lumis behavior)
     const bool dark_mode = config ? config->dark_mode : false;
     const bool clear_to_transparent = config ? config->clear_to_transparent : false;
-    const Color_palette palette = dark_mode ? Color_palette::dark() : Color_palette::light();
+    const core::Color_palette palette =
+        dark_mode ? core::Color_palette::dark() : core::Color_palette::light();
     if (clear_to_transparent) {
         glClearColor(0.f, 0.f, 0.f, 0.f);
     }
@@ -1214,7 +1174,7 @@ QOpenGLFramebufferObject* Plot_renderer::createFramebufferObject(const QSize& si
     m_impl->viewport_height = size.height();
 
     QOpenGLFramebufferObjectFormat format;
-    format.setSamples(constants::k_msaa_samples);
+    format.setSamples(core::constants::k_msaa_samples);
     format.setAttachment(QOpenGLFramebufferObject::CombinedDepthStencil);
     format.setInternalTextureFormat(GL_RGBA8);
     return new QOpenGLFramebufferObject(size, format);

@@ -2,7 +2,6 @@
 
 #include <vnm_plot/function_sample.h>
 #include <vnm_plot/plot_widget.h>
-#include <vnm_plot/renderers/series_renderer.h>
 
 #include <QtCore/QObject>
 

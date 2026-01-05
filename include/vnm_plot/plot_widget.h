@@ -4,9 +4,7 @@
 // QQuickFramebufferObject-based plot widget for Qt Quick.
 
 #include "plot_config.h"
-#include "plot_types.h"
 #include "data_source.h"
-#include "renderers/series_renderer.h"
 
 #include <QBasicTimer>
 #include <QElapsedTimer>
@@ -162,7 +160,7 @@ private:
     mutable std::shared_mutex m_config_mutex;
 
     // Data configuration
-    data_config_t m_data_cfg;
+    core::data_config_t m_data_cfg;
     mutable std::shared_mutex m_data_cfg_mutex;
 
     // Series data

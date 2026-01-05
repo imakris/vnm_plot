@@ -34,7 +34,6 @@ struct function_sample_t
         y_max(y_max_)
     {}
 
-    // Alias for compatibility with binary_search_time
     double timestamp() const { return x; }
 };
 #pragma pack(pop)

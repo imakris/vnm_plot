@@ -4,9 +4,8 @@
 // Structures for frame context and render state.
 
 #include "data_source.h"
-#include "layout/layout_calculator.h"
 #include "plot_config.h"
-#include "plot_types.h"
+#include "core/layout_types.h"
 
 #include <glm/glm.hpp>
 
@@ -23,7 +22,7 @@ namespace vnm::plot {
 struct render_snapshot_t
 {
     // Configuration copies
-    data_config_t cfg;
+    core::data_config_t cfg;
     bool visible = false;
     bool show_info = false;
     bool v_auto = true;
@@ -52,7 +51,7 @@ struct frame_context_t
     const render_snapshot_t& snapshot;
 
     // The layout result (labels, bar widths)
-    const frame_layout_result_t& layout;
+    const core::frame_layout_result_t& layout;
 
     // Validated ranges for this frame
     float v0, v1;

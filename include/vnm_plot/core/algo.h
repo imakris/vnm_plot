@@ -52,6 +52,56 @@ inline std::string format_axis_fixed_or_int(double v, int digits)
 }
 
 // -----------------------------------------------------------------------------
+// Decimal Analysis
+// -----------------------------------------------------------------------------
+
+// Check if any value has non-zero fractional part at the given precision.
+inline bool any_fractional_at_precision(const std::vector<double>& values, int digits)
+{
+    if (digits <= 0) {
+        return false;
+    }
+
+    const double scale = std::pow(10.0, double(digits));
+    const double eps = 0.5 / scale;
+
+    for (double v : values) {
+        double r = std::round(v * scale) / scale;
+        if (std::abs(r - std::round(r)) > eps) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Returns true if all values' last decimal digit is zero at given precision.
+inline bool trailing_zero_decimal_for_all(const std::vector<double>& values, int digits)
+{
+    if (digits <= 0) {
+        return false;
+    }
+
+    const double scale = std::pow(10.0, double(digits));
+    for (double v : values) {
+        const std::int64_t q = std::llround(std::abs(v) * scale);
+        if ((q % 10) != 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// Reduce digits while last decimal place is zero for all values.
+inline int trim_trailing_zero_decimals(const std::vector<double>& values, int digits)
+{
+    int d = std::max(0, digits);
+    while (d > 0 && trailing_zero_decimal_for_all(values, d)) {
+        --d;
+    }
+    return d;
+}
+
+// -----------------------------------------------------------------------------
 // Circular Indexing
 // -----------------------------------------------------------------------------
 
@@ -105,10 +155,10 @@ inline std::vector<double> build_time_steps_covering(double max_span)
 
     // Exact sequence from seconds up to 2 days
     static const double exact[] = {
-        1, 2, 10, 30,           // seconds
-        60, 300, 900, 1800,     // minutes: 1m, 5m, 15m, 30m
+        1, 2, 10, 30,             // seconds
+        60, 300, 900, 1800,       // minutes: 1m, 5m, 15m, 30m
         3600, 7200, 21600, 43200, // hours: 1h, 2h, 6h, 12h
-        86400                   // 1 day
+        86400                     // 1 day
     };
     steps.insert(steps.end(), std::begin(exact), std::end(exact));
 
