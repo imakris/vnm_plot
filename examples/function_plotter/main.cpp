@@ -7,6 +7,7 @@
 #include "function_plotter.h"
 
 #include <vnm_plot/plot_widget.h>
+#include <vnm_plot/plot_interaction_item.h>
 
 #include <QtGui/QGuiApplication>
 #include <QtGui/QIcon>
@@ -36,13 +37,14 @@ int main(int argc, char* argv[])
 
     // Register QML types
     qmlRegisterType<vnm::plot::Plot_widget>("VnmPlot", 1, 0, "PlotWidget");
+    qmlRegisterType<vnm::plot::Plot_interaction_item>("VnmPlot", 1, 0, "PlotInteractionItem");
     qmlRegisterUncreatableType<Function_entry>("FunctionPlotter", 1, 0, "FunctionEntry",
         "Function entries are created by Function_plotter");
 
     // Create the function plotter backend
     Function_plotter plotter;
 
-    // Load with a default preset
+    // Load with a default presetwrite
     plotter.load_preset(0);  // Sine wave
 
     // Set up QML engine

@@ -148,4 +148,24 @@ inline float min_v_span_for(float a, float b)
     return std::max(ulps, floor_abs);
 }
 
+// -----------------------------------------------------------------------------
+// LOD Scale Computation
+// -----------------------------------------------------------------------------
+
+// Compute LOD scales vector from a data source.
+// Works with any type that has lod_levels() and lod_scale(level) methods.
+// Each scale represents the subsampling factor at that LOD level.
+template<typename DataSourceT>
+std::vector<std::size_t> compute_lod_scales(const DataSourceT& data_source)
+{
+    std::vector<std::size_t> scales;
+    const std::size_t levels = data_source.lod_levels();
+    scales.reserve(levels);
+    for (std::size_t lvl = 0; lvl < levels; ++lvl) {
+        const std::size_t scale = std::max<std::size_t>(1, data_source.lod_scale(lvl));
+        scales.push_back(scale);
+    }
+    return scales;
+}
+
 } // namespace vnm::plot::core::algo

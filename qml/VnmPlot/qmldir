@@ -1,2 +1,3 @@
 module VnmPlot
 PlotIndicator 1.0 PlotIndicator.qml
+PlotView 1.0 PlotView.qml

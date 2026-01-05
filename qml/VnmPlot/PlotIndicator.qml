@@ -17,6 +17,15 @@ Item {
         refreshIndicator()
     }
 
+    function setMouseInPlot(inPlot) {
+        internal.hasMouseInPlot = inPlot
+        if (!inPlot) {
+            internal.mouseX = -1
+            internal.mouseY = -1
+        }
+        canvas.requestPaint()
+    }
+
     QtObject {
         id: internal
         property bool hasMouseInPlot: false
@@ -184,29 +193,6 @@ Item {
                 ctx.stroke()
                 ctx.closePath()
             }
-        }
-    }
-
-    MouseArea {
-        anchors.fill: parent
-        hoverEnabled: true
-        acceptedButtons: Qt.NoButton
-
-        onEntered: {
-            internal.hasMouseInPlot = true
-        }
-
-        onExited: {
-            internal.hasMouseInPlot = false
-            internal.mouseX = -1
-            internal.mouseY = -1
-            canvas.requestPaint()
-        }
-
-        onPositionChanged: function(mouse) {
-            internal.mouseX = mouse.x
-            internal.mouseY = mouse.y
-            root.refreshIndicator()
         }
     }
 }

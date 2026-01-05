@@ -1,4 +1,5 @@
 #include <vnm_plot/core/series_renderer.h>
+#include <vnm_plot/core/algo.h>
 #include <vnm_plot/core/asset_loader.h>
 #include <vnm_plot/core/gl_program.h>
 #include <vnm_plot/core/constants.h>
@@ -557,13 +558,8 @@ void Series_renderer::render(
 
         auto& vbo_state = m_vbo_states[id];
 
-        // Build LOD scales vector
-        std::vector<std::size_t> scales;
-        const std::size_t num_levels = s->data_source->lod_levels();
-        scales.reserve(num_levels);
-        for (std::size_t i = 0; i < num_levels; ++i) {
-            scales.push_back(s->data_source->lod_scale(i));
-        }
+        // Build LOD scales vector using shared helper
+        const std::vector<std::size_t> scales = algo::compute_lod_scales(*s->data_source);
 
         // Process main view
         auto main_result = process_view(

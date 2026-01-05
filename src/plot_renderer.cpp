@@ -2,6 +2,7 @@
 #include <vnm_plot/plot_widget.h>
 #include <vnm_plot/color_palette.h>
 #include <vnm_plot/layout/layout_calculator.h>
+#include <vnm_plot/core/algo.h>
 #include <vnm_plot/core/asset_loader.h>
 #include <vnm_plot/core/chrome_renderer.h>
 #include <vnm_plot/core/data_types.h>
@@ -111,18 +112,6 @@ struct series_minmax_cache_t
     const void* identity = nullptr;
     std::vector<lod_minmax_cache_t> lods;
 };
-
-std::vector<std::size_t> compute_lod_scales(const Data_source& data_source)
-{
-    std::vector<std::size_t> scales;
-    const std::size_t levels = data_source.lod_levels();
-    scales.reserve(levels);
-    for (std::size_t lvl = 0; lvl < levels; ++lvl) {
-        const std::size_t scale = std::max<std::size_t>(1, data_source.lod_scale(lvl));
-        scales.push_back(scale);
-    }
-    return scales;
-}
 
 core::Display_style to_core_style(Display_style style)
 {
@@ -647,7 +636,7 @@ std::pair<float, float> compute_visible_v_range(
             continue;
         }
 
-        const std::vector<std::size_t> scales = compute_lod_scales(*series->data_source);
+        const std::vector<std::size_t> scales = core::algo::compute_lod_scales(*series->data_source);
         const std::size_t base_scale = scales.empty() ? 1 : scales[0];
         const std::size_t base_samples = count0 * base_scale;
         const double base_pps = (base_samples > 0 && width_px > 0.0)

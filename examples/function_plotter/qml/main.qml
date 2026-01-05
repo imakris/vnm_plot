@@ -1,8 +1,8 @@
 import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
-import VnmPlot 1.0
 import FunctionPlotter 1.0
+import "." as Local
 
 ApplicationWindow {
     id: window
@@ -623,7 +623,7 @@ ApplicationWindow {
             border.width: 1
             radius: 4
 
-            PlotView {
+            Local.PlotView {
                 id: plotView
                 anchors.fill: parent
                 anchors.margins: 8

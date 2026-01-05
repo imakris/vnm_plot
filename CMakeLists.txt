@@ -299,6 +299,7 @@ set(VNM_PLOT_SOURCES
     # Main components
     src/plot_renderer.cpp
     src/plot_widget.cpp
+    src/plot_interaction_item.cpp
 )
 
 set(VNM_PLOT_HEADERS
@@ -310,6 +311,7 @@ set(VNM_PLOT_HEADERS
     include/vnm_plot/plot_renderer.h
     include/vnm_plot/plot_types.h
     include/vnm_plot/plot_widget.h
+    include/vnm_plot/plot_interaction_item.h
     include/vnm_plot/render_types.h
     include/vnm_plot/color_palette.h
 

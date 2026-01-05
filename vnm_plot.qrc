@@ -21,5 +21,6 @@
         <!-- QML Components -->
         <file alias="qml/VnmPlot/qmldir">qml/VnmPlot/qmldir</file>
         <file alias="qml/VnmPlot/PlotIndicator.qml">qml/VnmPlot/PlotIndicator.qml</file>
+        <file alias="qml/VnmPlot/PlotView.qml">qml/VnmPlot/PlotView.qml</file>
     </qresource>
 </RCC>
