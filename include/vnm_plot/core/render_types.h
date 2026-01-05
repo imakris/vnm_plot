@@ -24,7 +24,7 @@ struct Render_config
     bool show_text = true;
 
     // Line rendering
-    bool   snap_lines_to_pixels = true;
+    bool   snap_lines_to_pixels = false;
     double line_width_px        = 1.0;
     double area_fill_alpha      = 0.3;
 

@@ -114,8 +114,9 @@ struct Plot_config
     bool clear_to_transparent = false;
 
     // --- Line Rendering ---
-    // When true, snap line vertices to pixel centers (matches Lumis default).
-    bool snap_lines_to_pixels = true;
+    // When true, snap line vertices to pixel centers (can look jagged on
+    // diagonals; default is false for smoother lines).
+    bool snap_lines_to_pixels = false;
     // Line width in pixels (may be clamped by the driver).
     double line_width_px = 1.0;
     // Area fill alpha multiplier (0..1).
@@ -137,7 +138,7 @@ struct Plot_config
         cfg.base_label_height_px = 14.0;
         cfg.auto_v_range_mode = Auto_v_range_mode::GLOBAL;
         cfg.clear_to_transparent = false;
-        cfg.snap_lines_to_pixels = true;
+        cfg.snap_lines_to_pixels = false;
         cfg.line_width_px = 1.0;
         cfg.area_fill_alpha = 0.3;
         cfg.auto_v_range_extra_scale = 0.0;

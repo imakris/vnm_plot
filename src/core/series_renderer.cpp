@@ -391,7 +391,7 @@ void Series_renderer::set_common_uniforms(GLuint program, const glm::mat4& pmv, 
     glUniform1f(glGetUniformLocation(program, "v_max"), ctx.v1);
 
     // Line rendering options
-    const bool snap = ctx.config ? ctx.config->snap_lines_to_pixels : true;
+    const bool snap = ctx.config ? ctx.config->snap_lines_to_pixels : false;
     glUniform1i(glGetUniformLocation(program, "snap_to_pixels"), snap ? 1 : 0);
 }
 

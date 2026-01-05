@@ -1,5 +1,6 @@
 #include "plot_controller.h"
 
+#include <vnm_plot/plot_interaction_item.h>
 #include <vnm_plot/plot_widget.h>
 
 #include <QtCore/QCoreApplication>
@@ -21,9 +22,11 @@ int main(int argc, char* argv[])
     QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
 
     qmlRegisterType<vnm::plot::Plot_widget>("VnmPlot", 1, 0, "PlotWidget");
+    qmlRegisterType<vnm::plot::Plot_interaction_item>("VnmPlot", 1, 0, "PlotInteractionItem");
     qmlRegisterType<Plot_controller>("Example", 1, 0, "PlotController");
 
     QQmlApplicationEngine engine;
+    engine.addImportPath("qrc:/vnm_plot/qml");
     const QUrl url("qrc:/qml/main.qml");
 
     QObject::connect(
