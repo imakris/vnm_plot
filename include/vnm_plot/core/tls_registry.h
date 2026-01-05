@@ -1,5 +1,4 @@
 #pragma once
-
 // VNM Plot Library - Thread-Local Storage Registry
 // Provides per-thread instances with controlled shutdown.
 

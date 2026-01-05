@@ -322,7 +322,7 @@ set(VNM_PLOT_HEADERS
     include/vnm_plot/renderers/series_renderer.h
 
     # Internal headers
-    include/vnm_plot/internal/tls_registry.h
+    include/vnm_plot/core/tls_registry.h
 )
 
 # -----------------------------------------------------------------------------

@@ -4,7 +4,7 @@
 #include <vnm_plot/core/platform_paths.h>
 #include <vnm_plot/core/sha256.h>
 #include <vnm_plot/core/utf8_utils.h>
-#include <vnm_plot/internal/tls_registry.h>
+#include <vnm_plot/core/tls_registry.h>
 
 #ifdef GL_GLEXT_VERSION
 #undef GL_GLEXT_VERSION
