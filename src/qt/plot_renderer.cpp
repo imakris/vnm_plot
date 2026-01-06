@@ -1054,6 +1054,7 @@ void Plot_renderer::render()
         return;
     }
 
+    const bool prev_v_auto = m_impl->last_range_v_auto;
     float v0 = 0.0f;
     float v1 = 0.0f;
     float preview_v0 = 0.0f;
@@ -1201,14 +1202,22 @@ void Plot_renderer::render()
             const float target_preview_v1 = preview_v1;
             const auto anim_now = std::chrono::steady_clock::now();
             if (!m_impl->anim_initialized) {
-                // When v_auto transitions from false to true, initialize animation
-                // from the manual range (what the user was viewing) to provide a
-                // smooth transition back to auto range.
-                const float manual_v0 = m_impl->snapshot.cfg.v_manual_min;
-                const float manual_v1 = m_impl->snapshot.cfg.v_manual_max;
-                if (std::isfinite(manual_v0) && std::isfinite(manual_v1) && manual_v0 < manual_v1) {
-                    m_impl->anim_v0 = manual_v0;
-                    m_impl->anim_v1 = manual_v1;
+                const bool auto_just_enabled = v_auto && !prev_v_auto;
+                if (auto_just_enabled) {
+                    // When v_auto transitions from false to true, initialize
+                    // animation from the manual range (what the user was viewing)
+                    // to provide a smooth transition back to auto range.
+                    const float manual_v0 = m_impl->snapshot.cfg.v_manual_min;
+                    const float manual_v1 = m_impl->snapshot.cfg.v_manual_max;
+                    if (std::isfinite(manual_v0) && std::isfinite(manual_v1) &&
+                        manual_v0 < manual_v1)
+                    {
+                        m_impl->anim_v0 = manual_v0;
+                        m_impl->anim_v1 = manual_v1;
+                    } else {
+                        m_impl->anim_v0 = v0;
+                        m_impl->anim_v1 = v1;
+                    }
                 } else {
                     m_impl->anim_v0 = v0;
                     m_impl->anim_v1 = v1;
