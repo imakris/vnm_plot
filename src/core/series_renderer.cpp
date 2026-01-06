@@ -1,6 +1,7 @@
 #include <vnm_plot/core/series_renderer.h>
 #include <vnm_plot/core/algo.h>
 #include <vnm_plot/core/asset_loader.h>
+#include <vnm_plot/core/color_palette.h>
 #include <vnm_plot/core/gl_program.h>
 #include <vnm_plot/core/constants.h>
 #include <vnm_plot/core/plot_config.h>
@@ -376,10 +377,6 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
         {
             const bool covers_window = (first_ts <= t_min) && (last_ts >= t_max);
             if (!covers_window) {
-                if (applied_level > 0 && !was_tried(applied_level - 1)) {
-                    target_level = applied_level - 1;
-                    continue;
-                }
                 first_idx = 0;
                 last_idx = snapshot.count;
                 result.use_t_override = true;
@@ -418,10 +415,23 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
         }
 
         const GLsizei count = static_cast<GLsizei>(last_idx - first_idx);
-        const std::size_t base_samples = (count > 0) ? static_cast<std::size_t>(count) * applied_scale : 0;
-        const double base_pps = (base_samples > 0)
+        const std::size_t base_samples = (count > 0)
+            ? static_cast<std::size_t>(count) * applied_scale
+            : 0;
+        double base_pps = (base_samples > 0)
             ? width_px / static_cast<double>(base_samples)
             : 0.0;
+        if (allow_stale_on_empty && applied_level != 0) {
+            auto base_snapshot_result = data_source.try_snapshot(0);
+            if (base_snapshot_result && base_snapshot_result.snapshot.count > 0) {
+                const std::size_t base_scale = scales.empty() ? 1 : scales[0];
+                const std::size_t base_samples_ref =
+                    base_snapshot_result.snapshot.count * base_scale;
+                if (base_samples_ref > 0) {
+                    base_pps = width_px / static_cast<double>(base_samples_ref);
+                }
+            }
+        }
 
         const std::size_t desired_level = choose_lod_level(scales, applied_level, base_pps);
         if (desired_level != applied_level) {
@@ -539,6 +549,11 @@ void Series_renderer::set_common_uniforms(
     // Line rendering options
     const bool snap = ctx.config ? ctx.config->snap_lines_to_pixels : false;
     glUniform1i(program.uniform_location("snap_to_pixels"), snap ? 1 : 0);
+
+    // Zero-axis color (same as grid lines)
+    const bool dark_mode = ctx.config ? ctx.config->dark_mode : false;
+    const Color_palette palette = dark_mode ? Color_palette::dark() : Color_palette::light();
+    glUniform4fv(program.uniform_location("zero_axis_color"), 1, glm::value_ptr(palette.grid_line));
 }
 
 void Series_renderer::modify_uniforms_for_preview(
@@ -747,7 +762,12 @@ void Series_renderer::render(
 
             if (primitive_style == Display_style::AREA || primitive_style == Display_style::COLORMAP_AREA) {
                 glUniform1f(pass_shader->uniform_location("line_width"), line_width);
-                glUniform4fv(pass_shader->uniform_location("line_color"), 1, glm::value_ptr(draw_color));
+                // Use original series color for line (full alpha), not the reduced-alpha fill color
+                glm::vec4 line_col = s->color;
+                if (dark_mode && is_default_series_color(line_col)) {
+                    line_col = k_default_series_color_dark;
+                }
+                glUniform4fv(pass_shader->uniform_location("line_color"), 1, glm::value_ptr(line_col));
             }
 
             if (const GLint loc = pass_shader->uniform_location("u_line_px"); loc >= 0) {
@@ -927,6 +947,7 @@ void Series_renderer::render(
 
         // Process preview view if visible
         if (ctx.adjusted_preview_height > 0.0) {
+            const std::size_t prev_preview_lod_level = vbo_state.preview_view.last_lod_level;
             auto preview_result = [&]() {
                 VNM_PLOT_PROFILE_SCOPE(
                     profiler,
@@ -941,6 +962,16 @@ void Series_renderer::render(
                     true,
                     profiler);
             }();
+            if (ctx.config && ctx.config->log_debug &&
+                preview_result.can_draw &&
+                preview_result.applied_level != prev_preview_lod_level)
+            {
+                std::string message =
+                    "LOD selection (preview): series=" + std::to_string(id)
+                    + " level=" + std::to_string(preview_result.applied_level)
+                    + " pps=" + std::to_string(preview_result.applied_pps);
+                ctx.config->log_debug(message);
+            }
 
             if (preview_result.can_draw) {
                 // Preview uses same multi-pass approach

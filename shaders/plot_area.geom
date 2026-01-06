@@ -11,6 +11,7 @@ layout(location =  7) uniform float   y_offset;
 layout(location =  8) uniform vec4    color;
 layout(location =  9) uniform float   line_width;
 layout(location = 10) uniform vec4    line_color;
+uniform vec4 zero_axis_color;
 
 layout (lines) in;
 layout (triangle_strip, max_vertices = 18) out;
@@ -138,15 +139,14 @@ void main()
     }
 
 
-    vec4 axis_color = vec4(0.0, 0.0, 0.0, 1.0);
     float a2 = 0.8;
     if (y_offset > 0.0) {
         a2 = 0.2;
     }
-    gl_Position = pmv * vec4(x0,    y_axis+a2, 0, 1); gs_out.color = axis_color; gs_out.t=0.; EmitVertex();
-    gl_Position = pmv * vec4(x1,    y_axis+a2, 0, 1); gs_out.color = axis_color; gs_out.t=1.; EmitVertex();
-    gl_Position = pmv * vec4(x0,    y_axis-a2, 0, 1); gs_out.color = axis_color; gs_out.t=0.; EmitVertex();
-    gl_Position = pmv * vec4(x1,    y_axis-a2, 0, 1); gs_out.color = axis_color; gs_out.t=1.; EmitVertex();
+    gl_Position = pmv * vec4(x0,    y_axis+a2, 0, 1); gs_out.color = zero_axis_color; gs_out.t=0.; EmitVertex();
+    gl_Position = pmv * vec4(x1,    y_axis+a2, 0, 1); gs_out.color = zero_axis_color; gs_out.t=1.; EmitVertex();
+    gl_Position = pmv * vec4(x0,    y_axis-a2, 0, 1); gs_out.color = zero_axis_color; gs_out.t=0.; EmitVertex();
+    gl_Position = pmv * vec4(x1,    y_axis-a2, 0, 1); gs_out.color = zero_axis_color; gs_out.t=1.; EmitVertex();
     EndPrimitive();
 
 
@@ -161,15 +161,14 @@ void main()
     EndPrimitive();
 */
 
-    /*
+    // Outline stroke on top of fill
     if (gs_in[1].t > t_min || gs_in[0].t < t_max) {
         float hlw = line_width * 0.5;
-        gl_Position = pmv * vec4(x0,    y0+hlw, 0, 1); gs_out.color = line_color; EmitVertex();
-        gl_Position = pmv * vec4(x1,    y1+hlw, 0, 1); gs_out.color = line_color; EmitVertex();
-        gl_Position = pmv * vec4(x0,    y0-hlw, 0, 1); gs_out.color = line_color; EmitVertex();
-        gl_Position = pmv * vec4(x1,    y1-hlw, 0, 1); gs_out.color = line_color; EmitVertex();
+        gl_Position = pmv * vec4(x0, y0+hlw, 0, 1); gs_out.color = line_color; gs_out.t=0.; EmitVertex();
+        gl_Position = pmv * vec4(x1, y1+hlw, 0, 1); gs_out.color = line_color; gs_out.t=1.; EmitVertex();
+        gl_Position = pmv * vec4(x0, y0-hlw, 0, 1); gs_out.color = line_color; gs_out.t=0.; EmitVertex();
+        gl_Position = pmv * vec4(x1, y1-hlw, 0, 1); gs_out.color = line_color; gs_out.t=1.; EmitVertex();
         EndPrimitive();
     }
-    */
 
 }
