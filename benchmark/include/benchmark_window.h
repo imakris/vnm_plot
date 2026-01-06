@@ -10,7 +10,12 @@
 #include "ring_buffer.h"
 #include "sample_types.h"
 
+#include <vnm_plot/core/layout_calculator.h>
 #include <vnm_plot/vnm_plot.h>
+#if defined(VNM_PLOT_ENABLE_TEXT)
+#include <vnm_plot/core/font_renderer.h>
+#include <vnm_plot/core/text_renderer.h>
+#endif
 
 #include <QOpenGLWidget>
 #include <QTimer>
@@ -37,6 +42,7 @@ struct Benchmark_config {
     std::size_t ring_capacity = 100000;
     bool extended_metadata = false;
     bool quiet = false;  // Suppress console output during benchmark
+    bool show_text = true;  // Text/font rendering (default: on)
 };
 
 /// Main benchmark window with vnm_plot rendering
@@ -48,17 +54,17 @@ public:
     ~Benchmark_window() override;
 
     /// Get the profiler for report generation
-    Benchmark_profiler& profiler() { return profiler_; }
-    const Benchmark_profiler& profiler() const { return profiler_; }
+    Benchmark_profiler& profiler() { return m_profiler; }
+    const Benchmark_profiler& profiler() const { return m_profiler; }
 
     /// Get configuration
-    const Benchmark_config& config() const { return config_; }
+    const Benchmark_config& config() const { return m_config; }
 
     /// Get samples generated count
-    std::size_t samples_generated() const { return samples_generated_.load(); }
+    std::size_t samples_generated() const { return m_samples_generated.load(); }
 
     /// Get start time
-    std::chrono::system_clock::time_point started_at() const { return started_at_; }
+    std::chrono::system_clock::time_point started_at() const { return m_started_at; }
 
 signals:
     void benchmark_finished();
@@ -78,40 +84,53 @@ private:
     void generator_thread_func();
     void stop_generator_thread();
 
-    Benchmark_config config_;
-    Benchmark_profiler profiler_;
+    Benchmark_config m_config;
+    Benchmark_profiler m_profiler;
 
     // Data pipeline
-    std::unique_ptr<Ring_buffer<Bar_sample>> bar_buffer_;
-    std::unique_ptr<Ring_buffer<Trade_sample>> trade_buffer_;
-    std::unique_ptr<Benchmark_data_source<Bar_sample>> bar_source_;
-    std::unique_ptr<Benchmark_data_source<Trade_sample>> trade_source_;
-    Brownian_generator generator_;
+    std::unique_ptr<Ring_buffer<Bar_sample>> m_bar_buffer;
+    std::unique_ptr<Ring_buffer<Trade_sample>> m_trade_buffer;
+    std::unique_ptr<Benchmark_data_source<Bar_sample>> m_bar_source;
+    std::unique_ptr<Benchmark_data_source<Trade_sample>> m_trade_source;
+    Brownian_generator m_generator;
 
     // Generator thread
-    std::thread generator_thread_;
-    std::atomic<bool> stop_generator_{false};
+    std::thread m_generator_thread;
+    std::atomic<bool> m_stop_generator{false};
 
     // Rendering
-    std::unique_ptr<vnm::plot::Asset_loader> asset_loader_;
-    std::unique_ptr<vnm::plot::Primitive_renderer> primitives_;
-    std::unique_ptr<vnm::plot::Series_renderer> series_renderer_;
-    std::unique_ptr<vnm::plot::Chrome_renderer> chrome_renderer_;
-    std::map<int, std::shared_ptr<vnm::plot::series_data_t>> series_map_;
-    vnm::plot::Render_config render_config_;
+    std::unique_ptr<vnm::plot::Asset_loader> m_asset_loader;
+    std::unique_ptr<vnm::plot::Primitive_renderer> m_primitives;
+    std::unique_ptr<vnm::plot::Series_renderer> m_series_renderer;
+    std::unique_ptr<vnm::plot::Chrome_renderer> m_chrome_renderer;
+#if defined(VNM_PLOT_ENABLE_TEXT)
+    vnm::plot::Font_renderer m_font_renderer;
+    std::unique_ptr<vnm::plot::Text_renderer> m_text_renderer;
+#endif
+    vnm::plot::Layout_calculator m_layout_calc;
+    std::map<int, std::shared_ptr<vnm::plot::series_data_t>> m_series_map;
+    vnm::plot::Render_config m_render_config;
+    vnm::plot::Layout_cache m_layout_cache;
 
     // View state
-    double t_min_ = 0.0;
-    double t_max_ = 10.0;
-    float v_min_ = 90.0f;
-    float v_max_ = 110.0f;
-    bool gl_initialized_ = false;
+    double m_t_min = 0.0;
+    double m_t_max = 10.0;
+    float m_v_min = 90.0f;
+    float m_v_max = 110.0f;
+    bool m_gl_initialized = false;
+
+    // Layout configuration
+    double m_adjusted_font_px = 12.0;
+    double m_base_label_height_px = 14.0;
+    double m_adjusted_preview_height = 40.0;  // Preview bar height
+    double m_vbar_width_pixels = 60.0;        // Value bar width
+    double m_t_available_min = 0.0;           // First sample timestamp
 
     // Timing
-    QTimer render_timer_;
-    QTimer benchmark_timer_;
-    std::chrono::system_clock::time_point started_at_;
-    std::atomic<std::size_t> samples_generated_{0};
+    QTimer m_render_timer;
+    QTimer m_benchmark_timer;
+    std::chrono::system_clock::time_point m_started_at;
+    std::atomic<std::size_t> m_samples_generated{0};
 };
 
 }  // namespace vnm::benchmark

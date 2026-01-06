@@ -157,6 +157,9 @@ protected:
 private:
     friend class Plot_renderer;
 
+    // Lock order (if ever needed concurrently): config -> data_cfg -> series.
+    // Prefer holding only one lock at a time.
+
     // Configuration
     Plot_config m_config;
     mutable std::shared_mutex m_config_mutex;
@@ -196,6 +199,7 @@ private:
     void recalculate_preview_height();
     double compute_preview_height_px(double widget_height_px) const;
     std::pair<float, float> current_v_range() const;
+    data_config_t data_cfg_snapshot() const;
 };
 
 } // namespace vnm::plot

@@ -489,13 +489,9 @@ void Plot_widget::adjust_t_from_mouse_diff(double ref_width, double diff)
         return;
     }
 
-    double t_min_val = 0.0;
-    double t_max_val = 0.0;
-    {
-        std::shared_lock lock(m_data_cfg_mutex);
-        t_min_val = m_data_cfg.t_min;
-        t_max_val = m_data_cfg.t_max;
-    }
+    const auto cfg = data_cfg_snapshot();
+    const double t_min_val = cfg.t_min;
+    const double t_max_val = cfg.t_max;
 
     const double span = t_max_val - t_min_val;
     const double delta = diff * span / ref_width;
@@ -508,17 +504,11 @@ void Plot_widget::adjust_t_from_mouse_diff_on_preview(double ref_width, double d
         return;
     }
 
-    double t_min_val = 0.0;
-    double t_max_val = 0.0;
-    double avail_min = 0.0;
-    double avail_max = 0.0;
-    {
-        std::shared_lock lock(m_data_cfg_mutex);
-        t_min_val = m_data_cfg.t_min;
-        t_max_val = m_data_cfg.t_max;
-        avail_min = m_data_cfg.t_available_min;
-        avail_max = m_data_cfg.t_available_max;
-    }
+    const auto cfg = data_cfg_snapshot();
+    const double t_min_val = cfg.t_min;
+    const double t_max_val = cfg.t_max;
+    const double avail_min = cfg.t_available_min;
+    const double avail_max = cfg.t_available_max;
 
     const double avail_span = avail_max - avail_min;
     const double delta = diff * avail_span / ref_width;
@@ -531,17 +521,11 @@ void Plot_widget::adjust_t_from_mouse_pos_on_preview(double ref_width, double x_
         return;
     }
 
-    double t_min_val = 0.0;
-    double t_max_val = 0.0;
-    double avail_min = 0.0;
-    double avail_max = 0.0;
-    {
-        std::shared_lock lock(m_data_cfg_mutex);
-        t_min_val = m_data_cfg.t_min;
-        t_max_val = m_data_cfg.t_max;
-        avail_min = m_data_cfg.t_available_min;
-        avail_max = m_data_cfg.t_available_max;
-    }
+    const auto cfg = data_cfg_snapshot();
+    const double t_min_val = cfg.t_min;
+    const double t_max_val = cfg.t_max;
+    const double avail_min = cfg.t_available_min;
+    const double avail_max = cfg.t_available_max;
 
     const double span = t_max_val - t_min_val;
     const double avail_span = avail_max - avail_min;
@@ -556,13 +540,9 @@ void Plot_widget::adjust_t_from_pivot_and_scale(double pivot, double scale)
         return;
     }
 
-    double t_min_val = 0.0;
-    double t_max_val = 0.0;
-    {
-        std::shared_lock lock(m_data_cfg_mutex);
-        t_min_val = m_data_cfg.t_min;
-        t_max_val = m_data_cfg.t_max;
-    }
+    const auto cfg = data_cfg_snapshot();
+    const double t_min_val = cfg.t_min;
+    const double t_max_val = cfg.t_max;
 
     const double t_pivot = t_min_val + (t_max_val - t_min_val) * pivot;
     const double new_min = t_pivot - (t_pivot - t_min_val) * scale;
@@ -576,12 +556,9 @@ void Plot_widget::pan_time(double delta_px, double viewport_width)
         return;
     }
 
-    double t_min_val, t_max_val;
-    {
-        std::shared_lock lock(m_data_cfg_mutex);
-        t_min_val = m_data_cfg.t_min;
-        t_max_val = m_data_cfg.t_max;
-    }
+    const auto cfg = data_cfg_snapshot();
+    const double t_min_val = cfg.t_min;
+    const double t_max_val = cfg.t_max;
 
     const double t_span = t_max_val - t_min_val;
     const double delta_t = (delta_px / viewport_width) * t_span;
@@ -595,12 +572,9 @@ void Plot_widget::zoom_time(double pivot, double scale)
         return;
     }
 
-    double t_min_val, t_max_val;
-    {
-        std::shared_lock lock(m_data_cfg_mutex);
-        t_min_val = m_data_cfg.t_min;
-        t_max_val = m_data_cfg.t_max;
-    }
+    const auto cfg = data_cfg_snapshot();
+    const double t_min_val = cfg.t_min;
+    const double t_max_val = cfg.t_max;
 
     const double new_t_min = pivot - (pivot - t_min_val) * scale;
     const double new_t_max = pivot + (t_max_val - pivot) * scale;
@@ -690,13 +664,9 @@ void Plot_widget::auto_adjust_view(bool adjust_t, double extra_v_scale)
 
 void Plot_widget::auto_adjust_view(bool adjust_t, double extra_v_scale, bool anchor_zero)
 {
-    double window_tmin = 0.0;
-    double window_tmax = 0.0;
-    {
-        std::shared_lock lock(m_data_cfg_mutex);
-        window_tmin = m_data_cfg.t_min;
-        window_tmax = m_data_cfg.t_max;
-    }
+    const auto cfg = data_cfg_snapshot();
+    const double window_tmin = cfg.t_min;
+    const double window_tmax = cfg.t_max;
 
     if (!(window_tmax > window_tmin)) {
         return;
@@ -848,8 +818,8 @@ void Plot_widget::auto_adjust_view(bool adjust_t, double extra_v_scale, bool anc
 
 bool Plot_widget::can_zoom_in() const
 {
-    std::shared_lock lock(m_data_cfg_mutex);
-    return (m_data_cfg.t_max - m_data_cfg.t_min) > 0.1;
+    const auto cfg = data_cfg_snapshot();
+    return (cfg.t_max - cfg.t_min) > 0.1;
 }
 
 QVariantList Plot_widget::get_indicator_samples(double x, double plot_width, double plot_height) const
@@ -860,22 +830,18 @@ QVariantList Plot_widget::get_indicator_samples(double x, double plot_width, dou
         return result;
     }
 
-    double tmin = 0.0;
-    double tmax = 0.0;
+    const auto cfg = data_cfg_snapshot();
+    const double tmin = cfg.t_min;
+    const double tmax = cfg.t_max;
     float vmin = 0.0f;
     float vmax = 0.0f;
-    {
-        std::shared_lock lock(m_data_cfg_mutex);
-        tmin = m_data_cfg.t_min;
-        tmax = m_data_cfg.t_max;
-        if (m_v_auto.load(std::memory_order_acquire)) {
-            vmin = m_data_cfg.v_min;
-            vmax = m_data_cfg.v_max;
-        }
-        else {
-            vmin = m_data_cfg.v_manual_min;
-            vmax = m_data_cfg.v_manual_max;
-        }
+    if (m_v_auto.load(std::memory_order_acquire)) {
+        vmin = cfg.v_min;
+        vmax = cfg.v_max;
+    }
+    else {
+        vmin = cfg.v_manual_min;
+        vmax = cfg.v_manual_max;
     }
 
     const double t_span = tmax - tmin;
@@ -929,7 +895,8 @@ QVariantList Plot_widget::get_indicator_samples(double x, double plot_width, dou
                     i0 = 0;
                     i1 = 0;
                 }
-                else if (x >= last_ts) {
+                else
+                if (x >= last_ts) {
                     i0 = count - 1;
                     i1 = count - 1;
                 }
@@ -943,7 +910,8 @@ QVariantList Plot_widget::get_indicator_samples(double x, double plot_width, dou
                     i0 = 0;
                     i1 = 0;
                 }
-                else if (x <= last_ts) {
+                else
+                if (x <= last_ts) {
                     i0 = count - 1;
                     i1 = count - 1;
                 }
@@ -994,17 +962,23 @@ QVariantList Plot_widget::get_indicator_samples(double x, double plot_width, dou
 
 std::pair<float, float> Plot_widget::manual_v_range() const
 {
-    std::shared_lock lock(m_data_cfg_mutex);
-    return {m_data_cfg.v_manual_min, m_data_cfg.v_manual_max};
+    const auto cfg = data_cfg_snapshot();
+    return {cfg.v_manual_min, cfg.v_manual_max};
 }
 
 std::pair<float, float> Plot_widget::current_v_range() const
 {
-    std::shared_lock lock(m_data_cfg_mutex);
+    const auto cfg = data_cfg_snapshot();
     if (m_v_auto.load(std::memory_order_acquire)) {
-        return {m_data_cfg.v_min, m_data_cfg.v_max};
+        return {cfg.v_min, cfg.v_max};
     }
-    return {m_data_cfg.v_manual_min, m_data_cfg.v_manual_max};
+    return {cfg.v_manual_min, cfg.v_manual_max};
+}
+
+data_config_t Plot_widget::data_cfg_snapshot() const
+{
+    std::shared_lock lock(m_data_cfg_mutex);
+    return m_data_cfg;
 }
 
 void Plot_widget::adjust_t_to_target(double target_tmin, double target_tmax)
@@ -1013,13 +987,9 @@ void Plot_widget::adjust_t_to_target(double target_tmin, double target_tmax)
         return;
     }
 
-    double avail_min = 0.0;
-    double avail_max = 0.0;
-    {
-        std::shared_lock lock(m_data_cfg_mutex);
-        avail_min = m_data_cfg.t_available_min;
-        avail_max = m_data_cfg.t_available_max;
-    }
+    const auto cfg = data_cfg_snapshot();
+    const double avail_min = cfg.t_available_min;
+    const double avail_max = cfg.t_available_max;
 
     const double avail_span = avail_max - avail_min;
     double span = target_tmax - target_tmin;

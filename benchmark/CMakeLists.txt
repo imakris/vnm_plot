@@ -13,6 +13,11 @@ if(NOT TARGET vnm_plot::core)
     message(FATAL_ERROR "vnm_plot_core target not found. Build benchmark from vnm_plot root.")
 endif()
 
+# Benchmark should include text rendering by default.
+if(NOT VNM_PLOT_ENABLE_TEXT)
+    message(FATAL_ERROR "vnm_plot benchmark requires text rendering. Configure with -DVNM_PLOT_ENABLE_TEXT=ON or disable the benchmark.")
+endif()
+
 # -----------------------------------------------------------------------------
 # Benchmark executable
 # -----------------------------------------------------------------------------

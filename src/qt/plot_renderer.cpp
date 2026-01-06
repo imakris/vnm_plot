@@ -101,8 +101,14 @@ bool spans_approx_equal(double a, double b)
     const double abs_b = std::abs(b);
     const double diff = std::abs(a - b);
     const double scale = std::max(1.0, std::max(abs_a, abs_b));
-    return diff <= scale * 1e-6;
+    return diff <= scale * k_eps;
 }
+
+constexpr float k_auto_v_padding_factor = 0.05f;
+constexpr float k_auto_v_padding_min = 0.5f;
+constexpr float k_auto_v_sync_eps = static_cast<float>(k_eps);
+constexpr float k_anim_span_min = static_cast<float>(k_eps);
+constexpr float k_anim_target_frac = 0.001f;
 
 struct lod_minmax_cache_t
 {
@@ -153,9 +159,11 @@ shader_set_t normalize_shader_set(const shader_set_t& shader)
     return res;
 }
 
-bool compute_snapshot_minmax(
+bool scan_snapshot_minmax(
     const series_data_t& series,
     const data_snapshot_t& snapshot,
+    std::size_t start_idx,
+    std::size_t end_idx,
     float& out_min,
     float& out_max)
 {
@@ -167,15 +175,22 @@ bool compute_snapshot_minmax(
         return false;
     }
 
+    if (start_idx >= snapshot.count || end_idx <= start_idx) {
+        return false;
+    }
+
+    end_idx = std::min(end_idx, snapshot.count);
+
     float v_min = std::numeric_limits<float>::max();
     float v_max = std::numeric_limits<float>::lowest();
     bool have_any = false;
 
     const auto* base = static_cast<const std::uint8_t*>(snapshot.data);
-    for (std::size_t i = 0; i < snapshot.count; ++i) {
+    for (std::size_t i = start_idx; i < end_idx; ++i) {
         const void* sample = base + i * snapshot.stride;
 
-        float low, high;
+        float low = 0.0f;
+        float high = 0.0f;
         if (series.access.get_range) {
             auto [lo, hi] = series.get_range(sample);
             low = lo;
@@ -202,6 +217,15 @@ bool compute_snapshot_minmax(
     out_min = v_min;
     out_max = v_max;
     return true;
+}
+
+bool compute_snapshot_minmax(
+    const series_data_t& series,
+    const data_snapshot_t& snapshot,
+    float& out_min,
+    float& out_max)
+{
+    return scan_snapshot_minmax(series, snapshot, 0, snapshot.count, out_min, out_max);
 }
 
 bool find_window_indices(
@@ -274,54 +298,7 @@ bool compute_window_minmax(
     float& out_min,
     float& out_max)
 {
-    if (!series.access.get_value && !series.access.get_range) {
-        return false;
-    }
-
-    if (!snapshot || snapshot.count == 0 || snapshot.stride == 0) {
-        return false;
-    }
-
-    if (end_idx <= start_idx || start_idx >= snapshot.count) {
-        return false;
-    }
-
-    float v_min = std::numeric_limits<float>::max();
-    float v_max = std::numeric_limits<float>::lowest();
-    bool have_any = false;
-
-    const auto* base = static_cast<const std::uint8_t*>(snapshot.data);
-    for (std::size_t i = start_idx; i < end_idx; ++i) {
-        const void* sample = base + i * snapshot.stride;
-
-        float low = 0.0f;
-        float high = 0.0f;
-        if (series.access.get_range) {
-            auto [lo, hi] = series.get_range(sample);
-            low = lo;
-            high = hi;
-        }
-        else {
-            low = series.get_value(sample);
-            high = low;
-        }
-
-        if (!std::isfinite(low) || !std::isfinite(high)) {
-            continue;
-        }
-
-        v_min = std::min(v_min, std::min(low, high));
-        v_max = std::max(v_max, std::max(low, high));
-        have_any = true;
-    }
-
-    if (!have_any) {
-        return false;
-    }
-
-    out_min = v_min;
-    out_max = v_max;
-    return true;
+    return scan_snapshot_minmax(series, snapshot, start_idx, end_idx, out_min, out_max);
 }
 
 bool get_lod_minmax(
@@ -570,7 +547,7 @@ std::pair<float, float> compute_visible_v_range(
     }
 
     const float span = v_max - v_min;
-    const float padding = (span > 0.0f) ? span * 0.05f : 0.5f;
+    const float padding = (span > 0.0f) ? span * k_auto_v_padding_factor : k_auto_v_padding_min;
     return {v_min - padding, v_max + padding};
 }
 
@@ -578,6 +555,29 @@ std::pair<float, float> compute_visible_v_range(
 
 struct Plot_renderer::impl_t
 {
+    struct range_cache_key_t
+    {
+        Auto_v_range_mode auto_mode = Auto_v_range_mode::GLOBAL;
+        bool v_auto = true;
+        double extra_scale = 0.0;
+        double t_min = 0.0;
+        double t_max = 0.0;
+
+        bool operator==(const range_cache_key_t& other) const noexcept
+        {
+            return auto_mode == other.auto_mode &&
+                   v_auto == other.v_auto &&
+                   extra_scale == other.extra_scale &&
+                   t_min == other.t_min &&
+                   t_max == other.t_max;
+        }
+
+        bool operator!=(const range_cache_key_t& other) const noexcept
+        {
+            return !(*this == other);
+        }
+    };
+
     struct render_snapshot_t
     {
         data_config_t cfg;
@@ -615,16 +615,12 @@ struct Plot_renderer::impl_t
     // 100ms staleness. The internal per-LOD cache in compute_*_v_range handles
     // sequence-based invalidation, so this is mainly a loop/call overhead skip.
     std::chrono::steady_clock::time_point last_range_calc_time{};
-    double last_range_t_min = 0.0;
-    double last_range_t_max = 0.0;
-    double last_range_extra_scale = 0.0;
     float cached_v0 = 0.0f;
     float cached_v1 = 0.0f;
     float cached_preview_v0 = 0.0f;
     float cached_preview_v1 = 0.0f;
-    Auto_v_range_mode last_range_auto_mode = Auto_v_range_mode::GLOBAL;
     bool range_cache_valid = false;
-    bool last_range_v_auto = true;
+    range_cache_key_t last_range_key{};
     static constexpr std::chrono::milliseconds k_range_throttle_interval{100};
 
     // V-range animation state.
@@ -1054,7 +1050,7 @@ void Plot_renderer::render()
         return;
     }
 
-    const bool prev_v_auto = m_impl->last_range_v_auto;
+    const bool prev_v_auto = m_impl->last_range_key.v_auto;
     float v0 = 0.0f;
     float v1 = 0.0f;
     float preview_v0 = 0.0f;
@@ -1078,17 +1074,17 @@ void Plot_renderer::render()
 
         // Check for cache invalidation conditions.
         // Invalidate when: mode changes, v_auto changes, config changes, or window changes.
-        const bool mode_changed = (auto_mode != m_impl->last_range_auto_mode) ||
-                                  (v_auto != m_impl->last_range_v_auto);
+        impl_t::range_cache_key_t current_key;
+        current_key.auto_mode = auto_mode;
+        current_key.v_auto = v_auto;
+        current_key.extra_scale = auto_v_extra_scale;
+        if (auto_mode == Auto_v_range_mode::VISIBLE) {
+            current_key.t_min = m_impl->snapshot.cfg.t_min;
+            current_key.t_max = m_impl->snapshot.cfg.t_max;
+        }
 
-        const bool config_changed = (auto_v_extra_scale != m_impl->last_range_extra_scale);
-
-        const bool window_changed = (auto_mode == Auto_v_range_mode::VISIBLE) &&
-                                    ((m_impl->snapshot.cfg.t_min != m_impl->last_range_t_min) ||
-                                     (m_impl->snapshot.cfg.t_max != m_impl->last_range_t_max));
-
-        const bool cache_invalid = mode_changed || config_changed || window_changed ||
-                                   !m_impl->range_cache_valid;
+        const bool cache_invalid = !m_impl->range_cache_valid ||
+                                   (current_key != m_impl->last_range_key);
 
         if (!cache_invalid && !throttle_expired) {
             // Use cached values (throttled path).
@@ -1187,11 +1183,7 @@ void Plot_renderer::render()
             m_impl->cached_preview_v1 = preview_v1;
             m_impl->range_cache_valid = true;
             m_impl->last_range_calc_time = now;
-            m_impl->last_range_auto_mode = auto_mode;
-            m_impl->last_range_v_auto = v_auto;
-            m_impl->last_range_extra_scale = auto_v_extra_scale;
-            m_impl->last_range_t_min = m_impl->snapshot.cfg.t_min;
-            m_impl->last_range_t_max = m_impl->snapshot.cfg.t_max;
+            m_impl->last_range_key = current_key;
         }
 
         if (v_auto) {
@@ -1214,11 +1206,13 @@ void Plot_renderer::render()
                     {
                         m_impl->anim_v0 = manual_v0;
                         m_impl->anim_v1 = manual_v1;
-                    } else {
+                    }
+                    else {
                         m_impl->anim_v0 = v0;
                         m_impl->anim_v1 = v1;
                     }
-                } else {
+                }
+                else {
                     m_impl->anim_v0 = v0;
                     m_impl->anim_v1 = v1;
                 }
@@ -1244,9 +1238,8 @@ void Plot_renderer::render()
 
             if (m_impl->owner) {
                 // Sync auto range back to the widget so QML reads match the render range.
-                constexpr float k_auto_v_eps = 1e-6f;
-                if (std::abs(v0 - m_impl->snapshot.cfg.v_min) > k_auto_v_eps ||
-                    std::abs(v1 - m_impl->snapshot.cfg.v_max) > k_auto_v_eps)
+                if (std::abs(v0 - m_impl->snapshot.cfg.v_min) > k_auto_v_sync_eps ||
+                    std::abs(v1 - m_impl->snapshot.cfg.v_max) > k_auto_v_sync_eps)
                 {
                     QMetaObject::invokeMethod(
                         const_cast<Plot_widget*>(m_impl->owner),
@@ -1258,16 +1251,16 @@ void Plot_renderer::render()
             }
 
             // Request another frame if still animating.
-            const float span = std::max(std::abs(target_v1 - target_v0), 1e-6f);
+            const float span = std::max(std::abs(target_v1 - target_v0), k_anim_span_min);
             const bool main_animating =
-                std::abs(v0 - target_v0) > span * 0.001f ||
-                std::abs(v1 - target_v1) > span * 0.001f;
+                std::abs(v0 - target_v0) > span * k_anim_target_frac ||
+                std::abs(v1 - target_v1) > span * k_anim_target_frac;
             const bool preview_visible = m_impl->snapshot.adjusted_preview_height > 0.0f;
             const float preview_span =
-                std::max(std::abs(target_preview_v1 - target_preview_v0), 1e-6f);
+                std::max(std::abs(target_preview_v1 - target_preview_v0), k_anim_span_min);
             const bool preview_animating = preview_visible &&
-                (std::abs(preview_v0 - target_preview_v0) > preview_span * 0.001f ||
-                 std::abs(preview_v1 - target_preview_v1) > preview_span * 0.001f);
+                (std::abs(preview_v0 - target_preview_v0) > preview_span * k_anim_target_frac ||
+                 std::abs(preview_v1 - target_preview_v1) > preview_span * k_anim_target_frac);
             const bool still_animating = main_animating || preview_animating;
             if (still_animating && m_impl->owner) {
                 QMetaObject::invokeMethod(
