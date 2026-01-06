@@ -627,6 +627,15 @@ struct Plot_renderer::impl_t
     bool last_range_v_auto = true;
     static constexpr std::chrono::milliseconds k_range_throttle_interval{100};
 
+    // V-range animation state.
+    float anim_v0 = 0.0f;
+    float anim_v1 = 1.0f;
+    float anim_preview_v0 = 0.0f;
+    float anim_preview_v1 = 1.0f;
+    std::chrono::steady_clock::time_point last_anim_time{};
+    bool anim_initialized = false;
+    static constexpr float k_v_anim_speed = 15.0f;  // ~200ms to 95%
+
     std::unordered_map<int, std::shared_ptr<series_data_t>> core_series_cache;
     std::unordered_map<int, series_minmax_cache_t> v_range_cache;
 
@@ -1184,19 +1193,71 @@ void Plot_renderer::render()
             m_impl->last_range_t_max = m_impl->snapshot.cfg.t_max;
         }
 
-        if (v_auto && m_impl->owner) {
-            // Sync auto range back to the widget so QML reads match the render range.
-            constexpr float k_auto_v_eps = 1e-6f;
-            if (std::abs(v0 - m_impl->snapshot.cfg.v_min) > k_auto_v_eps ||
-                std::abs(v1 - m_impl->snapshot.cfg.v_max) > k_auto_v_eps)
-            {
+        if (v_auto) {
+            // Animate v-range smoothly.
+            const float target_v0 = v0;
+            const float target_v1 = v1;
+            const float target_preview_v0 = preview_v0;
+            const float target_preview_v1 = preview_v1;
+            const auto anim_now = std::chrono::steady_clock::now();
+            if (!m_impl->anim_initialized) {
+                m_impl->anim_v0 = v0;
+                m_impl->anim_v1 = v1;
+                m_impl->anim_preview_v0 = preview_v0;
+                m_impl->anim_preview_v1 = preview_v1;
+                m_impl->last_anim_time = anim_now;
+                m_impl->anim_initialized = true;
+            }
+            else {
+                const float dt = std::chrono::duration<float>(anim_now - m_impl->last_anim_time).count();
+                m_impl->last_anim_time = anim_now;
+                const float t = 1.0f - std::exp(-impl_t::k_v_anim_speed * dt);
+                m_impl->anim_v0         += (v0 - m_impl->anim_v0) * t;
+                m_impl->anim_v1         += (v1 - m_impl->anim_v1) * t;
+                m_impl->anim_preview_v0 += (preview_v0 - m_impl->anim_preview_v0) * t;
+                m_impl->anim_preview_v1 += (preview_v1 - m_impl->anim_preview_v1) * t;
+            }
+            v0 = m_impl->anim_v0;
+            v1 = m_impl->anim_v1;
+            preview_v0 = m_impl->anim_preview_v0;
+            preview_v1 = m_impl->anim_preview_v1;
+
+            if (m_impl->owner) {
+                // Sync auto range back to the widget so QML reads match the render range.
+                constexpr float k_auto_v_eps = 1e-6f;
+                if (std::abs(v0 - m_impl->snapshot.cfg.v_min) > k_auto_v_eps ||
+                    std::abs(v1 - m_impl->snapshot.cfg.v_max) > k_auto_v_eps)
+                {
+                    QMetaObject::invokeMethod(
+                        const_cast<Plot_widget*>(m_impl->owner),
+                        "set_auto_v_range_from_renderer",
+                        Qt::QueuedConnection,
+                        Q_ARG(float, v0),
+                        Q_ARG(float, v1));
+                }
+            }
+
+            // Request another frame if still animating.
+            const float span = std::max(std::abs(target_v1 - target_v0), 1e-6f);
+            const bool main_animating =
+                std::abs(v0 - target_v0) > span * 0.001f ||
+                std::abs(v1 - target_v1) > span * 0.001f;
+            const bool preview_visible = m_impl->snapshot.adjusted_preview_height > 0.0f;
+            const float preview_span =
+                std::max(std::abs(target_preview_v1 - target_preview_v0), 1e-6f);
+            const bool preview_animating = preview_visible &&
+                (std::abs(preview_v0 - target_preview_v0) > preview_span * 0.001f ||
+                 std::abs(preview_v1 - target_preview_v1) > preview_span * 0.001f);
+            const bool still_animating = main_animating || preview_animating;
+            if (still_animating && m_impl->owner) {
                 QMetaObject::invokeMethod(
                     const_cast<Plot_widget*>(m_impl->owner),
-                    "set_auto_v_range_from_renderer",
-                    Qt::QueuedConnection,
-                    Q_ARG(float, v0),
-                    Q_ARG(float, v1));
+                    "update",
+                    Qt::QueuedConnection);
             }
+        }
+        else {
+            m_impl->anim_initialized = false;
         }
     }
 

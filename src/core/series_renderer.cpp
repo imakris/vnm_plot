@@ -371,6 +371,23 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
             }
         }
 
+        if (allow_stale_on_empty && have_ts_bounds && last_ts > first_ts &&
+            !result.use_t_override)
+        {
+            const bool covers_window = (first_ts <= t_min) && (last_ts >= t_max);
+            if (!covers_window) {
+                if (applied_level > 0 && !was_tried(applied_level - 1)) {
+                    target_level = applied_level - 1;
+                    continue;
+                }
+                first_idx = 0;
+                last_idx = snapshot.count;
+                result.use_t_override = true;
+                result.t_min_override = first_ts;
+                result.t_max_override = last_ts;
+            }
+        }
+
         if (first_idx >= last_idx) {
             const bool can_override =
                 allow_stale_on_empty && have_ts_bounds && last_ts > first_ts &&
