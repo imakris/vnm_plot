@@ -541,6 +541,16 @@ if(VNM_PLOT_BUILD_BENCHMARK)
 endif()
 
 # -----------------------------------------------------------------------------
+# Headless GLFW Benchmark (CI-compatible, no Qt required)
+# -----------------------------------------------------------------------------
+
+option(VNM_PLOT_BUILD_BENCHMARK_HEADLESS "Build headless GLFW benchmark (CI-compatible)" OFF)
+
+if(VNM_PLOT_BUILD_BENCHMARK_HEADLESS)
+    add_subdirectory(benchmark_headless)
+endif()
+
+# -----------------------------------------------------------------------------
 # Installation (only when building as top-level project)
 # -----------------------------------------------------------------------------
 
