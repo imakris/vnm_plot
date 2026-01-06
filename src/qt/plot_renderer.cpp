@@ -21,6 +21,7 @@
 #include <QSize>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -128,6 +129,17 @@ std::string normalize_asset_name(std::string_view name)
     }
     if (out.rfind("vnm_plot/", 0) == 0) {
         out.remove_prefix(9);
+    }
+    // Map legacy glsl/ paths to embedded shaders/ assets.
+    // The trade_to_plot vertex shader uses the same Sample output interface as function_sample.
+    if (out == "glsl/trade_to_plot.vert") {
+        return "shaders/function_sample.vert";
+    }
+    if (out == "glsl/plot_area.geom") {
+        return "shaders/plot_area.geom";
+    }
+    if (out == "glsl/plot_area.frag") {
+        return "shaders/plot_area.frag";
     }
     return std::string(out);
 }
@@ -282,7 +294,8 @@ bool compute_window_minmax(
     for (std::size_t i = start_idx; i < end_idx; ++i) {
         const void* sample = base + i * snapshot.stride;
 
-        float low, high;
+        float low = 0.0f;
+        float high = 0.0f;
         if (series.access.get_range) {
             auto [lo, hi] = series.get_range(sample);
             low = lo;
@@ -322,16 +335,21 @@ bool get_lod_minmax(
         return false;
     }
 
-    auto snapshot = series.data_source->snapshot(level);
-    if (!snapshot || snapshot.count == 0 || snapshot.stride == 0) {
-        return false;
-    }
-
     if (level >= cache.lods.size()) {
         return false;
     }
 
     auto& entry = cache.lods[level];
+
+    auto snapshot = series.data_source->snapshot(level);
+    if (!snapshot || snapshot.count == 0 || snapshot.stride == 0) {
+        if (entry.valid) {
+            out_min = entry.v_min;
+            out_max = entry.v_max;
+            return true;
+        }
+        return false;
+    }
     if (entry.valid && entry.sequence == snapshot.sequence) {
         out_min = entry.v_min;
         out_max = entry.v_max;
@@ -377,24 +395,41 @@ std::pair<float, float> compute_global_v_range(
 
         active_ids.insert(id);
 
-        series_minmax_cache_t& cache = cache_map[id];
-        const void* identity = series->data_source->identity();
-        const std::size_t levels = series->data_source->lod_levels();
-        if (levels == 0) {
-            continue;
-        }
-
-        if (cache.identity != identity || cache.lods.size() != levels) {
-            cache.identity = identity;
-            cache.lods.assign(levels, lod_minmax_cache_t{});
-        }
-
-        const std::size_t level = use_lod_cache ? (levels - 1) : 0;
         float series_min = 0.0f;
         float series_max = 0.0f;
-        if (!get_lod_minmax(*series, cache, level, series_min, series_max)) {
-            if (level == 0 || !get_lod_minmax(*series, cache, 0, series_min, series_max)) {
+        bool got_range = false;
+
+        // Fast path: data source provides O(1) range query.
+        if (series->data_source->has_value_range() &&
+            !series->data_source->value_range_needs_rescan())
+        {
+            auto [ds_min, ds_max] = series->data_source->value_range();
+            if (std::isfinite(ds_min) && std::isfinite(ds_max) && ds_min <= ds_max) {
+                series_min = ds_min;
+                series_max = ds_max;
+                got_range = true;
+            }
+        }
+
+        if (!got_range) {
+            // Slow path: scan LOD data with caching.
+            series_minmax_cache_t& cache = cache_map[id];
+            const void* identity = series->data_source->identity();
+            const std::size_t levels = series->data_source->lod_levels();
+            if (levels == 0) {
                 continue;
+            }
+
+            if (cache.identity != identity || cache.lods.size() != levels) {
+                cache.identity = identity;
+                cache.lods.assign(levels, lod_minmax_cache_t{});
+            }
+
+            const std::size_t level = use_lod_cache ? (levels - 1) : 0;
+            if (!get_lod_minmax(*series, cache, level, series_min, series_max)) {
+                if (level == 0 || !get_lod_minmax(*series, cache, 0, series_min, series_max)) {
+                    continue;
+                }
             }
         }
 
@@ -492,19 +527,26 @@ std::pair<float, float> compute_visible_v_range(
         float series_max = 0.0f;
         const bool full_range = (start == 0 && end == snapshot.count);
 
+        series_minmax_cache_t& cache = cache_map[id];
+        const void* identity = series->data_source->identity();
+        if (cache.identity != identity || cache.lods.size() != levels) {
+            cache.identity = identity;
+            cache.lods.assign(levels, lod_minmax_cache_t{});
+        }
+
         if (full_range) {
-            series_minmax_cache_t& cache = cache_map[id];
-            const void* identity = series->data_source->identity();
-            if (cache.identity != identity || cache.lods.size() != levels) {
-                cache.identity = identity;
-                cache.lods.assign(levels, lod_minmax_cache_t{});
-            }
             if (!get_lod_minmax(*series, cache, applied_level, series_min, series_max)) {
                 continue;
             }
         }
         else {
-            if (!compute_window_minmax(*series, snapshot, start, end, series_min, series_max)) {
+            if (!compute_window_minmax(
+                    *series,
+                    snapshot,
+                    start,
+                    end,
+                    series_min,
+                    series_max)) {
                 continue;
             }
         }
@@ -566,6 +608,24 @@ struct Plot_renderer::impl_t
     double last_vertical_seed_step = 0.0;
     double last_horizontal_span = 0.0;
     double last_horizontal_seed_step = 0.0;
+
+    // Range throttling state (Phase 1 optimization).
+    // Reduces range_calc from render rate (~19 Hz) to throttled rate (~10 Hz).
+    // NOTE: Data sequence changes within the throttle interval may cause up to
+    // 100ms staleness. The internal per-LOD cache in compute_*_v_range handles
+    // sequence-based invalidation, so this is mainly a loop/call overhead skip.
+    std::chrono::steady_clock::time_point last_range_calc_time{};
+    double last_range_t_min = 0.0;
+    double last_range_t_max = 0.0;
+    double last_range_extra_scale = 0.0;
+    float cached_v0 = 0.0f;
+    float cached_v1 = 0.0f;
+    float cached_preview_v0 = 0.0f;
+    float cached_preview_v1 = 0.0f;
+    Auto_v_range_mode last_range_auto_mode = Auto_v_range_mode::GLOBAL;
+    bool range_cache_valid = false;
+    bool last_range_v_auto = true;
+    static constexpr std::chrono::milliseconds k_range_throttle_interval{100};
 
     std::unordered_map<int, std::shared_ptr<series_data_t>> core_series_cache;
     std::unordered_map<int, series_minmax_cache_t> v_range_cache;
@@ -992,87 +1052,139 @@ void Plot_renderer::render()
     {
         VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.range_calc");
 
+        const auto now = std::chrono::steady_clock::now();
+        const bool throttle_expired =
+            (now - m_impl->last_range_calc_time) >= impl_t::k_range_throttle_interval;
+
         // Calculate layout
         const double usable_width = win_w - m_impl->snapshot.vbar_width_pixels;
 
-        // Determine v-range
+        // Determine v-range mode and config.
         const Auto_v_range_mode auto_mode =
             config ? config->auto_v_range_mode : Auto_v_range_mode::GLOBAL;
         const double auto_v_extra_scale = config ? config->auto_v_range_extra_scale : 0.0;
+        const bool v_auto = m_impl->snapshot.v_auto;
         const bool can_use_series = (m_impl->owner != nullptr);
-        const auto apply_auto_padding = [&](float& v_min, float& v_max) {
-            if (!(auto_v_extra_scale > 0.0)) {
-                return;
-            }
 
-            const double span = double(v_max) - double(v_min);
-            if (!(span > 0.0)) {
-                return;
-            }
+        // Check for cache invalidation conditions.
+        // Invalidate when: mode changes, v_auto changes, config changes, or window changes.
+        const bool mode_changed = (auto_mode != m_impl->last_range_auto_mode) ||
+                                  (v_auto != m_impl->last_range_v_auto);
 
-            const double center = 0.5 * (double(v_min) + double(v_max));
-            const double padded_span = span * (1.0 + auto_v_extra_scale);
-            v_min = static_cast<float>(center - padded_span * 0.5);
-            v_max = static_cast<float>(center + padded_span * 0.5);
-        };
-        if (can_use_series) {
-            std::shared_lock lock(m_impl->owner->m_series_mutex);
-            if (m_impl->snapshot.v_auto) {
-                if (auto_mode == Auto_v_range_mode::VISIBLE) {
-                    auto [auto_v0, auto_v1] = compute_visible_v_range(
-                        m_impl->owner->m_series,
-                        m_impl->v_range_cache,
-                        m_impl->snapshot.cfg.t_min,
-                        m_impl->snapshot.cfg.t_max,
-                        usable_width,
-                        m_impl->snapshot.cfg.v_min,
-                        m_impl->snapshot.cfg.v_max);
-                    v0 = auto_v0;
-                    v1 = auto_v1;
-                    apply_auto_padding(v0, v1);
+        const bool config_changed = (auto_v_extra_scale != m_impl->last_range_extra_scale);
+
+        const bool window_changed = (auto_mode == Auto_v_range_mode::VISIBLE) &&
+                                    ((m_impl->snapshot.cfg.t_min != m_impl->last_range_t_min) ||
+                                     (m_impl->snapshot.cfg.t_max != m_impl->last_range_t_max));
+
+        const bool cache_invalid = mode_changed || config_changed || window_changed ||
+                                   !m_impl->range_cache_valid;
+
+        if (!cache_invalid && !throttle_expired) {
+            // Use cached values (throttled path).
+            if (v_auto) {
+                v0 = m_impl->cached_v0;
+                v1 = m_impl->cached_v1;
+            }
+            else {
+                // When v_auto is false, always use manual config directly.
+                v0 = m_impl->snapshot.cfg.v_manual_min;
+                v1 = m_impl->snapshot.cfg.v_manual_max;
+            }
+            preview_v0 = m_impl->cached_preview_v0;
+            preview_v1 = m_impl->cached_preview_v1;
+        }
+        else {
+            // Perform full range calculation.
+            const auto apply_auto_padding = [&](float& v_min, float& v_max) {
+                if (!(auto_v_extra_scale > 0.0)) {
+                    return;
+                }
+
+                const double span = double(v_max) - double(v_min);
+                if (!(span > 0.0)) {
+                    return;
+                }
+
+                const double center = 0.5 * (double(v_min) + double(v_max));
+                const double padded_span = span * (1.0 + auto_v_extra_scale);
+                v_min = static_cast<float>(center - padded_span * 0.5);
+                v_max = static_cast<float>(center + padded_span * 0.5);
+            };
+
+            bool preview_use_lod_cache = false;
+            if (can_use_series) {
+                std::shared_lock lock(m_impl->owner->m_series_mutex);
+                if (v_auto) {
+                    if (auto_mode == Auto_v_range_mode::VISIBLE) {
+                        auto [auto_v0, auto_v1] = compute_visible_v_range(
+                            m_impl->owner->m_series,
+                            m_impl->v_range_cache,
+                            m_impl->snapshot.cfg.t_min,
+                            m_impl->snapshot.cfg.t_max,
+                            usable_width,
+                            m_impl->snapshot.cfg.v_min,
+                            m_impl->snapshot.cfg.v_max);
+                        v0 = auto_v0;
+                        v1 = auto_v1;
+                        apply_auto_padding(v0, v1);
+                    }
+                    else {
+                        auto [auto_v0, auto_v1] = compute_global_v_range(
+                            m_impl->owner->m_series,
+                            m_impl->v_range_cache,
+                            auto_mode == Auto_v_range_mode::GLOBAL_LOD,
+                            m_impl->snapshot.cfg.v_min,
+                            m_impl->snapshot.cfg.v_max);
+                        v0 = auto_v0;
+                        v1 = auto_v1;
+                        apply_auto_padding(v0, v1);
+                    }
                 }
                 else {
-                    auto [auto_v0, auto_v1] = compute_global_v_range(
-                        m_impl->owner->m_series,
-                        m_impl->v_range_cache,
-                        auto_mode == Auto_v_range_mode::GLOBAL_LOD,
-                        m_impl->snapshot.cfg.v_min,
-                        m_impl->snapshot.cfg.v_max);
-                    v0 = auto_v0;
-                    v1 = auto_v1;
-                    apply_auto_padding(v0, v1);
+                    v0 = m_impl->snapshot.cfg.v_manual_min;
+                    v1 = m_impl->snapshot.cfg.v_manual_max;
                 }
+
+                preview_use_lod_cache = (auto_mode == Auto_v_range_mode::GLOBAL_LOD);
+                auto [auto_preview_v0, auto_preview_v1] = compute_global_v_range(
+                    m_impl->owner->m_series,
+                    m_impl->v_range_cache,
+                    preview_use_lod_cache,
+                    m_impl->snapshot.cfg.v_min,
+                    m_impl->snapshot.cfg.v_max);
+                preview_v0 = auto_preview_v0;
+                preview_v1 = auto_preview_v1;
+                apply_auto_padding(preview_v0, preview_v1);
+            }
+            else if (v_auto) {
+                v0 = m_impl->snapshot.cfg.v_min;
+                v1 = m_impl->snapshot.cfg.v_max;
+                preview_v0 = v0;
+                preview_v1 = v1;
             }
             else {
                 v0 = m_impl->snapshot.cfg.v_manual_min;
                 v1 = m_impl->snapshot.cfg.v_manual_max;
+                preview_v0 = v0;
+                preview_v1 = v1;
             }
 
-            auto [auto_preview_v0, auto_preview_v1] = compute_global_v_range(
-                m_impl->owner->m_series,
-                m_impl->v_range_cache,
-                true,
-                m_impl->snapshot.cfg.v_min,
-                m_impl->snapshot.cfg.v_max);
-            preview_v0 = auto_preview_v0;
-            preview_v1 = auto_preview_v1;
-            apply_auto_padding(preview_v0, preview_v1);
-        }
-        else
-        if (m_impl->snapshot.v_auto) {
-            v0 = m_impl->snapshot.cfg.v_min;
-            v1 = m_impl->snapshot.cfg.v_max;
-            preview_v0 = v0;
-            preview_v1 = v1;
-        }
-        else {
-            v0 = m_impl->snapshot.cfg.v_manual_min;
-            v1 = m_impl->snapshot.cfg.v_manual_max;
-            preview_v0 = v0;
-            preview_v1 = v1;
+            // Update throttle cache.
+            m_impl->cached_v0 = v0;
+            m_impl->cached_v1 = v1;
+            m_impl->cached_preview_v0 = preview_v0;
+            m_impl->cached_preview_v1 = preview_v1;
+            m_impl->range_cache_valid = true;
+            m_impl->last_range_calc_time = now;
+            m_impl->last_range_auto_mode = auto_mode;
+            m_impl->last_range_v_auto = v_auto;
+            m_impl->last_range_extra_scale = auto_v_extra_scale;
+            m_impl->last_range_t_min = m_impl->snapshot.cfg.t_min;
+            m_impl->last_range_t_max = m_impl->snapshot.cfg.t_max;
         }
 
-        if (m_impl->snapshot.v_auto && m_impl->owner) {
+        if (v_auto && m_impl->owner) {
             // Sync auto range back to the widget so QML reads match the render range.
             constexpr float k_auto_v_eps = 1e-6f;
             if (std::abs(v0 - m_impl->snapshot.cfg.v_min) > k_auto_v_eps ||
@@ -1164,11 +1276,7 @@ void Plot_renderer::render()
 
     frame_context_t series_ctx = [&]() -> frame_context_t {
         VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.context_build.series_ctx");
-        frame_context_t ctx = core_ctx;
-        const double preview_scissor_pad = k_scissor_pad_px;
-        ctx.adjusted_preview_height =
-            std::max(0.0, ctx.adjusted_preview_height - preview_scissor_pad);
-        return ctx;
+        return core_ctx;
     }();
 
     // Clear to transparent - let QML provide the background color (matches Lumis behavior)

@@ -9,6 +9,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 
 // Forward declare GL types to avoid including GL headers in this header
 using GLuint = unsigned int;
@@ -93,6 +94,7 @@ private:
     bool m_linked = false;
 
     LogCallback m_log_callback;
+    mutable std::unordered_map<std::string, GLint> m_uniform_cache;
 };
 
 // -----------------------------------------------------------------------------

@@ -9,6 +9,7 @@
 #include <glm/gtc/type_ptr.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 #include <unordered_set>
@@ -261,6 +262,7 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
     double t_min,
     double t_max,
     double width_px,
+    bool allow_stale_on_empty,
     vnm::plot::Profiler* profiler)
 {
     view_render_result_t result;
@@ -273,37 +275,81 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
     const std::size_t max_level_index = level_count > 0 ? level_count - 1 : 0;
     std::size_t target_level = std::min<std::size_t>(view_state.last_lod_level, max_level_index);
 
-    constexpr int k_max_lod_attempts = 3;
+    constexpr std::size_t k_tried_stack_levels = 32;
+    std::array<uint8_t, k_tried_stack_levels> tried_stack{};
+    std::vector<uint8_t> tried_heap;
+    uint8_t* tried = nullptr;
+    if (level_count <= k_tried_stack_levels) {
+        tried = tried_stack.data();
+        std::fill(tried, tried + level_count, 0);
+    }
+    else {
+        tried_heap.assign(level_count, 0);
+        tried = tried_heap.data();
+    }
+    const auto was_tried = [&](std::size_t level) -> bool {
+        return tried && level < level_count && tried[level] != 0;
+    };
+    const auto mark_tried = [&](std::size_t level) {
+        if (tried && level < level_count) {
+            tried[level] = 1;
+        }
+    };
 
-    for (int attempt = 0; attempt < k_max_lod_attempts; ++attempt) {
+    const int max_attempts = static_cast<int>(level_count) + 2;
+
+    for (int attempt = 0; attempt < max_attempts; ++attempt) {
         const std::size_t applied_level = std::min<std::size_t>(target_level, max_level_index);
+        if (was_tried(applied_level)) {
+            break;
+        }
+        mark_tried(applied_level);
         const std::size_t applied_scale = scales[applied_level];
 
         auto snapshot_result = data_source.try_snapshot(applied_level);
         if (!snapshot_result) {
-            view_state.last_lod_level = applied_level;
             ++m_metrics.snapshot_failures;
 
             result.can_draw = (view_state.active_vbo != UINT_MAX && view_state.last_count > 0);
             if (result.can_draw) {
                 result.first = view_state.last_first;
                 result.count = view_state.last_count;
-                result.applied_level = applied_level;
+                result.applied_level = view_state.last_lod_level;
+            }
+            if (!result.can_draw && applied_level > 0) {
+                target_level = applied_level - 1;
+                continue;
             }
             break;
         }
 
         const auto& snapshot = snapshot_result.snapshot;
         if (!snapshot || snapshot.count == 0) {
-            view_state.last_lod_level = applied_level;
             ++m_metrics.snapshot_failures;
+            result.can_draw = (view_state.active_vbo != UINT_MAX && view_state.last_count > 0);
+            if (result.can_draw) {
+                result.first = view_state.last_first;
+                result.count = view_state.last_count;
+                result.applied_level = view_state.last_lod_level;
+            }
+            if (!result.can_draw && applied_level > 0) {
+                target_level = applied_level - 1;
+                continue;
+            }
             break;
         }
 
         // Find visible range using binary search
         std::size_t first_idx = 0;
         std::size_t last_idx = snapshot.count;
+        double first_ts = 0.0;
+        double last_ts = 0.0;
+        bool have_ts_bounds = false;
         if (get_timestamp) {
+            const auto* base = static_cast<const std::uint8_t*>(snapshot.data);
+            first_ts = get_timestamp(base);
+            last_ts = get_timestamp(base + (snapshot.count - 1) * snapshot.stride);
+            have_ts_bounds = std::isfinite(first_ts) && std::isfinite(last_ts);
             first_idx = lower_bound_timestamp(
                 snapshot.data, snapshot.count, snapshot.stride, get_timestamp, t_min);
             if (first_idx > 0) {
@@ -314,8 +360,44 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
             last_idx = std::min(last_idx + 2, snapshot.count);
         }
 
+        if (allow_stale_on_empty && have_ts_bounds && last_ts > first_ts) {
+            const bool out_of_range = (t_max <= first_ts) || (t_min >= last_ts);
+            if (out_of_range) {
+                first_idx = 0;
+                last_idx = snapshot.count;
+                result.use_t_override = true;
+                result.t_min_override = first_ts;
+                result.t_max_override = last_ts;
+            }
+        }
+
         if (first_idx >= last_idx) {
-            return result;
+            const bool can_override =
+                allow_stale_on_empty && have_ts_bounds && last_ts > first_ts &&
+                !result.use_t_override;
+            if (can_override) {
+                first_idx = 0;
+                last_idx = snapshot.count;
+                result.use_t_override = true;
+                result.t_min_override = first_ts;
+                result.t_max_override = last_ts;
+            }
+            else if (allow_stale_on_empty &&
+                     view_state.active_vbo != UINT_MAX &&
+                     view_state.last_count > 0) {
+                result.can_draw = true;
+                result.first = view_state.last_first;
+                result.count = view_state.last_count;
+                result.applied_level = view_state.last_lod_level;
+                break;
+            }
+            else if (applied_level > 0 && !was_tried(applied_level - 1)) {
+                target_level = applied_level - 1;
+                continue;
+            }
+            else {
+                break;
+            }
         }
 
         const GLsizei count = static_cast<GLsizei>(last_idx - first_idx);
@@ -326,8 +408,10 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
 
         const std::size_t desired_level = choose_lod_level(scales, applied_level, base_pps);
         if (desired_level != applied_level) {
-            target_level = desired_level;
-            continue;
+            if (!was_tried(desired_level)) {
+                target_level = desired_level;
+                continue;
+            }
         }
 
         {
@@ -418,37 +502,45 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
     return result;
 }
 
-void Series_renderer::set_common_uniforms(GLuint program, const glm::mat4& pmv, const frame_context_t& ctx)
+void Series_renderer::set_common_uniforms(
+    GL_program& program,
+    const glm::mat4& pmv,
+    const frame_context_t& ctx)
 {
-    glUniformMatrix4fv(glGetUniformLocation(program, "pmv"), 1, GL_FALSE, glm::value_ptr(pmv));
+    glUniformMatrix4fv(program.uniform_location("pmv"), 1, GL_FALSE, glm::value_ptr(pmv));
 
     const auto& layout = ctx.layout;
-    glUniform1d(glGetUniformLocation(program, "width"), layout.usable_width);
-    glUniform1d(glGetUniformLocation(program, "height"), layout.usable_height);
-    glUniform1f(glGetUniformLocation(program, "y_offset"), 0.0f);
-    glUniform1d(glGetUniformLocation(program, "t_min"), ctx.t0);
-    glUniform1d(glGetUniformLocation(program, "t_max"), ctx.t1);
-    glUniform1f(glGetUniformLocation(program, "v_min"), ctx.v0);
-    glUniform1f(glGetUniformLocation(program, "v_max"), ctx.v1);
+    glUniform1d(program.uniform_location("width"), layout.usable_width);
+    glUniform1d(program.uniform_location("height"), layout.usable_height);
+    glUniform1f(program.uniform_location("y_offset"), 0.0f);
+    glUniform1f(program.uniform_location("win_h"), static_cast<float>(ctx.win_h));
+    glUniform1d(program.uniform_location("t_min"), ctx.t0);
+    glUniform1d(program.uniform_location("t_max"), ctx.t1);
+    glUniform1f(program.uniform_location("v_min"), ctx.v0);
+    glUniform1f(program.uniform_location("v_max"), ctx.v1);
 
     // Line rendering options
     const bool snap = ctx.config ? ctx.config->snap_lines_to_pixels : false;
-    glUniform1i(glGetUniformLocation(program, "snap_to_pixels"), snap ? 1 : 0);
+    glUniform1i(program.uniform_location("snap_to_pixels"), snap ? 1 : 0);
 }
 
-void Series_renderer::modify_uniforms_for_preview(GLuint program, const frame_context_t& ctx)
+void Series_renderer::modify_uniforms_for_preview(
+    GL_program& program,
+    const frame_context_t& ctx)
 {
     const auto& layout = ctx.layout;
-    const float preview_y = static_cast<float>(layout.usable_height + layout.h_bar_height);
+    const double preview_top =
+        layout.usable_height + std::max(0.0, layout.h_bar_height - double(k_scissor_pad_px));
+    const float preview_y = static_cast<float>(preview_top);
     const float preview_height = static_cast<float>(ctx.adjusted_preview_height);
 
-    glUniform1f(glGetUniformLocation(program, "y_offset"), preview_y);
-    glUniform1d(glGetUniformLocation(program, "width"), static_cast<double>(ctx.win_w));
-    glUniform1d(glGetUniformLocation(program, "height"), static_cast<double>(preview_height));
-    glUniform1f(glGetUniformLocation(program, "v_min"), ctx.preview_v0);
-    glUniform1f(glGetUniformLocation(program, "v_max"), ctx.preview_v1);
-    glUniform1d(glGetUniformLocation(program, "t_min"), ctx.t_available_min);
-    glUniform1d(glGetUniformLocation(program, "t_max"), ctx.t_available_max);
+    glUniform1f(program.uniform_location("y_offset"), preview_y);
+    glUniform1d(program.uniform_location("width"), static_cast<double>(ctx.win_w));
+    glUniform1d(program.uniform_location("height"), static_cast<double>(preview_height));
+    glUniform1f(program.uniform_location("v_min"), ctx.preview_v0);
+    glUniform1f(program.uniform_location("v_max"), ctx.preview_v1);
+    glUniform1d(program.uniform_location("t_min"), ctx.t_available_min);
+    glUniform1d(program.uniform_location("t_max"), ctx.t_available_max);
 }
 
 void Series_renderer::render(
@@ -567,6 +659,7 @@ void Series_renderer::render(
                 scales,
                 ctx.t0, ctx.t1,
                 layout.usable_width,
+                false,
                 profiler);
         }();
         if (ctx.config && ctx.config->log_debug &&
@@ -611,9 +704,17 @@ void Series_renderer::render(
             const GLuint program_id = pass_shader->program_id();
             glUseProgram(program_id);
 
-            set_common_uniforms(program_id, ctx.pmv, ctx);
+            set_common_uniforms(*pass_shader, ctx.pmv, ctx);
             if (is_preview) {
-                modify_uniforms_for_preview(program_id, ctx);
+                modify_uniforms_for_preview(*pass_shader, ctx);
+                if (view_result.use_t_override) {
+                    glUniform1d(
+                        pass_shader->uniform_location("t_min"),
+                        view_result.t_min_override);
+                    glUniform1d(
+                        pass_shader->uniform_location("t_max"),
+                        view_result.t_max_override);
+                }
             }
 
             glm::vec4 draw_color = s->color;
@@ -625,14 +726,14 @@ void Series_renderer::render(
                     draw_color = k_default_series_color_dark;
                 }
             }
-            glUniform4fv(glGetUniformLocation(program_id, "color"), 1, glm::value_ptr(draw_color));
+            glUniform4fv(pass_shader->uniform_location("color"), 1, glm::value_ptr(draw_color));
 
             if (primitive_style == Display_style::AREA || primitive_style == Display_style::COLORMAP_AREA) {
-                glUniform1f(glGetUniformLocation(program_id, "line_width"), line_width);
-                glUniform4fv(glGetUniformLocation(program_id, "line_color"), 1, glm::value_ptr(draw_color));
+                glUniform1f(pass_shader->uniform_location("line_width"), line_width);
+                glUniform4fv(pass_shader->uniform_location("line_color"), 1, glm::value_ptr(draw_color));
             }
 
-            if (const GLint loc = glGetUniformLocation(program_id, "u_line_px"); loc >= 0) {
+            if (const GLint loc = pass_shader->uniform_location("u_line_px"); loc >= 0) {
                 glUniform1f(loc, line_width);
             }
 
@@ -647,7 +748,7 @@ void Series_renderer::render(
                 if (colormap_tex != 0) {
                     glActiveTexture(GL_TEXTURE0);
                     glBindTexture(GL_TEXTURE_1D, colormap_tex);
-                    glUniform1i(glGetUniformLocation(program_id, "colormap"), 0);
+                    glUniform1i(pass_shader->uniform_location("colormap"), 0);
 
                     data_snapshot_t snapshot;
                     {
@@ -657,38 +758,67 @@ void Series_renderer::render(
                         snapshot = s->data_source->snapshot(view_result.applied_level);
                     }
                     if (snapshot) {
-                        double aux_min = 0.0, aux_max = 1.0;
-                        {
+                        const void* identity = s->data_source->identity();
+                        const bool can_reuse = vbo_state.cached_aux_metric_valid &&
+                            vbo_state.cached_aux_metric_sequence == snapshot.sequence &&
+                            vbo_state.cached_aux_metric_level == view_result.applied_level &&
+                            vbo_state.cached_aux_metric_identity == identity;
+
+                        if (!can_reuse) {
+                            double aux_min = 0.0;
+                            double aux_max = 1.0;
                             VNM_PLOT_PROFILE_SCOPE(
                                 profiler,
                                 "renderer.frame.execute_passes.render_data_series.series.compute_aux_metric_range");
                             if (compute_aux_metric_range(*s, snapshot, aux_min, aux_max)) {
                                 vbo_state.cached_aux_metric_min = aux_min;
                                 vbo_state.cached_aux_metric_max = aux_max;
+                                vbo_state.cached_aux_metric_sequence = snapshot.sequence;
+                                vbo_state.cached_aux_metric_level = view_result.applied_level;
+                                vbo_state.cached_aux_metric_identity = identity;
+                                vbo_state.cached_aux_metric_valid = true;
+                            }
+                            else {
+                                // compute_aux_metric_range failed (e.g., NaN-only window).
+                                // Cache the failure with defaults to avoid rescanning every frame.
+                                // When sequence changes (new data), can_reuse will be false and
+                                // we'll try again.
+                                vbo_state.cached_aux_metric_min = 0.0;
+                                vbo_state.cached_aux_metric_max = 1.0;
+                                vbo_state.cached_aux_metric_sequence = snapshot.sequence;
+                                vbo_state.cached_aux_metric_level = view_result.applied_level;
+                                vbo_state.cached_aux_metric_identity = identity;
+                                vbo_state.cached_aux_metric_valid = true;
                             }
                         }
+                    }
+                    else {
+                        // Empty or invalid snapshot - invalidate cache to avoid stale values.
+                        vbo_state.cached_aux_metric_min = 0.0;
+                        vbo_state.cached_aux_metric_max = 1.0;
+                        vbo_state.cached_aux_metric_valid = false;
                     }
                     const float aux_min_f = static_cast<float>(vbo_state.cached_aux_metric_min);
                     const float aux_max_f = static_cast<float>(vbo_state.cached_aux_metric_max);
                     const float aux_span = aux_max_f - aux_min_f;
                     const float inv_aux_span = (std::abs(aux_span) > 1e-12f) ? (1.0f / aux_span) : 0.0f;
 
-                    glUniform1f(glGetUniformLocation(program_id, "aux_min"), aux_min_f);
-                    glUniform1f(glGetUniformLocation(program_id, "aux_max"), aux_max_f);
-                    if (const GLint loc = glGetUniformLocation(program_id, "u_volume_min"); loc >= 0) {
+                    glUniform1f(pass_shader->uniform_location("aux_min"), aux_min_f);
+                    glUniform1f(pass_shader->uniform_location("aux_max"), aux_max_f);
+                    if (const GLint loc = pass_shader->uniform_location("u_volume_min"); loc >= 0) {
                         glUniform1f(loc, aux_min_f);
                     }
-                    if (const GLint loc = glGetUniformLocation(program_id, "u_inv_volume_span"); loc >= 0) {
+                    if (const GLint loc = pass_shader->uniform_location("u_inv_volume_span"); loc >= 0) {
                         glUniform1f(loc, inv_aux_span);
                     }
-                    if (const GLint loc = glGetUniformLocation(program_id, "u_colormap_tex"); loc >= 0) {
+                    if (const GLint loc = pass_shader->uniform_location("u_colormap_tex"); loc >= 0) {
                         glUniform1i(loc, 0);
                     }
                     const std::size_t applied_scale = (view_result.applied_level < scales.size())
                         ? scales[view_result.applied_level]
                         : 1;
                     const float volume_scale = (applied_scale > 0) ? (1.0f / static_cast<float>(applied_scale)) : 1.0f;
-                    if (const GLint loc = glGetUniformLocation(program_id, "u_volume_scale"); loc >= 0) {
+                    if (const GLint loc = pass_shader->uniform_location("u_volume_scale"); loc >= 0) {
                         glUniform1f(loc, volume_scale);
                     }
                 }
@@ -709,7 +839,8 @@ void Series_renderer::render(
                     do_draw = false;
                 }
                 else {
-                    const double preview_top = layout.usable_height + layout.h_bar_height;
+                    const double preview_top =
+                        layout.usable_height + std::max(0.0, layout.h_bar_height - double(k_scissor_pad_px));
                     const GLint scissor_y = to_gl_scissor_y(preview_top, preview_height);
                     const GLsizei scissor_h = static_cast<GLsizei>(lround(preview_height));
                     if (scissor_h <= 0) {
@@ -790,6 +921,7 @@ void Series_renderer::render(
                     scales,
                     ctx.t_available_min, ctx.t_available_max,
                     ctx.win_w,
+                    true,
                     profiler);
             }();
 

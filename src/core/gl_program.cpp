@@ -36,6 +36,7 @@ GL_program::GL_program(GL_program&& other) noexcept
     , m_fragment_shader(other.m_fragment_shader)
     , m_linked(other.m_linked)
     , m_log_callback(std::move(other.m_log_callback))
+    , m_uniform_cache(std::move(other.m_uniform_cache))
 {
     other.m_program_id = 0;
     other.m_vertex_shader = 0;
@@ -55,6 +56,7 @@ GL_program& GL_program::operator=(GL_program&& other) noexcept
         m_fragment_shader = other.m_fragment_shader;
         m_linked = other.m_linked;
         m_log_callback = std::move(other.m_log_callback);
+        m_uniform_cache = std::move(other.m_uniform_cache);
 
         other.m_program_id = 0;
         other.m_vertex_shader = 0;
@@ -222,7 +224,13 @@ GLint GL_program::uniform_location(const char* name) const
     if (!m_linked || m_program_id == 0) {
         return -1;
     }
-    return glGetUniformLocation(m_program_id, name);
+    const auto it = m_uniform_cache.find(name);
+    if (it != m_uniform_cache.end()) {
+        return it->second;
+    }
+    const GLint location = glGetUniformLocation(m_program_id, name);
+    m_uniform_cache.emplace(name, location);
+    return location;
 }
 
 void GL_program::destroy()
@@ -244,6 +252,7 @@ void GL_program::destroy()
         m_program_id = 0;
     }
     m_linked = false;
+    m_uniform_cache.clear();
 }
 
 // -----------------------------------------------------------------------------

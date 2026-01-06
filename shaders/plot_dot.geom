@@ -29,8 +29,8 @@ void main()
     }
 
     float x, y;
-    double r_t = t_max-t_min;
-    float r_v = v_max - v_min;
+    double r_t = max(t_max - t_min, 1e-30);
+    float r_v = max(v_max - v_min, 1e-30);
     x = float(width  *       (gs_in[0].t-t_min)/r_t  );
     y = float(height * (1.lf - (gs_in[0].v - v_min) / r_v)) + y_offset;
     gl_Position = pmv * vec4(x, y, 0, 1);

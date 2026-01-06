@@ -195,25 +195,23 @@ void Primitive_renderer::draw_grid_shader(
 
     m_sp_grid->bind();
 
-    const GLuint pid = m_sp_grid->program_id();
-
-    glUniform2f(glGetUniformLocation(pid, "plot_size_px"), size.x, size.y);
-    glUniform2f(glGetUniformLocation(pid, "region_origin_px"), origin.x, origin.y);
-    glUniform4f(glGetUniformLocation(pid, "grid_color"), color.r, color.g, color.b, color.a);
+    glUniform2f(m_sp_grid->uniform_location("plot_size_px"), size.x, size.y);
+    glUniform2f(m_sp_grid->uniform_location("region_origin_px"), origin.x, origin.y);
+    glUniform4f(m_sp_grid->uniform_location("grid_color"), color.r, color.g, color.b, color.a);
 
     const int max_levels = grid_layer_params_t::k_max_levels;
 
-    glUniform1i(glGetUniformLocation(pid, "v_count"), vertical_levels.count);
-    glUniform1fv(glGetUniformLocation(pid, "v_spacing_px"), max_levels, vertical_levels.spacing_px);
-    glUniform1fv(glGetUniformLocation(pid, "v_start_px"), max_levels, vertical_levels.start_px);
-    glUniform1fv(glGetUniformLocation(pid, "v_alpha"), max_levels, vertical_levels.alpha);
-    glUniform1fv(glGetUniformLocation(pid, "v_thickness_px"), max_levels, vertical_levels.thickness_px);
+    glUniform1i(m_sp_grid->uniform_location("v_count"), vertical_levels.count);
+    glUniform1fv(m_sp_grid->uniform_location("v_spacing_px"), max_levels, vertical_levels.spacing_px);
+    glUniform1fv(m_sp_grid->uniform_location("v_start_px"), max_levels, vertical_levels.start_px);
+    glUniform1fv(m_sp_grid->uniform_location("v_alpha"), max_levels, vertical_levels.alpha);
+    glUniform1fv(m_sp_grid->uniform_location("v_thickness_px"), max_levels, vertical_levels.thickness_px);
 
-    glUniform1i(glGetUniformLocation(pid, "t_count"), horizontal_levels.count);
-    glUniform1fv(glGetUniformLocation(pid, "t_spacing_px"), max_levels, horizontal_levels.spacing_px);
-    glUniform1fv(glGetUniformLocation(pid, "t_start_px"), max_levels, horizontal_levels.start_px);
-    glUniform1fv(glGetUniformLocation(pid, "t_alpha"), max_levels, horizontal_levels.alpha);
-    glUniform1fv(glGetUniformLocation(pid, "t_thickness_px"), max_levels, horizontal_levels.thickness_px);
+    glUniform1i(m_sp_grid->uniform_location("t_count"), horizontal_levels.count);
+    glUniform1fv(m_sp_grid->uniform_location("t_spacing_px"), max_levels, horizontal_levels.spacing_px);
+    glUniform1fv(m_sp_grid->uniform_location("t_start_px"), max_levels, horizontal_levels.start_px);
+    glUniform1fv(m_sp_grid->uniform_location("t_alpha"), max_levels, horizontal_levels.alpha);
+    glUniform1fv(m_sp_grid->uniform_location("t_thickness_px"), max_levels, horizontal_levels.thickness_px);
 
     glEnable(GL_SCISSOR_TEST);
     glScissor(

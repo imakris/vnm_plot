@@ -9,6 +9,7 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <map>
 #include <memory>
 #include <unordered_map>
@@ -84,6 +85,10 @@ private:
 
         double cached_aux_metric_min = 0.0;
         double cached_aux_metric_max = 1.0;
+        uint64_t cached_aux_metric_sequence = 0;
+        std::size_t cached_aux_metric_level = std::numeric_limits<std::size_t>::max();
+        const void* cached_aux_metric_identity = nullptr;
+        bool cached_aux_metric_valid = false;
     };
 
     struct view_render_result_t
@@ -93,6 +98,9 @@ private:
         GLsizei count = 0;
         std::size_t applied_level = 0;
         double applied_pps = 0.0;
+        bool use_t_override = false;
+        double t_min_override = 0.0;
+        double t_max_override = 0.0;
     };
 
     struct colormap_resource_t
@@ -139,10 +147,11 @@ private:
         double t_min,
         double t_max,
         double width_px,
+        bool allow_stale_on_empty,
         vnm::plot::Profiler* profiler);
 
-    void set_common_uniforms(GLuint program, const glm::mat4& pmv, const frame_context_t& ctx);
-    void modify_uniforms_for_preview(GLuint program, const frame_context_t& ctx);
+    void set_common_uniforms(GL_program& program, const glm::mat4& pmv, const frame_context_t& ctx);
+    void modify_uniforms_for_preview(GL_program& program, const frame_context_t& ctx);
 };
 
 } // namespace vnm::plot

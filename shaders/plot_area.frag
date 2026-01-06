@@ -4,6 +4,7 @@ layout(location =  3) uniform float   v_min;
 layout(location =  4) uniform float   v_max;
 layout(location =  6) uniform double  height;
 layout(location =  7) uniform float   y_offset;
+uniform float win_h;
 
 in GS_out
 {
@@ -22,7 +23,7 @@ void main(void)
 #define FC (3.1415926*0.2)
 
     float x = gl_FragCoord.x;
-    float y = gl_FragCoord.y-y_offset;
+    float y = (win_h - gl_FragCoord.y) - y_offset;
 
 
     float vmin = v_min;

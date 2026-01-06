@@ -167,10 +167,12 @@ bool Text_renderer::render_axis_labels(const frame_context_t& ctx, bool fade_lab
         const float snapped_x = std::floor(pen_x + k_pixel_snap);
         const float snapped_y = std::floor(pen_y + k_pixel_snap);
 
-        glm::vec4 color = font_color;
-        color.a *= state.alpha;
         m_fonts->batch_text(snapped_x, snapped_y, state.text.c_str());
-        m_fonts->draw_and_flush(ctx.pmv, color);
+        if (fade_labels) {
+            glm::vec4 color = font_color;
+            color.a *= state.alpha;
+            m_fonts->draw_and_flush(ctx.pmv, color);
+        }
     };
 
     bool any_active = false;
@@ -196,6 +198,10 @@ bool Text_renderer::render_axis_labels(const frame_context_t& ctx, bool fade_lab
         m_vertical_fade.initialized = true;
     }
 
+    if (!fade_labels) {
+        m_fonts->draw_and_flush(ctx.pmv, font_color);
+    }
+
     glDisable(GL_SCISSOR_TEST);
     return any_active;
 }
@@ -217,10 +223,12 @@ bool Text_renderer::render_info_overlay(const frame_context_t& ctx, bool fade_la
         const float pen_x = x_anchor + k_text_margin_px;
         const float pen_y = static_cast<float>(pl.usable_height + k_h_label_vertical_nudge_px * ctx.adjusted_font_px);
 
-        glm::vec4 color = font_color;
-        color.a *= state.alpha;
         m_fonts->batch_text(pen_x, pen_y, state.text.c_str());
-        m_fonts->draw_and_flush(ctx.pmv, color);
+        if (fade_labels) {
+            glm::vec4 color = font_color;
+            color.a *= state.alpha;
+            m_fonts->draw_and_flush(ctx.pmv, color);
+        }
     };
 
     bool any_active = false;
@@ -301,7 +309,9 @@ bool Text_renderer::render_info_overlay(const frame_context_t& ctx, bool fade_la
         m_fonts->batch_text(k_overlay_left_px + offset_to, llt, m_cached_to_ts.c_str());
     }
 
-    m_fonts->draw_and_flush(ctx.pmv, font_color);
+    if (!fade_labels || ctx.show_info) {
+        m_fonts->draw_and_flush(ctx.pmv, font_color);
+    }
     return any_active;
 }
 
