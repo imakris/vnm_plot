@@ -282,10 +282,10 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
     uint8_t* tried = nullptr;
     if (level_count <= k_tried_stack_levels) {
         tried = tried_stack.data();
-        std::fill(tried, tried + level_count, 0);
+        std::fill(tried, tried + level_count, uint8_t{0});
     }
     else {
-        tried_heap.assign(level_count, 0);
+        tried_heap.assign(level_count, uint8_t{0});
         tried = tried_heap.data();
     }
     const auto was_tried = [&](std::size_t level) -> bool {

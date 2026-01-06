@@ -523,6 +523,24 @@ if(VNM_PLOT_BUILD_EXAMPLES AND VNM_PLOT_BUILD_QT)
 endif()
 
 # -----------------------------------------------------------------------------
+# Benchmark (requires Qt for window management)
+# -----------------------------------------------------------------------------
+
+option(VNM_PLOT_BUILD_BENCHMARK "Build benchmark executable" OFF)
+
+if(VNM_PLOT_BUILD_BENCHMARK)
+    # Ensure Qt6 OpenGLWidgets is available for benchmark (QOpenGLWidget)
+    if(NOT TARGET Qt6::OpenGLWidgets)
+        find_package(Qt6 COMPONENTS Widgets OpenGLWidgets)
+    endif()
+    if(TARGET Qt6::OpenGLWidgets)
+        add_subdirectory(benchmark)
+    else()
+        message(STATUS "vnm_plot: Benchmark requires Qt6::OpenGLWidgets, skipping")
+    endif()
+endif()
+
+# -----------------------------------------------------------------------------
 # Installation (only when building as top-level project)
 # -----------------------------------------------------------------------------
 

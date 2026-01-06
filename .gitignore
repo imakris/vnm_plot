@@ -1,10 +1,17 @@
 # Build outputs
 /build/
 /examples/build-*
+/build_benchmark/
+/build-benchmark-*/
 
 # QtCreator user settings
 /examples/**/.qtcreator/
+/.qtcreator/
+/benchmark/.qtcreator/
 
 # Claude workspace metadata
 .claude/
 /repo/
+
+# Windows artifacts
+/nul
