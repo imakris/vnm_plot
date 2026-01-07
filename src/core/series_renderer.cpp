@@ -1040,9 +1040,8 @@ void Series_renderer::render(
         glBindVertexArray(0);
         // Restore default line width
         glLineWidth(1.0f);
-        // Disable scissor test and blend to restore default state
+        // Disable scissor test; leave blend enabled (restores previous state)
         glDisable(GL_SCISSOR_TEST);
-        glDisable(GL_BLEND);
     }
 }
 
