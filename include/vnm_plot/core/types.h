@@ -154,6 +154,12 @@ public:
     virtual bool has_value_range() const { return false; }
     virtual std::pair<float, float> value_range() const { return {0.0f, 0.0f}; }
     virtual bool value_range_needs_rescan() const { return false; }
+
+    // Optional timestamp range interface for O(1) time bounds queries.
+    // Returns the first and last timestamps in the data (not the visible window).
+    // Useful for avoiding snapshot calls just to determine time bounds.
+    virtual bool has_timestamp_range() const { return false; }
+    virtual std::pair<double, double> timestamp_range() const { return {0.0, 0.0}; }
 };
 
 // -----------------------------------------------------------------------------

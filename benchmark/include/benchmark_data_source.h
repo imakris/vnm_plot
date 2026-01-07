@@ -127,11 +127,12 @@ public:
                 snapshot_sequence_ = result.sequence;
                 last_buffer_sequence_ = result.sequence;
 
-                // Update value range
+                // Update value and timestamp ranges
                 if (need_range_rescan) {
                     range_valid_ = false;  // Force full rescan
                 }
                 update_value_range(samples_to_add);
+                update_timestamp_range();
 
                 return {
                     vnm::plot::data_snapshot_t{
@@ -157,12 +158,14 @@ public:
 
         if (result.count == 0) {
             range_valid_ = false;
+            timestamp_range_valid_ = false;
             return {vnm::plot::data_snapshot_t{}, Status::EMPTY};
         }
 
         // Full copy requires full range scan
         range_valid_ = false;
         update_value_range(0);
+        update_timestamp_range();
 
         return {
             vnm::plot::data_snapshot_t{
@@ -195,6 +198,16 @@ public:
         return !range_valid_;
     }
 
+    /// O(1) timestamp range query (computed during snapshot)
+    /// Returns false if snapshot is empty or no data has been processed
+    bool has_timestamp_range() const override {
+        return timestamp_range_valid_;
+    }
+
+    std::pair<double, double> timestamp_range() const override {
+        return {timestamp_min_, timestamp_max_};
+    }
+
     /// Get current sequence for change detection
     uint64_t sequence() const {
         return snapshot_sequence_;
@@ -214,6 +227,9 @@ private:
     float value_min_ = std::numeric_limits<float>::max();
     float value_max_ = std::numeric_limits<float>::lowest();
     bool range_valid_ = false;
+    double timestamp_min_ = 0.0;
+    double timestamp_max_ = 0.0;
+    bool timestamp_range_valid_ = false;
 
     /// Update value range, scanning new samples or doing full rescan if needed.
     /// @param new_sample_count Number of new samples at the end (0 = full rescan)
@@ -249,6 +265,25 @@ private:
 
     /// Extract value range from a sample (specialized per type)
     static std::pair<float, float> get_sample_range(const T& sample);
+
+    /// Extract timestamp from a sample (specialized per type)
+    static double get_sample_timestamp(const T& sample);
+
+    /// Update timestamp range from snapshot data.
+    /// Timestamps are ordered, so we only need first and last elements.
+    void update_timestamp_range() {
+        if (snapshot_data_.empty()) {
+            timestamp_min_ = 0.0;
+            timestamp_max_ = 0.0;
+            timestamp_range_valid_ = false;
+            return;
+        }
+
+        // Timestamps are ordered in the ring buffer, so just get first and last
+        timestamp_min_ = get_sample_timestamp(snapshot_data_.front());
+        timestamp_max_ = get_sample_timestamp(snapshot_data_.back());
+        timestamp_range_valid_ = true;
+    }
 };
 
 // Specialization for Bar_sample: range is [low, high]
@@ -263,6 +298,20 @@ template<>
 inline std::pair<float, float> Benchmark_data_source<Trade_sample>::get_sample_range(
     const Trade_sample& sample) {
     return {sample.price, sample.price};
+}
+
+// Specialization for Bar_sample: timestamp extraction
+template<>
+inline double Benchmark_data_source<Bar_sample>::get_sample_timestamp(
+    const Bar_sample& sample) {
+    return sample.timestamp;
+}
+
+// Specialization for Trade_sample: timestamp extraction
+template<>
+inline double Benchmark_data_source<Trade_sample>::get_sample_timestamp(
+    const Trade_sample& sample) {
+    return sample.timestamp;
 }
 
 /// Create a Data_access_policy for Bar_sample
