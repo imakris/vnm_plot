@@ -179,10 +179,16 @@ void render_benchmark_frame(
     // Update view range based on data
     {
         VNM_PLOT_PROFILE_SCOPE(&ctx.profiler, "renderer.frame.update_view_range");
-        // Ensure snapshot cache is current before reading cached ranges.
-        // This call updates timestamp_range/value_range caches; subsequent
-        // try_snapshot() calls in rendering will short-circuit on unchanged sequence.
-        ensure_frame_snapshot(ctx.data_source);
+        // Only call ensure_frame_snapshot when cached ranges are available.
+        // This updates timestamp_range/value_range caches so there's no 1-frame lag.
+        // For data sources without cached ranges, skip this - the fallback path
+        // in update_view_range_from_source will take a single snapshot.
+        if (ctx.data_source &&
+            ctx.data_source->has_timestamp_range() &&
+            ctx.data_source->has_value_range())
+        {
+            ensure_frame_snapshot(ctx.data_source);
+        }
         update_view_range_from_source(
             ctx.data_source,
             params.data_type,
