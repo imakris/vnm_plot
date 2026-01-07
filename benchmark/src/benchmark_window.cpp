@@ -214,17 +214,23 @@ void Benchmark_window::paintGL()
     const int fb_w = static_cast<int>(width() * devicePixelRatioF());
     const int fb_h = static_cast<int>(height() * devicePixelRatioF());
 
-    glViewport(0, 0, fb_w, fb_h);
-    glEnable(GL_MULTISAMPLE);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    {
+        VNM_PLOT_PROFILE_SCOPE(&m_profiler, "renderer.frame.gl_setup");
+        glViewport(0, 0, fb_w, fb_h);
+        glEnable(GL_MULTISAMPLE);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    const auto palette = vnm::plot::Color_palette::for_theme(m_render_config.dark_mode);
-    glClearColor(palette.background.r, palette.background.g, palette.background.b, palette.background.a);
-    glClear(GL_COLOR_BUFFER_BIT);
+        const auto palette = vnm::plot::Color_palette::for_theme(m_render_config.dark_mode);
+        glClearColor(palette.background.r, palette.background.g, palette.background.b, palette.background.a);
+        glClear(GL_COLOR_BUFFER_BIT);
+    }
 
     // Update view range based on data
-    update_view_range();
+    {
+        VNM_PLOT_PROFILE_SCOPE(&m_profiler, "renderer.frame.update_view_range");
+        update_view_range();
+    }
 
     // Calculate layout dimensions
     double adjusted_reserved_height;
