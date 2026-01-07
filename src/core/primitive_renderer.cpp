@@ -177,6 +177,11 @@ void Primitive_renderer::flush_rects(const glm::mat4& pmv)
     m_cpu_buffer.clear();
 }
 
+void Primitive_renderer::clear_rect_batch()
+{
+    m_cpu_buffer.clear();
+}
+
 void Primitive_renderer::draw_grid_shader(
     const glm::vec2& origin,
     const glm::vec2& size,

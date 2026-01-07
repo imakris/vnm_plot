@@ -52,6 +52,9 @@ public:
     // Upload and draw all batched rectangles
     void flush_rects(const glm::mat4& pmv);
 
+    // Clear the rect batch without drawing (for skip_gl mode)
+    void clear_rect_batch();
+
     // --- Grid Pipeline ---
     // Draw grid lines using shader
     void draw_grid_shader(

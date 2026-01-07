@@ -1090,4 +1090,12 @@ void Font_renderer::draw_and_flush(const glm::mat4& pmv, const glm::vec4& color)
     vertex_buffer_clear(res->m_buffer);
 }
 
+void Font_renderer::clear_buffer()
+{
+    const auto* res = m_impl->m_resources;
+    if (res && res->m_buffer) {
+        vertex_buffer_clear(res->m_buffer);
+    }
+}
+
 } // namespace vnm::plot

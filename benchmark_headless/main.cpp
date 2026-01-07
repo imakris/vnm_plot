@@ -876,19 +876,17 @@ int main(int argc, char* argv[])
                 &render_config
             };
 
-            // Render (chrome_renderer queues CPU work, series_renderer handles skip_gl internally)
-            if (!config.no_gl) {
-                chrome_renderer.render_grid_and_backgrounds(ctx, primitives);
-            }
+            // Always render (renderers handle skip_gl internally for CPU profiling)
+            chrome_renderer.render_grid_and_backgrounds(ctx, primitives);
             series_renderer.render(ctx, series_map);
+            chrome_renderer.render_preview_overlay(ctx, primitives);
             if (!config.no_gl) {
-                chrome_renderer.render_preview_overlay(ctx, primitives);
                 primitives.flush_rects(ctx.pmv);
             }
 
-            // Render text labels (when enabled, skip in no-GL mode)
+            // Render text labels (when enabled)
 #if defined(VNM_PLOT_ENABLE_TEXT)
-            if (!config.no_gl && text_renderer && render_config.show_text) {
+            if (text_renderer && render_config.show_text) {
                 text_renderer->render(ctx, false, false);
             }
 #endif

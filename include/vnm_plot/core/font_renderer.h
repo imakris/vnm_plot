@@ -87,6 +87,9 @@ public:
     // Renders all text currently in the batch buffer to the screen and clears the buffer.
     void draw_and_flush(const glm::mat4& pmv, const glm::vec4& color);
 
+    // Clears the batch buffer without rendering (for skip_gl mode).
+    void clear_buffer();
+
     // --- Resource Management ---
 
     // Static method to be called by the main renderer during its cleanup phase

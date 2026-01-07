@@ -116,14 +116,21 @@ bool Text_renderer::render(const frame_context_t& ctx, bool fade_v_labels, bool 
         return false;
     }
 
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    // Skip GL calls if configured (for pure CPU profiling)
+    const bool skip_gl = ctx.config && ctx.config->skip_gl_calls;
+
+    if (!skip_gl) {
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    }
 
     bool any_active = false;
     any_active |= render_axis_labels(ctx, fade_v_labels);
     any_active |= render_info_overlay(ctx, fade_h_labels);
 
-    glDisable(GL_BLEND);
+    if (!skip_gl) {
+        glDisable(GL_BLEND);
+    }
     return any_active;
 }
 
@@ -133,17 +140,22 @@ bool Text_renderer::render_axis_labels(const frame_context_t& ctx, bool fade_lab
     const bool dark_mode = ctx.config ? ctx.config->dark_mode : false;
     const glm::vec4 font_color = dark_mode ? glm::vec4(1.f, 1.f, 1.f, 1.f) : glm::vec4(0.f, 0.f, 0.f, 1.f);
 
+    // Skip GL calls if configured (for pure CPU profiling)
+    const bool skip_gl = ctx.config && ctx.config->skip_gl_calls;
+
     const float right_edge_x = static_cast<float>(pl.usable_width + pl.v_bar_width - k_v_label_horizontal_padding_px);
     const float min_x = static_cast<float>(pl.usable_width + k_text_margin_px);
     const float baseline_off = m_fonts->baseline_offset_px();
     const double v_span = double(ctx.v1) - double(ctx.v0);
 
-    glEnable(GL_SCISSOR_TEST);
-    const GLint scissor_y = static_cast<GLint>(lround(double(ctx.win_h) - double(pl.usable_height)));
-    glScissor(
-        static_cast<GLint>(lround(pl.usable_width)), scissor_y,
-        static_cast<GLsizei>(lround(pl.v_bar_width)), static_cast<GLsizei>(lround(pl.usable_height))
-    );
+    if (!skip_gl) {
+        glEnable(GL_SCISSOR_TEST);
+        const GLint scissor_y = static_cast<GLint>(lround(double(ctx.win_h) - double(pl.usable_height)));
+        glScissor(
+            static_cast<GLint>(lround(pl.usable_width)), scissor_y,
+            static_cast<GLsizei>(lround(pl.v_bar_width)), static_cast<GLsizei>(lround(pl.usable_height))
+        );
+    }
 
     const auto draw_label = [&](double value, const label_fade_state_t& state) {
         if (!(v_span > 0.0) || !(pl.usable_height > 0.0)) {
@@ -169,9 +181,13 @@ bool Text_renderer::render_axis_labels(const frame_context_t& ctx, bool fade_lab
 
         m_fonts->batch_text(snapped_x, snapped_y, state.text.c_str());
         if (fade_labels) {
-            glm::vec4 color = font_color;
-            color.a *= state.alpha;
-            m_fonts->draw_and_flush(ctx.pmv, color);
+            if (skip_gl) {
+                m_fonts->clear_buffer();
+            } else {
+                glm::vec4 color = font_color;
+                color.a *= state.alpha;
+                m_fonts->draw_and_flush(ctx.pmv, color);
+            }
         }
     };
 
@@ -199,10 +215,16 @@ bool Text_renderer::render_axis_labels(const frame_context_t& ctx, bool fade_lab
     }
 
     if (!fade_labels) {
-        m_fonts->draw_and_flush(ctx.pmv, font_color);
+        if (skip_gl) {
+            m_fonts->clear_buffer();
+        } else {
+            m_fonts->draw_and_flush(ctx.pmv, font_color);
+        }
     }
 
-    glDisable(GL_SCISSOR_TEST);
+    if (!skip_gl) {
+        glDisable(GL_SCISSOR_TEST);
+    }
     return any_active;
 }
 
@@ -212,6 +234,9 @@ bool Text_renderer::render_info_overlay(const frame_context_t& ctx, bool fade_la
     const bool dark_mode = ctx.config ? ctx.config->dark_mode : false;
     const glm::vec4 font_color = dark_mode ? glm::vec4(1.f, 1.f, 1.f, 1.f) : glm::vec4(0.f, 0.f, 0.f, 1.f);
     const double t_span = ctx.t1 - ctx.t0;
+
+    // Skip GL calls if configured (for pure CPU profiling)
+    const bool skip_gl = ctx.config && ctx.config->skip_gl_calls;
 
     const auto draw_label = [&](double t, const label_fade_state_t& state) {
         if (!(t_span > 0.0) || !(pl.usable_width > 0.0)) {
@@ -225,9 +250,13 @@ bool Text_renderer::render_info_overlay(const frame_context_t& ctx, bool fade_la
 
         m_fonts->batch_text(pen_x, pen_y, state.text.c_str());
         if (fade_labels) {
-            glm::vec4 color = font_color;
-            color.a *= state.alpha;
-            m_fonts->draw_and_flush(ctx.pmv, color);
+            if (skip_gl) {
+                m_fonts->clear_buffer();
+            } else {
+                glm::vec4 color = font_color;
+                color.a *= state.alpha;
+                m_fonts->draw_and_flush(ctx.pmv, color);
+            }
         }
     };
 
@@ -310,7 +339,11 @@ bool Text_renderer::render_info_overlay(const frame_context_t& ctx, bool fade_la
     }
 
     if (!fade_labels || ctx.show_info) {
-        m_fonts->draw_and_flush(ctx.pmv, font_color);
+        if (skip_gl) {
+            m_fonts->clear_buffer();
+        } else {
+            m_fonts->draw_and_flush(ctx.pmv, font_color);
+        }
     }
     return any_active;
 }

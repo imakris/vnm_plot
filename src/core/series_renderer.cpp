@@ -764,6 +764,58 @@ void Series_renderer::render(
                 }
             }
 
+            // CPU-side colormap aux-range computation (must run before skip_gl return)
+            if (primitive_style == Display_style::COLORMAP_AREA && !s->colormap.samples.empty()) {
+                data_snapshot_t snapshot;
+                {
+                    VNM_PLOT_PROFILE_SCOPE(
+                        profiler,
+                        "renderer.frame.execute_passes.render_data_series.series.ensure_full_resolution_aux_metric_range");
+                    snapshot = s->data_source->snapshot(view_result.applied_level);
+                }
+                if (snapshot) {
+                    const void* identity = s->data_source->identity();
+                    const bool can_reuse = vbo_state.cached_aux_metric_valid &&
+                        vbo_state.cached_aux_metric_sequence == snapshot.sequence &&
+                        vbo_state.cached_aux_metric_level == view_result.applied_level &&
+                        vbo_state.cached_aux_metric_identity == identity;
+
+                    if (!can_reuse) {
+                        double aux_min = 0.0;
+                        double aux_max = 1.0;
+                        VNM_PLOT_PROFILE_SCOPE(
+                            profiler,
+                            "renderer.frame.execute_passes.render_data_series.series.compute_aux_metric_range");
+                        if (compute_aux_metric_range(*s, snapshot, aux_min, aux_max)) {
+                            vbo_state.cached_aux_metric_min = aux_min;
+                            vbo_state.cached_aux_metric_max = aux_max;
+                            vbo_state.cached_aux_metric_sequence = snapshot.sequence;
+                            vbo_state.cached_aux_metric_level = view_result.applied_level;
+                            vbo_state.cached_aux_metric_identity = identity;
+                            vbo_state.cached_aux_metric_valid = true;
+                        }
+                        else {
+                            // compute_aux_metric_range failed (e.g., NaN-only window).
+                            // Cache the failure with defaults to avoid rescanning every frame.
+                            // When sequence changes (new data), can_reuse will be false and
+                            // we'll try again.
+                            vbo_state.cached_aux_metric_min = 0.0;
+                            vbo_state.cached_aux_metric_max = 1.0;
+                            vbo_state.cached_aux_metric_sequence = snapshot.sequence;
+                            vbo_state.cached_aux_metric_level = view_result.applied_level;
+                            vbo_state.cached_aux_metric_identity = identity;
+                            vbo_state.cached_aux_metric_valid = true;
+                        }
+                    }
+                }
+                else {
+                    // Empty or invalid snapshot - invalidate cache to avoid stale values.
+                    vbo_state.cached_aux_metric_min = 0.0;
+                    vbo_state.cached_aux_metric_max = 1.0;
+                    vbo_state.cached_aux_metric_valid = false;
+                }
+            }
+
             // Skip all GL calls when in no-GL mode (early return after CPU prep)
             if (skip_gl) {
                 return;
@@ -824,7 +876,7 @@ void Series_renderer::render(
                 }
             }
 
-            // Handle colormap for COLORMAP_AREA
+            // Handle colormap GL setup for COLORMAP_AREA
             GLuint colormap_tex = 0;
             if (primitive_style == Display_style::COLORMAP_AREA) {
                 colormap_tex = ensure_colormap_texture(*s);
@@ -833,54 +885,7 @@ void Series_renderer::render(
                     glBindTexture(GL_TEXTURE_1D, colormap_tex);
                     glUniform1i(pass_shader->uniform_location("colormap"), 0);
 
-                    data_snapshot_t snapshot;
-                    {
-                        VNM_PLOT_PROFILE_SCOPE(
-                            profiler,
-                            "renderer.frame.execute_passes.render_data_series.series.ensure_full_resolution_aux_metric_range");
-                        snapshot = s->data_source->snapshot(view_result.applied_level);
-                    }
-                    if (snapshot) {
-                        const void* identity = s->data_source->identity();
-                        const bool can_reuse = vbo_state.cached_aux_metric_valid &&
-                            vbo_state.cached_aux_metric_sequence == snapshot.sequence &&
-                            vbo_state.cached_aux_metric_level == view_result.applied_level &&
-                            vbo_state.cached_aux_metric_identity == identity;
-
-                        if (!can_reuse) {
-                            double aux_min = 0.0;
-                            double aux_max = 1.0;
-                            VNM_PLOT_PROFILE_SCOPE(
-                                profiler,
-                                "renderer.frame.execute_passes.render_data_series.series.compute_aux_metric_range");
-                            if (compute_aux_metric_range(*s, snapshot, aux_min, aux_max)) {
-                                vbo_state.cached_aux_metric_min = aux_min;
-                                vbo_state.cached_aux_metric_max = aux_max;
-                                vbo_state.cached_aux_metric_sequence = snapshot.sequence;
-                                vbo_state.cached_aux_metric_level = view_result.applied_level;
-                                vbo_state.cached_aux_metric_identity = identity;
-                                vbo_state.cached_aux_metric_valid = true;
-                            }
-                            else {
-                                // compute_aux_metric_range failed (e.g., NaN-only window).
-                                // Cache the failure with defaults to avoid rescanning every frame.
-                                // When sequence changes (new data), can_reuse will be false and
-                                // we'll try again.
-                                vbo_state.cached_aux_metric_min = 0.0;
-                                vbo_state.cached_aux_metric_max = 1.0;
-                                vbo_state.cached_aux_metric_sequence = snapshot.sequence;
-                                vbo_state.cached_aux_metric_level = view_result.applied_level;
-                                vbo_state.cached_aux_metric_identity = identity;
-                                vbo_state.cached_aux_metric_valid = true;
-                            }
-                        }
-                    }
-                    else {
-                        // Empty or invalid snapshot - invalidate cache to avoid stale values.
-                        vbo_state.cached_aux_metric_min = 0.0;
-                        vbo_state.cached_aux_metric_max = 1.0;
-                        vbo_state.cached_aux_metric_valid = false;
-                    }
+                    // Use cached aux metric values (computed in CPU section above)
                     const float aux_min_f = static_cast<float>(vbo_state.cached_aux_metric_min);
                     const float aux_max_f = static_cast<float>(vbo_state.cached_aux_metric_max);
                     const float aux_span = aux_max_f - aux_min_f;
