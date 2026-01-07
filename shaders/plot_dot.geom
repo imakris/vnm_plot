@@ -17,7 +17,7 @@ in Sample
 {
     double t;
     float v;
-    int status;
+    flat int status;
 } gs_in[];
 
 void main()

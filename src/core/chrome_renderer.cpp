@@ -133,6 +133,10 @@ void Chrome_renderer::render_grid_and_backgrounds(
     VNM_PLOT_PROFILE_SCOPE(
         profiler,
         "renderer.frame.chrome.grid_and_backgrounds");
+
+    // Skip GL calls if configured (for pure CPU profiling)
+    const bool skip_gl = ctx.config && ctx.config->skip_gl_calls;
+
     const auto& pl = ctx.layout;
     const bool dark_mode = ctx.config ? ctx.config->dark_mode : false;
     const Color_palette palette = dark_mode ? Color_palette::dark() : Color_palette::light();
@@ -143,7 +147,7 @@ void Chrome_renderer::render_grid_and_backgrounds(
     const glm::vec4 preview_background = palette.preview_background;
     const glm::vec4 separator_color = palette.separator;
 
-    // Background panes and separators
+    // Background panes and separators (batch_rect is CPU work)
     prims.batch_rect(preview_background,
         glm::vec4(0.f, float(ctx.win_h) - float(ctx.adjusted_preview_height), float(ctx.win_w), float(ctx.win_h)));
 
@@ -160,9 +164,13 @@ void Chrome_renderer::render_grid_and_backgrounds(
         glm::vec4(0.f, float(ctx.win_h) - float(ctx.adjusted_preview_height + 1.0),
                   float(ctx.win_w), float(ctx.win_h) - float(ctx.adjusted_preview_height)));
 
-    prims.flush_rects(ctx.pmv);
+    if (!skip_gl) {
+        prims.flush_rects(ctx.pmv);
+    } else {
+        prims.clear_rect_batch();
+    }
 
-    // Grid
+    // Grid - CPU calculations
     const glm::vec2 main_top_left{0.0f, 0.0f};
     const glm::vec2 main_size{float(pl.usable_width), float(pl.usable_height)};
     const glm::vec2 main_origin = to_gl_origin(ctx, main_top_left, main_size);
@@ -172,7 +180,10 @@ void Chrome_renderer::render_grid_and_backgrounds(
     const grid_layer_params_t horizontal_levels = build_time_grid(ctx.t0, ctx.t1, pl.usable_width, ctx.adjusted_font_px);
 
     const grid_layer_params_t vertical_levels_gl = flip_grid_levels_y(vertical_levels, main_size.y);
-    prims.draw_grid_shader(main_origin, main_size, grid_rgb, vertical_levels_gl, horizontal_levels);
+
+    if (!skip_gl) {
+        prims.draw_grid_shader(main_origin, main_size, grid_rgb, vertical_levels_gl, horizontal_levels);
+    }
 
     const auto match_level_properties = [](float pos, const grid_layer_params_t& levels) -> std::pair<float, float> {
         float alpha = k_grid_line_alpha_base;
@@ -235,14 +246,14 @@ void Chrome_renderer::render_grid_and_backgrounds(
     const grid_layer_params_t horizontal_tick_levels = build_horizontal_tick_levels(pl.h_labels, horizontal_levels);
     const grid_layer_params_t vertical_tick_levels_gl = flip_grid_levels_y(vertical_tick_levels, main_size.y);
 
-    if (pl.v_bar_width > 0.5 && vertical_tick_levels_gl.count > 0) {
+    if (!skip_gl && pl.v_bar_width > 0.5 && vertical_tick_levels_gl.count > 0) {
         const glm::vec2 top_left{float(pl.usable_width), 0.0f};
         const glm::vec2 size{float(pl.v_bar_width), float(pl.usable_height)};
         const glm::vec2 origin = to_gl_origin(ctx, top_left, size);
         prims.draw_grid_shader(origin, size, grid_rgb, vertical_tick_levels_gl, empty_levels);
     }
 
-    if (ctx.base_label_height_px > 0.5 && horizontal_tick_levels.count > 0) {
+    if (!skip_gl && ctx.base_label_height_px > 0.5 && horizontal_tick_levels.count > 0) {
         const glm::vec2 top_left{0.0f, float(pl.usable_height)};
         const glm::vec2 size{float(pl.usable_width), float(ctx.base_label_height_px)};
         const glm::vec2 origin = to_gl_origin(ctx, top_left, size);
@@ -258,6 +269,10 @@ void Chrome_renderer::render_preview_overlay(
     VNM_PLOT_PROFILE_SCOPE(
         profiler,
         "renderer.frame.chrome.preview_overlay");
+
+    // Skip GL calls if configured (for pure CPU profiling)
+    const bool skip_gl = ctx.config && ctx.config->skip_gl_calls;
+
     if (ctx.adjusted_preview_height <= 0.) {
         return;
     }
@@ -273,6 +288,7 @@ void Chrome_renderer::render_preview_overlay(
     const glm::vec4 cover_color2 = palette.preview_cover_secondary;
     const glm::vec4 separator_color = palette.separator;
 
+    // CPU calculations
     const double x0 = ctx.win_w * (ctx.t0 - ctx.t_available_min) / t_avail_span;
     const double x1 = ctx.win_w * (1.0 - (ctx.t_available_max - ctx.t1) / t_avail_span);
 
@@ -284,6 +300,7 @@ void Chrome_renderer::render_preview_overlay(
 
     const double pband_h = std::min(k_preview_band_max_px, ctx.adjusted_preview_height);
 
+    // batch_rect is CPU work
     if (dd >= k_preview_min_window_px) {
         prims.batch_rect(cover_color, {0, float(ptop + pband_h), float(x0), float(pbtm - pband_h)});
         prims.batch_rect(cover_color, {float(x1), float(ptop + pband_h), float(win_w), float(pbtm - pband_h)});
@@ -303,6 +320,13 @@ void Chrome_renderer::render_preview_overlay(
     prims.batch_rect(separator_color, {float(x0 - 1), float(pbtm - pband_h), float(x1 + 1), float(pbtm - pband_h + 1)});
     prims.batch_rect(separator_color, {float(x0 - 1), float(ptop + pband_h), float(x0), float(pbtm - pband_h)});
     prims.batch_rect(separator_color, {float(x1), float(ptop + pband_h), float(x1 + 1), float(pbtm - pband_h)});
+
+    // Note: flush_rects is called by the caller (benchmark) when skip_gl is false.
+    // When skip_gl is true, the caller will not call flush_rects and we leave the batch
+    // to be cleared later.
+    if (skip_gl) {
+        prims.clear_rect_batch();
+    }
 }
 
 } // namespace vnm::plot

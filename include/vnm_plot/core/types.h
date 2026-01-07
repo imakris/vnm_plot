@@ -485,6 +485,10 @@ struct Render_config
     double line_width_px        = 1.0;
     double area_fill_alpha      = 0.3;
 
+    // When true, skip all GL calls (VBO creation, shader usage, draws, etc.)
+    // Useful for profiling pure CPU overhead without any GL interaction.
+    bool skip_gl_calls = false;
+
     std::function<std::string(double timestamp, double visible_range)> format_timestamp;
     std::function<void(const std::string&)> log_debug;
     std::function<void(const std::string&)> log_error;

@@ -75,6 +75,7 @@ struct Headless_config {
     bool extended_metadata = false;
     bool quiet = false;
     bool show_text = true;  // Text rendering enabled by default (like Qt benchmark)
+    bool no_gl = false;     // Skip all GL calls to measure pure CPU time
     int width = k_default_width;
     int height = k_default_height;
     int target_fps = 60;  // Target frames per second
@@ -109,6 +110,7 @@ void print_usage(const char* program_name)
               << "  --extended-metadata     Include benchmark-specific metadata in report\n"
               << "  --quiet                 Suppress progress output (report still written)\n"
               << "  --no-text               Disable text/font rendering\n"
+              << "  --no-gl                 Skip all GL calls to measure pure CPU time\n"
               << "  --version               Show version information\n"
               << "  --help                  Show this help message\n"
               << "\n"
@@ -196,6 +198,9 @@ Parse_result parse_args(int argc, char* argv[])
             else if (arg == "--no-text") {
                 config.show_text = false;
             }
+            else if (arg == "--no-gl") {
+                config.no_gl = true;
+            }
             else if (arg == "--help" || arg == "-h" || arg == "--version" || arg == "-v") {
                 // Handled separately in main
             }
@@ -275,7 +280,8 @@ void print_config_summary(const Headless_config& config, std::ostream& os)
        << "  Output dir:   " << config.output_directory.string() << "\n"
        << "  Session:      " << config.session << "\n"
        << "  Symbol:       " << config.symbol << "\n"
-       << "  Show text:    " << (config.show_text ? "yes" : "no") << "\n";
+       << "  Show text:    " << (config.show_text ? "yes" : "no") << "\n"
+       << "  No GL:        " << (config.no_gl ? "yes" : "no") << "\n";
 }
 
 std::string format_benchmark_timestamp(double ts, double /*range*/)
@@ -588,6 +594,7 @@ int main(int argc, char* argv[])
     render_config.show_text = text_enabled;
     render_config.snap_lines_to_pixels = false;
     render_config.line_width_px = 1.5;
+    render_config.skip_gl_calls = config.no_gl;
     render_config.format_timestamp = format_benchmark_timestamp;
     render_config.profiler = &profiler;
 
@@ -760,16 +767,18 @@ int main(int argc, char* argv[])
             VNM_PLOT_PROFILE_SCOPE(&profiler, "renderer");
             VNM_PLOT_PROFILE_SCOPE(&profiler, "renderer.frame");
 
-            fbo.bind();
+            // GL setup (skip in no-GL mode)
+            if (!config.no_gl) {
+                fbo.bind();
+                glEnable(GL_MULTISAMPLE);
+                glEnable(GL_BLEND);
+                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-            glEnable(GL_MULTISAMPLE);
-            glEnable(GL_BLEND);
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-            const auto palette = vnm::plot::Color_palette::for_theme(render_config.dark_mode);
-            glClearColor(palette.background.r, palette.background.g,
-                         palette.background.b, palette.background.a);
-            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+                const auto palette = vnm::plot::Color_palette::for_theme(render_config.dark_mode);
+                glClearColor(palette.background.r, palette.background.g,
+                             palette.background.b, palette.background.a);
+                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            }
 
             // Calculate layout dimensions (matching Qt benchmark)
             const double adjusted_reserved_height = k_base_label_height_px + k_adjusted_preview_height;
@@ -867,11 +876,13 @@ int main(int argc, char* argv[])
                 &render_config
             };
 
-            // Render
+            // Always render (renderers handle skip_gl internally for CPU profiling)
             chrome_renderer.render_grid_and_backgrounds(ctx, primitives);
             series_renderer.render(ctx, series_map);
             chrome_renderer.render_preview_overlay(ctx, primitives);
-            primitives.flush_rects(ctx.pmv);
+            if (!config.no_gl) {
+                primitives.flush_rects(ctx.pmv);
+            }
 
             // Render text labels (when enabled)
 #if defined(VNM_PLOT_ENABLE_TEXT)
@@ -880,11 +891,15 @@ int main(int argc, char* argv[])
             }
 #endif
 
-            fbo.unbind();
+            if (!config.no_gl) {
+                fbo.unbind();
+            }
         }
 
-        // Swap buffers (even though window is invisible, this completes the frame)
-        glfwSwapBuffers(window);
+        // Swap buffers (skip in no-GL mode)
+        if (!config.no_gl) {
+            glfwSwapBuffers(window);
+        }
         ++frame_count;
 
         // Progress output

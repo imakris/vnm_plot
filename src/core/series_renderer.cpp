@@ -215,13 +215,22 @@ std::shared_ptr<GL_program> Series_renderer::get_or_load_shader(
     const shader_set_t& shader_set,
     const Render_config* config)
 {
+    Profiler* profiler = config ? config->profiler : nullptr;
+
     if (shader_set.vert.empty() || !m_asset_loader) {
         return nullptr;
     }
 
-    if (auto found = m_shaders.find(shader_set); found != m_shaders.end()) {
-        return found->second;
+    // Cache lookup
+    {
+        VNM_PLOT_PROFILE_SCOPE(profiler, "cache_lookup");
+        if (auto found = m_shaders.find(shader_set); found != m_shaders.end()) {
+            return found->second;
+        }
     }
+
+    // Cache miss - load and compile shaders (expensive, but only happens once per shader set)
+    VNM_PLOT_PROFILE_SCOPE(profiler, "cache_miss");
 
     auto vert_src = m_asset_loader->load(shader_set.vert);
     auto frag_src = m_asset_loader->load(shader_set.frag);
@@ -264,7 +273,8 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
     double t_max,
     double width_px,
     bool allow_stale_on_empty,
-    vnm::plot::Profiler* profiler)
+    vnm::plot::Profiler* profiler,
+    bool skip_gl)
 {
     view_render_result_t result;
 
@@ -445,8 +455,8 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
             VNM_PLOT_PROFILE_SCOPE(
                 profiler,
                 "renderer.frame.execute_passes.render_data_series.series.cpu_prepare");
-            // Ensure VBO exists and has enough capacity
-            {
+            // Ensure VBO exists and has enough capacity (skip GL calls if skip_gl is set)
+            if (!skip_gl) {
                 VNM_PLOT_PROFILE_SCOPE(
                     profiler,
                     "renderer.frame.execute_passes.render_data_series.series.cpu_prepare.ensure_vbo");
@@ -476,7 +486,7 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
 
                 must_upload = region_changed || seq_changed || lod_level_changed || identity_changed;
             }
-            if (must_upload) {
+            if (must_upload && !skip_gl) {
                 VNM_PLOT_PROFILE_SCOPE(
                     profiler,
                     "renderer.frame.execute_passes.render_data_series.series.cpu_prepare.vbo_manage");
@@ -591,6 +601,9 @@ void Series_renderer::render(
     vnm::plot::Profiler* profiler = ctx.config ? ctx.config->profiler : nullptr;
     VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.execute_passes.render_data_series");
 
+    // Skip all GL calls if configured (for pure CPU profiling)
+    const bool skip_gl = ctx.config && ctx.config->skip_gl_calls;
+
     bool dark_mode = false;
     float line_width = 1.0f;
     float area_fill_alpha = 0.3f;
@@ -615,7 +628,7 @@ void Series_renderer::render(
             if (series.find(it->first) == series.end()) {
                 auto& state = it->second;
                 for (auto* view : {&state.main_view, &state.preview_view}) {
-                    if (view->id != UINT_MAX) {
+                    if (!skip_gl && view->id != UINT_MAX) {
                         glDeleteBuffers(1, &view->id);
                     }
                 }
@@ -641,7 +654,7 @@ void Series_renderer::render(
                 }
             }
             if (!found) {
-                if (it->second.texture != 0) {
+                if (!skip_gl && it->second.texture != 0) {
                     glDeleteTextures(1, &it->second.texture);
                 }
                 it = m_colormap_textures.erase(it);
@@ -652,14 +665,18 @@ void Series_renderer::render(
         }
     }
 
-    GLboolean was_blend = GL_FALSE;
-    {
+    // Note: We always enable blend for series rendering and restore state at end.
+    // Avoid glIsEnabled() which is a synchronous GL query that can stall pipeline.
+    if (!skip_gl) {
         VNM_PLOT_PROFILE_SCOPE(
             profiler,
             "renderer.frame.execute_passes.render_data_series.blend_setup");
-        was_blend = glIsEnabled(GL_BLEND);
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        // Set line width once for all draw passes to avoid repeated glLineWidth calls
+        glLineWidth(line_width);
+        // Enable scissor test once - we'll only update the rectangle per draw pass
+        glEnable(GL_SCISSOR_TEST);
     }
 
     for (const auto& [id, s] : series) {
@@ -692,7 +709,8 @@ void Series_renderer::render(
                 ctx.t0, ctx.t1,
                 layout.usable_width,
                 false,
-                profiler);
+                profiler,
+                skip_gl);
         }();
         if (ctx.config && ctx.config->log_debug &&
             main_result.can_draw &&
@@ -717,27 +735,119 @@ void Series_renderer::render(
                 return;
             }
 
-            if (view_state.active_vbo == UINT_MAX) {
-                return;
-            }
-
             const GLenum drawing_mode = (primitive_style == Display_style::DOTS) ? GL_POINTS : GL_LINE_STRIP;
             if (drawing_mode == GL_LINE_STRIP && count < 2) {
                 return;
             }
 
+            // CPU-side color/uniform preparation (no GL calls)
+            glm::vec4 draw_color;
+            glm::vec4 line_col;
+            {
+                VNM_PLOT_PROFILE_SCOPE(profiler, "color_prep");
+                draw_color = s->color;
+                if (primitive_style == Display_style::AREA || primitive_style == Display_style::COLORMAP_AREA) {
+                    draw_color.w *= area_fill_alpha;
+                }
+                if (dark_mode) {
+                    if (is_default_series_color(draw_color)) {
+                        draw_color = k_default_series_color_dark;
+                    }
+                }
+                line_col = s->color;
+                if (dark_mode && is_default_series_color(line_col)) {
+                    line_col = k_default_series_color_dark;
+                }
+            }
+
+            // CPU-side colormap aux-range computation (must run before skip_gl return)
+            if (primitive_style == Display_style::COLORMAP_AREA && !s->colormap.samples.empty()) {
+                data_snapshot_t snapshot;
+                {
+                    VNM_PLOT_PROFILE_SCOPE(
+                        profiler,
+                        "renderer.frame.execute_passes.render_data_series.series.ensure_full_resolution_aux_metric_range");
+                    snapshot = s->data_source->snapshot(view_result.applied_level);
+                }
+                if (snapshot) {
+                    const void* identity = s->data_source->identity();
+                    const bool can_reuse = vbo_state.cached_aux_metric_valid &&
+                        vbo_state.cached_aux_metric_sequence == snapshot.sequence &&
+                        vbo_state.cached_aux_metric_level == view_result.applied_level &&
+                        vbo_state.cached_aux_metric_identity == identity;
+
+                    if (!can_reuse) {
+                        double aux_min = 0.0;
+                        double aux_max = 1.0;
+                        VNM_PLOT_PROFILE_SCOPE(
+                            profiler,
+                            "renderer.frame.execute_passes.render_data_series.series.compute_aux_metric_range");
+                        if (compute_aux_metric_range(*s, snapshot, aux_min, aux_max)) {
+                            vbo_state.cached_aux_metric_min = aux_min;
+                            vbo_state.cached_aux_metric_max = aux_max;
+                            vbo_state.cached_aux_metric_sequence = snapshot.sequence;
+                            vbo_state.cached_aux_metric_level = view_result.applied_level;
+                            vbo_state.cached_aux_metric_identity = identity;
+                            vbo_state.cached_aux_metric_valid = true;
+                        }
+                        else {
+                            // compute_aux_metric_range failed (e.g., NaN-only window).
+                            // Cache the failure with defaults to avoid rescanning every frame.
+                            // When sequence changes (new data), can_reuse will be false and
+                            // we'll try again.
+                            vbo_state.cached_aux_metric_min = 0.0;
+                            vbo_state.cached_aux_metric_max = 1.0;
+                            vbo_state.cached_aux_metric_sequence = snapshot.sequence;
+                            vbo_state.cached_aux_metric_level = view_result.applied_level;
+                            vbo_state.cached_aux_metric_identity = identity;
+                            vbo_state.cached_aux_metric_valid = true;
+                        }
+                    }
+                }
+                else {
+                    // Empty or invalid snapshot - invalidate cache to avoid stale values.
+                    vbo_state.cached_aux_metric_min = 0.0;
+                    vbo_state.cached_aux_metric_max = 1.0;
+                    vbo_state.cached_aux_metric_valid = false;
+                }
+            }
+
+            // Skip all GL calls when in no-GL mode (early return after CPU prep)
+            if (skip_gl) {
+                return;
+            }
+
+            // VBO required for GL rendering
+            if (view_state.active_vbo == UINT_MAX) {
+                return;
+            }
+
             // Get shader for this specific style
-            const auto& pass_shader_set = s->shader_for(primitive_style);
-            auto pass_shader = get_or_load_shader(pass_shader_set, ctx.config);
+            std::shared_ptr<GL_program> pass_shader;
+            {
+                VNM_PLOT_PROFILE_SCOPE(profiler, "shader_lookup");
+                const shader_set_t* pass_shader_set_ptr;
+                {
+                    VNM_PLOT_PROFILE_SCOPE(profiler, "shader_for");
+                    pass_shader_set_ptr = &s->shader_for(primitive_style);
+                }
+                {
+                    VNM_PLOT_PROFILE_SCOPE(profiler, "get_or_load_shader");
+                    pass_shader = get_or_load_shader(*pass_shader_set_ptr, ctx.config);
+                }
+            }
             if (!pass_shader) {
                 return;
             }
 
-            const GLuint program_id = pass_shader->program_id();
-            glUseProgram(program_id);
-
-            set_common_uniforms(*pass_shader, ctx.pmv, ctx);
+            {
+                VNM_PLOT_PROFILE_SCOPE(profiler, "setup_uniforms");
+                const GLuint program_id = pass_shader->program_id();
+                glUseProgram(program_id);
+                set_common_uniforms(*pass_shader, ctx.pmv, ctx);
+            }
             if (is_preview) {
+                VNM_PLOT_PROFILE_SCOPE(profiler, "preview_uniforms");
                 modify_uniforms_for_preview(*pass_shader, ctx);
                 if (view_result.use_t_override) {
                     glUniform1d(
@@ -749,36 +859,25 @@ void Series_renderer::render(
                 }
             }
 
-            glm::vec4 draw_color = s->color;
-            if (primitive_style == Display_style::AREA || primitive_style == Display_style::COLORMAP_AREA) {
-                draw_color.w *= area_fill_alpha;
-            }
-            if (dark_mode) {
-                if (is_default_series_color(draw_color)) {
-                    draw_color = k_default_series_color_dark;
+            {
+                VNM_PLOT_PROFILE_SCOPE(profiler, "series_uniforms");
+                glUniform4fv(pass_shader->uniform_location("color"), 1, glm::value_ptr(draw_color));
+
+                if (primitive_style == Display_style::AREA || primitive_style == Display_style::COLORMAP_AREA) {
+                    glUniform1f(pass_shader->uniform_location("line_width"), line_width);
+                    glUniform4fv(pass_shader->uniform_location("line_color"), 1, glm::value_ptr(line_col));
+                }
+
+                if (const GLint loc = pass_shader->uniform_location("u_line_px"); loc >= 0) {
+                    glUniform1f(loc, line_width);
+                }
+
+                if (s->access.bind_uniforms) {
+                    s->access.bind_uniforms(pass_shader->program_id());
                 }
             }
-            glUniform4fv(pass_shader->uniform_location("color"), 1, glm::value_ptr(draw_color));
 
-            if (primitive_style == Display_style::AREA || primitive_style == Display_style::COLORMAP_AREA) {
-                glUniform1f(pass_shader->uniform_location("line_width"), line_width);
-                // Use original series color for line (full alpha), not the reduced-alpha fill color
-                glm::vec4 line_col = s->color;
-                if (dark_mode && is_default_series_color(line_col)) {
-                    line_col = k_default_series_color_dark;
-                }
-                glUniform4fv(pass_shader->uniform_location("line_color"), 1, glm::value_ptr(line_col));
-            }
-
-            if (const GLint loc = pass_shader->uniform_location("u_line_px"); loc >= 0) {
-                glUniform1f(loc, line_width);
-            }
-
-            if (s->access.bind_uniforms) {
-                s->access.bind_uniforms(program_id);
-            }
-
-            // Handle colormap for COLORMAP_AREA
+            // Handle colormap GL setup for COLORMAP_AREA
             GLuint colormap_tex = 0;
             if (primitive_style == Display_style::COLORMAP_AREA) {
                 colormap_tex = ensure_colormap_texture(*s);
@@ -787,54 +886,7 @@ void Series_renderer::render(
                     glBindTexture(GL_TEXTURE_1D, colormap_tex);
                     glUniform1i(pass_shader->uniform_location("colormap"), 0);
 
-                    data_snapshot_t snapshot;
-                    {
-                        VNM_PLOT_PROFILE_SCOPE(
-                            profiler,
-                            "renderer.frame.execute_passes.render_data_series.series.ensure_full_resolution_aux_metric_range");
-                        snapshot = s->data_source->snapshot(view_result.applied_level);
-                    }
-                    if (snapshot) {
-                        const void* identity = s->data_source->identity();
-                        const bool can_reuse = vbo_state.cached_aux_metric_valid &&
-                            vbo_state.cached_aux_metric_sequence == snapshot.sequence &&
-                            vbo_state.cached_aux_metric_level == view_result.applied_level &&
-                            vbo_state.cached_aux_metric_identity == identity;
-
-                        if (!can_reuse) {
-                            double aux_min = 0.0;
-                            double aux_max = 1.0;
-                            VNM_PLOT_PROFILE_SCOPE(
-                                profiler,
-                                "renderer.frame.execute_passes.render_data_series.series.compute_aux_metric_range");
-                            if (compute_aux_metric_range(*s, snapshot, aux_min, aux_max)) {
-                                vbo_state.cached_aux_metric_min = aux_min;
-                                vbo_state.cached_aux_metric_max = aux_max;
-                                vbo_state.cached_aux_metric_sequence = snapshot.sequence;
-                                vbo_state.cached_aux_metric_level = view_result.applied_level;
-                                vbo_state.cached_aux_metric_identity = identity;
-                                vbo_state.cached_aux_metric_valid = true;
-                            }
-                            else {
-                                // compute_aux_metric_range failed (e.g., NaN-only window).
-                                // Cache the failure with defaults to avoid rescanning every frame.
-                                // When sequence changes (new data), can_reuse will be false and
-                                // we'll try again.
-                                vbo_state.cached_aux_metric_min = 0.0;
-                                vbo_state.cached_aux_metric_max = 1.0;
-                                vbo_state.cached_aux_metric_sequence = snapshot.sequence;
-                                vbo_state.cached_aux_metric_level = view_result.applied_level;
-                                vbo_state.cached_aux_metric_identity = identity;
-                                vbo_state.cached_aux_metric_valid = true;
-                            }
-                        }
-                    }
-                    else {
-                        // Empty or invalid snapshot - invalidate cache to avoid stale values.
-                        vbo_state.cached_aux_metric_min = 0.0;
-                        vbo_state.cached_aux_metric_max = 1.0;
-                        vbo_state.cached_aux_metric_valid = false;
-                    }
+                    // Use cached aux metric values (computed in CPU section above)
                     const float aux_min_f = static_cast<float>(vbo_state.cached_aux_metric_min);
                     const float aux_max_f = static_cast<float>(vbo_state.cached_aux_metric_max);
                     const float aux_span = aux_max_f - aux_min_f;
@@ -861,14 +913,15 @@ void Series_renderer::render(
                 }
             }
 
-            const GLuint vao = ensure_series_vao(primitive_style, view_state.active_vbo, *s);
-            glBindVertexArray(vao);
-
-            if (drawing_mode == GL_LINE_STRIP) {
-                glLineWidth(line_width);
+            {
+                VNM_PLOT_PROFILE_SCOPE(profiler, "vao_bind");
+                const GLuint vao = ensure_series_vao(primitive_style, view_state.active_vbo, *s);
+                glBindVertexArray(vao);
             }
 
-            bool scissor_enabled = false;
+            // Note: glLineWidth is set once at the start of render() to avoid per-draw overhead
+
+            // Scissor test is enabled at start of render() - just update rectangle
             bool do_draw = true;
             if (is_preview) {
                 const double preview_height = ctx.adjusted_preview_height;
@@ -884,41 +937,28 @@ void Series_renderer::render(
                         do_draw = false;
                     }
                     else {
-                        glEnable(GL_SCISSOR_TEST);
                         glScissor(
                             0,
                             scissor_y,
                             static_cast<GLsizei>(lround(ctx.win_w)),
                             scissor_h);
-                        scissor_enabled = true;
                     }
                 }
             }
             else {
-                glEnable(GL_SCISSOR_TEST);
                 glScissor(
                     0,
                     to_gl_scissor_y(0.0, layout.usable_height),
                     static_cast<GLsizei>(lround(layout.usable_width)),
                     static_cast<GLsizei>(lround(layout.usable_height)));
-                scissor_enabled = true;
             }
 
             if (do_draw) {
-                VNM_PLOT_PROFILE_SCOPE(
-                    profiler,
-                    "renderer.frame.execute_passes.render_data_series.series.gpu_issue");
+                VNM_PLOT_PROFILE_SCOPE(profiler, "gpu_issue");
                 glDrawArrays(drawing_mode, view_result.first, count);
             }
 
-            if (scissor_enabled) {
-                glDisable(GL_SCISSOR_TEST);
-            }
-            if (drawing_mode == GL_LINE_STRIP) {
-                glLineWidth(1.0f);
-            }
-
-            glBindVertexArray(0);
+            // Note: VAO unbinding moved to cleanup section to avoid per-draw overhead
 
             if (colormap_tex != 0) {
                 glBindTexture(GL_TEXTURE_1D, 0);
@@ -960,7 +1000,8 @@ void Series_renderer::render(
                     ctx.t_available_min, ctx.t_available_max,
                     ctx.win_w,
                     true,
-                    profiler);
+                    profiler,
+                    skip_gl);
             }();
             if (ctx.config && ctx.config->log_debug &&
                 preview_result.can_draw &&
@@ -991,14 +1032,17 @@ void Series_renderer::render(
         }
     }
 
-    {
+    if (!skip_gl) {
         VNM_PLOT_PROFILE_SCOPE(
             profiler,
             "renderer.frame.execute_passes.render_data_series.blend_cleanup");
         glUseProgram(0);
-        if (!was_blend) {
-            glDisable(GL_BLEND);
-        }
+        glBindVertexArray(0);
+        // Restore default line width
+        glLineWidth(1.0f);
+        // Disable scissor test; leave blend enabled to restore previous state.
+        // Assumption: caller had GL_BLEND enabled before calling render().
+        glDisable(GL_SCISSOR_TEST);
     }
 }
 
