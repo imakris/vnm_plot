@@ -769,7 +769,6 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
                 float       x0;
                 float       x1;
                 float       x_anchor;
-                std::string fallback;
             };
             std::vector<cand> candidates;
             float right_vis = 0.0f;
@@ -851,7 +850,7 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
                         break;
                     }
 
-                    cand candidate{t, x, x, x, {}};
+                    cand candidate{t, x, x, x};
                     // Use conservative width estimate for skip optimization.
                     // Must be at least as large as actual label width to avoid skipping visible labels.
                     const float skip_width = std::max(last_width, estimated_label_width);
@@ -929,9 +928,7 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
                             w = advance * float(label.size());
                         }
 
-                        candidate.fallback = label;
-                        std::string cache_bytes = candidate.fallback;
-                        timestamp_label_cache().store(t, std::move(cache_bytes), w);
+                        timestamp_label_cache().store(t, std::move(label), w);
                     }
 
                     last_width = std::max(w, optimistic_width);
@@ -1047,16 +1044,10 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
                     if (timestamp_label_cache().try_get(candidate.t, cached_label) && cached_label) {
                         label_bytes = cached_label->bytes;
                     }
-                    else if (!candidate.fallback.empty()) {
-                        label_bytes = candidate.fallback;
-                        std::string cache_bytes = label_bytes;
-                        timestamp_label_cache().store(candidate.t, std::move(cache_bytes), candidate.x1 - candidate.x0);
-                    }
                     else {
                         std::string label = label_text(candidate.t);
                         label_bytes = label;
-                        std::string cache_bytes = label_bytes;
-                        timestamp_label_cache().store(candidate.t, std::move(cache_bytes), candidate.x1 - candidate.x0);
+                        timestamp_label_cache().store(candidate.t, std::move(label), candidate.x1 - candidate.x0);
                     }
 
                     if (label_bytes.empty()) {
