@@ -989,17 +989,8 @@ float Font_renderer::measure_text_px(const char* text) const
     }
     float x = 0.0f;
     char32_t previous = 0;
-
-    // Use streaming UTF-8 decoder to avoid vector allocation.
-    // This is called frequently during layout, so avoiding heap
-    // allocations provides measurable performance improvement.
-    const char* it = text;
-    const char* end = text + std::strlen(text);
-    while (it < end) {
-        const char32_t codepoint = utf8_decode_one(it, end);
-        if (codepoint == 0) {
-            break;
-        }
+    const auto codepoints = utf8_to_codepoints(text);
+    for (const auto codepoint : codepoints) {
         const auto g_it = res->m_glyphs.find(codepoint);
         if (g_it == res->m_glyphs.end()) {
             continue;
