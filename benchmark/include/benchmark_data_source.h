@@ -125,26 +125,46 @@ private:
     float value_min_ = std::numeric_limits<float>::max();
     float value_max_ = std::numeric_limits<float>::lowest();
     bool range_valid_ = false;
+    uint64_t last_range_sequence_ = 0;  // Sequence when range was last updated
 
-    /// Update value range from current snapshot data
+    /// Update value range incrementally (only scan NEW samples)
     void update_value_range() {
         if (snapshot_data_.empty()) {
             value_min_ = 0.0f;
             value_max_ = 0.0f;
             range_valid_ = false;
+            last_range_sequence_ = 0;
             return;
         }
 
-        value_min_ = std::numeric_limits<float>::max();
-        value_max_ = std::numeric_limits<float>::lowest();
+        // Calculate how many new samples arrived since last range update
+        const uint64_t samples_added = snapshot_sequence_ - last_range_sequence_;
 
-        for (const auto& sample : snapshot_data_) {
-            auto [lo, hi] = get_sample_range(sample);
-            value_min_ = std::min(value_min_, lo);
-            value_max_ = std::max(value_max_, hi);
+        // If this is first scan or we've fallen far behind, do full scan
+        if (!range_valid_ || samples_added >= snapshot_data_.size()) {
+            value_min_ = std::numeric_limits<float>::max();
+            value_max_ = std::numeric_limits<float>::lowest();
+            for (const auto& sample : snapshot_data_) {
+                auto [lo, hi] = get_sample_range(sample);
+                value_min_ = std::min(value_min_, lo);
+                value_max_ = std::max(value_max_, hi);
+            }
+        } else if (samples_added > 0) {
+            // Incremental scan: only check the newest samples
+            // New samples are at the END of snapshot_data_ (ring buffer order)
+            const std::size_t start_idx = snapshot_data_.size() - static_cast<std::size_t>(samples_added);
+            for (std::size_t i = start_idx; i < snapshot_data_.size(); ++i) {
+                auto [lo, hi] = get_sample_range(snapshot_data_[i]);
+                value_min_ = std::min(value_min_, lo);
+                value_max_ = std::max(value_max_, hi);
+            }
+            // Note: We don't shrink range when old samples are evicted.
+            // This is conservative but correct for visualization auto-scaling.
         }
+        // else: samples_added == 0, range unchanged
 
         range_valid_ = true;
+        last_range_sequence_ = snapshot_sequence_;
     }
 
     /// Extract value range from a sample (specialized per type)
