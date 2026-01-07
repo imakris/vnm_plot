@@ -4,6 +4,7 @@
 #ifndef VNM_PLOT_BENCHMARK_WINDOW_H
 #define VNM_PLOT_BENCHMARK_WINDOW_H
 
+#include "benchmark_constants.h"
 #include "benchmark_data_source.h"
 #include "benchmark_profiler.h"
 #include "brownian_generator.h"
@@ -119,12 +120,12 @@ private:
     float m_v_max = 110.0f;
     bool m_gl_initialized = false;
 
-    // Layout configuration
-    double m_adjusted_font_px = 12.0;
-    double m_base_label_height_px = 14.0;
-    double m_adjusted_preview_height = 40.0;  // Preview bar height
-    double m_vbar_width_pixels = 60.0;        // Value bar width
-    double m_t_available_min = 0.0;           // First sample timestamp
+    // Layout configuration (from shared benchmark_constants.h)
+    double m_adjusted_font_px = k_adjusted_font_px;
+    double m_base_label_height_px = k_base_label_height_px;
+    double m_adjusted_preview_height = k_adjusted_preview_height;
+    double m_vbar_width_pixels = k_vbar_width_pixels;
+    double m_t_available_min = 0.0;  // First sample timestamp
 
     // Timing
     QTimer m_render_timer;

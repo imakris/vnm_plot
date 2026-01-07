@@ -25,6 +25,7 @@
 #include <GLFW/glfw3.h>
 
 // Reuse benchmark components from the Qt benchmark
+#include "benchmark_constants.h"
 #include "ring_buffer.h"
 #include "sample_types.h"
 #include "brownian_generator.h"
@@ -42,6 +43,12 @@
 #include <string>
 #include <thread>
 
+// Import shared benchmark constants
+using vnm::benchmark::k_adjusted_font_px;
+using vnm::benchmark::k_base_label_height_px;
+using vnm::benchmark::k_adjusted_preview_height;
+using vnm::benchmark::k_vbar_width_pixels;
+
 namespace {
 
 constexpr const char* k_version = "1.0.0";
@@ -53,12 +60,6 @@ constexpr int k_exit_runtime_error = 3;
 // Default framebuffer dimensions for offscreen rendering
 constexpr int k_default_width = 1200;
 constexpr int k_default_height = 720;
-
-// Layout constants matching the Qt benchmark
-constexpr double k_base_label_height_px = 20.0;
-constexpr double k_adjusted_preview_height = 40.0;
-constexpr double k_vbar_width_pixels = 60.0;
-constexpr double k_adjusted_font_px = 12.0;
 
 /// Configuration for the headless benchmark
 struct Headless_config {
