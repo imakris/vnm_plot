@@ -227,96 +227,119 @@ void Benchmark_window::paintGL()
     update_view_range();
 
     // Calculate layout dimensions
-    const double adjusted_reserved_height = m_base_label_height_px + m_adjusted_preview_height;
-    const double usable_width = fb_w - m_vbar_width_pixels;
-    const double usable_height = fb_h - adjusted_reserved_height;
+    double adjusted_reserved_height;
+    double usable_width;
+    double usable_height;
+    {
+        VNM_PLOT_PROFILE_SCOPE(&m_profiler, "renderer.frame.dimension_calc");
+        adjusted_reserved_height = m_base_label_height_px + m_adjusted_preview_height;
+        usable_width = fb_w - m_vbar_width_pixels;
+        usable_height = fb_h - adjusted_reserved_height;
+    }
 
     // Use layout calculator for label positions
     vnm::plot::Layout_calculator::parameters_t layout_params;
-    layout_params.v_min = m_v_min;
-    layout_params.v_max = m_v_max;
-    layout_params.t_min = m_t_min;
-    layout_params.t_max = m_t_max;
-    layout_params.usable_width = usable_width;
-    layout_params.usable_height = usable_height;
-    layout_params.vbar_width = m_vbar_width_pixels;
-    layout_params.label_visible_height = usable_height + m_adjusted_preview_height;
-    layout_params.adjusted_font_size_in_pixels = m_adjusted_font_px;
+    {
+        VNM_PLOT_PROFILE_SCOPE(&m_profiler, "renderer.frame.layout_params_setup");
+        layout_params.v_min = m_v_min;
+        layout_params.v_max = m_v_max;
+        layout_params.t_min = m_t_min;
+        layout_params.t_max = m_t_max;
+        layout_params.usable_width = usable_width;
+        layout_params.usable_height = usable_height;
+        layout_params.vbar_width = m_vbar_width_pixels;
+        layout_params.label_visible_height = usable_height + m_adjusted_preview_height;
+        layout_params.adjusted_font_size_in_pixels = m_adjusted_font_px;
 #if defined(VNM_PLOT_ENABLE_TEXT)
-    layout_params.monospace_char_advance_px = m_font_renderer.monospace_advance_px();
-    layout_params.monospace_advance_is_reliable = m_font_renderer.monospace_advance_is_reliable();
-    layout_params.measure_text_cache_key = m_font_renderer.text_measure_cache_key();
-    layout_params.measure_text_func = [this](const char* text) {
-        return m_font_renderer.measure_text_px(text);
-    };
+        layout_params.monospace_char_advance_px = m_font_renderer.monospace_advance_px();
+        layout_params.monospace_advance_is_reliable = m_font_renderer.monospace_advance_is_reliable();
+        layout_params.measure_text_cache_key = m_font_renderer.text_measure_cache_key();
+        layout_params.measure_text_func = [this](const char* text) {
+            return m_font_renderer.measure_text_px(text);
+        };
 #else
-    layout_params.monospace_char_advance_px = 0.0f;
-    layout_params.monospace_advance_is_reliable = false;
-    layout_params.measure_text_cache_key = 0;
-    layout_params.measure_text_func = [](const char* text) {
-        return static_cast<float>(std::strlen(text));
-    };
+        layout_params.monospace_char_advance_px = 0.0f;
+        layout_params.monospace_advance_is_reliable = false;
+        layout_params.measure_text_cache_key = 0;
+        layout_params.measure_text_func = [](const char* text) {
+            return static_cast<float>(std::strlen(text));
+        };
 #endif
-    layout_params.h_label_vertical_nudge_factor = vnm::plot::detail::k_h_label_vertical_nudge_px;
-    layout_params.format_timestamp_func = format_benchmark_timestamp;
-    layout_params.get_required_fixed_digits_func = [](double) { return 2; };
-    layout_params.profiler = &m_profiler;
+        layout_params.h_label_vertical_nudge_factor = vnm::plot::detail::k_h_label_vertical_nudge_px;
+        layout_params.format_timestamp_func = format_benchmark_timestamp;
+        layout_params.get_required_fixed_digits_func = [](double) { return 2; };
+        layout_params.profiler = &m_profiler;
+    }
 
     vnm::plot::layout_cache_key_t cache_key;
-    cache_key.v0 = m_v_min;
-    cache_key.v1 = m_v_max;
-    cache_key.t0 = m_t_min;
-    cache_key.t1 = m_t_max;
-    cache_key.viewport_size = vnm::plot::Size2i{fb_w, fb_h};
-    cache_key.adjusted_reserved_height = adjusted_reserved_height;
-    cache_key.adjusted_preview_height = m_adjusted_preview_height;
-    cache_key.adjusted_font_size_in_pixels = m_adjusted_font_px;
-    cache_key.vbar_width_pixels = m_vbar_width_pixels;
-    cache_key.font_metrics_key =
+    {
+        VNM_PLOT_PROFILE_SCOPE(&m_profiler, "renderer.frame.cache_key_setup");
+        cache_key.v0 = m_v_min;
+        cache_key.v1 = m_v_max;
+        cache_key.t0 = m_t_min;
+        cache_key.t1 = m_t_max;
+        cache_key.viewport_size = vnm::plot::Size2i{fb_w, fb_h};
+        cache_key.adjusted_reserved_height = adjusted_reserved_height;
+        cache_key.adjusted_preview_height = m_adjusted_preview_height;
+        cache_key.adjusted_font_size_in_pixels = m_adjusted_font_px;
+        cache_key.vbar_width_pixels = m_vbar_width_pixels;
+        cache_key.font_metrics_key =
 #if defined(VNM_PLOT_ENABLE_TEXT)
-        m_font_renderer.text_measure_cache_key();
+            m_font_renderer.text_measure_cache_key();
 #else
-        0;
+            0;
 #endif
+    }
 
-    const vnm::plot::frame_layout_result_t* layout_ptr = m_layout_cache.try_get(cache_key);
+    const vnm::plot::frame_layout_result_t* layout_ptr = nullptr;
+    {
+        VNM_PLOT_PROFILE_SCOPE(&m_profiler, "renderer.frame.layout_cache_lookup");
+        layout_ptr = m_layout_cache.try_get(cache_key);
+    }
     if (!layout_ptr) {
+        VNM_PLOT_PROFILE_SCOPE(&m_profiler, "renderer.frame.layout_cache_miss");
         auto layout_result = m_layout_calc.calculate(layout_params);
 
         vnm::plot::frame_layout_result_t layout;
-        layout.usable_width = usable_width;
-        layout.usable_height = usable_height;
-        layout.v_bar_width = m_vbar_width_pixels;
-        layout.h_bar_height = m_base_label_height_px + 1.0;  // +1 for scissor padding
-        layout.max_v_label_text_width = layout_result.max_v_label_text_width;
-        layout.v_labels = std::move(layout_result.v_labels);
-        layout.h_labels = std::move(layout_result.h_labels);
-        layout.v_label_fixed_digits = layout_result.v_label_fixed_digits;
-        layout.h_labels_subsecond = layout_result.h_labels_subsecond;
-        layout_ptr = &m_layout_cache.store(cache_key, std::move(layout));
+        {
+            VNM_PLOT_PROFILE_SCOPE(&m_profiler, "renderer.frame.layout_cache_miss_store");
+            layout.usable_width = usable_width;
+            layout.usable_height = usable_height;
+            layout.v_bar_width = m_vbar_width_pixels;
+            layout.h_bar_height = m_base_label_height_px + 1.0;  // +1 for scissor padding
+            layout.max_v_label_text_width = layout_result.max_v_label_text_width;
+            layout.v_labels = std::move(layout_result.v_labels);
+            layout.h_labels = std::move(layout_result.h_labels);
+            layout.v_label_fixed_digits = layout_result.v_label_fixed_digits;
+            layout.h_labels_subsecond = layout_result.h_labels_subsecond;
+            layout_ptr = &m_layout_cache.store(cache_key, std::move(layout));
+        }
     }
 
     // Build frame context
-    vnm::plot::frame_context_t ctx{
-        *layout_ptr,
-        m_v_min,
-        m_v_max,
-        m_v_min,  // preview_v0
-        m_v_max,  // preview_v1
-        m_t_min,
-        m_t_max,
-        m_t_available_min,  // t_available_min (full data range start)
-        m_t_max,            // t_available_max (use current max for preview)
-        fb_w,
-        fb_h,
-        glm::ortho(0.f, float(fb_w), float(fb_h), 0.f, -1.f, 1.f),
-        m_adjusted_font_px,
-        m_base_label_height_px,
-        adjusted_reserved_height,
-        m_adjusted_preview_height,
-        false,   // show_info
-        &m_render_config
-    };
+    vnm::plot::frame_context_t ctx = [&]() {
+        VNM_PLOT_PROFILE_SCOPE(&m_profiler, "renderer.frame.context_build");
+        return vnm::plot::frame_context_t{
+            *layout_ptr,
+            m_v_min,
+            m_v_max,
+            m_v_min,  // preview_v0
+            m_v_max,  // preview_v1
+            m_t_min,
+            m_t_max,
+            m_t_available_min,  // t_available_min (full data range start)
+            m_t_max,            // t_available_max (use current max for preview)
+            fb_w,
+            fb_h,
+            glm::ortho(0.f, float(fb_w), float(fb_h), 0.f, -1.f, 1.f),
+            m_adjusted_font_px,
+            m_base_label_height_px,
+            adjusted_reserved_height,
+            m_adjusted_preview_height,
+            false,   // show_info
+            &m_render_config
+        };
+    }();
 
     // Render - vnm_plot internal scopes are captured by profiler automatically
     m_chrome_renderer->render_grid_and_backgrounds(ctx, *m_primitives);

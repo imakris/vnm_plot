@@ -860,7 +860,7 @@ int main(int argc, char* argv[])
 
                 vnm::plot::frame_layout_result_t layout;
                 {
-                    VNM_PLOT_PROFILE_SCOPE(&profiler, "renderer.frame.layout_cache_miss.store");
+                    VNM_PLOT_PROFILE_SCOPE(&profiler, "renderer.frame.layout_cache_miss_store");
                     layout.usable_width = usable_width;
                     layout.usable_height = usable_height;
                     layout.v_bar_width = k_vbar_width_pixels;
