@@ -735,10 +735,6 @@ void Series_renderer::render(
                 return;
             }
 
-            if (view_state.active_vbo == UINT_MAX) {
-                return;
-            }
-
             const GLenum drawing_mode = (primitive_style == Display_style::DOTS) ? GL_POINTS : GL_LINE_STRIP;
             if (drawing_mode == GL_LINE_STRIP && count < 2) {
                 return;
@@ -818,6 +814,11 @@ void Series_renderer::render(
 
             // Skip all GL calls when in no-GL mode (early return after CPU prep)
             if (skip_gl) {
+                return;
+            }
+
+            // VBO required for GL rendering
+            if (view_state.active_vbo == UINT_MAX) {
                 return;
             }
 
