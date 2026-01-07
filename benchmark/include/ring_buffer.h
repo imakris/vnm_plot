@@ -207,6 +207,72 @@ public:
         return {copy_count, seq};
     }
 
+    /// Result of an incremental copy operation
+    struct Incremental_copy_result {
+        std::size_t copied;       ///< Number of new samples actually copied
+        std::size_t total_count;  ///< Total samples currently in buffer
+        uint64_t sequence;        ///< Current sequence number
+    };
+
+    /// Atomically compute delta and copy newest samples since last_seq.
+    /// All computation happens under the same lock to avoid races.
+    /// @param dest Pointer to destination buffer (must have space for max_new elements)
+    /// @param max_new Maximum number of new samples to copy
+    /// @param last_seq Last sequence number seen by caller
+    /// @return Incremental_copy_result with copied count, total count, and sequence
+    Incremental_copy_result copy_newest_since(T* dest, std::size_t max_new, uint64_t last_seq) const {
+        std::shared_lock lock(mutex_);
+
+        const std::size_t h = head_.load(std::memory_order_acquire);
+        const std::size_t t = tail_.load(std::memory_order_acquire);
+        const uint64_t seq = sequence_.load(std::memory_order_acquire);
+
+        if (h == t && seq == 0) {
+            return {0, 0, seq};
+        }
+
+        const std::size_t cap = buffer_.size();
+
+        // Calculate total count in buffer
+        std::size_t total_count;
+        if (h > t) {
+            total_count = h - t;
+        } else if (h < t) {
+            total_count = cap - t + h;
+        } else {
+            total_count = cap;  // Full buffer
+        }
+
+        // Calculate how many samples were added since last_seq
+        const uint64_t samples_added = seq - last_seq;
+
+        // Limit to max_new and what's actually available
+        const std::size_t copy_count = std::min({
+            static_cast<std::size_t>(samples_added),
+            max_new,
+            total_count
+        });
+
+        if (copy_count == 0) {
+            return {0, total_count, seq};
+        }
+
+        // Start position: head - copy_count (with wrap-around)
+        std::size_t start = (h + cap - copy_count) % cap;
+
+        if (start < h) {
+            // Contiguous: [start, head)
+            std::memcpy(dest, buffer_.data() + start, copy_count * sizeof(T));
+        } else {
+            // Wrapped: [start, cap) + [0, head)
+            const std::size_t part1 = cap - start;
+            std::memcpy(dest, buffer_.data() + start, part1 * sizeof(T));
+            std::memcpy(dest + part1, buffer_.data(), h * sizeof(T));
+        }
+
+        return {copy_count, total_count, seq};
+    }
+
     // -------------------------------------------------------------------------
     // Query API
     // -------------------------------------------------------------------------

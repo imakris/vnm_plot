@@ -49,6 +49,7 @@ public:
         }
 
         // Short-circuit if sequence hasn't changed (avoid redundant copy)
+        // Note: This is safe because if sequence matches, no new samples were added
         uint64_t current_seq = buffer_.sequence();
         if (current_seq == last_buffer_sequence_ && !snapshot_data_.empty()) {
             return {
@@ -62,66 +63,98 @@ public:
             };
         }
 
-        // Calculate samples added since last snapshot
-        const uint64_t samples_added = current_seq - last_buffer_sequence_;
         const std::size_t buffer_capacity = buffer_.capacity();
 
-        // Use incremental copy if:
-        // 1. We have existing data
-        // 2. Not too many samples were added (less than half the buffer)
-        // 3. Samples added is less than current snapshot size (steady state)
-        const bool can_incremental =
+        // Try incremental copy using atomic delta computation under lock.
+        // Only use incremental mode when:
+        // 1. We have existing data at full capacity (steady state, not ramp-up)
+        // 2. Snapshot size matches buffer capacity (buffer is full)
+        const bool try_incremental =
             !snapshot_data_.empty() &&
-            samples_added > 0 &&
-            samples_added < buffer_capacity / 2 &&
-            samples_added <= snapshot_data_.size();
+            snapshot_data_.size() == buffer_capacity;
 
-        if (can_incremental) {
-            // Incremental update: shift out old samples, copy in new ones
-            const auto samples_to_add = static_cast<std::size_t>(samples_added);
-            const std::size_t keep_count = snapshot_data_.size() - samples_to_add;
+        if (try_incremental) {
+            // Use atomic copy_newest_since to avoid race between sequence read and copy
+            auto result = buffer_.copy_newest_since(
+                new_samples_buffer_.data(),
+                buffer_capacity / 2,  // max_new: limit to half buffer
+                last_buffer_sequence_);
 
-            // Shift remaining samples to the front using memmove (handles overlap)
-            if (keep_count > 0) {
-                std::memmove(snapshot_data_.data(),
-                             snapshot_data_.data() + samples_to_add,
-                             keep_count * sizeof(T));
+            // Only proceed with incremental if:
+            // - We got some samples
+            // - Buffer is full (at capacity) so sliding window is stable
+            const bool incremental_valid =
+                result.copied > 0 &&
+                result.total_count == buffer_capacity;
+
+            if (incremental_valid) {
+                const std::size_t samples_to_add = result.copied;
+                const std::size_t keep_count = snapshot_data_.size() - samples_to_add;
+
+                // Check if any evicted samples were at range boundaries
+                // If so, we need a full range rescan after the update
+                bool need_range_rescan = false;
+                if (range_valid_) {
+                    for (std::size_t i = 0; i < samples_to_add; ++i) {
+                        auto [lo, hi] = get_sample_range(snapshot_data_[i]);
+                        if (lo <= value_min_ || hi >= value_max_) {
+                            need_range_rescan = true;
+                            break;
+                        }
+                    }
+                }
+
+                // Shift remaining samples to the front using memmove
+                if (keep_count > 0) {
+                    std::memmove(snapshot_data_.data(),
+                                 snapshot_data_.data() + samples_to_add,
+                                 keep_count * sizeof(T));
+                }
+
+                // Copy new samples from the temporary buffer to the end
+                std::memcpy(snapshot_data_.data() + keep_count,
+                            new_samples_buffer_.data(),
+                            samples_to_add * sizeof(T));
+
+                snapshot_sequence_ = result.sequence;
+                last_buffer_sequence_ = result.sequence;
+
+                // Update value range
+                if (need_range_rescan) {
+                    range_valid_ = false;  // Force full rescan
+                }
+                update_value_range(samples_to_add);
+
+                return {
+                    vnm::plot::data_snapshot_t{
+                        snapshot_data_.data(),
+                        snapshot_data_.size(),
+                        sizeof(T),
+                        snapshot_sequence_
+                    },
+                    Status::OK
+                };
             }
-
-            // Copy newest samples directly into the end of the vector
-            // (no temporary allocation needed)
-            auto result = buffer_.copy_newest_into(
-                snapshot_data_.data() + keep_count, samples_to_add);
-
-            snapshot_sequence_ = result.sequence;
-            last_buffer_sequence_ = result.sequence;
-
-            // Update value range incrementally
-            update_value_range();
-
-            return {
-                vnm::plot::data_snapshot_t{
-                    snapshot_data_.data(),
-                    snapshot_data_.size(),
-                    sizeof(T),
-                    snapshot_sequence_
-                },
-                Status::OK
-            };
         }
 
-        // Fall back to full copy
+        // Fall back to full copy (ramp-up, size change, or incremental failed)
         auto result = buffer_.copy_to(snapshot_data_);
         snapshot_sequence_ = result.sequence;
         last_buffer_sequence_ = result.sequence;
+
+        // Ensure new_samples_buffer_ has capacity for future incremental copies
+        if (new_samples_buffer_.size() < buffer_capacity / 2) {
+            new_samples_buffer_.resize(buffer_capacity / 2);
+        }
 
         if (result.count == 0) {
             range_valid_ = false;
             return {vnm::plot::data_snapshot_t{}, Status::EMPTY};
         }
 
-        // Update value range (may do full scan on first snapshot)
-        update_value_range();
+        // Full copy requires full range scan
+        range_valid_ = false;
+        update_value_range(0);
 
         return {
             vnm::plot::data_snapshot_t{
@@ -167,28 +200,25 @@ public:
 private:
     Ring_buffer<T>& buffer_;
     std::vector<T> snapshot_data_;
+    std::vector<T> new_samples_buffer_;  // Temp buffer for incremental copies
     uint64_t snapshot_sequence_ = 0;
     uint64_t last_buffer_sequence_ = 0;
     float value_min_ = std::numeric_limits<float>::max();
     float value_max_ = std::numeric_limits<float>::lowest();
     bool range_valid_ = false;
-    uint64_t last_range_sequence_ = 0;  // Sequence when range was last updated
 
-    /// Update value range incrementally (only scan NEW samples)
-    void update_value_range() {
+    /// Update value range, scanning new samples or doing full rescan if needed.
+    /// @param new_sample_count Number of new samples at the end (0 = full rescan)
+    void update_value_range(std::size_t new_sample_count) {
         if (snapshot_data_.empty()) {
             value_min_ = 0.0f;
             value_max_ = 0.0f;
             range_valid_ = false;
-            last_range_sequence_ = 0;
             return;
         }
 
-        // Calculate how many new samples arrived since last range update
-        const uint64_t samples_added = snapshot_sequence_ - last_range_sequence_;
-
-        // If this is first scan or we've fallen far behind, do full scan
-        if (!range_valid_ || samples_added >= snapshot_data_.size()) {
+        // If range is invalid or no incremental info, do full scan
+        if (!range_valid_ || new_sample_count == 0) {
             value_min_ = std::numeric_limits<float>::max();
             value_max_ = std::numeric_limits<float>::lowest();
             for (const auto& sample : snapshot_data_) {
@@ -196,22 +226,17 @@ private:
                 value_min_ = std::min(value_min_, lo);
                 value_max_ = std::max(value_max_, hi);
             }
-        } else if (samples_added > 0) {
-            // Incremental scan: only check the newest samples
-            // New samples are at the END of snapshot_data_ (ring buffer order)
-            const std::size_t start_idx = snapshot_data_.size() - static_cast<std::size_t>(samples_added);
+        } else {
+            // Incremental scan: only check the newest samples at the end
+            const std::size_t start_idx = snapshot_data_.size() - new_sample_count;
             for (std::size_t i = start_idx; i < snapshot_data_.size(); ++i) {
                 auto [lo, hi] = get_sample_range(snapshot_data_[i]);
                 value_min_ = std::min(value_min_, lo);
                 value_max_ = std::max(value_max_, hi);
             }
-            // Note: We don't shrink range when old samples are evicted.
-            // This is conservative but correct for visualization auto-scaling.
         }
-        // else: samples_added == 0, range unchanged
 
         range_valid_ = true;
-        last_range_sequence_ = snapshot_sequence_;
     }
 
     /// Extract value range from a sample (specialized per type)
