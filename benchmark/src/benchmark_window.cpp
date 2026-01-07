@@ -348,10 +348,13 @@ void Benchmark_window::paintGL()
     }();
 
     // Render - vnm_plot internal scopes are captured by profiler automatically
-    m_chrome_renderer->render_grid_and_backgrounds(ctx, *m_primitives);
-    m_series_renderer->render(ctx, m_series_map);
-    m_chrome_renderer->render_preview_overlay(ctx, *m_primitives);
-    m_primitives->flush_rects(ctx.pmv);
+    {
+        VNM_PLOT_PROFILE_SCOPE(&m_profiler, "renderer.frame.render_passes");
+        m_chrome_renderer->render_grid_and_backgrounds(ctx, *m_primitives);
+        m_series_renderer->render(ctx, m_series_map);
+        m_chrome_renderer->render_preview_overlay(ctx, *m_primitives);
+        m_primitives->flush_rects(ctx.pmv);
+    }
 
     // Render text labels
 #if defined(VNM_PLOT_ENABLE_TEXT)
