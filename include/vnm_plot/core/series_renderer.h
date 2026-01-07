@@ -148,7 +148,8 @@ private:
         double t_max,
         double width_px,
         bool allow_stale_on_empty,
-        vnm::plot::Profiler* profiler);
+        vnm::plot::Profiler* profiler,
+        bool skip_gl);
 
     void set_common_uniforms(GL_program& program, const glm::mat4& pmv, const frame_context_t& ctx);
     void modify_uniforms_for_preview(GL_program& program, const frame_context_t& ctx);

@@ -273,7 +273,8 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
     double t_max,
     double width_px,
     bool allow_stale_on_empty,
-    vnm::plot::Profiler* profiler)
+    vnm::plot::Profiler* profiler,
+    bool skip_gl)
 {
     view_render_result_t result;
 
@@ -454,8 +455,8 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
             VNM_PLOT_PROFILE_SCOPE(
                 profiler,
                 "renderer.frame.execute_passes.render_data_series.series.cpu_prepare");
-            // Ensure VBO exists and has enough capacity
-            {
+            // Ensure VBO exists and has enough capacity (skip GL calls if skip_gl is set)
+            if (!skip_gl) {
                 VNM_PLOT_PROFILE_SCOPE(
                     profiler,
                     "renderer.frame.execute_passes.render_data_series.series.cpu_prepare.ensure_vbo");
@@ -485,7 +486,7 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
 
                 must_upload = region_changed || seq_changed || lod_level_changed || identity_changed;
             }
-            if (must_upload) {
+            if (must_upload && !skip_gl) {
                 VNM_PLOT_PROFILE_SCOPE(
                     profiler,
                     "renderer.frame.execute_passes.render_data_series.series.cpu_prepare.vbo_manage");
@@ -600,8 +601,8 @@ void Series_renderer::render(
     vnm::plot::Profiler* profiler = ctx.config ? ctx.config->profiler : nullptr;
     VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.execute_passes.render_data_series");
 
-    // Skip GPU rendering if configured (for CPU-only profiling)
-    const bool skip_gpu = ctx.config && ctx.config->skip_gpu_rendering;
+    // Skip all GL calls if configured (for pure CPU profiling)
+    const bool skip_gl = ctx.config && ctx.config->skip_gl_calls;
 
     bool dark_mode = false;
     float line_width = 1.0f;
@@ -619,7 +620,7 @@ void Series_renderer::render(
     };
 
     // Cleanup stale VBO states for series no longer in the map
-    {
+    if (!skip_gl) {
         VNM_PLOT_PROFILE_SCOPE(
             profiler,
             "renderer.frame.execute_passes.render_data_series.cleanup_vbos");
@@ -640,7 +641,7 @@ void Series_renderer::render(
     }
 
     // Cleanup stale colormap textures
-    {
+    if (!skip_gl) {
         VNM_PLOT_PROFILE_SCOPE(
             profiler,
             "renderer.frame.execute_passes.render_data_series.cleanup_colormaps");
@@ -666,7 +667,7 @@ void Series_renderer::render(
 
     // Note: We always enable blend for series rendering and restore state at end.
     // Avoid glIsEnabled() which is a synchronous GL query that can stall pipeline.
-    if (!skip_gpu) {
+    if (!skip_gl) {
         VNM_PLOT_PROFILE_SCOPE(
             profiler,
             "renderer.frame.execute_passes.render_data_series.blend_setup");
@@ -708,7 +709,8 @@ void Series_renderer::render(
                 ctx.t0, ctx.t1,
                 layout.usable_width,
                 false,
-                profiler);
+                profiler,
+                skip_gl);
         }();
         if (ctx.config && ctx.config->log_debug &&
             main_result.can_draw &&
@@ -742,27 +744,6 @@ void Series_renderer::render(
                 return;
             }
 
-            // Skip GPU rendering if configured (for CPU-only profiling)
-            const bool skip_gpu = ctx.config && ctx.config->skip_gpu_rendering;
-
-            // Get shader for this specific style (CPU: cache lookup)
-            std::shared_ptr<GL_program> pass_shader;
-            {
-                VNM_PLOT_PROFILE_SCOPE(profiler, "shader_lookup");
-                const shader_set_t* pass_shader_set_ptr;
-                {
-                    VNM_PLOT_PROFILE_SCOPE(profiler, "shader_for");
-                    pass_shader_set_ptr = &s->shader_for(primitive_style);
-                }
-                {
-                    VNM_PLOT_PROFILE_SCOPE(profiler, "get_or_load_shader");
-                    pass_shader = get_or_load_shader(*pass_shader_set_ptr, ctx.config);
-                }
-            }
-            if (!pass_shader) {
-                return;
-            }
-
             // CPU-side color/uniform preparation (no GL calls)
             glm::vec4 draw_color;
             glm::vec4 line_col;
@@ -783,8 +764,26 @@ void Series_renderer::render(
                 }
             }
 
-            // Skip all GL calls when in CPU-only mode
-            if (skip_gpu) {
+            // Skip all GL calls when in no-GL mode (early return after CPU prep)
+            if (skip_gl) {
+                return;
+            }
+
+            // Get shader for this specific style
+            std::shared_ptr<GL_program> pass_shader;
+            {
+                VNM_PLOT_PROFILE_SCOPE(profiler, "shader_lookup");
+                const shader_set_t* pass_shader_set_ptr;
+                {
+                    VNM_PLOT_PROFILE_SCOPE(profiler, "shader_for");
+                    pass_shader_set_ptr = &s->shader_for(primitive_style);
+                }
+                {
+                    VNM_PLOT_PROFILE_SCOPE(profiler, "get_or_load_shader");
+                    pass_shader = get_or_load_shader(*pass_shader_set_ptr, ctx.config);
+                }
+            }
+            if (!pass_shader) {
                 return;
             }
 
@@ -995,7 +994,8 @@ void Series_renderer::render(
                     ctx.t_available_min, ctx.t_available_max,
                     ctx.win_w,
                     true,
-                    profiler);
+                    profiler,
+                    skip_gl);
             }();
             if (ctx.config && ctx.config->log_debug &&
                 preview_result.can_draw &&
@@ -1026,7 +1026,7 @@ void Series_renderer::render(
         }
     }
 
-    if (!skip_gpu) {
+    if (!skip_gl) {
         VNM_PLOT_PROFILE_SCOPE(
             profiler,
             "renderer.frame.execute_passes.render_data_series.blend_cleanup");
