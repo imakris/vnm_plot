@@ -620,7 +620,7 @@ void Series_renderer::render(
     };
 
     // Cleanup stale VBO states for series no longer in the map
-    if (!skip_gl) {
+    {
         VNM_PLOT_PROFILE_SCOPE(
             profiler,
             "renderer.frame.execute_passes.render_data_series.cleanup_vbos");
@@ -628,7 +628,7 @@ void Series_renderer::render(
             if (series.find(it->first) == series.end()) {
                 auto& state = it->second;
                 for (auto* view : {&state.main_view, &state.preview_view}) {
-                    if (view->id != UINT_MAX) {
+                    if (!skip_gl && view->id != UINT_MAX) {
                         glDeleteBuffers(1, &view->id);
                     }
                 }
@@ -641,7 +641,7 @@ void Series_renderer::render(
     }
 
     // Cleanup stale colormap textures
-    if (!skip_gl) {
+    {
         VNM_PLOT_PROFILE_SCOPE(
             profiler,
             "renderer.frame.execute_passes.render_data_series.cleanup_colormaps");
@@ -654,7 +654,7 @@ void Series_renderer::render(
                 }
             }
             if (!found) {
-                if (it->second.texture != 0) {
+                if (!skip_gl && it->second.texture != 0) {
                     glDeleteTextures(1, &it->second.texture);
                 }
                 it = m_colormap_textures.erase(it);
@@ -1040,10 +1040,9 @@ void Series_renderer::render(
         glBindVertexArray(0);
         // Restore default line width
         glLineWidth(1.0f);
-        // Disable scissor test
+        // Disable scissor test and blend to restore default state
         glDisable(GL_SCISSOR_TEST);
-        // Note: We leave blend enabled as it's commonly needed for subsequent rendering.
-        // The caller or next render pass will set up blend state as needed.
+        glDisable(GL_BLEND);
     }
 }
 
