@@ -215,16 +215,22 @@ std::shared_ptr<GL_program> Series_renderer::get_or_load_shader(
     const shader_set_t& shader_set,
     const Render_config* config)
 {
+    Profiler* profiler = config ? config->profiler : nullptr;
+
     if (shader_set.vert.empty() || !m_asset_loader) {
         return nullptr;
     }
 
-    // Cache lookup - O(1) average with hash map
-    if (auto found = m_shaders.find(shader_set); found != m_shaders.end()) {
-        return found->second;
+    // Cache lookup
+    {
+        VNM_PLOT_PROFILE_SCOPE(profiler, "cache_lookup");
+        if (auto found = m_shaders.find(shader_set); found != m_shaders.end()) {
+            return found->second;
+        }
     }
 
     // Cache miss - load and compile shaders (expensive, but only happens once per shader set)
+    VNM_PLOT_PROFILE_SCOPE(profiler, "cache_miss");
 
     auto vert_src = m_asset_loader->load(shader_set.vert);
     auto frag_src = m_asset_loader->load(shader_set.frag);
@@ -594,6 +600,9 @@ void Series_renderer::render(
     vnm::plot::Profiler* profiler = ctx.config ? ctx.config->profiler : nullptr;
     VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.execute_passes.render_data_series");
 
+    // Skip GPU rendering if configured (for CPU-only profiling)
+    const bool skip_gpu = ctx.config && ctx.config->skip_gpu_rendering;
+
     bool dark_mode = false;
     float line_width = 1.0f;
     float area_fill_alpha = 0.3f;
@@ -657,7 +666,7 @@ void Series_renderer::render(
 
     // Note: We always enable blend for series rendering and restore state at end.
     // Avoid glIsEnabled() which is a synchronous GL query that can stall pipeline.
-    {
+    if (!skip_gpu) {
         VNM_PLOT_PROFILE_SCOPE(
             profiler,
             "renderer.frame.execute_passes.render_data_series.blend_setup");
@@ -733,10 +742,49 @@ void Series_renderer::render(
                 return;
             }
 
-            // Get shader for this specific style
-            const auto& pass_shader_set = s->shader_for(primitive_style);
-            auto pass_shader = get_or_load_shader(pass_shader_set, ctx.config);
+            // Skip GPU rendering if configured (for CPU-only profiling)
+            const bool skip_gpu = ctx.config && ctx.config->skip_gpu_rendering;
+
+            // Get shader for this specific style (CPU: cache lookup)
+            std::shared_ptr<GL_program> pass_shader;
+            {
+                VNM_PLOT_PROFILE_SCOPE(profiler, "shader_lookup");
+                const shader_set_t* pass_shader_set_ptr;
+                {
+                    VNM_PLOT_PROFILE_SCOPE(profiler, "shader_for");
+                    pass_shader_set_ptr = &s->shader_for(primitive_style);
+                }
+                {
+                    VNM_PLOT_PROFILE_SCOPE(profiler, "get_or_load_shader");
+                    pass_shader = get_or_load_shader(*pass_shader_set_ptr, ctx.config);
+                }
+            }
             if (!pass_shader) {
+                return;
+            }
+
+            // CPU-side color/uniform preparation (no GL calls)
+            glm::vec4 draw_color;
+            glm::vec4 line_col;
+            {
+                VNM_PLOT_PROFILE_SCOPE(profiler, "color_prep");
+                draw_color = s->color;
+                if (primitive_style == Display_style::AREA || primitive_style == Display_style::COLORMAP_AREA) {
+                    draw_color.w *= area_fill_alpha;
+                }
+                if (dark_mode) {
+                    if (is_default_series_color(draw_color)) {
+                        draw_color = k_default_series_color_dark;
+                    }
+                }
+                line_col = s->color;
+                if (dark_mode && is_default_series_color(line_col)) {
+                    line_col = k_default_series_color_dark;
+                }
+            }
+
+            // Skip all GL calls when in CPU-only mode
+            if (skip_gpu) {
                 return;
             }
 
@@ -761,24 +809,10 @@ void Series_renderer::render(
 
             {
                 VNM_PLOT_PROFILE_SCOPE(profiler, "series_uniforms");
-                glm::vec4 draw_color = s->color;
-                if (primitive_style == Display_style::AREA || primitive_style == Display_style::COLORMAP_AREA) {
-                    draw_color.w *= area_fill_alpha;
-                }
-                if (dark_mode) {
-                    if (is_default_series_color(draw_color)) {
-                        draw_color = k_default_series_color_dark;
-                    }
-                }
                 glUniform4fv(pass_shader->uniform_location("color"), 1, glm::value_ptr(draw_color));
 
                 if (primitive_style == Display_style::AREA || primitive_style == Display_style::COLORMAP_AREA) {
                     glUniform1f(pass_shader->uniform_location("line_width"), line_width);
-                    // Use original series color for line (full alpha), not the reduced-alpha fill color
-                    glm::vec4 line_col = s->color;
-                    if (dark_mode && is_default_series_color(line_col)) {
-                        line_col = k_default_series_color_dark;
-                    }
                     glUniform4fv(pass_shader->uniform_location("line_color"), 1, glm::value_ptr(line_col));
                 }
 
@@ -992,7 +1026,7 @@ void Series_renderer::render(
         }
     }
 
-    {
+    if (!skip_gpu) {
         VNM_PLOT_PROFILE_SCOPE(
             profiler,
             "renderer.frame.execute_passes.render_data_series.blend_cleanup");

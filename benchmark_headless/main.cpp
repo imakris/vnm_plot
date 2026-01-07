@@ -75,6 +75,7 @@ struct Headless_config {
     bool extended_metadata = false;
     bool quiet = false;
     bool show_text = true;  // Text rendering enabled by default (like Qt benchmark)
+    bool cpu_only = false;  // Skip GPU rendering to measure CPU-only time
     int width = k_default_width;
     int height = k_default_height;
     int target_fps = 60;  // Target frames per second
@@ -109,6 +110,7 @@ void print_usage(const char* program_name)
               << "  --extended-metadata     Include benchmark-specific metadata in report\n"
               << "  --quiet                 Suppress progress output (report still written)\n"
               << "  --no-text               Disable text/font rendering\n"
+              << "  --cpu-only              Skip GPU rendering to measure CPU-only time\n"
               << "  --version               Show version information\n"
               << "  --help                  Show this help message\n"
               << "\n"
@@ -196,6 +198,9 @@ Parse_result parse_args(int argc, char* argv[])
             else if (arg == "--no-text") {
                 config.show_text = false;
             }
+            else if (arg == "--cpu-only") {
+                config.cpu_only = true;
+            }
             else if (arg == "--help" || arg == "-h" || arg == "--version" || arg == "-v") {
                 // Handled separately in main
             }
@@ -275,7 +280,8 @@ void print_config_summary(const Headless_config& config, std::ostream& os)
        << "  Output dir:   " << config.output_directory.string() << "\n"
        << "  Session:      " << config.session << "\n"
        << "  Symbol:       " << config.symbol << "\n"
-       << "  Show text:    " << (config.show_text ? "yes" : "no") << "\n";
+       << "  Show text:    " << (config.show_text ? "yes" : "no") << "\n"
+       << "  CPU only:     " << (config.cpu_only ? "yes" : "no") << "\n";
 }
 
 std::string format_benchmark_timestamp(double ts, double /*range*/)
@@ -588,6 +594,7 @@ int main(int argc, char* argv[])
     render_config.show_text = text_enabled;
     render_config.snap_lines_to_pixels = false;
     render_config.line_width_px = 1.5;
+    render_config.skip_gpu_rendering = config.cpu_only;
     render_config.format_timestamp = format_benchmark_timestamp;
     render_config.profiler = &profiler;
 

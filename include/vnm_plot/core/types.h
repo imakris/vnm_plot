@@ -284,33 +284,6 @@ struct shader_set_t
     bool empty() const { return vert.empty() && frag.empty(); }
 };
 
-// Hash function for shader_set_t to enable use in unordered containers
-struct shader_set_hash
-{
-    std::size_t operator()(const shader_set_t& s) const noexcept
-    {
-        // FNV-1a hash combining the three shader names
-        std::size_t h = 14695981039346656037ULL;
-        for (char c : s.vert) {
-            h ^= static_cast<std::size_t>(c);
-            h *= 1099511628211ULL;
-        }
-        h ^= 0xFF; // separator
-        h *= 1099511628211ULL;
-        for (char c : s.geom) {
-            h ^= static_cast<std::size_t>(c);
-            h *= 1099511628211ULL;
-        }
-        h ^= 0xFF;
-        h *= 1099511628211ULL;
-        for (char c : s.frag) {
-            h ^= static_cast<std::size_t>(c);
-            h *= 1099511628211ULL;
-        }
-        return h;
-    }
-};
-
 // -----------------------------------------------------------------------------
 // Colormap Configuration
 // -----------------------------------------------------------------------------
@@ -511,6 +484,10 @@ struct Render_config
     bool   snap_lines_to_pixels = false;
     double line_width_px        = 1.0;
     double area_fill_alpha      = 0.3;
+
+    // When true, skip GPU rendering calls (glDrawArrays, etc.) to measure CPU-only time.
+    // Useful for profiling CPU bottlenecks without GPU blocking.
+    bool skip_gpu_rendering = false;
 
     std::function<std::string(double timestamp, double visible_range)> format_timestamp;
     std::function<void(const std::string&)> log_debug;
