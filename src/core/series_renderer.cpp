@@ -512,7 +512,8 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
                 glBufferSubData(GL_ARRAY_BUFFER, 0, static_cast<GLsizeiptr>(snapshot.count * snapshot.stride), snapshot.data);
                 m_metrics.bytes_uploaded += snapshot.count * snapshot.stride;
 
-                glBindBuffer(GL_ARRAY_BUFFER, 0);
+                // Note: glBindBuffer(0) removed - unbinding is unnecessary and adds overhead.
+                // The VAO bind in draw_pass will set the correct buffer binding.
             }
 
             if (must_upload) {

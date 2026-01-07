@@ -37,6 +37,37 @@ void update_view_range_from_source(
         return;
     }
 
+    // Fast path: use cached timestamp and value ranges if available.
+    // This avoids taking a snapshot just to read first/last timestamps,
+    // reducing update_view_range from ~25% to <1% of frame time.
+    if (source->has_timestamp_range() && source->has_value_range()) {
+        auto [t_first, t_last] = source->timestamp_range();
+        if (t_last <= t_first) {
+            return;  // No valid data
+        }
+
+        // Track available time range for preview bar
+        t_available_min = t_first;
+
+        // Show last 10 seconds of data (sliding window)
+        constexpr double window_size = 10.0;
+        t_max = t_last;
+        t_min = std::max(t_first, t_last - window_size);
+
+        // Update value range from cache
+        auto [lo, hi] = source->value_range();
+        // Add 10% padding
+        float padding = (hi - lo) * 0.1f;
+        if (padding < 0.01f) {
+            padding = 1.0f;  // Minimum padding
+        }
+        v_min = lo - padding;
+        v_max = hi + padding;
+        return;
+    }
+
+    // Fallback: take snapshot to read timestamps directly.
+    // This path is used when timestamp_range() is not available.
     auto result = source->try_snapshot();
     if (result.status != vnm::plot::snapshot_result_t::Status::OK) {
         return;
