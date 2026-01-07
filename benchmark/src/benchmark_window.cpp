@@ -211,8 +211,13 @@ void Benchmark_window::paintGL()
     VNM_PLOT_PROFILE_SCOPE(&m_profiler, "renderer.frame");
 
     // Use framebuffer size for HiDPI support
-    const int fb_w = static_cast<int>(width() * devicePixelRatioF());
-    const int fb_h = static_cast<int>(height() * devicePixelRatioF());
+    int fb_w = 0;
+    int fb_h = 0;
+    {
+        VNM_PLOT_PROFILE_SCOPE(&m_profiler, "renderer.frame.fb_size");
+        fb_w = static_cast<int>(width() * devicePixelRatioF());
+        fb_h = static_cast<int>(height() * devicePixelRatioF());
+    }
 
     {
         VNM_PLOT_PROFILE_SCOPE(&m_profiler, "renderer.frame.gl_setup");
@@ -359,6 +364,7 @@ void Benchmark_window::paintGL()
     // Render text labels
 #if defined(VNM_PLOT_ENABLE_TEXT)
     if (m_text_renderer && m_render_config.show_text) {
+        VNM_PLOT_PROFILE_SCOPE(&m_profiler, "renderer.frame.text_overlay");
         m_text_renderer->render(ctx, false, false);
     }
 #endif
