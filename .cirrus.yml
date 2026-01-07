@@ -15,8 +15,8 @@ task:
         - rm -rf /var/cache/pkg/*
         - pkg bootstrap -fy
         - mkdir -p /usr/local/etc/pkg/repos
-        - echo 'FreeBSD-ports: { enabled: no }' > /usr/local/etc/pkg/repos/FreeBSD-ports.conf
-        - echo 'FreeBSD: { url: "pkg+http://pkg.FreeBSD.org/${ABI}/latest" }' > /usr/local/etc/pkg/repos/FreeBSD.conf
+        - "echo 'FreeBSD-ports: { enabled: no }' > /usr/local/etc/pkg/repos/FreeBSD-ports.conf"
+        - "echo 'FreeBSD: { url: pkg+http://pkg.FreeBSD.org/${ABI}/latest }' > /usr/local/etc/pkg/repos/FreeBSD.conf"
         - pkg update -f
         - pkg install -y git cmake mesa-libs pkgconf freeglut libX11 libXrandr libXinerama libXcursor libXi libXext
         - if [ ! -e /usr/local/lib/libGL.so ] && [ -e /usr/local/lib/libGL.so.1 ]; then ln -s /usr/local/lib/libGL.so.1 /usr/local/lib/libGL.so; fi
@@ -34,8 +34,8 @@ task:
         - rm -rf /var/cache/pkg/*
         - pkg bootstrap -fy
         - mkdir -p /usr/local/etc/pkg/repos
-        - echo 'FreeBSD-ports: { enabled: no }' > /usr/local/etc/pkg/repos/FreeBSD-ports.conf
-        - echo 'FreeBSD: { url: "pkg+http://pkg.FreeBSD.org/${ABI}/latest" }' > /usr/local/etc/pkg/repos/FreeBSD.conf
+        - "echo 'FreeBSD-ports: { enabled: no }' > /usr/local/etc/pkg/repos/FreeBSD-ports.conf"
+        - "echo 'FreeBSD: { url: pkg+http://pkg.FreeBSD.org/${ABI}/latest }' > /usr/local/etc/pkg/repos/FreeBSD.conf"
         - pkg update -f
         - pkg install -y git cmake mesa-libs pkgconf freeglut libX11 libXrandr libXinerama libXcursor libXi libXext
         - if [ ! -e /usr/local/lib/libGL.so ] && [ -e /usr/local/lib/libGL.so.1 ]; then ln -s /usr/local/lib/libGL.so.1 /usr/local/lib/libGL.so; fi
@@ -53,8 +53,8 @@ task:
         - rm -rf /var/cache/pkg/*
         - pkg bootstrap -fy
         - mkdir -p /usr/local/etc/pkg/repos
-        - echo 'FreeBSD-ports: { enabled: no }' > /usr/local/etc/pkg/repos/FreeBSD-ports.conf
-        - echo 'FreeBSD: { url: "pkg+http://pkg.FreeBSD.org/${ABI}/latest" }' > /usr/local/etc/pkg/repos/FreeBSD.conf
+        - "echo 'FreeBSD-ports: { enabled: no }' > /usr/local/etc/pkg/repos/FreeBSD-ports.conf"
+        - "echo 'FreeBSD: { url: pkg+http://pkg.FreeBSD.org/${ABI}/latest }' > /usr/local/etc/pkg/repos/FreeBSD.conf"
         - pkg update -f
         - pkg install -y git cmake mesa-libs pkgconf freeglut libX11 libXrandr libXinerama libXcursor libXi libXext
         - if [ ! -e /usr/local/lib/libGL.so ] && [ -e /usr/local/lib/libGL.so.1 ]; then ln -s /usr/local/lib/libGL.so.1 /usr/local/lib/libGL.so; fi
