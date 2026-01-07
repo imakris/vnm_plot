@@ -317,7 +317,13 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
         mark_tried(applied_level);
         const std::size_t applied_scale = scales[applied_level];
 
-        auto snapshot_result = data_source.try_snapshot(applied_level);
+        vnm::plot::snapshot_result_t snapshot_result;
+        {
+            VNM_PLOT_PROFILE_SCOPE(
+                profiler,
+                "renderer.frame.execute_passes.render_data_series.series.process_view.try_snapshot");
+            snapshot_result = data_source.try_snapshot(applied_level);
+        }
         if (!snapshot_result) {
             ++m_metrics.snapshot_failures;
 
@@ -357,6 +363,9 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
         double last_ts = 0.0;
         bool have_ts_bounds = false;
         if (get_timestamp) {
+            VNM_PLOT_PROFILE_SCOPE(
+                profiler,
+                "renderer.frame.execute_passes.render_data_series.series.process_view.binary_search");
             const auto* base = static_cast<const std::uint8_t*>(snapshot.data);
             first_ts = get_timestamp(base);
             last_ts = get_timestamp(base + (snapshot.count - 1) * snapshot.stride);
