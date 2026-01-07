@@ -75,17 +75,25 @@ public:
 
         if (try_incremental) {
             // Use atomic copy_newest_since to avoid race between sequence read and copy
+            const std::size_t max_new = buffer_capacity / 2;
             auto result = buffer_.copy_newest_since(
                 new_samples_buffer_.data(),
-                buffer_capacity / 2,  // max_new: limit to half buffer
+                max_new,
                 last_buffer_sequence_);
 
+            // Compute actual samples added since last snapshot
+            const uint64_t samples_added = result.sequence - last_buffer_sequence_;
+
             // Only proceed with incremental if:
-            // - We got some samples
             // - Buffer is full (at capacity) so sliding window is stable
+            // - We got all new samples (samples_added <= max_new)
+            // - samples_added is reasonable (< buffer_capacity, guards against wrap)
             const bool incremental_valid =
-                result.copied > 0 &&
-                result.total_count == buffer_capacity;
+                result.total_count == buffer_capacity &&
+                samples_added > 0 &&
+                samples_added <= max_new &&
+                samples_added < buffer_capacity &&
+                result.copied == static_cast<std::size_t>(samples_added);
 
             if (incremental_valid) {
                 const std::size_t samples_to_add = result.copied;

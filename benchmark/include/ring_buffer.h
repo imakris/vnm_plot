@@ -243,6 +243,11 @@ public:
             total_count = cap;  // Full buffer
         }
 
+        // Defensive: if sequence went backwards, return without copying
+        if (seq < last_seq) {
+            return {0, total_count, seq};
+        }
+
         // Calculate how many samples were added since last_seq
         const uint64_t samples_added = seq - last_seq;
 
