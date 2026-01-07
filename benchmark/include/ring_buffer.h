@@ -8,6 +8,7 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <mutex>
 #include <shared_mutex>
 #include <vector>
@@ -154,6 +155,56 @@ public:
     /// Returns sequence number which increments on every push.
     uint64_t sequence() const {
         return sequence_.load(std::memory_order_acquire);
+    }
+
+    /// Copy the newest K samples directly into a pre-allocated buffer.
+    /// Holds shared lock during copy - THREAD SAFE.
+    /// @param dest Pointer to destination buffer (must have space for k elements)
+    /// @param k Number of newest samples to copy
+    /// @return Copy_result with actual count copied and sequence
+    Copy_result copy_newest_into(T* dest, std::size_t k) const {
+        std::shared_lock lock(mutex_);
+
+        const std::size_t h = head_.load(std::memory_order_acquire);
+        const std::size_t t = tail_.load(std::memory_order_acquire);
+        const uint64_t seq = sequence_.load(std::memory_order_acquire);
+
+        if (h == t && seq == 0) {
+            return {0, seq};
+        }
+
+        const std::size_t cap = buffer_.size();
+
+        // Calculate total count
+        std::size_t total_count;
+        if (h > t) {
+            total_count = h - t;
+        } else if (h < t) {
+            total_count = cap - t + h;
+        } else {
+            total_count = cap;  // Full buffer
+        }
+
+        // Limit to k samples
+        const std::size_t copy_count = std::min(k, total_count);
+        if (copy_count == 0) {
+            return {0, seq};
+        }
+
+        // Start position: head - copy_count (with wrap-around)
+        std::size_t start = (h + cap - copy_count) % cap;
+
+        if (start < h) {
+            // Contiguous: [start, head)
+            std::memcpy(dest, buffer_.data() + start, copy_count * sizeof(T));
+        } else {
+            // Wrapped: [start, cap) + [0, head)
+            const std::size_t part1 = cap - start;
+            std::memcpy(dest, buffer_.data() + start, part1 * sizeof(T));
+            std::memcpy(dest + part1, buffer_.data(), h * sizeof(T));
+        }
+
+        return {copy_count, seq};
     }
 
     // -------------------------------------------------------------------------

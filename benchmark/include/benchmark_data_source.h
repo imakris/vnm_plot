@@ -39,6 +39,7 @@ public:
 
     /// Take a snapshot by copying from ring buffer.
     /// Thread-safe: ring buffer holds lock during copy.
+    /// Uses incremental copying when possible (O(new_samples) vs O(all_samples)).
     vnm::plot::snapshot_result_t try_snapshot(size_t lod_level = 0) override {
         using Status = vnm::plot::snapshot_result_t::Status;
 
@@ -61,11 +62,57 @@ public:
             };
         }
 
-        // Copy data from ring buffer to owned storage
+        // Calculate samples added since last snapshot
+        const uint64_t samples_added = current_seq - last_buffer_sequence_;
+        const std::size_t buffer_capacity = buffer_.capacity();
+
+        // Use incremental copy if:
+        // 1. We have existing data
+        // 2. Not too many samples were added (less than half the buffer)
+        // 3. Samples added is less than current snapshot size (steady state)
+        const bool can_incremental =
+            !snapshot_data_.empty() &&
+            samples_added > 0 &&
+            samples_added < buffer_capacity / 2 &&
+            samples_added <= snapshot_data_.size();
+
+        if (can_incremental) {
+            // Incremental update: shift out old samples, copy in new ones
+            const auto samples_to_add = static_cast<std::size_t>(samples_added);
+            const std::size_t keep_count = snapshot_data_.size() - samples_to_add;
+
+            // Shift remaining samples to the front using memmove (handles overlap)
+            if (keep_count > 0) {
+                std::memmove(snapshot_data_.data(),
+                             snapshot_data_.data() + samples_to_add,
+                             keep_count * sizeof(T));
+            }
+
+            // Copy newest samples directly into the end of the vector
+            // (no temporary allocation needed)
+            auto result = buffer_.copy_newest_into(
+                snapshot_data_.data() + keep_count, samples_to_add);
+
+            snapshot_sequence_ = result.sequence;
+            last_buffer_sequence_ = result.sequence;
+
+            // Update value range incrementally
+            update_value_range();
+
+            return {
+                vnm::plot::data_snapshot_t{
+                    snapshot_data_.data(),
+                    snapshot_data_.size(),
+                    sizeof(T),
+                    snapshot_sequence_
+                },
+                Status::OK
+            };
+        }
+
+        // Fall back to full copy
         auto result = buffer_.copy_to(snapshot_data_);
         snapshot_sequence_ = result.sequence;
-        // Use result.sequence (not current_seq) to avoid extra copy if producer
-        // pushed between sequence read and copy_to()
         last_buffer_sequence_ = result.sequence;
 
         if (result.count == 0) {
@@ -73,7 +120,7 @@ public:
             return {vnm::plot::data_snapshot_t{}, Status::EMPTY};
         }
 
-        // Update value range during copy (O(n) but only when data changes)
+        // Update value range (may do full scan on first snapshot)
         update_value_range();
 
         return {
