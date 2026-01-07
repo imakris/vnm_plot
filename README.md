@@ -201,7 +201,7 @@ Via FetchContent:
 include(FetchContent)
 FetchContent_Declare(vnm_plot
     GIT_REPOSITORY https://github.com/imakris/vnm_plot.git
-    GIT_TAG        1.0.2
+    GIT_TAG        1.0.4
 )
 FetchContent_MakeAvailable(vnm_plot)
 target_link_libraries(your_app PRIVATE vnm_plot::core)      # standalone core library
