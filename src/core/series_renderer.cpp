@@ -219,9 +219,12 @@ std::shared_ptr<GL_program> Series_renderer::get_or_load_shader(
         return nullptr;
     }
 
+    // Cache lookup - O(1) average with hash map
     if (auto found = m_shaders.find(shader_set); found != m_shaders.end()) {
         return found->second;
     }
+
+    // Cache miss - load and compile shaders (expensive, but only happens once per shader set)
 
     auto vert_src = m_asset_loader->load(shader_set.vert);
     auto frag_src = m_asset_loader->load(shader_set.frag);
@@ -737,11 +740,14 @@ void Series_renderer::render(
                 return;
             }
 
-            const GLuint program_id = pass_shader->program_id();
-            glUseProgram(program_id);
-
-            set_common_uniforms(*pass_shader, ctx.pmv, ctx);
+            {
+                VNM_PLOT_PROFILE_SCOPE(profiler, "setup_uniforms");
+                const GLuint program_id = pass_shader->program_id();
+                glUseProgram(program_id);
+                set_common_uniforms(*pass_shader, ctx.pmv, ctx);
+            }
             if (is_preview) {
+                VNM_PLOT_PROFILE_SCOPE(profiler, "preview_uniforms");
                 modify_uniforms_for_preview(*pass_shader, ctx);
                 if (view_result.use_t_override) {
                     glUniform1d(
@@ -753,33 +759,36 @@ void Series_renderer::render(
                 }
             }
 
-            glm::vec4 draw_color = s->color;
-            if (primitive_style == Display_style::AREA || primitive_style == Display_style::COLORMAP_AREA) {
-                draw_color.w *= area_fill_alpha;
-            }
-            if (dark_mode) {
-                if (is_default_series_color(draw_color)) {
-                    draw_color = k_default_series_color_dark;
+            {
+                VNM_PLOT_PROFILE_SCOPE(profiler, "series_uniforms");
+                glm::vec4 draw_color = s->color;
+                if (primitive_style == Display_style::AREA || primitive_style == Display_style::COLORMAP_AREA) {
+                    draw_color.w *= area_fill_alpha;
                 }
-            }
-            glUniform4fv(pass_shader->uniform_location("color"), 1, glm::value_ptr(draw_color));
-
-            if (primitive_style == Display_style::AREA || primitive_style == Display_style::COLORMAP_AREA) {
-                glUniform1f(pass_shader->uniform_location("line_width"), line_width);
-                // Use original series color for line (full alpha), not the reduced-alpha fill color
-                glm::vec4 line_col = s->color;
-                if (dark_mode && is_default_series_color(line_col)) {
-                    line_col = k_default_series_color_dark;
+                if (dark_mode) {
+                    if (is_default_series_color(draw_color)) {
+                        draw_color = k_default_series_color_dark;
+                    }
                 }
-                glUniform4fv(pass_shader->uniform_location("line_color"), 1, glm::value_ptr(line_col));
-            }
+                glUniform4fv(pass_shader->uniform_location("color"), 1, glm::value_ptr(draw_color));
 
-            if (const GLint loc = pass_shader->uniform_location("u_line_px"); loc >= 0) {
-                glUniform1f(loc, line_width);
-            }
+                if (primitive_style == Display_style::AREA || primitive_style == Display_style::COLORMAP_AREA) {
+                    glUniform1f(pass_shader->uniform_location("line_width"), line_width);
+                    // Use original series color for line (full alpha), not the reduced-alpha fill color
+                    glm::vec4 line_col = s->color;
+                    if (dark_mode && is_default_series_color(line_col)) {
+                        line_col = k_default_series_color_dark;
+                    }
+                    glUniform4fv(pass_shader->uniform_location("line_color"), 1, glm::value_ptr(line_col));
+                }
 
-            if (s->access.bind_uniforms) {
-                s->access.bind_uniforms(program_id);
+                if (const GLint loc = pass_shader->uniform_location("u_line_px"); loc >= 0) {
+                    glUniform1f(loc, line_width);
+                }
+
+                if (s->access.bind_uniforms) {
+                    s->access.bind_uniforms(pass_shader->program_id());
+                }
             }
 
             // Handle colormap for COLORMAP_AREA
@@ -865,8 +874,11 @@ void Series_renderer::render(
                 }
             }
 
-            const GLuint vao = ensure_series_vao(primitive_style, view_state.active_vbo, *s);
-            glBindVertexArray(vao);
+            {
+                VNM_PLOT_PROFILE_SCOPE(profiler, "vao_bind");
+                const GLuint vao = ensure_series_vao(primitive_style, view_state.active_vbo, *s);
+                glBindVertexArray(vao);
+            }
 
             // Note: glLineWidth is set once at the start of render() to avoid per-draw overhead
 
@@ -903,9 +915,7 @@ void Series_renderer::render(
             }
 
             if (do_draw) {
-                VNM_PLOT_PROFILE_SCOPE(
-                    profiler,
-                    "renderer.frame.execute_passes.render_data_series.series.gpu_issue");
+                VNM_PLOT_PROFILE_SCOPE(profiler, "gpu_issue");
                 glDrawArrays(drawing_mode, view_result.first, count);
             }
 

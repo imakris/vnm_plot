@@ -121,7 +121,7 @@ private:
     };
 
     Asset_loader* m_asset_loader = nullptr;
-    std::map<shader_set_t, std::shared_ptr<GL_program>> m_shaders;
+    std::unordered_map<shader_set_t, std::shared_ptr<GL_program>, shader_set_hash> m_shaders;
     std::unordered_map<int, vbo_state_t> m_vbo_states;
     std::unordered_map<const series_data_t*, colormap_resource_t> m_colormap_textures;
 

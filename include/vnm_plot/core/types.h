@@ -284,6 +284,33 @@ struct shader_set_t
     bool empty() const { return vert.empty() && frag.empty(); }
 };
 
+// Hash function for shader_set_t to enable use in unordered containers
+struct shader_set_hash
+{
+    std::size_t operator()(const shader_set_t& s) const noexcept
+    {
+        // FNV-1a hash combining the three shader names
+        std::size_t h = 14695981039346656037ULL;
+        for (char c : s.vert) {
+            h ^= static_cast<std::size_t>(c);
+            h *= 1099511628211ULL;
+        }
+        h ^= 0xFF; // separator
+        h *= 1099511628211ULL;
+        for (char c : s.geom) {
+            h ^= static_cast<std::size_t>(c);
+            h *= 1099511628211ULL;
+        }
+        h ^= 0xFF;
+        h *= 1099511628211ULL;
+        for (char c : s.frag) {
+            h ^= static_cast<std::size_t>(c);
+            h *= 1099511628211ULL;
+        }
+        return h;
+    }
+};
+
 // -----------------------------------------------------------------------------
 // Colormap Configuration
 // -----------------------------------------------------------------------------
