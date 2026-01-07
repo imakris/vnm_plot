@@ -54,6 +54,12 @@ constexpr int k_exit_runtime_error = 3;
 constexpr int k_default_width = 1200;
 constexpr int k_default_height = 720;
 
+// Layout constants matching the Qt benchmark
+constexpr double k_base_label_height_px = 20.0;
+constexpr double k_adjusted_preview_height = 40.0;
+constexpr double k_vbar_width_pixels = 60.0;
+constexpr double k_adjusted_font_px = 12.0;
+
 /// Configuration for the headless benchmark
 struct Headless_config {
     double duration_seconds = 30.0;
@@ -67,6 +73,7 @@ struct Headless_config {
     std::size_t ring_capacity = 100000;
     bool extended_metadata = false;
     bool quiet = false;
+    bool show_text = true;  // Text rendering enabled by default (like Qt benchmark)
     int width = k_default_width;
     int height = k_default_height;
     int target_fps = 60;  // Target frames per second
@@ -100,6 +107,7 @@ void print_usage(const char* program_name)
               << "  --fps <target>          Target frames per second (default: 60)\n"
               << "  --extended-metadata     Include benchmark-specific metadata in report\n"
               << "  --quiet                 Suppress progress output (report still written)\n"
+              << "  --no-text               Disable text/font rendering\n"
               << "  --version               Show version information\n"
               << "  --help                  Show this help message\n"
               << "\n"
@@ -184,6 +192,9 @@ Parse_result parse_args(int argc, char* argv[])
             else if (arg == "--quiet") {
                 config.quiet = true;
             }
+            else if (arg == "--no-text") {
+                config.show_text = false;
+            }
             else if (arg == "--help" || arg == "-h" || arg == "--version" || arg == "-v") {
                 // Handled separately in main
             }
@@ -262,7 +273,8 @@ void print_config_summary(const Headless_config& config, std::ostream& os)
        << "  Target FPS:   " << config.target_fps << "\n"
        << "  Output dir:   " << config.output_directory.string() << "\n"
        << "  Session:      " << config.session << "\n"
-       << "  Symbol:       " << config.symbol << "\n";
+       << "  Symbol:       " << config.symbol << "\n"
+       << "  Show text:    " << (config.show_text ? "yes" : "no") << "\n";
 }
 
 std::string format_benchmark_timestamp(double ts, double /*range*/)
@@ -287,7 +299,8 @@ public:
 
     ~Offscreen_fbo()
     {
-        cleanup();
+        // Note: cleanup() should be called explicitly before context destruction
+        // The destructor is a safety net but may not work if context is gone
     }
 
     bool initialize()
@@ -312,6 +325,23 @@ public:
     void unbind()
     {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+
+    /// Explicit cleanup - must be called before GL context destruction
+    void cleanup()
+    {
+        if (m_fbo) {
+            glDeleteFramebuffers(1, &m_fbo);
+            m_fbo = 0;
+        }
+        if (m_color_rbo) {
+            glDeleteRenderbuffers(1, &m_color_rbo);
+            m_color_rbo = 0;
+        }
+        if (m_depth_rbo) {
+            glDeleteRenderbuffers(1, &m_depth_rbo);
+            m_depth_rbo = 0;
+        }
     }
 
     int width() const { return m_width; }
@@ -381,22 +411,6 @@ private:
 
         m_multisampled = false;
         return true;
-    }
-
-    void cleanup()
-    {
-        if (m_fbo) {
-            glDeleteFramebuffers(1, &m_fbo);
-            m_fbo = 0;
-        }
-        if (m_color_rbo) {
-            glDeleteRenderbuffers(1, &m_color_rbo);
-            m_color_rbo = 0;
-        }
-        if (m_depth_rbo) {
-            glDeleteRenderbuffers(1, &m_depth_rbo);
-            m_depth_rbo = 0;
-        }
     }
 
     int m_width;
@@ -535,19 +549,42 @@ int main(int argc, char* argv[])
 
     if (!primitives.initialize(asset_loader)) {
         std::cerr << "Error: Failed to initialize primitive renderer\n";
+        fbo.cleanup();
         glfwDestroyWindow(window);
         glfwTerminate();
         return k_exit_gl_error;
     }
     series_renderer.initialize(asset_loader);
 
+    // Initialize text rendering components (when available and enabled)
+#if defined(VNM_PLOT_ENABLE_TEXT)
+    vnm::plot::Font_renderer font_renderer;
+    std::unique_ptr<vnm::plot::Text_renderer> text_renderer;
+    bool text_enabled = config.show_text;
+
+    if (text_enabled) {
+        const int font_px = static_cast<int>(std::round(k_adjusted_font_px));
+        font_renderer.initialize(asset_loader, font_px);
+        text_renderer = std::make_unique<vnm::plot::Text_renderer>(&font_renderer);
+    }
+#else
+    const bool text_enabled = false;
+    if (config.show_text && !config.quiet) {
+        std::cout << "Note: Text rendering disabled at build time (VNM_PLOT_ENABLE_TEXT=OFF)\n";
+    }
+#endif
+
     // Create profiler
     vnm::benchmark::Benchmark_profiler profiler;
 
-    // Configure rendering
+    // Layout calculator and cache
+    vnm::plot::Layout_calculator layout_calc;
+    vnm::plot::Layout_cache layout_cache;
+
+    // Configure rendering (matching Qt benchmark defaults)
     vnm::plot::Render_config render_config;
     render_config.dark_mode = true;
-    render_config.show_text = false;  // No text in headless mode
+    render_config.show_text = text_enabled;
     render_config.snap_lines_to_pixels = false;
     render_config.line_width_px = 1.5;
     render_config.format_timestamp = format_benchmark_timestamp;
@@ -655,6 +692,8 @@ int main(int argc, char* argv[])
     }
 
     std::size_t frame_count = 0;
+    const int fb_w = fbo.width();
+    const int fb_h = fbo.height();
 
     // Main render loop
     while (!glfwWindowShouldClose(window)) {
@@ -731,14 +770,83 @@ int main(int argc, char* argv[])
                          palette.background.b, palette.background.a);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-            vnm::plot::frame_layout_result_t layout;
-            layout.usable_width = fbo.width();
-            layout.usable_height = fbo.height();
-            layout.v_bar_width = 0.0;
-            layout.h_bar_height = 0.0;
+            // Calculate layout dimensions (matching Qt benchmark)
+            const double adjusted_reserved_height = k_base_label_height_px + k_adjusted_preview_height;
+            const double usable_width = fb_w - k_vbar_width_pixels;
+            const double usable_height = fb_h - adjusted_reserved_height;
 
+            // Use Layout_calculator for proper label positions
+            vnm::plot::Layout_calculator::parameters_t layout_params;
+            layout_params.v_min = v_min;
+            layout_params.v_max = v_max;
+            layout_params.t_min = t_min;
+            layout_params.t_max = t_max;
+            layout_params.usable_width = usable_width;
+            layout_params.usable_height = usable_height;
+            layout_params.vbar_width = k_vbar_width_pixels;
+            layout_params.label_visible_height = usable_height + k_adjusted_preview_height;
+            layout_params.adjusted_font_size_in_pixels = k_adjusted_font_px;
+
+#if defined(VNM_PLOT_ENABLE_TEXT)
+            if (text_enabled) {
+                layout_params.monospace_char_advance_px = font_renderer.monospace_advance_px();
+                layout_params.monospace_advance_is_reliable = font_renderer.monospace_advance_is_reliable();
+                layout_params.measure_text_cache_key = font_renderer.text_measure_cache_key();
+                layout_params.measure_text_func = [&font_renderer](const char* text) {
+                    return font_renderer.measure_text_px(text);
+                };
+            }
+            else
+#endif
+            {
+                layout_params.monospace_char_advance_px = 0.0f;
+                layout_params.monospace_advance_is_reliable = false;
+                layout_params.measure_text_cache_key = 0;
+                layout_params.measure_text_func = [](const char* text) {
+                    return static_cast<float>(std::strlen(text));
+                };
+            }
+            layout_params.h_label_vertical_nudge_factor = vnm::plot::detail::k_h_label_vertical_nudge_px;
+            layout_params.format_timestamp_func = format_benchmark_timestamp;
+            layout_params.get_required_fixed_digits_func = [](double) { return 2; };
+            layout_params.profiler = &profiler;
+
+            vnm::plot::layout_cache_key_t cache_key;
+            cache_key.v0 = v_min;
+            cache_key.v1 = v_max;
+            cache_key.t0 = t_min;
+            cache_key.t1 = t_max;
+            cache_key.viewport_size = vnm::plot::Size2i{fb_w, fb_h};
+            cache_key.adjusted_reserved_height = adjusted_reserved_height;
+            cache_key.adjusted_preview_height = k_adjusted_preview_height;
+            cache_key.adjusted_font_size_in_pixels = k_adjusted_font_px;
+            cache_key.vbar_width_pixels = k_vbar_width_pixels;
+#if defined(VNM_PLOT_ENABLE_TEXT)
+            cache_key.font_metrics_key = text_enabled ? font_renderer.text_measure_cache_key() : 0;
+#else
+            cache_key.font_metrics_key = 0;
+#endif
+
+            const vnm::plot::frame_layout_result_t* layout_ptr = layout_cache.try_get(cache_key);
+            if (!layout_ptr) {
+                auto layout_result = layout_calc.calculate(layout_params);
+
+                vnm::plot::frame_layout_result_t layout;
+                layout.usable_width = usable_width;
+                layout.usable_height = usable_height;
+                layout.v_bar_width = k_vbar_width_pixels;
+                layout.h_bar_height = k_base_label_height_px + 1.0;
+                layout.max_v_label_text_width = layout_result.max_v_label_text_width;
+                layout.v_labels = std::move(layout_result.v_labels);
+                layout.h_labels = std::move(layout_result.h_labels);
+                layout.v_label_fixed_digits = layout_result.v_label_fixed_digits;
+                layout.h_labels_subsecond = layout_result.h_labels_subsecond;
+                layout_ptr = &layout_cache.store(cache_key, std::move(layout));
+            }
+
+            // Build frame context
             vnm::plot::frame_context_t ctx{
-                layout,
+                *layout_ptr,
                 v_min,
                 v_max,
                 v_min,  // preview_v0
@@ -747,21 +855,29 @@ int main(int argc, char* argv[])
                 t_max,
                 t_available_min,
                 t_max,
-                fbo.width(),
-                fbo.height(),
-                glm::ortho(0.f, float(fbo.width()), float(fbo.height()), 0.f, -1.f, 1.f),
-                12.0,  // font_size
-                0.0,   // base_label_height
-                0.0,   // adjusted_reserved_height
-                0.0,   // adjusted_preview_height
-                false, // show_info
+                fb_w,
+                fb_h,
+                glm::ortho(0.f, float(fb_w), float(fb_h), 0.f, -1.f, 1.f),
+                k_adjusted_font_px,
+                k_base_label_height_px,
+                adjusted_reserved_height,
+                k_adjusted_preview_height,
+                false,  // show_info
                 &render_config
             };
 
+            // Render
             chrome_renderer.render_grid_and_backgrounds(ctx, primitives);
             series_renderer.render(ctx, series_map);
             chrome_renderer.render_preview_overlay(ctx, primitives);
             primitives.flush_rects(ctx.pmv);
+
+            // Render text labels (when enabled)
+#if defined(VNM_PLOT_ENABLE_TEXT)
+            if (text_renderer && render_config.show_text) {
+                text_renderer->render(ctx, false, false);
+            }
+#endif
 
             fbo.unbind();
         }
@@ -803,6 +919,8 @@ int main(int argc, char* argv[])
     meta.ring_capacity = config.ring_capacity;
     meta.samples_generated = samples_generated.load();
 
+    int exit_code = k_exit_success;
+
     try {
         auto report_path = profiler.write_report(meta);
 
@@ -825,17 +943,21 @@ int main(int argc, char* argv[])
     }
     catch (const std::exception& e) {
         std::cerr << "Error writing report: " << e.what() << "\n";
-        glfwDestroyWindow(window);
-        glfwTerminate();
-        return k_exit_runtime_error;
+        exit_code = k_exit_runtime_error;
     }
 
-    // Cleanup
+    // Cleanup GL resources BEFORE destroying context
     primitives.cleanup_gl_resources();
     series_renderer.cleanup_gl_resources();
+#if defined(VNM_PLOT_ENABLE_TEXT)
+    if (text_enabled) {
+        vnm::plot::Font_renderer::cleanup_thread_resources();
+    }
+#endif
+    fbo.cleanup();
 
     glfwDestroyWindow(window);
     glfwTerminate();
 
-    return k_exit_success;
+    return exit_code;
 }
