@@ -1,5 +1,6 @@
 #include <vnm_plot/qt/plot_renderer.h>
 #include <vnm_plot/qt/plot_widget.h>
+#include <vnm_plot/qt/vnm_qt_safe_dispatch.h>
 #include <vnm_plot/core/color_palette.h>
 #include <vnm_plot/core/constants.h>
 #include <vnm_plot/core/layout_calculator.h>
@@ -780,11 +781,10 @@ const frame_layout_result_t& Plot_renderer::impl_t::calculate_frame_layout(
     {
         // Notify widget to animate to new width
         if (owner) {
-            QMetaObject::invokeMethod(
+            vnm::post_invoke(
                 const_cast<Plot_widget*>(owner),
-                "set_vbar_width_from_renderer",
-                Qt::QueuedConnection,
-                Q_ARG(double, measured_vbar_width));
+                &Plot_widget::set_vbar_width_from_renderer,
+                measured_vbar_width);
         }
 
         // For this frame, continue using the current animated width,
@@ -1241,12 +1241,10 @@ void Plot_renderer::render()
                 if (std::abs(v0 - m_impl->snapshot.cfg.v_min) > k_auto_v_sync_eps ||
                     std::abs(v1 - m_impl->snapshot.cfg.v_max) > k_auto_v_sync_eps)
                 {
-                    QMetaObject::invokeMethod(
+                    vnm::post_invoke(
                         const_cast<Plot_widget*>(m_impl->owner),
-                        "set_auto_v_range_from_renderer",
-                        Qt::QueuedConnection,
-                        Q_ARG(float, v0),
-                        Q_ARG(float, v1));
+                        &Plot_widget::set_auto_v_range_from_renderer,
+                        v0, v1);
                 }
             }
 
@@ -1263,10 +1261,9 @@ void Plot_renderer::render()
                  std::abs(preview_v1 - target_preview_v1) > preview_span * k_anim_target_frac);
             const bool still_animating = main_animating || preview_animating;
             if (still_animating && m_impl->owner) {
-                QMetaObject::invokeMethod(
+                vnm::post_invoke(
                     const_cast<Plot_widget*>(m_impl->owner),
-                    "update",
-                    Qt::QueuedConnection);
+                    &Plot_widget::update);
             }
         }
         else {
@@ -1464,10 +1461,9 @@ void Plot_renderer::render()
         VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.text_overlay");
         const bool fades_active = m_impl->text->render(core_ctx, fade_v_labels, fade_h_labels);
         if (fades_active && m_impl->owner) {
-            QMetaObject::invokeMethod(
+            vnm::post_invoke(
                 const_cast<Plot_widget*>(m_impl->owner),
-                "update",
-                Qt::QueuedConnection);
+                &Plot_widget::update);
         }
     }
 
