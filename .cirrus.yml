@@ -11,6 +11,8 @@ task:
   matrix:
     - name: "FreeBSD Core Build"
       install_script:
+        - rm -rf /var/db/pkg/repo-FreeBSD-ports* || true
+        - pkg update -f
         - pkg install -y git cmake mesa-libs pkgconf freeglut libX11 libXrandr libXinerama libXcursor libXi libXext
         - if [ ! -e /usr/local/lib/libGL.so ] && [ -e /usr/local/lib/libGL.so.1 ]; then ln -s /usr/local/lib/libGL.so.1 /usr/local/lib/libGL.so; fi
       configure_script:
@@ -23,6 +25,8 @@ task:
 
     - name: "FreeBSD GLFW Example"
       install_script:
+        - rm -rf /var/db/pkg/repo-FreeBSD-ports* || true
+        - pkg update -f
         - pkg install -y git cmake mesa-libs pkgconf freeglut libX11 libXrandr libXinerama libXcursor libXi libXext
         - if [ ! -e /usr/local/lib/libGL.so ] && [ -e /usr/local/lib/libGL.so.1 ]; then ln -s /usr/local/lib/libGL.so.1 /usr/local/lib/libGL.so; fi
       configure_script:
@@ -35,6 +39,8 @@ task:
 
     - name: "FreeBSD Core+Text Build"
       install_script:
+        - rm -rf /var/db/pkg/repo-FreeBSD-ports* || true
+        - pkg update -f
         - pkg install -y git cmake mesa-libs pkgconf freeglut libX11 libXrandr libXinerama libXcursor libXi libXext
         - if [ ! -e /usr/local/lib/libGL.so ] && [ -e /usr/local/lib/libGL.so.1 ]; then ln -s /usr/local/lib/libGL.so.1 /usr/local/lib/libGL.so; fi
       configure_script:
