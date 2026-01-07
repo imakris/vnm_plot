@@ -724,60 +724,81 @@ int main(int argc, char* argv[])
 
         glfwPollEvents();
 
-        // Update view range from data
-        vnm::plot::Data_source* source = (config.data_type == "Trades")
-            ? static_cast<vnm::plot::Data_source*>(trade_source.get())
-            : static_cast<vnm::plot::Data_source*>(bar_source.get());
-
-        auto snapshot_result = source->try_snapshot();
-        if (snapshot_result.status == vnm::plot::snapshot_result_t::Status::OK &&
-            snapshot_result.snapshot.count > 0)
-        {
-            const auto& snapshot = snapshot_result.snapshot;
-            const auto* first_bytes = static_cast<const char*>(snapshot.data);
-            const auto* last_bytes = first_bytes + (snapshot.count - 1) * snapshot.stride;
-
-            double t_first = 0.0;
-            double t_last = 0.0;
-
-            if (config.data_type == "Trades") {
-                t_first = reinterpret_cast<const vnm::benchmark::Trade_sample*>(first_bytes)->timestamp;
-                t_last = reinterpret_cast<const vnm::benchmark::Trade_sample*>(last_bytes)->timestamp;
-            }
-            else {
-                t_first = reinterpret_cast<const vnm::benchmark::Bar_sample*>(first_bytes)->timestamp;
-                t_last = reinterpret_cast<const vnm::benchmark::Bar_sample*>(last_bytes)->timestamp;
-            }
-
-            t_available_min = t_first;
-            t_max = t_last;
-            t_min = std::max(t_first, t_last - 10.0);  // 10 second window
-
-            if (source->has_value_range()) {
-                auto [lo, hi] = source->value_range();
-                float padding = (hi - lo) * 0.1f;
-                if (padding < 0.01f) padding = 1.0f;
-                v_min = lo - padding;
-                v_max = hi + padding;
-            }
-        }
-
         // Render frame
         {
             VNM_PLOT_PROFILE_SCOPE(&profiler, "renderer");
             VNM_PLOT_PROFILE_SCOPE(&profiler, "renderer.frame");
 
-            // GL setup (skip in no-GL mode)
-            if (!config.no_gl) {
-                fbo.bind();
-                glEnable(GL_MULTISAMPLE);
-                glEnable(GL_BLEND);
-                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+            int frame_fb_w = 0;
+            int frame_fb_h = 0;
+            {
+                VNM_PLOT_PROFILE_SCOPE(&profiler, "renderer.frame.fb_size");
+                frame_fb_w = fb_w;
+                frame_fb_h = fb_h;
+            }
 
-                const auto palette = vnm::plot::Color_palette::for_theme(render_config.dark_mode);
-                glClearColor(palette.background.r, palette.background.g,
-                             palette.background.b, palette.background.a);
-                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            // GL setup (skip in no-GL mode)
+            {
+                VNM_PLOT_PROFILE_SCOPE(&profiler, "renderer.frame.gl_setup");
+                if (!config.no_gl) {
+                    fbo.bind();
+                    glEnable(GL_MULTISAMPLE);
+                    glEnable(GL_BLEND);
+                    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+                    const auto palette =
+                        vnm::plot::Color_palette::for_theme(render_config.dark_mode);
+                    glClearColor(palette.background.r, palette.background.g,
+                                 palette.background.b, palette.background.a);
+                    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+                }
+            }
+
+            {
+                VNM_PLOT_PROFILE_SCOPE(&profiler, "renderer.frame.update_view_range");
+                vnm::plot::Data_source* source = (config.data_type == "Trades")
+                    ? static_cast<vnm::plot::Data_source*>(trade_source.get())
+                    : static_cast<vnm::plot::Data_source*>(bar_source.get());
+
+                auto snapshot_result = source->try_snapshot();
+                if (snapshot_result.status == vnm::plot::snapshot_result_t::Status::OK &&
+                    snapshot_result.snapshot.count > 0)
+                {
+                    const auto& snapshot = snapshot_result.snapshot;
+                    const auto* first_bytes = static_cast<const char*>(snapshot.data);
+                    const auto* last_bytes =
+                        first_bytes + (snapshot.count - 1) * snapshot.stride;
+
+                    double t_first = 0.0;
+                    double t_last = 0.0;
+
+                    if (config.data_type == "Trades") {
+                        t_first = reinterpret_cast<
+                            const vnm::benchmark::Trade_sample*>(first_bytes)->timestamp;
+                        t_last = reinterpret_cast<
+                            const vnm::benchmark::Trade_sample*>(last_bytes)->timestamp;
+                    }
+                    else {
+                        t_first = reinterpret_cast<
+                            const vnm::benchmark::Bar_sample*>(first_bytes)->timestamp;
+                        t_last = reinterpret_cast<
+                            const vnm::benchmark::Bar_sample*>(last_bytes)->timestamp;
+                    }
+
+                    t_available_min = t_first;
+                    t_max = t_last;
+                    t_min = std::max(t_first, t_last - 10.0);  // 10 second window
+
+                    if (source->has_value_range()) {
+                        auto [lo, hi] = source->value_range();
+                        float padding = (hi - lo) * 0.1f;
+                        if (padding < 0.01f) {
+                            padding = 1.0f;
+                        }
+                        v_min = lo - padding;
+                        v_max = hi + padding;
+                    }
+                }
             }
 
             // Calculate layout dimensions (matching Qt benchmark)
@@ -787,8 +808,8 @@ int main(int argc, char* argv[])
             {
                 VNM_PLOT_PROFILE_SCOPE(&profiler, "renderer.frame.dimension_calc");
                 adjusted_reserved_height = k_base_label_height_px + k_adjusted_preview_height;
-                usable_width = fb_w - k_vbar_width_pixels;
-                usable_height = fb_h - adjusted_reserved_height;
+                usable_width = frame_fb_w - k_vbar_width_pixels;
+                usable_height = frame_fb_h - adjusted_reserved_height;
             }
 
             // Use Layout_calculator for proper label positions
@@ -837,7 +858,7 @@ int main(int argc, char* argv[])
                 cache_key.v1 = v_max;
                 cache_key.t0 = t_min;
                 cache_key.t1 = t_max;
-                cache_key.viewport_size = vnm::plot::Size2i{fb_w, fb_h};
+                cache_key.viewport_size = vnm::plot::Size2i{frame_fb_w, frame_fb_h};
                 cache_key.adjusted_reserved_height = adjusted_reserved_height;
                 cache_key.adjusted_preview_height = k_adjusted_preview_height;
                 cache_key.adjusted_font_size_in_pixels = k_adjusted_font_px;
@@ -887,9 +908,9 @@ int main(int argc, char* argv[])
                     t_max,
                     t_available_min,
                     t_max,
-                    fb_w,
-                    fb_h,
-                    glm::ortho(0.f, float(fb_w), float(fb_h), 0.f, -1.f, 1.f),
+                    frame_fb_w,
+                    frame_fb_h,
+                    glm::ortho(0.f, float(frame_fb_w), float(frame_fb_h), 0.f, -1.f, 1.f),
                     k_adjusted_font_px,
                     k_base_label_height_px,
                     adjusted_reserved_height,
@@ -900,16 +921,20 @@ int main(int argc, char* argv[])
             }();
 
             // Always render (renderers handle skip_gl internally for CPU profiling)
-            chrome_renderer.render_grid_and_backgrounds(ctx, primitives);
-            series_renderer.render(ctx, series_map);
-            chrome_renderer.render_preview_overlay(ctx, primitives);
-            if (!config.no_gl) {
-                primitives.flush_rects(ctx.pmv);
+            {
+                VNM_PLOT_PROFILE_SCOPE(&profiler, "renderer.frame.render_passes");
+                chrome_renderer.render_grid_and_backgrounds(ctx, primitives);
+                series_renderer.render(ctx, series_map);
+                chrome_renderer.render_preview_overlay(ctx, primitives);
+                if (!config.no_gl) {
+                    primitives.flush_rects(ctx.pmv);
+                }
             }
 
             // Render text labels (when enabled)
 #if defined(VNM_PLOT_ENABLE_TEXT)
             if (text_renderer && render_config.show_text) {
+                VNM_PLOT_PROFILE_SCOPE(&profiler, "renderer.frame.text_overlay");
                 text_renderer->render(ctx, false, false);
             }
 #endif
