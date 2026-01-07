@@ -25,6 +25,7 @@ endif()
 set(BENCHMARK_SOURCES
     src/main.cpp
     src/benchmark_window.cpp
+    src/benchmark_frame.cpp
 )
 
 set(BENCHMARK_HEADERS
@@ -34,6 +35,7 @@ set(BENCHMARK_HEADERS
     include/benchmark_profiler.h
     include/benchmark_data_source.h
     include/benchmark_window.h
+    include/benchmark_frame.h
 )
 
 add_executable(vnm_plot_benchmark

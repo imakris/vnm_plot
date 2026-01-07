@@ -49,6 +49,7 @@ FetchContent_MakeAvailable(glfw)
 
 add_executable(vnm_plot_benchmark_headless
     main.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../benchmark/src/benchmark_frame.cpp
 )
 
 target_compile_features(vnm_plot_benchmark_headless PRIVATE cxx_std_20)

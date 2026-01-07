@@ -81,7 +81,6 @@ private slots:
 
 private:
     void setup_series();
-    void update_view_range();
     void generator_thread_func();
     void stop_generator_thread();
 

@@ -26,6 +26,7 @@
 
 // Reuse benchmark components from the Qt benchmark
 #include "benchmark_constants.h"
+#include "benchmark_frame.h"
 #include "ring_buffer.h"
 #include "sample_types.h"
 #include "brownian_generator.h"
@@ -284,12 +285,7 @@ void print_config_summary(const Headless_config& config, std::ostream& os)
        << "  No GL:        " << (config.no_gl ? "yes" : "no") << "\n";
 }
 
-std::string format_benchmark_timestamp(double ts, double /*range*/)
-{
-    char buf[32];
-    std::snprintf(buf, sizeof(buf), "%.1f", ts);
-    return buf;
-}
+// Use shared format_benchmark_timestamp from benchmark_frame.h
 
 void glfw_error_callback(int code, const char* desc)
 {
@@ -595,7 +591,7 @@ int main(int argc, char* argv[])
     render_config.snap_lines_to_pixels = false;
     render_config.line_width_px = 1.5;
     render_config.skip_gl_calls = config.no_gl;
-    render_config.format_timestamp = format_benchmark_timestamp;
+    render_config.format_timestamp = vnm::benchmark::format_benchmark_timestamp;
     render_config.profiler = &profiler;
 
     // Create Brownian generator
@@ -724,220 +720,54 @@ int main(int argc, char* argv[])
 
         glfwPollEvents();
 
-        // Render frame
+        // Render frame using shared helper
         {
-            VNM_PLOT_PROFILE_SCOPE(&profiler, "renderer");
-            VNM_PLOT_PROFILE_SCOPE(&profiler, "renderer.frame");
+            // Get data source
+            vnm::plot::Data_source* source = (config.data_type == "Trades")
+                ? static_cast<vnm::plot::Data_source*>(trade_source.get())
+                : static_cast<vnm::plot::Data_source*>(bar_source.get());
 
-            int frame_fb_w = 0;
-            int frame_fb_h = 0;
-            {
-                VNM_PLOT_PROFILE_SCOPE(&profiler, "renderer.frame.fb_size");
-                frame_fb_w = fb_w;
-                frame_fb_h = fb_h;
-            }
-
-            // GL setup (skip in no-GL mode)
-            {
-                VNM_PLOT_PROFILE_SCOPE(&profiler, "renderer.frame.gl_setup");
-                if (!config.no_gl) {
+            // Set up frame parameters
+            vnm::benchmark::Benchmark_frame_params params{
+                t_min,
+                t_max,
+                t_available_min,
+                v_min,
+                v_max,
+                config.data_type,
+                k_adjusted_font_px,
+                k_base_label_height_px,
+                k_adjusted_preview_height,
+                k_vbar_width_pixels,
+                config.no_gl,
+                true,  // clear_depth (headless uses color+depth)
+                [&fbo]() -> std::pair<int, int> {
+                    return {fbo.width(), fbo.height()};
+                },
+                [&fbo]() {
                     fbo.bind();
-                    glEnable(GL_MULTISAMPLE);
-                    glEnable(GL_BLEND);
-                    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-                    const auto palette =
-                        vnm::plot::Color_palette::for_theme(render_config.dark_mode);
-                    glClearColor(palette.background.r, palette.background.g,
-                                 palette.background.b, palette.background.a);
-                    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
                 }
-            }
+            };
 
-            {
-                VNM_PLOT_PROFILE_SCOPE(&profiler, "renderer.frame.update_view_range");
-                vnm::plot::Data_source* source = (config.data_type == "Trades")
-                    ? static_cast<vnm::plot::Data_source*>(trade_source.get())
-                    : static_cast<vnm::plot::Data_source*>(bar_source.get());
-
-                auto snapshot_result = source->try_snapshot();
-                if (snapshot_result.status == vnm::plot::snapshot_result_t::Status::OK &&
-                    snapshot_result.snapshot.count > 0)
-                {
-                    const auto& snapshot = snapshot_result.snapshot;
-                    const auto* first_bytes = static_cast<const char*>(snapshot.data);
-                    const auto* last_bytes =
-                        first_bytes + (snapshot.count - 1) * snapshot.stride;
-
-                    double t_first = 0.0;
-                    double t_last = 0.0;
-
-                    if (config.data_type == "Trades") {
-                        t_first = reinterpret_cast<
-                            const vnm::benchmark::Trade_sample*>(first_bytes)->timestamp;
-                        t_last = reinterpret_cast<
-                            const vnm::benchmark::Trade_sample*>(last_bytes)->timestamp;
-                    }
-                    else {
-                        t_first = reinterpret_cast<
-                            const vnm::benchmark::Bar_sample*>(first_bytes)->timestamp;
-                        t_last = reinterpret_cast<
-                            const vnm::benchmark::Bar_sample*>(last_bytes)->timestamp;
-                    }
-
-                    t_available_min = t_first;
-                    t_max = t_last;
-                    t_min = std::max(t_first, t_last - 10.0);  // 10 second window
-
-                    if (source->has_value_range()) {
-                        auto [lo, hi] = source->value_range();
-                        float padding = (hi - lo) * 0.1f;
-                        if (padding < 0.01f) {
-                            padding = 1.0f;
-                        }
-                        v_min = lo - padding;
-                        v_max = hi + padding;
-                    }
-                }
-            }
-
-            // Calculate layout dimensions (matching Qt benchmark)
-            double adjusted_reserved_height;
-            double usable_width;
-            double usable_height;
-            {
-                VNM_PLOT_PROFILE_SCOPE(&profiler, "renderer.frame.dimension_calc");
-                adjusted_reserved_height = k_base_label_height_px + k_adjusted_preview_height;
-                usable_width = frame_fb_w - k_vbar_width_pixels;
-                usable_height = frame_fb_h - adjusted_reserved_height;
-            }
-
-            // Use Layout_calculator for proper label positions
-            vnm::plot::Layout_calculator::parameters_t layout_params;
-            {
-                VNM_PLOT_PROFILE_SCOPE(&profiler, "renderer.frame.layout_params_setup");
-                layout_params.v_min = v_min;
-                layout_params.v_max = v_max;
-                layout_params.t_min = t_min;
-                layout_params.t_max = t_max;
-                layout_params.usable_width = usable_width;
-                layout_params.usable_height = usable_height;
-                layout_params.vbar_width = k_vbar_width_pixels;
-                layout_params.label_visible_height = usable_height + k_adjusted_preview_height;
-                layout_params.adjusted_font_size_in_pixels = k_adjusted_font_px;
-
+            // Set up frame context
+            vnm::benchmark::Benchmark_frame_context ctx{
+                profiler,
+                render_config,
+                layout_calc,
+                layout_cache,
+                primitives,
+                series_renderer,
+                chrome_renderer,
+                series_map,
+                source,
 #if defined(VNM_PLOT_ENABLE_TEXT)
-                if (text_enabled) {
-                    layout_params.monospace_char_advance_px = font_renderer.monospace_advance_px();
-                    layout_params.monospace_advance_is_reliable = font_renderer.monospace_advance_is_reliable();
-                    layout_params.measure_text_cache_key = font_renderer.text_measure_cache_key();
-                    layout_params.measure_text_func = [&font_renderer](const char* text) {
-                        return font_renderer.measure_text_px(text);
-                    };
-                }
-                else
+                text_enabled ? &font_renderer : nullptr,
+                text_renderer.get()
 #endif
-                {
-                    layout_params.monospace_char_advance_px = 0.0f;
-                    layout_params.monospace_advance_is_reliable = false;
-                    layout_params.measure_text_cache_key = 0;
-                    layout_params.measure_text_func = [](const char* text) {
-                        return static_cast<float>(std::strlen(text));
-                    };
-                }
-                layout_params.h_label_vertical_nudge_factor = vnm::plot::detail::k_h_label_vertical_nudge_px;
-                layout_params.format_timestamp_func = format_benchmark_timestamp;
-                layout_params.get_required_fixed_digits_func = [](double) { return 2; };
-                layout_params.profiler = &profiler;
-            }
+            };
 
-            vnm::plot::layout_cache_key_t cache_key;
-            {
-                VNM_PLOT_PROFILE_SCOPE(&profiler, "renderer.frame.cache_key_setup");
-                cache_key.v0 = v_min;
-                cache_key.v1 = v_max;
-                cache_key.t0 = t_min;
-                cache_key.t1 = t_max;
-                cache_key.viewport_size = vnm::plot::Size2i{frame_fb_w, frame_fb_h};
-                cache_key.adjusted_reserved_height = adjusted_reserved_height;
-                cache_key.adjusted_preview_height = k_adjusted_preview_height;
-                cache_key.adjusted_font_size_in_pixels = k_adjusted_font_px;
-                cache_key.vbar_width_pixels = k_vbar_width_pixels;
-#if defined(VNM_PLOT_ENABLE_TEXT)
-                cache_key.font_metrics_key = text_enabled ? font_renderer.text_measure_cache_key() : 0;
-#else
-                cache_key.font_metrics_key = 0;
-#endif
-            }
-
-            const vnm::plot::frame_layout_result_t* layout_ptr;
-            {
-                VNM_PLOT_PROFILE_SCOPE(&profiler, "renderer.frame.layout_cache_lookup");
-                layout_ptr = layout_cache.try_get(cache_key);
-            }
-            if (!layout_ptr) {
-                VNM_PLOT_PROFILE_SCOPE(&profiler, "renderer.frame.layout_cache_miss");
-                auto layout_result = layout_calc.calculate(layout_params);
-
-                vnm::plot::frame_layout_result_t layout;
-                {
-                    VNM_PLOT_PROFILE_SCOPE(&profiler, "renderer.frame.layout_cache_miss_store");
-                    layout.usable_width = usable_width;
-                    layout.usable_height = usable_height;
-                    layout.v_bar_width = k_vbar_width_pixels;
-                    layout.h_bar_height = k_base_label_height_px + 1.0;
-                    layout.max_v_label_text_width = layout_result.max_v_label_text_width;
-                    layout.v_labels = std::move(layout_result.v_labels);
-                    layout.h_labels = std::move(layout_result.h_labels);
-                    layout.v_label_fixed_digits = layout_result.v_label_fixed_digits;
-                    layout.h_labels_subsecond = layout_result.h_labels_subsecond;
-                    layout_ptr = &layout_cache.store(cache_key, std::move(layout));
-                }
-            }
-
-            // Build frame context
-            vnm::plot::frame_context_t ctx = [&]() {
-                VNM_PLOT_PROFILE_SCOPE(&profiler, "renderer.frame.context_build");
-                return vnm::plot::frame_context_t{
-                    *layout_ptr,
-                    v_min,
-                    v_max,
-                    v_min,  // preview_v0
-                    v_max,  // preview_v1
-                    t_min,
-                    t_max,
-                    t_available_min,
-                    t_max,
-                    frame_fb_w,
-                    frame_fb_h,
-                    glm::ortho(0.f, float(frame_fb_w), float(frame_fb_h), 0.f, -1.f, 1.f),
-                    k_adjusted_font_px,
-                    k_base_label_height_px,
-                    adjusted_reserved_height,
-                    k_adjusted_preview_height,
-                    false,  // show_info
-                    &render_config
-                };
-            }();
-
-            // Always render (renderers handle skip_gl internally for CPU profiling)
-            {
-                VNM_PLOT_PROFILE_SCOPE(&profiler, "renderer.frame.render_passes");
-                chrome_renderer.render_grid_and_backgrounds(ctx, primitives);
-                series_renderer.render(ctx, series_map);
-                chrome_renderer.render_preview_overlay(ctx, primitives);
-                if (!config.no_gl) {
-                    primitives.flush_rects(ctx.pmv);
-                }
-            }
-
-            // Render text labels (when enabled)
-#if defined(VNM_PLOT_ENABLE_TEXT)
-            if (text_renderer && render_config.show_text) {
-                VNM_PLOT_PROFILE_SCOPE(&profiler, "renderer.frame.text_overlay");
-                text_renderer->render(ctx, false, false);
-            }
-#endif
+            // Render the frame using shared helper
+            vnm::benchmark::render_benchmark_frame(params, ctx);
 
             if (!config.no_gl) {
                 fbo.unbind();
