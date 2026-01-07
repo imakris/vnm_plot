@@ -24,6 +24,21 @@ std::string format_benchmark_timestamp(double ts, double /*range*/)
     return buf;
 }
 
+/// Ensure data source snapshot is current for this frame.
+/// This updates cached ranges (timestamp_range, value_range) so they reflect
+/// the latest data. Subsequent try_snapshot() calls within the same frame
+/// will short-circuit on unchanged sequence.
+///
+/// Usage: Call once at frame start before using cached range accessors.
+/// Returns the snapshot result for optional reuse by the caller.
+vnm::plot::snapshot_result_t ensure_frame_snapshot(vnm::plot::Data_source* source)
+{
+    if (!source) {
+        return {vnm::plot::data_snapshot_t{}, vnm::plot::snapshot_result_t::Status::FAILED};
+    }
+    return source->try_snapshot();
+}
+
 void update_view_range_from_source(
     vnm::plot::Data_source* source,
     const std::string& data_type,
@@ -164,6 +179,10 @@ void render_benchmark_frame(
     // Update view range based on data
     {
         VNM_PLOT_PROFILE_SCOPE(&ctx.profiler, "renderer.frame.update_view_range");
+        // Ensure snapshot cache is current before reading cached ranges.
+        // This call updates timestamp_range/value_range caches; subsequent
+        // try_snapshot() calls in rendering will short-circuit on unchanged sequence.
+        ensure_frame_snapshot(ctx.data_source);
         update_view_range_from_source(
             ctx.data_source,
             params.data_type,

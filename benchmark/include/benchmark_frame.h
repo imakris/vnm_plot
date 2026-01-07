@@ -73,6 +73,15 @@ struct Benchmark_frame_context {
 /// Shared format_benchmark_timestamp function
 std::string format_benchmark_timestamp(double ts, double range);
 
+/// Ensure data source snapshot is current for this frame.
+/// This updates cached ranges (timestamp_range, value_range) so they reflect
+/// the latest data. Subsequent try_snapshot() calls within the same frame
+/// will short-circuit on unchanged sequence.
+///
+/// Usage: Call once at frame start before using cached range accessors.
+/// Returns the snapshot result for optional reuse by the caller.
+vnm::plot::snapshot_result_t ensure_frame_snapshot(vnm::plot::Data_source* source);
+
 /// Update view range from data source (t_min, t_max, v_min, v_max)
 /// Uses a 10-second sliding window
 void update_view_range_from_source(
