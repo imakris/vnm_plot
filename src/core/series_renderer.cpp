@@ -652,14 +652,18 @@ void Series_renderer::render(
         }
     }
 
-    GLboolean was_blend = GL_FALSE;
+    // Note: We always enable blend for series rendering and restore state at end.
+    // Avoid glIsEnabled() which is a synchronous GL query that can stall pipeline.
     {
         VNM_PLOT_PROFILE_SCOPE(
             profiler,
             "renderer.frame.execute_passes.render_data_series.blend_setup");
-        was_blend = glIsEnabled(GL_BLEND);
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        // Set line width once for all draw passes to avoid repeated glLineWidth calls
+        glLineWidth(line_width);
+        // Enable scissor test once - we'll only update the rectangle per draw pass
+        glEnable(GL_SCISSOR_TEST);
     }
 
     for (const auto& [id, s] : series) {
@@ -864,11 +868,9 @@ void Series_renderer::render(
             const GLuint vao = ensure_series_vao(primitive_style, view_state.active_vbo, *s);
             glBindVertexArray(vao);
 
-            if (drawing_mode == GL_LINE_STRIP) {
-                glLineWidth(line_width);
-            }
+            // Note: glLineWidth is set once at the start of render() to avoid per-draw overhead
 
-            bool scissor_enabled = false;
+            // Scissor test is enabled at start of render() - just update rectangle
             bool do_draw = true;
             if (is_preview) {
                 const double preview_height = ctx.adjusted_preview_height;
@@ -884,24 +886,20 @@ void Series_renderer::render(
                         do_draw = false;
                     }
                     else {
-                        glEnable(GL_SCISSOR_TEST);
                         glScissor(
                             0,
                             scissor_y,
                             static_cast<GLsizei>(lround(ctx.win_w)),
                             scissor_h);
-                        scissor_enabled = true;
                     }
                 }
             }
             else {
-                glEnable(GL_SCISSOR_TEST);
                 glScissor(
                     0,
                     to_gl_scissor_y(0.0, layout.usable_height),
                     static_cast<GLsizei>(lround(layout.usable_width)),
                     static_cast<GLsizei>(lround(layout.usable_height)));
-                scissor_enabled = true;
             }
 
             if (do_draw) {
@@ -911,14 +909,7 @@ void Series_renderer::render(
                 glDrawArrays(drawing_mode, view_result.first, count);
             }
 
-            if (scissor_enabled) {
-                glDisable(GL_SCISSOR_TEST);
-            }
-            if (drawing_mode == GL_LINE_STRIP) {
-                glLineWidth(1.0f);
-            }
-
-            glBindVertexArray(0);
+            // Note: VAO unbinding moved to cleanup section to avoid per-draw overhead
 
             if (colormap_tex != 0) {
                 glBindTexture(GL_TEXTURE_1D, 0);
@@ -996,9 +987,13 @@ void Series_renderer::render(
             profiler,
             "renderer.frame.execute_passes.render_data_series.blend_cleanup");
         glUseProgram(0);
-        if (!was_blend) {
-            glDisable(GL_BLEND);
-        }
+        glBindVertexArray(0);
+        // Restore default line width
+        glLineWidth(1.0f);
+        // Disable scissor test
+        glDisable(GL_SCISSOR_TEST);
+        // Note: We leave blend enabled as it's commonly needed for subsequent rendering.
+        // The caller or next render pass will set up blend state as needed.
     }
 }
 
