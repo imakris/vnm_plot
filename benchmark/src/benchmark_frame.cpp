@@ -42,14 +42,15 @@ void update_view_range_from_source(
     // reducing update_view_range from ~25% to <1% of frame time.
     if (source->has_timestamp_range() && source->has_value_range()) {
         auto [t_first, t_last] = source->timestamp_range();
-        if (t_last <= t_first) {
-            return;  // No valid data
+        if (t_last < t_first) {
+            return;  // Invalid data (shouldn't happen with ordered timestamps)
         }
 
         // Track available time range for preview bar
         t_available_min = t_first;
 
         // Show last 10 seconds of data (sliding window)
+        // Handle single-sample case (t_first == t_last) by using those values directly
         constexpr double window_size = 10.0;
         t_max = t_last;
         t_min = std::max(t_first, t_last - window_size);
