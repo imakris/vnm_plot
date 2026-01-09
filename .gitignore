@@ -3,6 +3,8 @@
 /build_headless/
 /examples/build-*
 /build_benchmark/
+/build_benchmark_headless/
+/build_benchmark_qt/
 /build-benchmark-*/
 /benchmark_headless/build/
 
