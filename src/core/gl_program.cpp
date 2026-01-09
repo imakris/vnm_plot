@@ -203,6 +203,7 @@ bool GL_program::link()
         m_geometry_shader = 0;
     }
 
+    m_uniform_cache.clear();
     m_linked = true;
     return true;
 }

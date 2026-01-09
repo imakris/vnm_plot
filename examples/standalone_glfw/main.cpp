@@ -248,6 +248,10 @@ int main()
         glfwSwapBuffers(window);
     }
 
+    glfwMakeContextCurrent(window);
+    series_renderer.cleanup_gl_resources();
+    primitives.cleanup_gl_resources();
+
     glfwDestroyWindow(window);
     glfwTerminate();
     return EXIT_SUCCESS;
