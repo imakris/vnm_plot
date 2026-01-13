@@ -186,9 +186,11 @@ bool scan_snapshot_minmax(
     float v_max = std::numeric_limits<float>::lowest();
     bool have_any = false;
 
-    const auto* base = static_cast<const std::uint8_t*>(snapshot.data);
     for (std::size_t i = start_idx; i < end_idx; ++i) {
-        const void* sample = base + i * snapshot.stride;
+        const void* sample = snapshot.at(i);
+        if (!sample) {
+            continue;
+        }
 
         float low = 0.0f;
         float high = 0.0f;
@@ -248,9 +250,13 @@ bool find_window_indices(
         return true;
     }
 
-    const auto* base = static_cast<const std::uint8_t*>(snapshot.data);
-    const double first_ts = series.get_timestamp(base);
-    const double last_ts = series.get_timestamp(base + (snapshot.count - 1) * snapshot.stride);
+    const void* first_sample = snapshot.at(0);
+    const void* last_sample = snapshot.at(snapshot.count - 1);
+    if (!first_sample || !last_sample) {
+        return false;
+    }
+    const double first_ts = series.get_timestamp(first_sample);
+    const double last_ts = series.get_timestamp(last_sample);
     if (std::isfinite(first_ts) && std::isfinite(last_ts)) {
         if (t_max < first_ts || t_min > last_ts) {
             return false;
@@ -261,7 +267,11 @@ bool find_window_indices(
     std::size_t hi = snapshot.count;
     while (lo < hi) {
         const std::size_t mid = (lo + hi) / 2;
-        const double ts = series.get_timestamp(base + mid * snapshot.stride);
+        const void* sample = snapshot.at(mid);
+        if (!sample) {
+            break;
+        }
+        const double ts = series.get_timestamp(sample);
         if (ts < t_min) {
             lo = mid + 1;
         }
@@ -275,7 +285,11 @@ bool find_window_indices(
     hi = snapshot.count;
     while (lo < hi) {
         const std::size_t mid = (lo + hi) / 2;
-        const double ts = series.get_timestamp(base + mid * snapshot.stride);
+        const void* sample = snapshot.at(mid);
+        if (!sample) {
+            break;
+        }
+        const double ts = series.get_timestamp(sample);
         if (ts <= t_max) {
             lo = mid + 1;
         }

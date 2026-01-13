@@ -86,13 +86,11 @@ bool test_snapshot_data_correctness() {
     bar.volume = 5000.0f;
     buffer.push(bar);
 
-    source.try_snapshot();
-
-    // Access through snapshot_data()
-    const auto& data = source.snapshot_data();
-    TEST_ASSERT(data.size() == 1, "should have 1 sample");
-    TEST_ASSERT(data[0].timestamp == 123.456, "timestamp should match");
-    TEST_ASSERT(data[0].close == 105.0f, "close should match");
+    auto result = source.try_snapshot();
+    const auto* sample = static_cast<const Bar_sample*>(result.snapshot.at(0));
+    TEST_ASSERT(sample != nullptr, "sample should be available");
+    TEST_ASSERT(sample->timestamp == 123.456, "timestamp should match");
+    TEST_ASSERT(sample->close == 105.0f, "close should match");
 
     return true;
 }
@@ -240,8 +238,8 @@ bool test_trade_access_policy() {
     return true;
 }
 
-// Test: Copy-on-snapshot isolation
-bool test_copy_on_snapshot_isolation() {
+// Test: Snapshot view refresh reflects new data
+bool test_snapshot_live_view() {
     Ring_buffer<Bar_sample> buffer(100);
     Benchmark_data_source<Bar_sample> source(buffer);
 
@@ -251,21 +249,24 @@ bool test_copy_on_snapshot_isolation() {
     buffer.push(bar1);
 
     // Take snapshot
-    source.try_snapshot();
-    float initial_close = source.snapshot_data()[0].close;
+    auto result1 = source.try_snapshot();
+    const auto* sample1 = static_cast<const Bar_sample*>(result1.snapshot.at(0));
+    TEST_ASSERT(sample1 != nullptr, "initial sample should be available");
+    float initial_close = sample1->close;
+    result1 = {};
 
     // Modify buffer after snapshot
     Bar_sample bar2{};
     bar2.close = 200.0f;
     buffer.push(bar2);
 
-    // Snapshot data should be unchanged until next try_snapshot
-    TEST_ASSERT(source.snapshot_data()[0].close == initial_close,
-                "snapshot should be isolated from buffer changes");
-
     // Now take new snapshot
-    source.try_snapshot();
-    TEST_ASSERT(source.snapshot_data().size() == 2, "new snapshot should have 2 samples");
+    auto result2 = source.try_snapshot();
+    TEST_ASSERT(result2.snapshot.count == 2, "new snapshot should have 2 samples");
+    const auto* sample2 = static_cast<const Bar_sample*>(result2.snapshot.at(0));
+    TEST_ASSERT(sample2 != nullptr, "updated sample should be available");
+    TEST_ASSERT(sample2->close == initial_close,
+                "existing sample should match after refresh");
 
     return true;
 }
@@ -405,7 +406,7 @@ int main() {
     RUN_TEST(test_sequence_tracking);
     RUN_TEST(test_bar_access_policy);
     RUN_TEST(test_trade_access_policy);
-    RUN_TEST(test_copy_on_snapshot_isolation);
+    RUN_TEST(test_snapshot_live_view);
     RUN_TEST(test_brownian_integration);
     RUN_TEST(test_unsupported_lod);
     RUN_TEST(test_sequence_short_circuit);

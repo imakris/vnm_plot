@@ -16,6 +16,7 @@ A GPU-accelerated 2D time-series plotting library using OpenGL, with optional Qt
 vnm_plot renders time-series data using OpenGL geometry shaders. It supports Level-of-Detail (LOD) for handling large datasets. The renderer automatically selects an appropriate resolution based on the current zoom level.
 
 The library uses a type-erased data interface (`vnm::plot::Data_source` + `vnm::plot::Data_access_policy`) so it can work with any sample type without templates in the rendering code.
+Data sources decide whether snapshots are copies or direct views; buffering, if needed, lives in the data source.
 
 Public header: include `#include <vnm_plot/vnm_plot.h>` only. It exposes core types unconditionally, and the Qt widgets when built with Qt (`VNM_PLOT_WITH_QT`).
 

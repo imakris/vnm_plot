@@ -101,24 +101,49 @@ struct AssetRef
 };
 
 // -----------------------------------------------------------------------------
-// data_snapshot_t: A contiguous view of sample data
+// data_snapshot_t: A view of sample data (optionally split into two segments)
 // -----------------------------------------------------------------------------
 // Represents a snapshot of data that can be safely read. The data pointer
 // points to a contiguous array of samples, each `stride` bytes apart.
+// If data2/count2 is set, the logical snapshot is split into two contiguous
+// segments (e.g., ring buffer wrap). The total count is `count`.
 // `sequence` is a monotonic counter that increments on data changes.
+// NOTE: The Data_source implementation owns the data contract. If it returns
+// copied data, it must keep that buffer alive. If it returns a direct view,
+// it must ensure the view stays valid (e.g., by holding a lock in `hold`).
 struct data_snapshot_t
 {
     const void* data     = nullptr;  ///< Pointer to first sample
     size_t      count    = 0;        ///< Number of samples
     size_t      stride   = 0;        ///< Bytes between consecutive samples
     uint64_t    sequence = 0;        ///< Change counter for cache invalidation
+    const void* data2    = nullptr;  ///< Optional second segment (wrap)
+    size_t      count2   = 0;        ///< Samples in second segment
+    std::shared_ptr<void> hold;      ///< Optional ownership/lock guard
 
     explicit operator bool() const { return data != nullptr && count > 0; }
 
     const void* at(size_t index) const
     {
-        return static_cast<const char*>(data) + index * stride;
+        if (index >= count || stride == 0) {
+            return nullptr;
+        }
+        if (count2 > count) {
+            return nullptr;
+        }
+        const size_t count1 = count - count2;
+        if (index < count1) {
+            return static_cast<const char*>(data) + index * stride;
+        }
+        if (!data2 || count2 == 0) {
+            return nullptr;
+        }
+        return static_cast<const char*>(data2) + (index - count1) * stride;
     }
+
+    size_t count1() const { return count - count2; }
+
+    bool is_segmented() const { return data2 != nullptr && count2 > 0; }
 };
 
 struct snapshot_result_t
@@ -137,6 +162,8 @@ class Data_source
 public:
     virtual ~Data_source() = default;
 
+    // Data_source decides whether snapshots are copied or direct views.
+    // Callers that want buffering must implement it in their Data_source.
     virtual snapshot_result_t try_snapshot(size_t lod_level = 0) = 0;
 
     data_snapshot_t snapshot(size_t lod_level = 0)

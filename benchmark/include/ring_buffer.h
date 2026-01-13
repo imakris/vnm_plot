@@ -10,6 +10,7 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <mutex>
 #include <shared_mutex>
 #include <vector>
@@ -26,6 +27,16 @@ public:
     struct Copy_result {
         std::size_t count;    ///< Number of samples copied
         uint64_t sequence;    ///< Sequence at time of copy
+    };
+
+    /// Result of a view operation (zero-copy snapshot)
+    struct View_result {
+        const T* data = nullptr;
+        std::size_t count = 0;
+        const T* data2 = nullptr;
+        std::size_t count2 = 0;
+        uint64_t sequence = 0;
+        std::shared_ptr<std::shared_lock<std::shared_mutex>> lock;
     };
 
     /// Construct a ring buffer with the given capacity.
@@ -111,6 +122,49 @@ public:
     // -------------------------------------------------------------------------
     // Consumer API (render thread) - thread-safe copy under lock
     // -------------------------------------------------------------------------
+
+    /// Get a zero-copy view of current samples.
+    /// Holds a shared lock for the lifetime of the returned View_result.
+    View_result view() const {
+        View_result view;
+        view.lock = std::make_shared<std::shared_lock<std::shared_mutex>>(mutex_);
+
+        const std::size_t h = head_.load(std::memory_order_acquire);
+        const std::size_t t = tail_.load(std::memory_order_acquire);
+        const uint64_t seq = sequence_.load(std::memory_order_acquire);
+        view.sequence = seq;
+
+        if (h == t && seq == 0) {
+            return view;
+        }
+
+        const std::size_t cap = buffer_.size();
+        if (h == t) {
+            // Full buffer
+            const std::size_t count1 = cap - t;
+            view.data = buffer_.data() + t;
+            view.count = cap;
+            if (t > 0) {
+                view.data2 = buffer_.data();
+                view.count2 = t;
+            }
+            return view;
+        }
+
+        if (h > t) {
+            // Contiguous
+            view.data = buffer_.data() + t;
+            view.count = h - t;
+            return view;
+        }
+
+        // Wrapped
+        view.data = buffer_.data() + t;
+        view.data2 = buffer_.data();
+        view.count2 = h;
+        view.count = (cap - t) + h;
+        return view;
+    }
 
     /// Copy all valid samples to destination vector.
     /// Holds shared lock during entire copy operation - THREAD SAFE.

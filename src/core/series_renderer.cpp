@@ -45,9 +45,11 @@ bool compute_aux_metric_range(
     double max_value = -std::numeric_limits<double>::infinity();
     bool have_any = false;
 
-    const auto* base = static_cast<const std::uint8_t*>(snapshot.data);
     for (std::size_t i = 0; i < snapshot.count; ++i) {
-        const void* sample = base + i * snapshot.stride;
+        const void* sample = snapshot.at(i);
+        if (!sample) {
+            continue;
+        }
         const double value = series.access.get_aux_metric(sample);
         if (!std::isfinite(value)) {
             continue;
@@ -366,17 +368,18 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
             VNM_PLOT_PROFILE_SCOPE(
                 profiler,
                 "renderer.frame.execute_passes.render_data_series.series.process_view.binary_search");
-            const auto* base = static_cast<const std::uint8_t*>(snapshot.data);
-            first_ts = get_timestamp(base);
-            last_ts = get_timestamp(base + (snapshot.count - 1) * snapshot.stride);
-            have_ts_bounds = std::isfinite(first_ts) && std::isfinite(last_ts);
-            first_idx = lower_bound_timestamp(
-                snapshot.data, snapshot.count, snapshot.stride, get_timestamp, t_min);
+            const void* first_sample = snapshot.at(0);
+            const void* last_sample = snapshot.at(snapshot.count - 1);
+            if (first_sample && last_sample) {
+                first_ts = get_timestamp(first_sample);
+                last_ts = get_timestamp(last_sample);
+                have_ts_bounds = std::isfinite(first_ts) && std::isfinite(last_ts);
+            }
+            first_idx = lower_bound_timestamp(snapshot, get_timestamp, t_min);
             if (first_idx > 0) {
                 --first_idx;
             }
-            last_idx = upper_bound_timestamp(
-                snapshot.data, snapshot.count, snapshot.stride, get_timestamp, t_max);
+            last_idx = upper_bound_timestamp(snapshot, get_timestamp, t_max);
             last_idx = std::min(last_idx + 2, snapshot.count);
         }
 
@@ -509,7 +512,32 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
                     m_metrics.bytes_allocated += alloc_size;
                 }
 
-                glBufferSubData(GL_ARRAY_BUFFER, 0, static_cast<GLsizeiptr>(snapshot.count * snapshot.stride), snapshot.data);
+                if (!snapshot.is_segmented()) {
+                    glBufferSubData(
+                        GL_ARRAY_BUFFER,
+                        0,
+                        static_cast<GLsizeiptr>(snapshot.count * snapshot.stride),
+                        snapshot.data);
+                }
+                else {
+                    const std::size_t count1 = snapshot.count1();
+                    const std::size_t bytes1 = count1 * snapshot.stride;
+                    const std::size_t bytes2 = snapshot.count2 * snapshot.stride;
+                    if (bytes1 > 0) {
+                        glBufferSubData(
+                            GL_ARRAY_BUFFER,
+                            0,
+                            static_cast<GLsizeiptr>(bytes1),
+                            snapshot.data);
+                    }
+                    if (bytes2 > 0) {
+                        glBufferSubData(
+                            GL_ARRAY_BUFFER,
+                            static_cast<GLintptr>(bytes1),
+                            static_cast<GLsizeiptr>(bytes2),
+                            snapshot.data2);
+                    }
+                }
                 m_metrics.bytes_uploaded += snapshot.count * snapshot.stride;
 
                 // Note: glBindBuffer(0) removed - unbinding is unnecessary and adds overhead.

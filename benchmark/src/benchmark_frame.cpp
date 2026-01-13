@@ -49,19 +49,22 @@ void update_view_range_from_source(
     }
 
     // Get time range from first and last samples
-    const auto* first_bytes = static_cast<const char*>(snapshot.data);
-    const auto* last_bytes = first_bytes + (snapshot.count - 1) * snapshot.stride;
+    const void* first_sample = snapshot.at(0);
+    const void* last_sample = snapshot.at(snapshot.count - 1);
+    if (!first_sample || !last_sample) {
+        return;
+    }
 
     double t_first = 0.0;
     double t_last = 0.0;
 
     if (data_type == "Trades") {
-        t_first = reinterpret_cast<const Trade_sample*>(first_bytes)->timestamp;
-        t_last = reinterpret_cast<const Trade_sample*>(last_bytes)->timestamp;
+        t_first = reinterpret_cast<const Trade_sample*>(first_sample)->timestamp;
+        t_last = reinterpret_cast<const Trade_sample*>(last_sample)->timestamp;
     }
     else {
-        t_first = reinterpret_cast<const Bar_sample*>(first_bytes)->timestamp;
-        t_last = reinterpret_cast<const Bar_sample*>(last_bytes)->timestamp;
+        t_first = reinterpret_cast<const Bar_sample*>(first_sample)->timestamp;
+        t_last = reinterpret_cast<const Bar_sample*>(last_sample)->timestamp;
     }
 
     // Track available time range for preview bar

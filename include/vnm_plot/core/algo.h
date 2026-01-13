@@ -12,6 +12,8 @@
 //   - Binary search for timestamps
 //   - LOD selection algorithms
 
+#include "types.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -279,6 +281,35 @@ std::size_t lower_bound_timestamp(
     return lo;
 }
 
+// Overload for data_snapshot_t (supports segmented snapshots).
+template<typename GetTimestampFn>
+std::size_t lower_bound_timestamp(
+    const data_snapshot_t& snapshot,
+    GetTimestampFn&& get_timestamp,
+    double t)
+{
+    if (!snapshot || snapshot.count == 0) {
+        return 0;
+    }
+
+    std::size_t lo = 0;
+    std::size_t hi = snapshot.count;
+    while (lo < hi) {
+        std::size_t mid = lo + (hi - lo) / 2;
+        const void* sample = snapshot.at(mid);
+        if (!sample) {
+            break;
+        }
+        if (get_timestamp(sample) < t) {
+            lo = mid + 1;
+        }
+        else {
+            hi = mid;
+        }
+    }
+    return lo;
+}
+
 // Returns index of first sample with timestamp > t (upper_bound semantics).
 template<typename GetTimestampFn>
 std::size_t upper_bound_timestamp(
@@ -299,6 +330,35 @@ std::size_t upper_bound_timestamp(
     while (lo < hi) {
         std::size_t mid = lo + (hi - lo) / 2;
         const void* sample = base + mid * stride;
+        if (get_timestamp(sample) <= t) {
+            lo = mid + 1;
+        }
+        else {
+            hi = mid;
+        }
+    }
+    return lo;
+}
+
+// Overload for data_snapshot_t (supports segmented snapshots).
+template<typename GetTimestampFn>
+std::size_t upper_bound_timestamp(
+    const data_snapshot_t& snapshot,
+    GetTimestampFn&& get_timestamp,
+    double t)
+{
+    if (!snapshot || snapshot.count == 0) {
+        return 0;
+    }
+
+    std::size_t lo = 0;
+    std::size_t hi = snapshot.count;
+    while (lo < hi) {
+        std::size_t mid = lo + (hi - lo) / 2;
+        const void* sample = snapshot.at(mid);
+        if (!sample) {
+            break;
+        }
         if (get_timestamp(sample) <= t) {
             lo = mid + 1;
         }

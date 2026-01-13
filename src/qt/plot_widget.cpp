@@ -719,9 +719,11 @@ void Plot_widget::auto_adjust_view(bool adjust_t, double extra_v_scale, bool anc
             continue;
         }
 
-        const auto* base = static_cast<const std::uint8_t*>(snapshot.data);
         for (std::size_t i = 0; i < snapshot.count; ++i) {
-            const void* sample = base + i * snapshot.stride;
+            const void* sample = snapshot.at(i);
+            if (!sample) {
+                continue;
+            }
             const double ts = series->get_timestamp(sample);
             if (!std::isfinite(ts)) {
                 continue;

@@ -1,5 +1,5 @@
 // vnm_plot Benchmark - Data Source
-// Bridges Ring_buffer to vnm::plot::Data_source interface with copy-on-snapshot
+// Bridges Ring_buffer to vnm::plot::Data_source interface with zero-copy snapshots
 
 #ifndef VNM_PLOT_BENCHMARK_DATA_SOURCE_H
 #define VNM_PLOT_BENCHMARK_DATA_SOURCE_H
@@ -24,8 +24,8 @@ constexpr uint64_t k_bar_sample_layout_key = 0x424152;      // "BAR" in ASCII
 constexpr uint64_t k_trade_sample_layout_key = 0x545244;    // "TRD" in ASCII
 
 /// Data source that wraps a Ring_buffer and implements vnm::plot::Data_source.
-/// Uses copy-on-snapshot pattern: data is copied from ring buffer to owned
-/// storage when try_snapshot() is called, ensuring thread-safe reads.
+/// Provides a zero-copy snapshot view into the ring buffer while holding a
+/// shared lock, so consumers can read safely without an intermediate copy.
 template<typename T>
 class Benchmark_data_source : public vnm::plot::Data_source {
 public:
@@ -37,8 +37,8 @@ public:
 
     ~Benchmark_data_source() override = default;
 
-    /// Take a snapshot by copying from ring buffer.
-    /// Thread-safe: ring buffer holds lock during copy.
+    /// Take a snapshot view of the ring buffer.
+    /// Thread-safe: holds a shared lock for the snapshot lifetime.
     vnm::plot::snapshot_result_t try_snapshot(size_t lod_level = 0) override {
         using Status = vnm::plot::snapshot_result_t::Status;
 
@@ -47,42 +47,30 @@ public:
             return {vnm::plot::data_snapshot_t{}, Status::FAILED};
         }
 
-        // Short-circuit if sequence hasn't changed (avoid redundant copy)
-        uint64_t current_seq = buffer_.sequence();
-        if (current_seq == last_buffer_sequence_ && !snapshot_data_.empty()) {
-            return {
-                vnm::plot::data_snapshot_t{
-                    snapshot_data_.data(),
-                    snapshot_data_.size(),
-                    sizeof(T),
-                    snapshot_sequence_
-                },
-                Status::OK
-            };
-        }
+        auto view = buffer_.view();
+        snapshot_sequence_ = view.sequence;
 
-        // Copy data from ring buffer to owned storage
-        auto result = buffer_.copy_to(snapshot_data_);
-        snapshot_sequence_ = result.sequence;
-        // Use result.sequence (not current_seq) to avoid extra copy if producer
-        // pushed between sequence read and copy_to()
-        last_buffer_sequence_ = result.sequence;
-
-        if (result.count == 0) {
+        if (view.count == 0) {
             range_valid_ = false;
             return {vnm::plot::data_snapshot_t{}, Status::EMPTY};
         }
 
-        // Update value range during copy (O(n) but only when data changes)
-        update_value_range();
+        vnm::plot::data_snapshot_t snapshot;
+        snapshot.data = view.data;
+        snapshot.count = view.count;
+        snapshot.stride = sizeof(T);
+        snapshot.sequence = view.sequence;
+        snapshot.data2 = view.data2;
+        snapshot.count2 = view.count2;
+        snapshot.hold = view.lock;
+
+        if (view.sequence != last_buffer_sequence_) {
+            update_value_range(snapshot);
+            last_buffer_sequence_ = view.sequence;
+        }
 
         return {
-            vnm::plot::data_snapshot_t{
-                snapshot_data_.data(),
-                snapshot_data_.size(),
-                sizeof(T),
-                snapshot_sequence_
-            },
+            snapshot,
             Status::OK
         };
     }
@@ -112,14 +100,8 @@ public:
         return snapshot_sequence_;
     }
 
-    /// Get snapshot data for direct access (after try_snapshot)
-    const std::vector<T>& snapshot_data() const {
-        return snapshot_data_;
-    }
-
 private:
     Ring_buffer<T>& buffer_;
-    std::vector<T> snapshot_data_;
     uint64_t snapshot_sequence_ = 0;
     uint64_t last_buffer_sequence_ = 0;
     float value_min_ = std::numeric_limits<float>::max();
@@ -127,8 +109,8 @@ private:
     bool range_valid_ = false;
 
     /// Update value range from current snapshot data
-    void update_value_range() {
-        if (snapshot_data_.empty()) {
+    void update_value_range(const vnm::plot::data_snapshot_t& snapshot) {
+        if (!snapshot || snapshot.count == 0 || snapshot.stride == 0) {
             value_min_ = 0.0f;
             value_max_ = 0.0f;
             range_valid_ = false;
@@ -138,7 +120,12 @@ private:
         value_min_ = std::numeric_limits<float>::max();
         value_max_ = std::numeric_limits<float>::lowest();
 
-        for (const auto& sample : snapshot_data_) {
+        for (std::size_t i = 0; i < snapshot.count; ++i) {
+            const void* sample_ptr = snapshot.at(i);
+            if (!sample_ptr) {
+                continue;
+            }
+            const auto& sample = *static_cast<const T*>(sample_ptr);
             auto [lo, hi] = get_sample_range(sample);
             value_min_ = std::min(value_min_, lo);
             value_max_ = std::max(value_max_, hi);
