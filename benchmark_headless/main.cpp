@@ -64,7 +64,10 @@ constexpr int k_default_height = 720;
 
 /// Configuration for the headless benchmark
 struct Headless_config {
-    double duration_seconds = 30.0;
+    double duration_seconds = 0.0;
+    bool duration_set = false;
+    std::size_t frame_limit = 0;
+    bool frame_limit_set = false;
     std::string session = "headless_benchmark";
     std::string symbol = "SIM";
     std::string data_type = "Bars";  // "Bars" or "Trades"
@@ -79,7 +82,8 @@ struct Headless_config {
     bool no_gl = false;     // Skip all GL calls to measure pure CPU time
     int width = k_default_width;
     int height = k_default_height;
-    int target_fps = 60;  // Target frames per second
+    bool legacy_fps_set = false;
+    int legacy_fps = 0;
 };
 
 void print_version()
@@ -94,9 +98,11 @@ void print_usage(const char* program_name)
               << "Headless GLFW benchmark for vnm_plot rendering performance.\n"
               << "Generates Brownian motion data and measures rendering throughput.\n"
               << "Designed for CI environments - no display required.\n"
+              << "Runs as fast as possible (no FPS throttling).\n"
               << "\n"
               << "Options:\n"
-              << "  --duration <seconds>    Benchmark duration (default: 30, min: 1)\n"
+              << "  --duration <seconds>    Benchmark duration in seconds (min: 1)\n"
+              << "  --frames <count>        Frame limit (min: 1)\n"
               << "  --session <name>        Session name for report (default: headless_benchmark)\n"
               << "  --symbol <name>         Symbol name for report (default: SIM)\n"
               << "  --data-type <type>      bars|trades (default: bars)\n"
@@ -107,13 +113,16 @@ void print_usage(const char* program_name)
               << "  --ring-size <count>     Ring buffer capacity (default: 100000, min: 100)\n"
               << "  --width <pixels>        Framebuffer width (default: 1200)\n"
               << "  --height <pixels>       Framebuffer height (default: 720)\n"
-              << "  --fps <target>          Target frames per second (default: 60)\n"
+              << "  --fps <target>          Deprecated (ignored; no throttling)\n"
               << "  --extended-metadata     Include benchmark-specific metadata in report\n"
               << "  --quiet                 Suppress progress output (report still written)\n"
               << "  --no-text               Disable text/font rendering\n"
               << "  --no-gl                 Skip all GL calls to measure pure CPU time\n"
               << "  --version               Show version information\n"
               << "  --help                  Show this help message\n"
+              << "\n"
+              << "Note: You must specify --duration or --frames (or both). If both are\n"
+              << "set, the benchmark stops when either limit is reached.\n"
               << "\n"
               << "CI Usage:\n"
               << "  # With X virtual framebuffer:\n"
@@ -145,6 +154,11 @@ Parse_result parse_args(int argc, char* argv[])
         try {
             if (arg == "--duration" && i + 1 < argc) {
                 config.duration_seconds = std::stod(argv[++i]);
+                config.duration_set = true;
+            }
+            else if ((arg == "--frames" || arg == "--frame-count") && i + 1 < argc) {
+                config.frame_limit = std::stoull(argv[++i]);
+                config.frame_limit_set = true;
             }
             else if (arg == "--session" && i + 1 < argc) {
                 config.session = argv[++i];
@@ -188,7 +202,8 @@ Parse_result parse_args(int argc, char* argv[])
                 config.height = std::stoi(argv[++i]);
             }
             else if (arg == "--fps" && i + 1 < argc) {
-                config.target_fps = std::stoi(argv[++i]);
+                config.legacy_fps = std::stoi(argv[++i]);
+                config.legacy_fps_set = true;
             }
             else if (arg == "--extended-metadata") {
                 config.extended_metadata = true;
@@ -234,11 +249,17 @@ Parse_result parse_args(int argc, char* argv[])
 
 std::string validate_config(const Headless_config& config)
 {
-    if (config.duration_seconds < 1.0) {
+    if (!config.duration_set && !config.frame_limit_set) {
+        return "Specify --duration or --frames (or both)";
+    }
+    if (config.duration_set && config.duration_seconds < 1.0) {
         return "Duration must be at least 1 second";
     }
-    if (config.duration_seconds > 3600.0) {
+    if (config.duration_set && config.duration_seconds > 3600.0) {
         return "Duration cannot exceed 3600 seconds (1 hour)";
+    }
+    if (config.frame_limit_set && config.frame_limit < 1) {
+        return "Frame limit must be at least 1";
     }
     if (config.rate < 1.0) {
         return "Rate must be at least 1 sample/sec";
@@ -261,28 +282,41 @@ std::string validate_config(const Headless_config& config)
     if (config.height < 100 || config.height > 8192) {
         return "Height must be between 100 and 8192";
     }
-    if (config.target_fps < 1 || config.target_fps > 1000) {
-        return "FPS must be between 1 and 1000";
-    }
     return "";
 }
 
 void print_config_summary(const Headless_config& config, std::ostream& os)
 {
     os << "Configuration:\n"
-       << "  Duration:     " << config.duration_seconds << "s\n"
-       << "  Data type:    " << config.data_type << "\n"
+       << "  Duration:     ";
+    if (config.duration_set) {
+        os << config.duration_seconds << "s\n";
+    }
+    else {
+        os << "(none)\n";
+    }
+    os << "  Frame limit:  ";
+    if (config.frame_limit_set) {
+        os << config.frame_limit << "\n";
+    }
+    else {
+        os << "(none)\n";
+    }
+    os << "  Data type:    " << config.data_type << "\n"
        << "  Rate:         " << config.rate << " samples/sec\n"
        << "  Ring size:    " << config.ring_capacity << "\n"
        << "  Volatility:   " << config.volatility << "\n"
        << "  Seed:         " << config.seed << "\n"
        << "  Resolution:   " << config.width << "x" << config.height << "\n"
-       << "  Target FPS:   " << config.target_fps << "\n"
        << "  Output dir:   " << config.output_directory.string() << "\n"
        << "  Session:      " << config.session << "\n"
        << "  Symbol:       " << config.symbol << "\n"
        << "  Show text:    " << (config.show_text ? "yes" : "no") << "\n"
        << "  No GL:        " << (config.no_gl ? "yes" : "no") << "\n";
+
+    if (config.legacy_fps_set) {
+        os << "  FPS:          " << config.legacy_fps << " (ignored)\n";
+    }
 }
 
 // Use shared format_benchmark_timestamp from benchmark_frame.h
@@ -471,6 +505,9 @@ int main(int argc, char* argv[])
         std::cout << "vnm_plot Headless GLFW Benchmark v" << k_version << "\n"
                   << std::string(45, '=') << "\n\n";
         print_config_summary(config, std::cout);
+        if (config.legacy_fps_set) {
+            std::cout << "Note: --fps is deprecated and ignored (benchmark runs unthrottled).\n";
+        }
         std::cout << "\n";
     }
 
@@ -610,10 +647,12 @@ int main(int argc, char* argv[])
 
     if (config.data_type == "Trades") {
         trade_buffer = std::make_unique<vnm::benchmark::Ring_buffer<vnm::benchmark::Trade_sample>>(config.ring_capacity);
+        trade_buffer->set_profiler(&profiler);
         trade_source = std::make_unique<vnm::benchmark::Benchmark_data_source<vnm::benchmark::Trade_sample>>(*trade_buffer);
     }
     else {
         bar_buffer = std::make_unique<vnm::benchmark::Ring_buffer<vnm::benchmark::Bar_sample>>(config.ring_capacity);
+        bar_buffer->set_profiler(&profiler);
         bar_source = std::make_unique<vnm::benchmark::Benchmark_data_source<vnm::benchmark::Bar_sample>>(*bar_buffer);
     }
 
@@ -659,8 +698,6 @@ int main(int argc, char* argv[])
     // Timing
     auto started_at = std::chrono::system_clock::now();
     auto benchmark_start = std::chrono::steady_clock::now();
-    auto last_frame_time = benchmark_start;
-    const double frame_interval_ns = 1e9 / config.target_fps;
 
     std::atomic<std::size_t> samples_generated{0};
     std::atomic<bool> stop_generator{false};
@@ -692,7 +729,17 @@ int main(int argc, char* argv[])
     });
 
     if (!config.quiet) {
-        std::cout << "Starting benchmark (" << config.duration_seconds << "s)...\n";
+        std::cout << "Starting benchmark (";
+        if (config.duration_set) {
+            std::cout << config.duration_seconds << "s";
+        }
+        if (config.frame_limit_set) {
+            if (config.duration_set) {
+                std::cout << " or ";
+            }
+            std::cout << config.frame_limit << " frames";
+        }
+        std::cout << ")...\n";
     }
 
     std::size_t frame_count = 0;
@@ -701,22 +748,17 @@ int main(int argc, char* argv[])
 
     // Main render loop
     while (!glfwWindowShouldClose(window)) {
+        if (config.frame_limit_set && frame_count >= config.frame_limit) {
+            break;
+        }
+
         auto now = std::chrono::steady_clock::now();
         double elapsed_seconds = std::chrono::duration<double>(now - benchmark_start).count();
 
         // Check if benchmark duration completed
-        if (elapsed_seconds >= config.duration_seconds) {
+        if (config.duration_set && elapsed_seconds >= config.duration_seconds) {
             break;
         }
-
-        // Frame pacing
-        double frame_elapsed_ns = std::chrono::duration<double, std::nano>(now - last_frame_time).count();
-        if (frame_elapsed_ns < frame_interval_ns) {
-            std::this_thread::sleep_for(std::chrono::nanoseconds(
-                static_cast<int64_t>(frame_interval_ns - frame_elapsed_ns)));
-            now = std::chrono::steady_clock::now();
-        }
-        last_frame_time = now;
 
         glfwPollEvents();
 
@@ -776,14 +818,23 @@ int main(int argc, char* argv[])
 
         // Swap buffers (skip in no-GL mode)
         if (!config.no_gl) {
+            BENCHMARK_SCOPE(profiler, "renderer.frame.swap_buffers");
             glfwSwapBuffers(window);
         }
         ++frame_count;
 
         // Progress output
         if (!config.quiet && frame_count % 60 == 0) {
+            double progress_pct = 0.0;
+            if (config.duration_set) {
+                progress_pct = (elapsed_seconds / config.duration_seconds) * 100.0;
+            }
+            else if (config.frame_limit_set) {
+                progress_pct = (static_cast<double>(frame_count) /
+                               static_cast<double>(config.frame_limit)) * 100.0;
+            }
             std::cout << "\rProgress: " << std::fixed << std::setprecision(1)
-                      << (elapsed_seconds / config.duration_seconds * 100.0) << "%"
+                      << progress_pct << "%"
                       << " | Frames: " << frame_count
                       << " | Samples: " << samples_generated.load()
                       << std::flush;

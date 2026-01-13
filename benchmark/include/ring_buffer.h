@@ -4,6 +4,8 @@
 #ifndef VNM_PLOT_BENCHMARK_RING_BUFFER_H
 #define VNM_PLOT_BENCHMARK_RING_BUFFER_H
 
+#include <vnm_plot/core/plot_config.h>
+
 #include <algorithm>
 #include <atomic>
 #include <cstddef>
@@ -42,6 +44,11 @@ public:
     Ring_buffer& operator=(const Ring_buffer&) = delete;
     Ring_buffer(Ring_buffer&&) = delete;
     Ring_buffer& operator=(Ring_buffer&&) = delete;
+
+    /// Optional profiler hookup for copy_to() timing.
+    void set_profiler(vnm::plot::Profiler* profiler) noexcept {
+        profiler_ = profiler;
+    }
 
     // -------------------------------------------------------------------------
     // Producer API (data generator thread)
@@ -110,6 +117,7 @@ public:
     /// @param dest Destination vector (resized as needed)
     /// @return Copy_result with count and sequence
     Copy_result copy_to(std::vector<T>& dest) const {
+        VNM_PLOT_PROFILE_SCOPE(profiler_, "renderer.frame.data_copy");
         std::shared_lock lock(mutex_);
 
         const std::size_t h = head_.load(std::memory_order_acquire);
@@ -201,6 +209,7 @@ private:
     std::atomic<std::size_t> tail_{0};   ///< Start of valid data
     std::atomic<uint64_t> sequence_{0};  ///< Increments on every push
     mutable std::shared_mutex mutex_;    ///< Protects buffer_ during copy
+    vnm::plot::Profiler* profiler_ = nullptr;
 };
 
 }  // namespace vnm::benchmark

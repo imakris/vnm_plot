@@ -33,10 +33,12 @@ Benchmark_window::Benchmark_window(const Benchmark_config& config, QWidget* pare
     // Create buffers based on data type
     if (m_config.data_type == "Trades") {
         m_trade_buffer = std::make_unique<Ring_buffer<Trade_sample>>(m_config.ring_capacity);
+        m_trade_buffer->set_profiler(&m_profiler);
         m_trade_source = std::make_unique<Benchmark_data_source<Trade_sample>>(*m_trade_buffer);
     }
     else {
         m_bar_buffer = std::make_unique<Ring_buffer<Bar_sample>>(m_config.ring_capacity);
+        m_bar_buffer->set_profiler(&m_profiler);
         m_bar_source = std::make_unique<Benchmark_data_source<Bar_sample>>(*m_bar_buffer);
     }
 
