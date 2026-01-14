@@ -808,6 +808,7 @@ void Series_renderer::render(
 
             // CPU-side colormap aux-range computation (must run before skip_gl return)
             const vbo_state_t::aux_metric_cache_t* aux_cache = nullptr;
+            std::size_t aux_range_scale = 1;
             if (primitive_style == Display_style::COLORMAP_AREA && !s->colormap.samples.empty()) {
                 data_snapshot_t snapshot;
                 {
@@ -817,7 +818,6 @@ void Series_renderer::render(
                     snapshot = s->data_source->snapshot(view_result.applied_level);
                 }
                 auto& aux_cache_entry = vbo_state.cached_aux_metric_levels[view_result.applied_level];
-                aux_cache = &aux_cache_entry;
                 if (snapshot) {
                     const bool can_reuse =
                         aux_cache_entry.valid && aux_cache_entry.sequence == snapshot.sequence;
@@ -849,6 +849,18 @@ void Series_renderer::render(
                         aux_cache_entry.min = 0.0;
                         aux_cache_entry.max = 1.0;
                     }
+                }
+
+                std::size_t aux_range_level = view_result.applied_level;
+                for (std::size_t i = 0; i < vbo_state.cached_aux_metric_levels.size(); ++i) {
+                    if (vbo_state.cached_aux_metric_levels[i].valid) {
+                        aux_range_level = i;
+                        break;
+                    }
+                }
+                aux_cache = &vbo_state.cached_aux_metric_levels[aux_range_level];
+                if (aux_range_level < scales.size()) {
+                    aux_range_scale = scales[aux_range_level];
                 }
             }
 
@@ -934,18 +946,25 @@ void Series_renderer::render(
 
                     glUniform1f(pass_shader->uniform_location("aux_min"), aux_min_f);
                     glUniform1f(pass_shader->uniform_location("aux_max"), aux_max_f);
+                    const std::size_t applied_scale = (view_result.applied_level < scales.size())
+                        ? scales[view_result.applied_level]
+                        : 1;
                     if (const GLint loc = pass_shader->uniform_location("u_volume_min"); loc >= 0) {
-                        glUniform1f(loc, aux_min_f);
+                        const float scale_ratio = (aux_range_scale > 0)
+                            ? (static_cast<float>(applied_scale) / static_cast<float>(aux_range_scale))
+                            : 1.0f;
+                        glUniform1f(loc, aux_min_f * scale_ratio);
                     }
                     if (const GLint loc = pass_shader->uniform_location("u_inv_volume_span"); loc >= 0) {
-                        glUniform1f(loc, inv_aux_span);
+                        const float scale_ratio = (aux_range_scale > 0)
+                            ? (static_cast<float>(applied_scale) / static_cast<float>(aux_range_scale))
+                            : 1.0f;
+                        const float scaled_inv_span = (scale_ratio > 0.0f) ? (inv_aux_span / scale_ratio) : 0.0f;
+                        glUniform1f(loc, scaled_inv_span);
                     }
                     if (const GLint loc = pass_shader->uniform_location("u_colormap_tex"); loc >= 0) {
                         glUniform1i(loc, 0);
                     }
-                    const std::size_t applied_scale = (view_result.applied_level < scales.size())
-                        ? scales[view_result.applied_level]
-                        : 1;
                     const float volume_scale = (applied_scale > 0) ? (1.0f / static_cast<float>(applied_scale)) : 1.0f;
                     if (const GLint loc = pass_shader->uniform_location("u_volume_scale"); loc >= 0) {
                         glUniform1f(loc, volume_scale);
