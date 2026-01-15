@@ -93,6 +93,7 @@ public:
     bool v_auto() const;
     void set_v_auto(bool auto_scale);
     void set_v_range(float v_min, float v_max);
+    void set_v_data_bounds(float v_min, float v_max);
 
     // --- Preview ---
 
