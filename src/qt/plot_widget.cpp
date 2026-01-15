@@ -274,6 +274,20 @@ void Plot_widget::set_v_range(float v_min, float v_max)
     update();
 }
 
+void Plot_widget::set_v_data_bounds(float v_min, float v_max)
+{
+    if (!std::isfinite(v_min) || !std::isfinite(v_max) || v_min > v_max) {
+        return;
+    }
+    {
+        std::unique_lock lock(m_data_cfg_mutex);
+        m_data_cfg.v_min = v_min;
+        m_data_cfg.v_max = v_max;
+    }
+    emit v_limits_changed();
+    update();
+}
+
 double Plot_widget::preview_height() const
 {
     return m_preview_height;
