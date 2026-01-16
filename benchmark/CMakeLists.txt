@@ -51,6 +51,7 @@ set_target_properties(vnm_plot_benchmark PROPERTIES
 target_include_directories(vnm_plot_benchmark
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${PROJECT_SOURCE_DIR}/include
 )
 
 target_compile_features(vnm_plot_benchmark PRIVATE cxx_std_20)
@@ -96,6 +97,7 @@ add_executable(test_ring_buffer
 target_include_directories(test_ring_buffer
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${PROJECT_SOURCE_DIR}/include
 )
 
 target_compile_features(test_ring_buffer PRIVATE cxx_std_20)
@@ -128,6 +130,7 @@ add_executable(test_brownian_generator
 target_include_directories(test_brownian_generator
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${PROJECT_SOURCE_DIR}/include
 )
 
 target_compile_features(test_brownian_generator PRIVATE cxx_std_20)
@@ -158,6 +161,7 @@ add_executable(test_benchmark_profiler
 target_include_directories(test_benchmark_profiler
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${PROJECT_SOURCE_DIR}/include
 )
 
 target_compile_features(test_benchmark_profiler PRIVATE cxx_std_20)
@@ -191,6 +195,7 @@ add_executable(test_benchmark_data_source
 target_include_directories(test_benchmark_data_source
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${PROJECT_SOURCE_DIR}/include
 )
 
 target_compile_features(test_benchmark_data_source PRIVATE cxx_std_20)

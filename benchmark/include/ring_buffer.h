@@ -141,7 +141,6 @@ public:
         const std::size_t cap = buffer_.size();
         if (h == t) {
             // Full buffer
-            const std::size_t count1 = cap - t;
             view.data = buffer_.data() + t;
             view.count = cap;
             if (t > 0) {

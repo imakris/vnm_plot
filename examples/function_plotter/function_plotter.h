@@ -10,7 +10,6 @@
 #include <QtCore/QMetaType>
 #include <QtCore/QObject>
 #include <QtCore/QString>
-#include <QtCore/QVariantList>
 #include <QtGui/QColor>
 #include <QtQuick/QQuickItem>
 
@@ -181,11 +180,6 @@ public slots:
 
     // Recompute all functions
     void recompute_all();
-
-    // Get sample values at a given x position (for indicator overlay)
-    // Returns array of objects with: x, y, px, py, color for each function
-    // px/py are pixel coordinates within the plot area
-    Q_INVOKABLE QVariantList get_samples_at_x(double x, double plot_width, double plot_height) const;
 
 signals:
     void range_changed();
