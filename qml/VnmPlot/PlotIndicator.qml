@@ -66,6 +66,12 @@ Item {
     }
 
     function formatTimestamp(xVal, tspan) {
+        // Try to use the date formatting from the plot widget (matches axis labels)
+        try {
+            var formatted = plotWidget.format_timestamp_like_axis(xVal)
+            if (formatted)
+                return formatted
+        } catch (e) {}
         var drx = Math.max(3, root.decimalsForSpan(tspan, 3))
         return xVal.toFixed(drx)
     }
