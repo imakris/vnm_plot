@@ -13,6 +13,7 @@
 #include <map>
 #include <memory>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace vnm::plot {
@@ -127,6 +128,7 @@ private:
     std::map<shader_set_t, std::shared_ptr<GL_program>> m_shaders;
     std::unordered_map<int, vbo_state_t> m_vbo_states;
     std::unordered_map<const series_data_t*, colormap_resource_t> m_colormap_textures;
+    std::unordered_set<int> m_missing_signal_logged;
 
     std::unique_ptr<series_pipe_t> m_pipe_line;
     std::unique_ptr<series_pipe_t> m_pipe_dots;

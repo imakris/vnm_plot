@@ -181,9 +181,10 @@ public:
     virtual bool has_value_range() const { return false; }
     virtual std::pair<float, float> value_range() const { return {0.0f, 0.0f}; }
     virtual bool value_range_needs_rescan() const { return false; }
-
-    // Optional visible window v-range query (fast path for auto v-range).
-    // Returns false when unsupported or unavailable; callers must fall back.
+    /// Query v-range for samples within [t_min, t_max].
+    /// Returns false if unsupported, no samples are in range, or a consistent snapshot
+    /// cannot be obtained without blocking.
+    /// Thread-safe; called from the render thread.
     virtual bool query_v_range_for_t_window(
         double t_min,
         double t_max,
@@ -191,7 +192,11 @@ public:
         float& v_max_out,
         uint64_t* out_sequence = nullptr) const
     {
-        (void)t_min; (void)t_max; (void)v_min_out; (void)v_max_out; (void)out_sequence;
+        (void)t_min;
+        (void)t_max;
+        (void)v_min_out;
+        (void)v_max_out;
+        (void)out_sequence;
         return false;
     }
 
@@ -253,6 +258,7 @@ struct Data_access_policy
     size_t sample_stride = 0;  ///< Size of each sample in bytes
 
     std::function<double(const void* sample)> get_aux_metric;  ///< Optional auxiliary metric
+    std::function<float(const void* sample)>  get_signal;      ///< Optional [0,1] signal for COLORMAP_LINE
 
     // --- GPU rendering configuration ---
     std::function<void()> setup_vertex_attributes;              ///< Configures VAO for custom shaders
@@ -277,7 +283,8 @@ enum class Display_style : int
     DOTS_AREA      = DOTS | AREA,
     LINE_AREA      = LINE | AREA,
     DOTS_LINE_AREA = DOTS | LINE | AREA,
-    COLORMAP_AREA  = 0x8
+    COLORMAP_AREA  = 0x8,
+    COLORMAP_LINE  = 0x10
 };
 
 inline Display_style operator|(Display_style a, Display_style b)
@@ -333,6 +340,9 @@ struct colormap_config_t
 {
     std::vector<glm::vec4> samples;  ///< RGBA color samples (linearly interpolated)
     uint64_t revision = 0;           ///< Increment when samples change
+    bool  use_fixed_range = false;   ///< Use fixed_min/max instead of scanning data
+    float fixed_min = 0.0f;          ///< Minimum value for colormap lookup
+    float fixed_max = 1.0f;          ///< Maximum value for colormap lookup
 };
 
 // -----------------------------------------------------------------------------
@@ -395,6 +405,11 @@ struct series_data_t
     double get_aux_metric(const void* sample) const
     {
         return access.get_aux_metric ? access.get_aux_metric(sample) : 0.0;
+    }
+
+    float get_signal(const void* sample) const
+    {
+        return access.get_signal ? access.get_signal(sample) : 0.0f;
     }
 };
 

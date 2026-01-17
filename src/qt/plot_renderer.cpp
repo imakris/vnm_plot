@@ -465,12 +465,6 @@ std::pair<float, float> compute_visible_v_range(
         if (!series || !series->enabled || !series->data_source) {
             continue;
         }
-        if (!series->access.get_timestamp) {
-            continue;
-        }
-        if (!series->access.get_value && !series->access.get_range) {
-            continue;
-        }
 
         active_ids.insert(id);
 
@@ -480,8 +474,7 @@ std::pair<float, float> compute_visible_v_range(
                 t_min,
                 t_max,
                 series_min,
-                series_max,
-                nullptr))
+                series_max))
         {
             if (!std::isfinite(series_min) || !std::isfinite(series_max) || series_min > series_max) {
                 continue;
@@ -489,6 +482,13 @@ std::pair<float, float> compute_visible_v_range(
             v_min = std::min(v_min, series_min);
             v_max = std::max(v_max, series_max);
             have_any = true;
+            continue;
+        }
+
+        if (!series->access.get_timestamp) {
+            continue;
+        }
+        if (!series->access.get_value && !series->access.get_range) {
             continue;
         }
 

@@ -120,11 +120,12 @@ void Series_renderer::cleanup_gl_resources()
         }
     }
     m_colormap_textures.clear();
+    m_missing_signal_logged.clear();
 }
 
 Series_renderer::series_pipe_t& Series_renderer::pipe_for(Display_style style)
 {
-    if (!!(style & Display_style::COLORMAP_AREA)) {
+    if (!!(style & Display_style::COLORMAP_AREA) || !!(style & Display_style::COLORMAP_LINE)) {
         return *m_pipe_colormap;
     }
     if (!!(style & Display_style::DOTS)) {
@@ -723,6 +724,22 @@ void Series_renderer::render(
             continue;
         }
 
+        Display_style style = s->style;
+        if (!!(style & Display_style::COLORMAP_LINE) && !s->access.get_signal) {
+            if (m_missing_signal_logged.insert(id).second) {
+                if (ctx.config && ctx.config->log_error) {
+                    ctx.config->log_error(
+                        "COLORMAP_LINE requires Data_access_policy::get_signal (series "
+                        + std::to_string(id) + ")");
+                }
+            }
+            style = static_cast<Display_style>(
+                static_cast<int>(style) & ~static_cast<int>(Display_style::COLORMAP_LINE));
+        }
+        if (!style) {
+            continue;
+        }
+
         auto& vbo_state = m_vbo_states[id];
 
         // Build LOD scales vector using shared helper
@@ -810,57 +827,74 @@ void Series_renderer::render(
             const vbo_state_t::aux_metric_cache_t* aux_cache = nullptr;
             std::size_t aux_range_scale = 1;
             if (primitive_style == Display_style::COLORMAP_AREA && !s->colormap.samples.empty()) {
-                data_snapshot_t snapshot;
-                {
-                    VNM_PLOT_PROFILE_SCOPE(
-                        profiler,
-                        "renderer.frame.execute_passes.render_data_series.series.ensure_full_resolution_aux_metric_range");
-                    snapshot = s->data_source->snapshot(view_result.applied_level);
-                }
                 auto& aux_cache_entry = vbo_state.cached_aux_metric_levels[view_result.applied_level];
-                if (snapshot) {
-                    const bool can_reuse =
-                        aux_cache_entry.valid && aux_cache_entry.sequence == snapshot.sequence;
+                if (s->colormap.use_fixed_range) {
+                    const double fixed_min = static_cast<double>(s->colormap.fixed_min);
+                    const double fixed_max = static_cast<double>(s->colormap.fixed_max);
+                    if (std::isfinite(fixed_min) && std::isfinite(fixed_max) && fixed_max > fixed_min) {
+                        aux_cache_entry.min = fixed_min;
+                        aux_cache_entry.max = fixed_max;
+                        aux_cache_entry.sequence = 0;
+                        aux_cache_entry.valid = true;
+                        aux_cache = &aux_cache_entry;
+                        if (view_result.applied_level < scales.size()) {
+                            aux_range_scale = scales[view_result.applied_level];
+                        }
+                    }
+                }
 
-                    if (!can_reuse) {
-                        double aux_min = 0.0;
-                        double aux_max = 1.0;
+                if (!aux_cache) {
+                    data_snapshot_t snapshot;
+                    {
                         VNM_PLOT_PROFILE_SCOPE(
                             profiler,
-                            "renderer.frame.execute_passes.render_data_series.series.compute_aux_metric_range");
-                        if (compute_aux_metric_range(*s, snapshot, aux_min, aux_max)) {
-                            aux_cache_entry.min = aux_min;
-                            aux_cache_entry.max = aux_max;
-                            aux_cache_entry.valid = true;
-                        }
-                        else {
-                            if (!aux_cache_entry.valid) {
-                                aux_cache_entry.min = 0.0;
-                                aux_cache_entry.max = 1.0;
+                            "renderer.frame.execute_passes.render_data_series.series.ensure_full_resolution_aux_metric_range");
+                        snapshot = s->data_source->snapshot(view_result.applied_level);
+                    }
+                    if (snapshot) {
+                        const bool can_reuse =
+                            aux_cache_entry.valid && aux_cache_entry.sequence == snapshot.sequence;
+
+                        if (!can_reuse) {
+                            double aux_min = 0.0;
+                            double aux_max = 1.0;
+                            VNM_PLOT_PROFILE_SCOPE(
+                                profiler,
+                                "renderer.frame.execute_passes.render_data_series.series.compute_aux_metric_range");
+                            if (compute_aux_metric_range(*s, snapshot, aux_min, aux_max)) {
+                                aux_cache_entry.min = aux_min;
+                                aux_cache_entry.max = aux_max;
                                 aux_cache_entry.valid = true;
                             }
+                            else {
+                                if (!aux_cache_entry.valid) {
+                                    aux_cache_entry.min = 0.0;
+                                    aux_cache_entry.max = 1.0;
+                                    aux_cache_entry.valid = true;
+                                }
+                            }
+                            aux_cache_entry.sequence = snapshot.sequence;
                         }
-                        aux_cache_entry.sequence = snapshot.sequence;
                     }
-                }
-                else {
-                    // Empty or invalid snapshot - keep last valid range to avoid flicker.
-                    if (!aux_cache_entry.valid) {
-                        aux_cache_entry.min = 0.0;
-                        aux_cache_entry.max = 1.0;
+                    else {
+                        // Empty or invalid snapshot - keep last valid range to avoid flicker.
+                        if (!aux_cache_entry.valid) {
+                            aux_cache_entry.min = 0.0;
+                            aux_cache_entry.max = 1.0;
+                        }
                     }
-                }
 
-                std::size_t aux_range_level = view_result.applied_level;
-                for (std::size_t i = 0; i < vbo_state.cached_aux_metric_levels.size(); ++i) {
-                    if (vbo_state.cached_aux_metric_levels[i].valid) {
-                        aux_range_level = i;
-                        break;
+                    std::size_t aux_range_level = view_result.applied_level;
+                    for (std::size_t i = 0; i < vbo_state.cached_aux_metric_levels.size(); ++i) {
+                        if (vbo_state.cached_aux_metric_levels[i].valid) {
+                            aux_range_level = i;
+                            break;
+                        }
                     }
-                }
-                aux_cache = &vbo_state.cached_aux_metric_levels[aux_range_level];
-                if (aux_range_level < scales.size()) {
-                    aux_range_scale = scales[aux_range_level];
+                    aux_cache = &vbo_state.cached_aux_metric_levels[aux_range_level];
+                    if (aux_range_level < scales.size()) {
+                        aux_range_scale = scales[aux_range_level];
+                    }
                 }
             }
 
@@ -929,45 +963,54 @@ void Series_renderer::render(
                 }
             }
 
-            // Handle colormap GL setup for COLORMAP_AREA
+            // Handle colormap GL setup for colormap styles
             GLuint colormap_tex = 0;
-            if (primitive_style == Display_style::COLORMAP_AREA) {
+            if (primitive_style == Display_style::COLORMAP_AREA ||
+                primitive_style == Display_style::COLORMAP_LINE) {
                 colormap_tex = ensure_colormap_texture(*s);
                 if (colormap_tex != 0) {
                     glActiveTexture(GL_TEXTURE0);
                     glBindTexture(GL_TEXTURE_1D, colormap_tex);
-                    glUniform1i(pass_shader->uniform_location("colormap"), 0);
 
-                    // Use cached aux metric values (computed in CPU section above)
-                    const float aux_min_f = static_cast<float>(aux_cache ? aux_cache->min : 0.0);
-                    const float aux_max_f = static_cast<float>(aux_cache ? aux_cache->max : 1.0);
-                    const float aux_span = aux_max_f - aux_min_f;
-                    const float inv_aux_span = (std::abs(aux_span) > 1e-12f) ? (1.0f / aux_span) : 0.0f;
+                    if (primitive_style == Display_style::COLORMAP_AREA) {
+                        // Use cached aux metric values (computed in CPU section above)
+                        const float aux_min_f = static_cast<float>(aux_cache ? aux_cache->min : 0.0);
+                        const float aux_max_f = static_cast<float>(aux_cache ? aux_cache->max : 1.0);
+                        const float aux_span = aux_max_f - aux_min_f;
+                        const float inv_aux_span = (std::abs(aux_span) > 1e-12f) ? (1.0f / aux_span) : 0.0f;
 
-                    glUniform1f(pass_shader->uniform_location("aux_min"), aux_min_f);
-                    glUniform1f(pass_shader->uniform_location("aux_max"), aux_max_f);
-                    const std::size_t applied_scale = (view_result.applied_level < scales.size())
-                        ? scales[view_result.applied_level]
-                        : 1;
-                    if (const GLint loc = pass_shader->uniform_location("u_volume_min"); loc >= 0) {
-                        const float scale_ratio = (aux_range_scale > 0)
-                            ? (static_cast<float>(applied_scale) / static_cast<float>(aux_range_scale))
+                        glUniform1f(pass_shader->uniform_location("aux_min"), aux_min_f);
+                        glUniform1f(pass_shader->uniform_location("aux_max"), aux_max_f);
+                        const std::size_t applied_scale = (view_result.applied_level < scales.size())
+                            ? scales[view_result.applied_level]
+                            : 1;
+                        if (const GLint loc = pass_shader->uniform_location("u_volume_min"); loc >= 0) {
+                            const float scale_ratio = (aux_range_scale > 0)
+                                ? (static_cast<float>(applied_scale) / static_cast<float>(aux_range_scale))
+                                : 1.0f;
+                            glUniform1f(loc, aux_min_f * scale_ratio);
+                        }
+                        if (const GLint loc = pass_shader->uniform_location("u_inv_volume_span"); loc >= 0) {
+                            const float scale_ratio = (aux_range_scale > 0)
+                                ? (static_cast<float>(applied_scale) / static_cast<float>(aux_range_scale))
+                                : 1.0f;
+                            const float scaled_inv_span = (scale_ratio > 0.0f) ? (inv_aux_span / scale_ratio) : 0.0f;
+                            glUniform1f(loc, scaled_inv_span);
+                        }
+                        if (const GLint loc = pass_shader->uniform_location("u_colormap_tex"); loc >= 0) {
+                            glUniform1i(loc, 0);
+                        }
+                        const float volume_scale = (applied_scale > 0)
+                            ? (1.0f / static_cast<float>(applied_scale))
                             : 1.0f;
-                        glUniform1f(loc, aux_min_f * scale_ratio);
+                        if (const GLint loc = pass_shader->uniform_location("u_volume_scale"); loc >= 0) {
+                            glUniform1f(loc, volume_scale);
+                        }
                     }
-                    if (const GLint loc = pass_shader->uniform_location("u_inv_volume_span"); loc >= 0) {
-                        const float scale_ratio = (aux_range_scale > 0)
-                            ? (static_cast<float>(applied_scale) / static_cast<float>(aux_range_scale))
-                            : 1.0f;
-                        const float scaled_inv_span = (scale_ratio > 0.0f) ? (inv_aux_span / scale_ratio) : 0.0f;
-                        glUniform1f(loc, scaled_inv_span);
-                    }
-                    if (const GLint loc = pass_shader->uniform_location("u_colormap_tex"); loc >= 0) {
-                        glUniform1i(loc, 0);
-                    }
-                    const float volume_scale = (applied_scale > 0) ? (1.0f / static_cast<float>(applied_scale)) : 1.0f;
-                    if (const GLint loc = pass_shader->uniform_location("u_volume_scale"); loc >= 0) {
-                        glUniform1f(loc, volume_scale);
+                    else {
+                        if (const GLint loc = pass_shader->uniform_location("u_colormap_tex"); loc >= 0) {
+                            glUniform1i(loc, 0);
+                        }
                     }
                 }
             }
@@ -1027,19 +1070,23 @@ void Series_renderer::render(
         // Main view rendering - multiple passes for combined styles
         if (main_result.can_draw) {
             // Handle colormap area first if present
-            if (!!(s->style & Display_style::COLORMAP_AREA)) {
+            if (!!(style & Display_style::COLORMAP_AREA)) {
                 draw_pass(Display_style::COLORMAP_AREA, vbo_state.main_view, main_result, false);
             }
+            // Then colormap line (rendered before plain line)
+            if (!!(style & Display_style::COLORMAP_LINE)) {
+                draw_pass(Display_style::COLORMAP_LINE, vbo_state.main_view, main_result, false);
+            }
             // Then area (rendered before lines so lines appear on top)
-            if (!!(s->style & Display_style::AREA)) {
+            if (!!(style & Display_style::AREA)) {
                 draw_pass(Display_style::AREA, vbo_state.main_view, main_result, false);
             }
             // Then lines
-            if (!!(s->style & Display_style::LINE)) {
+            if (!!(style & Display_style::LINE)) {
                 draw_pass(Display_style::LINE, vbo_state.main_view, main_result, false);
             }
             // Finally dots (on top)
-            if (!!(s->style & Display_style::DOTS)) {
+            if (!!(style & Display_style::DOTS)) {
                 draw_pass(Display_style::DOTS, vbo_state.main_view, main_result, false);
             }
         }
@@ -1075,16 +1122,19 @@ void Series_renderer::render(
 
             if (preview_result.can_draw) {
                 // Preview uses same multi-pass approach
-                if (!!(s->style & Display_style::COLORMAP_AREA)) {
+                if (!!(style & Display_style::COLORMAP_AREA)) {
                     draw_pass(Display_style::COLORMAP_AREA, vbo_state.preview_view, preview_result, true);
                 }
-                if (!!(s->style & Display_style::AREA)) {
+                if (!!(style & Display_style::COLORMAP_LINE)) {
+                    draw_pass(Display_style::COLORMAP_LINE, vbo_state.preview_view, preview_result, true);
+                }
+                if (!!(style & Display_style::AREA)) {
                     draw_pass(Display_style::AREA, vbo_state.preview_view, preview_result, true);
                 }
-                if (!!(s->style & Display_style::LINE)) {
+                if (!!(style & Display_style::LINE)) {
                     draw_pass(Display_style::LINE, vbo_state.preview_view, preview_result, true);
                 }
-                if (!!(s->style & Display_style::DOTS)) {
+                if (!!(style & Display_style::DOTS)) {
                     draw_pass(Display_style::DOTS, vbo_state.preview_view, preview_result, true);
                 }
             }
