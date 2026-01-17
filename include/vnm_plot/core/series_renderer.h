@@ -82,13 +82,16 @@ private:
     {
         vbo_view_state_t main_view;
         vbo_view_state_t preview_view;
+        struct aux_metric_cache_t
+        {
+            double min = 0.0;
+            double max = 1.0;
+            uint64_t sequence = 0;
+            bool valid = false;
+        };
 
-        double cached_aux_metric_min = 0.0;
-        double cached_aux_metric_max = 1.0;
-        uint64_t cached_aux_metric_sequence = 0;
-        std::size_t cached_aux_metric_level = std::numeric_limits<std::size_t>::max();
+        std::vector<aux_metric_cache_t> cached_aux_metric_levels;
         const void* cached_aux_metric_identity = nullptr;
-        bool cached_aux_metric_valid = false;
     };
 
     struct view_render_result_t

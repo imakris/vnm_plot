@@ -1097,8 +1097,41 @@ void Plot_renderer::render()
             current_key.t_max = m_impl->snapshot.cfg.t_max;
         }
 
-        const bool cache_invalid = !m_impl->range_cache_valid ||
-                                   (current_key != m_impl->last_range_key);
+        bool cache_invalid = !m_impl->range_cache_valid ||
+                             (current_key != m_impl->last_range_key);
+
+        if (!cache_invalid && !throttle_expired && v_auto && can_use_series) {
+            std::shared_lock lock(m_impl->owner->m_series_mutex);
+            for (const auto& [id, series] : m_impl->owner->m_series) {
+                if (!series || !series->enabled || !series->data_source) {
+                    continue;
+                }
+                if (!series->access.get_value && !series->access.get_range) {
+                    continue;
+                }
+                const std::size_t levels = series->data_source->lod_levels();
+                if (levels == 0) {
+                    continue;
+                }
+                const std::size_t check_level =
+                    (auto_mode == Auto_v_range_mode::GLOBAL_LOD) ? (levels - 1) : 0;
+                auto snapshot_result = series->data_source->try_snapshot(check_level);
+                if (!snapshot_result) {
+                    continue;
+                }
+                series_minmax_cache_t& cache = m_impl->v_range_cache[id];
+                const void* identity = series->data_source->identity();
+                if (cache.identity != identity || cache.lods.size() != levels) {
+                    cache_invalid = true;
+                    break;
+                }
+                const auto& entry = cache.lods[check_level];
+                if (!entry.valid || entry.sequence != snapshot_result.snapshot.sequence) {
+                    cache_invalid = true;
+                    break;
+                }
+            }
+        }
 
         if (!cache_invalid && !throttle_expired) {
             // Use cached values (throttled path).

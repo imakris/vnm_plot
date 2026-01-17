@@ -732,6 +732,14 @@ void Series_renderer::render(
                 "renderer.frame.execute_passes.render_data_series.series.prepare");
             return compute_lod_scales(*s->data_source);
         }();
+        const void* data_identity = s->data_source->identity();
+        if (vbo_state.cached_aux_metric_identity != data_identity) {
+            vbo_state.cached_aux_metric_identity = data_identity;
+            vbo_state.cached_aux_metric_levels.clear();
+        }
+        if (vbo_state.cached_aux_metric_levels.size() != scales.size()) {
+            vbo_state.cached_aux_metric_levels.assign(scales.size(), {});
+        }
 
         // Process main view
         const std::size_t prev_lod_level = vbo_state.main_view.last_lod_level;
@@ -799,6 +807,8 @@ void Series_renderer::render(
             }
 
             // CPU-side colormap aux-range computation (must run before skip_gl return)
+            const vbo_state_t::aux_metric_cache_t* aux_cache = nullptr;
+            std::size_t aux_range_scale = 1;
             if (primitive_style == Display_style::COLORMAP_AREA && !s->colormap.samples.empty()) {
                 data_snapshot_t snapshot;
                 {
@@ -807,12 +817,10 @@ void Series_renderer::render(
                         "renderer.frame.execute_passes.render_data_series.series.ensure_full_resolution_aux_metric_range");
                     snapshot = s->data_source->snapshot(view_result.applied_level);
                 }
+                auto& aux_cache_entry = vbo_state.cached_aux_metric_levels[view_result.applied_level];
                 if (snapshot) {
-                    const void* identity = s->data_source->identity();
-                    const bool can_reuse = vbo_state.cached_aux_metric_valid &&
-                        vbo_state.cached_aux_metric_sequence == snapshot.sequence &&
-                        vbo_state.cached_aux_metric_level == view_result.applied_level &&
-                        vbo_state.cached_aux_metric_identity == identity;
+                    const bool can_reuse =
+                        aux_cache_entry.valid && aux_cache_entry.sequence == snapshot.sequence;
 
                     if (!can_reuse) {
                         double aux_min = 0.0;
@@ -821,32 +829,38 @@ void Series_renderer::render(
                             profiler,
                             "renderer.frame.execute_passes.render_data_series.series.compute_aux_metric_range");
                         if (compute_aux_metric_range(*s, snapshot, aux_min, aux_max)) {
-                            vbo_state.cached_aux_metric_min = aux_min;
-                            vbo_state.cached_aux_metric_max = aux_max;
-                            vbo_state.cached_aux_metric_sequence = snapshot.sequence;
-                            vbo_state.cached_aux_metric_level = view_result.applied_level;
-                            vbo_state.cached_aux_metric_identity = identity;
-                            vbo_state.cached_aux_metric_valid = true;
+                            aux_cache_entry.min = aux_min;
+                            aux_cache_entry.max = aux_max;
+                            aux_cache_entry.valid = true;
                         }
                         else {
-                            // compute_aux_metric_range failed (e.g., NaN-only window).
-                            // Cache the failure with defaults to avoid rescanning every frame.
-                            // When sequence changes (new data), can_reuse will be false and
-                            // we'll try again.
-                            vbo_state.cached_aux_metric_min = 0.0;
-                            vbo_state.cached_aux_metric_max = 1.0;
-                            vbo_state.cached_aux_metric_sequence = snapshot.sequence;
-                            vbo_state.cached_aux_metric_level = view_result.applied_level;
-                            vbo_state.cached_aux_metric_identity = identity;
-                            vbo_state.cached_aux_metric_valid = true;
+                            if (!aux_cache_entry.valid) {
+                                aux_cache_entry.min = 0.0;
+                                aux_cache_entry.max = 1.0;
+                                aux_cache_entry.valid = true;
+                            }
                         }
+                        aux_cache_entry.sequence = snapshot.sequence;
                     }
                 }
                 else {
-                    // Empty or invalid snapshot - invalidate cache to avoid stale values.
-                    vbo_state.cached_aux_metric_min = 0.0;
-                    vbo_state.cached_aux_metric_max = 1.0;
-                    vbo_state.cached_aux_metric_valid = false;
+                    // Empty or invalid snapshot - keep last valid range to avoid flicker.
+                    if (!aux_cache_entry.valid) {
+                        aux_cache_entry.min = 0.0;
+                        aux_cache_entry.max = 1.0;
+                    }
+                }
+
+                std::size_t aux_range_level = view_result.applied_level;
+                for (std::size_t i = 0; i < vbo_state.cached_aux_metric_levels.size(); ++i) {
+                    if (vbo_state.cached_aux_metric_levels[i].valid) {
+                        aux_range_level = i;
+                        break;
+                    }
+                }
+                aux_cache = &vbo_state.cached_aux_metric_levels[aux_range_level];
+                if (aux_range_level < scales.size()) {
+                    aux_range_scale = scales[aux_range_level];
                 }
             }
 
@@ -925,25 +939,32 @@ void Series_renderer::render(
                     glUniform1i(pass_shader->uniform_location("colormap"), 0);
 
                     // Use cached aux metric values (computed in CPU section above)
-                    const float aux_min_f = static_cast<float>(vbo_state.cached_aux_metric_min);
-                    const float aux_max_f = static_cast<float>(vbo_state.cached_aux_metric_max);
+                    const float aux_min_f = static_cast<float>(aux_cache ? aux_cache->min : 0.0);
+                    const float aux_max_f = static_cast<float>(aux_cache ? aux_cache->max : 1.0);
                     const float aux_span = aux_max_f - aux_min_f;
                     const float inv_aux_span = (std::abs(aux_span) > 1e-12f) ? (1.0f / aux_span) : 0.0f;
 
                     glUniform1f(pass_shader->uniform_location("aux_min"), aux_min_f);
                     glUniform1f(pass_shader->uniform_location("aux_max"), aux_max_f);
+                    const std::size_t applied_scale = (view_result.applied_level < scales.size())
+                        ? scales[view_result.applied_level]
+                        : 1;
                     if (const GLint loc = pass_shader->uniform_location("u_volume_min"); loc >= 0) {
-                        glUniform1f(loc, aux_min_f);
+                        const float scale_ratio = (aux_range_scale > 0)
+                            ? (static_cast<float>(applied_scale) / static_cast<float>(aux_range_scale))
+                            : 1.0f;
+                        glUniform1f(loc, aux_min_f * scale_ratio);
                     }
                     if (const GLint loc = pass_shader->uniform_location("u_inv_volume_span"); loc >= 0) {
-                        glUniform1f(loc, inv_aux_span);
+                        const float scale_ratio = (aux_range_scale > 0)
+                            ? (static_cast<float>(applied_scale) / static_cast<float>(aux_range_scale))
+                            : 1.0f;
+                        const float scaled_inv_span = (scale_ratio > 0.0f) ? (inv_aux_span / scale_ratio) : 0.0f;
+                        glUniform1f(loc, scaled_inv_span);
                     }
                     if (const GLint loc = pass_shader->uniform_location("u_colormap_tex"); loc >= 0) {
                         glUniform1i(loc, 0);
                     }
-                    const std::size_t applied_scale = (view_result.applied_level < scales.size())
-                        ? scales[view_result.applied_level]
-                        : 1;
                     const float volume_scale = (applied_scale > 0) ? (1.0f / static_cast<float>(applied_scale)) : 1.0f;
                     if (const GLint loc = pass_shader->uniform_location("u_volume_scale"); loc >= 0) {
                         glUniform1f(loc, volume_scale);
