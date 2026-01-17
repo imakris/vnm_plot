@@ -828,73 +828,56 @@ void Series_renderer::render(
             std::size_t aux_range_scale = 1;
             if (primitive_style == Display_style::COLORMAP_AREA && !s->colormap.samples.empty()) {
                 auto& aux_cache_entry = vbo_state.cached_aux_metric_levels[view_result.applied_level];
-                if (s->colormap.use_fixed_range) {
-                    const double fixed_min = static_cast<double>(s->colormap.fixed_min);
-                    const double fixed_max = static_cast<double>(s->colormap.fixed_max);
-                    if (std::isfinite(fixed_min) && std::isfinite(fixed_max) && fixed_max > fixed_min) {
-                        aux_cache_entry.min = fixed_min;
-                        aux_cache_entry.max = fixed_max;
-                        aux_cache_entry.sequence = 0;
-                        aux_cache_entry.valid = true;
-                        aux_cache = &aux_cache_entry;
-                        if (view_result.applied_level < scales.size()) {
-                            aux_range_scale = scales[view_result.applied_level];
+                data_snapshot_t snapshot;
+                {
+                    VNM_PLOT_PROFILE_SCOPE(
+                        profiler,
+                        "renderer.frame.execute_passes.render_data_series.series.ensure_full_resolution_aux_metric_range");
+                    snapshot = s->data_source->snapshot(view_result.applied_level);
+                }
+                if (snapshot) {
+                    const bool can_reuse =
+                        aux_cache_entry.valid && aux_cache_entry.sequence == snapshot.sequence;
+
+                    if (!can_reuse) {
+                        double aux_min = 0.0;
+                        double aux_max = 1.0;
+                        VNM_PLOT_PROFILE_SCOPE(
+                            profiler,
+                            "renderer.frame.execute_passes.render_data_series.series.compute_aux_metric_range");
+                        if (compute_aux_metric_range(*s, snapshot, aux_min, aux_max)) {
+                            aux_cache_entry.min = aux_min;
+                            aux_cache_entry.max = aux_max;
+                            aux_cache_entry.valid = true;
                         }
+                        else {
+                            if (!aux_cache_entry.valid) {
+                                aux_cache_entry.min = 0.0;
+                                aux_cache_entry.max = 1.0;
+                                aux_cache_entry.valid = true;
+                            }
+                        }
+                        aux_cache_entry.sequence = snapshot.sequence;
+                    }
+                }
+                else {
+                    // Empty or invalid snapshot - keep last valid range to avoid flicker.
+                    if (!aux_cache_entry.valid) {
+                        aux_cache_entry.min = 0.0;
+                        aux_cache_entry.max = 1.0;
                     }
                 }
 
-                if (!aux_cache) {
-                    data_snapshot_t snapshot;
-                    {
-                        VNM_PLOT_PROFILE_SCOPE(
-                            profiler,
-                            "renderer.frame.execute_passes.render_data_series.series.ensure_full_resolution_aux_metric_range");
-                        snapshot = s->data_source->snapshot(view_result.applied_level);
+                std::size_t aux_range_level = view_result.applied_level;
+                for (std::size_t i = 0; i < vbo_state.cached_aux_metric_levels.size(); ++i) {
+                    if (vbo_state.cached_aux_metric_levels[i].valid) {
+                        aux_range_level = i;
+                        break;
                     }
-                    if (snapshot) {
-                        const bool can_reuse =
-                            aux_cache_entry.valid && aux_cache_entry.sequence == snapshot.sequence;
-
-                        if (!can_reuse) {
-                            double aux_min = 0.0;
-                            double aux_max = 1.0;
-                            VNM_PLOT_PROFILE_SCOPE(
-                                profiler,
-                                "renderer.frame.execute_passes.render_data_series.series.compute_aux_metric_range");
-                            if (compute_aux_metric_range(*s, snapshot, aux_min, aux_max)) {
-                                aux_cache_entry.min = aux_min;
-                                aux_cache_entry.max = aux_max;
-                                aux_cache_entry.valid = true;
-                            }
-                            else {
-                                if (!aux_cache_entry.valid) {
-                                    aux_cache_entry.min = 0.0;
-                                    aux_cache_entry.max = 1.0;
-                                    aux_cache_entry.valid = true;
-                                }
-                            }
-                            aux_cache_entry.sequence = snapshot.sequence;
-                        }
-                    }
-                    else {
-                        // Empty or invalid snapshot - keep last valid range to avoid flicker.
-                        if (!aux_cache_entry.valid) {
-                            aux_cache_entry.min = 0.0;
-                            aux_cache_entry.max = 1.0;
-                        }
-                    }
-
-                    std::size_t aux_range_level = view_result.applied_level;
-                    for (std::size_t i = 0; i < vbo_state.cached_aux_metric_levels.size(); ++i) {
-                        if (vbo_state.cached_aux_metric_levels[i].valid) {
-                            aux_range_level = i;
-                            break;
-                        }
-                    }
-                    aux_cache = &vbo_state.cached_aux_metric_levels[aux_range_level];
-                    if (aux_range_level < scales.size()) {
-                        aux_range_scale = scales[aux_range_level];
-                    }
+                }
+                aux_cache = &vbo_state.cached_aux_metric_levels[aux_range_level];
+                if (aux_range_level < scales.size()) {
+                    aux_range_scale = scales[aux_range_level];
                 }
             }
 

@@ -340,9 +340,6 @@ struct colormap_config_t
 {
     std::vector<glm::vec4> samples;  ///< RGBA color samples (linearly interpolated)
     uint64_t revision = 0;           ///< Increment when samples change
-    bool  use_fixed_range = false;   ///< Use fixed_min/max instead of scanning data
-    float fixed_min = 0.0f;          ///< Minimum value for colormap lookup
-    float fixed_max = 1.0f;          ///< Maximum value for colormap lookup
 };
 
 // -----------------------------------------------------------------------------
