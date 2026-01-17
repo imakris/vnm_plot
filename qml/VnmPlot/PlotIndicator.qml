@@ -66,9 +66,6 @@ Item {
     }
 
     function formatTimestamp(xVal, tspan) {
-        if (plotWidget && typeof plotWidget.format_timestamp_like_axis === "function") {
-            return plotWidget.format_timestamp_like_axis(xVal)
-        }
         var drx = Math.max(3, root.decimalsForSpan(tspan, 3))
         return xVal.toFixed(drx)
     }
@@ -132,7 +129,7 @@ Item {
                     ctx.stroke()
                     ctx.closePath()
                 }
-                if (root.showHorizontalLine) {
+                if (root.showHorizontalLine && samples.length === 1) {
                     ctx.beginPath()
                     ctx.moveTo(0, yLine)
                     ctx.lineTo(width, yLine)
@@ -164,9 +161,10 @@ Item {
                 var boxPaddingY = 6
                 var bulletWidth = showBullet ? ctx.measureText(bulletChar).width + 4 : 0
                 var textWidth = Math.max(ctx.measureText(x_txt).width, bulletWidth + maxValueWidth)
+                var boxWidth = textWidth + boxPaddingX * 2
 
-                var x0 = (xLine > root.width / 2) ? xLine - 10 - textWidth : xLine + 1
-                var x1 = (xLine > root.width / 2) ? xLine - 1 : xLine + 10 + textWidth
+                var x0 = (xLine > width / 2) ? xLine - 10 - boxWidth : xLine + 10
+                var x1 = x0 + boxWidth
                 var y0 = 10
                 var y1 = y0 + boxPaddingY * 2 + lineHeight * (lines.length + 1)
 
@@ -220,15 +218,27 @@ Item {
             }
 
             if (!internal.hasMouseInPlot && root.selectedSample) {
-                var xSel = root.selectedSample.px
-                var ySel = root.selectedSample.py
                 var tsSel = root.selectedSample.x
                 var vSel = root.selectedSample.y
 
-                if (xSel !== undefined && ySel !== undefined &&
-                    tsSel !== undefined && vSel !== undefined) {
-                    xSel = Math.max(0, Math.min(xSel, usableWidth - 1))
-                    ySel = Math.max(0, Math.min(ySel, usableHeight - 1))
+                if (tsSel !== undefined && vSel !== undefined) {
+                    var xSel = 0
+                    var ySel = 0
+                    if (tspan > 0 && vspan > 0) {
+                        xSel = (tsSel - plotWidget.t_min) / tspan * width
+                        ySel = (1.0 - (vSel - plotWidget.v_min) / vspan) * height
+                    }
+                    else {
+                        xSel = root.selectedSample.px
+                        ySel = root.selectedSample.py
+                    }
+
+                    if (xSel === undefined || ySel === undefined) {
+                        return
+                    }
+
+                    xSel = Math.max(0, Math.min(xSel, width - 1))
+                    ySel = Math.max(0, Math.min(ySel, height - 1))
 
                     var x_txt_sel = root.formatTimestamp(tsSel, tspan)
                     var y_txt_sel = vSel.toFixed(dry)
@@ -248,8 +258,10 @@ Item {
                     ctx.fillStyle = "#ccdadada"
                     ctx.beginPath()
 
-                    var x0s = (xSel > root.width / 2) ? xSel - 10 - text_width_sel : xSel + 1
-                    var x1s = (xSel > root.width / 2) ? xSel - 1 : xSel + 10 + text_width_sel
+                    var boxPadSelX = 5
+                    var boxWidthSel = text_width_sel + boxPadSelX * 2
+                    var x0s = (xSel > width / 2) ? xSel - 10 - boxWidthSel : xSel + 10
+                    var x1s = x0s + boxWidthSel
                     var y0s = 10
                     var y1s = 30
 
@@ -262,7 +274,7 @@ Item {
                     ctx.closePath()
 
                     ctx.fillStyle = "#000000"
-                    ctx.fillText(txtSel, x0s + 5, y0s + 15)
+                    ctx.fillText(txtSel, x0s + boxPadSelX, y0s + 15)
 
                     ctx.strokeStyle = "#ffffffff"
                     ctx.fillStyle = root.selectedColor
