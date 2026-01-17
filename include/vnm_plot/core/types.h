@@ -182,6 +182,19 @@ public:
     virtual std::pair<float, float> value_range() const { return {0.0f, 0.0f}; }
     virtual bool value_range_needs_rescan() const { return false; }
 
+    // Optional visible window v-range query (fast path for auto v-range).
+    // Returns false when unsupported or unavailable; callers must fall back.
+    virtual bool query_v_range_for_t_window(
+        double t_min,
+        double t_max,
+        float& v_min_out,
+        float& v_max_out,
+        uint64_t* out_sequence = nullptr) const
+    {
+        (void)t_min; (void)t_max; (void)v_min_out; (void)v_max_out; (void)out_sequence;
+        return false;
+    }
+
 };
 
 // -----------------------------------------------------------------------------

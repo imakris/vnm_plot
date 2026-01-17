@@ -474,6 +474,24 @@ std::pair<float, float> compute_visible_v_range(
 
         active_ids.insert(id);
 
+        float series_min = 0.0f;
+        float series_max = 0.0f;
+        if (series->data_source->query_v_range_for_t_window(
+                t_min,
+                t_max,
+                series_min,
+                series_max,
+                nullptr))
+        {
+            if (!std::isfinite(series_min) || !std::isfinite(series_max) || series_min > series_max) {
+                continue;
+            }
+            v_min = std::min(v_min, series_min);
+            v_max = std::max(v_max, series_max);
+            have_any = true;
+            continue;
+        }
+
         const std::size_t levels = series->data_source->lod_levels();
         if (levels == 0) {
             continue;
@@ -515,8 +533,6 @@ std::pair<float, float> compute_visible_v_range(
             continue;
         }
 
-        float series_min = 0.0f;
-        float series_max = 0.0f;
         const bool full_range = (start == 0 && end == snapshot.count);
 
         series_minmax_cache_t& cache = cache_map[id];
