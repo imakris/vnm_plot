@@ -16,7 +16,28 @@ using namespace detail;
 
 namespace {
 
-grid_layer_params_t build_time_grid(double t_min, double t_max, double width_px, double font_px)
+bool is_integer_multiple(double parent, double child)
+{
+    if (!(parent > 0.0) || !(child > 0.0)) {
+        return false;
+    }
+
+    const double ratio = parent / child;
+    const double rounded = std::round(ratio);
+    if (rounded < 1.0) {
+        return false;
+    }
+
+    const double tol = std::min(1e-3, std::max(1e-8, std::abs(ratio) * 1e-12));
+    return std::abs(ratio - rounded) <= tol;
+}
+
+grid_layer_params_t build_time_grid(
+    double t_min,
+    double t_max,
+    double width_px,
+    double font_px,
+    const std::function<void(const std::string&)>& log_debug)
 {
     grid_layer_params_t levels;
     const double range = t_max - t_min;
@@ -38,11 +59,22 @@ grid_layer_params_t build_time_grid(double t_min, double t_max, double width_px,
         ++idx;
     }
 
+    double last_step = 0.0;
+    bool logged_non_multiple = false;
     for (; idx >= 0 && levels.count < grid_layer_params_t::k_max_levels; --idx) {
         const double step = steps[idx];
         const float spacing_px = static_cast<float>(step * px_per_unit);
         if (spacing_px < cell_span_min) {
             break;
+        }
+        if (last_step > 0.0 && !is_integer_multiple(last_step, step)) {
+            if (!logged_non_multiple && log_debug) {
+                log_debug(
+                    "vnm_plot: dropping non-multiple time grid step; adjust build_time_steps_covering() "
+                    "subdivision levels to exact multiples.");
+                logged_non_multiple = true;
+            }
+            continue;
         }
         const double shift_units = get_shift(step, t_min);
         levels.spacing_px[levels.count] = spacing_px;
@@ -51,6 +83,7 @@ grid_layer_params_t build_time_grid(double t_min, double t_max, double width_px,
         levels.alpha[levels.count] = a;
         levels.thickness_px[levels.count] = 0.6f + 0.6f * (a / k_grid_line_alpha_base);
         ++levels.count;
+        last_step = step;
     }
 
     return levels;
@@ -177,7 +210,12 @@ void Chrome_renderer::render_grid_and_backgrounds(
 
     const grid_layer_params_t vertical_levels = calculate_grid_params(
         double(ctx.v0), double(ctx.v1), pl.usable_height, ctx.adjusted_font_px);
-    const grid_layer_params_t horizontal_levels = build_time_grid(ctx.t0, ctx.t1, pl.usable_width, ctx.adjusted_font_px);
+    const grid_layer_params_t horizontal_levels = build_time_grid(
+        ctx.t0,
+        ctx.t1,
+        pl.usable_width,
+        ctx.adjusted_font_px,
+        ctx.config ? ctx.config->log_debug : std::function<void(const std::string&)>());
 
     const grid_layer_params_t vertical_levels_gl = flip_grid_levels_y(vertical_levels, main_size.y);
 

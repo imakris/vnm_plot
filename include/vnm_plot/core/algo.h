@@ -181,15 +181,12 @@ inline std::vector<double> build_time_steps_covering(double max_span)
     };
     steps.insert(steps.end(), std::begin(exact), std::end(exact));
 
-    // Generic 1-2-5 beyond 2 days
+    // Power-of-two chain beyond 2 days to keep exact multiples.
     double s = 172800.0; // 2 days
     const double limit = std::max(max_span * 2.0, s * 2.0);
-    int cycle = 0;
     while (s < limit && s < 1e12) {
-        const double mult = (cycle % 3 == 0) ? 2.5 : 2.0;
-        s *= mult;
+        s *= 2.0;
         steps.push_back(s);
-        ++cycle;
     }
     return steps;
 }
