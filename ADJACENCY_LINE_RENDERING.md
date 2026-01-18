@@ -1,5 +1,17 @@
 # Adjacency-Aware Line Rendering for COLORMAP_LINE
 
+## Summary
+
+**WHAT**: Fix visual quality issues where COLORMAP_LINE joins/corners appear inconsistent across different zoom levels (LODs).
+
+**HOW**: Use OpenGL's `GL_LINE_STRIP_ADJACENCY` to provide neighbor vertex information to the geometry shader, enabling proper join rendering:
+- Convex joins: Mitered corners where outer edges meet on the angle bisector
+- Reflex joins: Single-subdivision with bisector point at half_width distance
+
+**WHY**: The original implementation rendered each segment as an independent quad without adjacency information, causing overlaps (convex angles) and gaps (reflex angles) that changed appearance at different zoom levels.
+
+**STATUS**: ✅ Complete - Both convex and reflex joins fully implemented and tested.
+
 ## Objective
 
 Implement adjacency-aware line rendering to fix visual quality issues where line joins and corners differ between LODs (Levels of Detail) and appear poor.
@@ -7,14 +19,25 @@ Implement adjacency-aware line rendering to fix visual quality issues where line
 ### Problem Statement
 
 The original COLORMAP_LINE rendering used per-segment quads with no adjacency information:
-- Each line segment was rendered independently
+- Each line segment was rendered independently as a simple quad
 - No information about neighboring segments was available
-- Line joins/corners looked inconsistent across different zoom levels (LODs)
-- Visual artifacts appeared at segment boundaries
+- **Line joins/corners looked inconsistent across different zoom levels (LODs)**:
+  - When zoomed in, joins would show gaps or overlaps
+  - When zoomed out, the same joins would look different
+  - No consistent treatment of convex vs reflex angles
+- Visual artifacts appeared at segment boundaries (overlapping quads or visible gaps)
+
+**Root Cause**: Without adjacency information, each segment's quad was generated using only perpendicular offsets from the segment direction. At corners, these offsets don't account for the angle change, leading to either overlapping geometry (convex angles) or gaps (reflex angles).
 
 ### Solution Approach
 
-Use OpenGL's adjacency primitives to provide geometric context for each line segment, enabling proper join rendering.
+Use OpenGL's adjacency primitives to provide geometric context for each line segment, enabling proper join rendering:
+
+1. **GL_LINE_STRIP_ADJACENCY**: Provides prev/next vertex information to geometry shader
+2. **Convex joins**: Use miter points where outer edges meet on the angle bisector (eliminates overlap)
+3. **Reflex joins**: Use single-subdivision with bisector point at half_width (fills gaps)
+
+This approach ensures consistent, high-quality line rendering at all zoom levels.
 
 ## Implementation Strategy
 
@@ -60,9 +83,19 @@ Use OpenGL's adjacency primitives to provide geometric context for each line seg
 
 **Goal**: Implement both convex and reflex joins for high-quality line rendering.
 
+**User Requirements**:
+- **Convex angles** (inside of the turn): Two key vertices needed:
+  1. The exact point where segment centers join
+  2. The point where outer edges meet (on the angle bisector, distance determined by line width)
+  - This eliminates overlap between adjacent segment quads
+- **Reflex angles** (outside of the turn): Use a bisector point for joining:
+  - Point lies on the angle bisector at distance `half_width` from the center
+  - Draw two triangles to connect the gap (one subdivision toward a full round join)
+  - This fills gaps without excessive geometry
+
 **Approach**:
-- **Convex angles**: Miter points where outer edges meet on bisector (eliminates overlap)
-- **Reflex angles**: Single-subdivision with bisector point at half_width (fills gaps)
+- **Convex angles**: Calculate miter points where outer edges intersect on bisector (eliminates overlap)
+- **Reflex angles**: Single-subdivision with bisector point at half_width (fills gaps smoothly)
 
 **Implementation** (`shaders/plot_line_adjacency.geom`):
 
@@ -138,10 +171,23 @@ Use OpenGL's adjacency primitives to provide geometric context for each line seg
 
 ### Why Adjacency Primitives?
 
-OpenGL's `GL_LINE_STRIP_ADJACENCY` provides exactly 4 vertices to the geometry shader:
-- Minimal data overhead (just boundary vertex duplication)
-- Direct access to neighbor information
-- Efficient for GPU processing
+OpenGL's `GL_LINE_STRIP_ADJACENCY` was chosen because it provides exactly the information needed for proper joins:
+
+**What it provides**:
+- Geometry shader receives 4 vertices per segment: `[prev, start, end, next]`
+- Direct access to neighbor directions for calculating join angles
+- Enables computing both convex (miter) and reflex (bisector) points
+
+**Why this approach**:
+- **Minimal data overhead**: Only requires duplicating boundary vertices (first and last)
+- **GPU-native**: Geometry shader can compute joins on-the-fly without CPU preprocessing
+- **LOD-independent**: Join geometry is calculated in screen space, so it looks consistent at all zoom levels
+- **Clean architecture**: Keeps join logic in the rendering pipeline, not in data management
+
+**Compared to alternatives**:
+- CPU-side join generation: Would require re-upload on every LOD change (too slow)
+- Passing 4 vertices manually: Would double VBO size and complicate data management
+- Adjacency primitives: ✅ Clean, efficient, minimal overhead
 
 ### Performance Considerations
 
@@ -164,10 +210,26 @@ OpenGL's `GL_LINE_STRIP_ADJACENCY` provides exactly 4 vertices to the geometry s
 
 ### Alternative Approaches Considered
 
-1. **CPU-side join generation**: Too slow, would require re-upload on every LOD change
-2. **Compute shader preprocessing**: Overkill, adds complexity
-3. **Instanced quads**: Requires more complex vertex layout changes
-4. **Geometry shader amplification**: ✅ CHOSEN - Clean, efficient, GPU-native
+1. **CPU-side join generation**:
+   - ❌ Too slow: Would require re-uploading geometry on every pan/zoom
+   - ❌ Couples rendering to data pipeline
+   - ❌ Difficult to maintain LOD consistency
+
+2. **Compute shader preprocessing**:
+   - ❌ Overkill for this use case
+   - ❌ Adds complexity without clear benefits
+   - ❌ Requires additional buffer management
+
+3. **Instanced quads per segment**:
+   - ❌ Requires more complex vertex layout changes
+   - ❌ Still doesn't solve adjacency problem
+   - ❌ More draw calls or complex instancing setup
+
+4. **Geometry shader amplification with adjacency primitives**:
+   - ✅ **CHOSEN** - Clean, efficient, GPU-native
+   - ✅ Minimal code changes (just shader + EBO management)
+   - ✅ Consistent quality at all LODs
+   - ✅ Leverages existing OpenGL adjacency primitive support
 
 ## Testing Strategy
 

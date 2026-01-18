@@ -4,15 +4,19 @@
 // ADJACENCY-AWARE LINE GEOMETRY SHADER FOR COLORMAP_LINE
 // ====================================================================================
 //
-// OBJECTIVE:
-//   Fix visual quality issues where line joins/corners appear inconsistent across
-//   different LODs (Levels of Detail). The original implementation rendered each
-//   segment independently without neighbor information, causing poor join quality.
+// PROBLEM:
+//   The original COLORMAP_LINE rendering created per-segment quads with no adjacency
+//   information. This caused line joins to look inconsistent across different zoom
+//   levels (LODs):
+//   - Convex angles: Overlapping quads created visual artifacts
+//   - Reflex angles: Gaps appeared between segments
+//   - LOD changes: Same corner would look different at different zoom levels
 //
-// APPROACH:
-//   Use OpenGL's adjacency primitives (GL_LINE_STRIP_ADJACENCY) to provide geometric
-//   context for each line segment. Generate proper mitered joins on the convex
-//   (inside) angle to eliminate overlap between segments.
+// SOLUTION:
+//   Use OpenGL's adjacency primitives (GL_LINE_STRIP_ADJACENCY) to access neighbor
+//   vertices, enabling proper join geometry:
+//   - Convex joins: Miter points where outer edges meet (eliminates overlap)
+//   - Reflex joins: Single-subdivision using bisector point at half_width (fills gaps)
 //
 // CURRENT STATUS (Phase 2 - Complete Join Geometry):
 //   - Convex angles: Calculate miter points where outer edges meet (no overlap)

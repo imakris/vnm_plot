@@ -56,9 +56,15 @@ private:
     {
         GLuint id = UINT_MAX;
         GLuint active_vbo = UINT_MAX;
-        GLuint adjacency_ebo = 0;  // Element buffer for adjacency indices (COLORMAP_LINE)
+
+        // Element Buffer Object (EBO) for GL_LINE_STRIP_ADJACENCY indices
+        // Used by COLORMAP_LINE to provide prev/next vertex info for proper joins
+        // See ADJACENCY_LINE_RENDERING.md for details
+        GLuint adjacency_ebo = 0;
         std::size_t last_ring_size = 0;
-        std::size_t adjacency_ebo_capacity = 0;  // Capacity of adjacency EBO in indices
+
+        // Capacity of adjacency EBO in number of indices (with 25% headroom for LOD changes)
+        std::size_t adjacency_ebo_capacity = 0;
         std::size_t last_snapshot_elements = 0;
         uint64_t last_sequence = 0;
         const void* cached_data_identity = nullptr;

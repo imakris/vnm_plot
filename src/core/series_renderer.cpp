@@ -1140,6 +1140,10 @@ void Series_renderer::render(
                     // ================================================================
                     // ENSURE EBO EXISTS AND HAS SUFFICIENT CAPACITY
                     // ================================================================
+                    // We use a persistent EBO per view to avoid reallocating on every frame.
+                    // The EBO stores indices for adjacency vertex layout (original vertices + 2 boundary duplicates).
+                    // Required for OpenGL core profile (client-side index arrays not supported).
+
                     if (view_state.adjacency_ebo == 0) {
                         // First use: create the EBO
                         glGenBuffers(1, &view_state.adjacency_ebo);
@@ -1149,7 +1153,8 @@ void Series_renderer::render(
                     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, view_state.adjacency_ebo);
 
                     // Reallocate if current capacity is insufficient
-                    // Add 25% headroom to reduce reallocation frequency
+                    // Add 25% headroom to reduce reallocation frequency during zooming/panning
+                    // (index count changes as LOD changes, so we want to minimize reallocations)
                     if (view_state.adjacency_ebo_capacity < required_capacity) {
                         const std::size_t new_capacity = required_capacity + required_capacity / 4;
                         const GLsizeiptr buffer_size = static_cast<GLsizeiptr>(new_capacity * sizeof(GLuint));
