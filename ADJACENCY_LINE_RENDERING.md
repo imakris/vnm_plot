@@ -56,79 +56,87 @@ Use OpenGL's adjacency primitives to provide geometric context for each line seg
 
 **Status**: Infrastructure complete, builds successfully, provides adjacency data to shader.
 
-### Phase 2: Join Geometry Generation (NEXT STEP)
+### Phase 2: Convex Join Geometry (COMPLETED)
 
-**Goal**: Use adjacency information to generate proper geometric joins.
+**Goal**: Use adjacency information to eliminate overlap on convex (inside) angles.
 
-**Approach**: Generate trapezoids or triangles at segment joins to maintain consistent edge appearance.
+**Approach**: Calculate miter points where outer edges meet on the angle bisector.
 
-#### Option A: Mitered Joins
-- Calculate angle between adjacent segments
-- Extend segment endpoints to create sharp mitered corners
-- Best for: Smooth, continuous data
-- Challenge: Need to handle acute angles (miter limit)
+**Implementation** (`shaders/plot_line_adjacency.geom`):
 
+1. **Direction Vector Calculation**:
+   - Calculate normalized directions for previous, current, and next segments
+   - Compute perpendicular offsets at half line width
+
+2. **Convex vs Reflex Detection**:
+   - Use cross product to determine turn direction
+   - `cross(dir_prev, dir_curr) > 0`: turning left (top is convex)
+   - `cross(dir_prev, dir_curr) < 0`: turning right (bottom is convex)
+
+3. **Miter Point Calculation**:
+   - Compute angle bisector between adjacent segments
+   - Project line width onto bisector to find miter point
+   - Clamp miter length with configurable limit (currently 10x line width)
+
+4. **Quad Emission**:
+   - Output: `triangle_strip` with 4 vertices per segment
+   - Convex side: uses calculated miter point
+   - Reflex side: uses simple perpendicular offset (TODO: gap filling)
+   - First/last segments: use simple offsets (no miter needed)
+
+**Result**:
+- ✅ Convex angles have clean, sharp joins with no overlap
+- ✅ Line width is consistent across joins
+- ⚠️ Reflex angles currently have gaps (Phase 3)
+
+**Visual Example**:
+```        prev            next
+           \              /
+            \            /  <- convex angle (mitered)
+             \          /
+          miter point *
+                     /  \       p0 -------- p1
+            (current segment quad with mitered corner)
 ```
-    Previous segment         Next segment
-         /                        \
-        /                          \
-       /______(miter point)_________\
-            Current segment
-```
 
-#### Option B: Bevel Joins
-- Fill the gap between segments with a triangle
-- More robust, no special cases for acute angles
-- Best for: General-purpose rendering
+### Phase 3: Reflex Join Geometry (NEXT STEP)
 
-```
-    Previous segment         Next segment
-         /                        \
-        /        /-------\          \
-       /_______/         \_________\
-       Current segment
-```
+**Goal**: Fill gaps on reflex (outside) angles.
 
-#### Option C: Round Joins
-- Generate small arc between segments
-- Smoothest appearance
-- Most expensive (requires more vertices)
+**Challenge**: The reflex side is trickier because there's a gap that needs filling.
 
-**Recommended**: Start with bevel joins (Option B) for robustness.
+**Approach**: Emit additional triangle(s) to fill the gap on the reflex (outside) angle.
 
-#### Implementation Plan for Phase 2:
+**Options**:
+- **Bevel**: Single triangle connecting the two offset edges (simpler, sharper corner)
+- **Round**: Multiple triangles forming a circular arc (smoother, more expensive)
 
-1. **Calculate Join Geometry**:
-   ```glsl
-   // In geometry shader
-   vec2 dir_prev = normalize(v1 - v0);  // Direction from previous
-   vec2 dir_curr = normalize(v2 - v1);  // Direction of current segment
-   vec2 dir_next = normalize(v3 - v2);  // Direction to next
-   ```
+**Recommended**: Start with bevel for simplicity.
 
-2. **Emit Trapezoid/Triangle for Each Join**:
-   - At segment start: use `dir_prev` and `dir_curr`
-   - At segment end: use `dir_curr` and `dir_next`
+**Implementation Plan**:
 
-3. **Update Output**:
-   - Change from `line_strip` to `triangle_strip`
-   - Increase `max_vertices` (e.g., 6-8 vertices per segment)
-   - Emit quad/trapezoid covering the line width
+1. **Detect Reflex Joins**:
+   - Currently identified by cross product (already done)
+   - Reflex side uses simple perpendicular offset
 
-4. **Handle Edge Cases**:
-   - First segment: `v0 == v1` (no previous, use current direction)
-   - Last segment: `v2 == v3` (no next, use current direction)
-   - Degenerate segments (zero length)
+2. **Emit Gap-Filling Triangle**:
+   - After emitting the main quad, check for reflex joins
+   - Emit additional triangle between:
+     * p + perp_prev (outer edge of previous segment)
+     * p (centerline vertex)
+     * p + perp_curr (outer edge of current segment)
+   - Increase `max_vertices` to 7 (4 for quad + 3 for potential join triangle)
 
-### Phase 3: Width-Aware Rendering (FUTURE)
+3. **Handle Both Start and End Joins**:
+   - Start join: emit triangle if reflex
+   - End join: emit triangle if reflex
+   - May need up to 10 vertices total (quad + 2 join triangles)
 
-**Goal**: Make joins properly respect line width.
+4. **Update Output Layout**:
+   - Change `max_vertices` from 4 to 10 (conservative estimate)
+   - Emit join triangles as separate primitives or extend the triangle strip
 
-- Add line width uniform to shader
-- Calculate perpendicular offsets based on width
-- Generate proper thick line geometry with correct joins
-
-### Phase 4: Colormap Integration (FUTURE)
+### Phase 4: Colormap Integration (CURRENT - ALREADY WORKING)
 
 **Goal**: Apply colormap along the line based on signal values.
 
@@ -147,14 +155,22 @@ OpenGL's `GL_LINE_STRIP_ADJACENCY` provides exactly 4 vertices to the geometry s
 
 ### Performance Considerations
 
-**Current Impact**: Minimal
-- Index buffer generation is CPU-side but simple
+**Phase 1 Impact**: Minimal
+- EBO management with capacity headroom to minimize reallocations
 - `glDrawElements` vs `glDrawArrays` negligible difference
-- Shader complexity unchanged (Phase 1)
+- Infrastructure overhead only
 
-**Future Impact** (Phase 2+):
-- More vertices emitted per segment (triangles vs lines)
-- Increased fragment shader invocations
+**Phase 2 Impact** (Current):
+- **4 vertices per segment** (triangle strip quad) vs 2 for line strip
+- **2x geometry throughput** increase (acceptable trade-off for quality)
+- Miter calculation adds ~20-30 shader instructions per segment
+- Fragment shader invocations increase proportional to line width
+- Overall: Well within GPU budget for typical use cases
+
+**Phase 3 Impact** (Future):
+- Additional triangles for reflex joins (~3 vertices per join)
+- Worst case: 10 vertices per segment if both joins are reflex
+- Should still be acceptable for typical data densities
 - Trade-off: Better visual quality vs slightly higher GPU load
 - Should still be well within budget for typical use cases
 

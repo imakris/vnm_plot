@@ -11,20 +11,14 @@
 //
 // APPROACH:
 //   Use OpenGL's adjacency primitives (GL_LINE_STRIP_ADJACENCY) to provide geometric
-//   context for each line segment. This shader receives 4 vertices per segment,
-//   including the neighboring vertices needed to calculate proper joins.
+//   context for each line segment. Generate proper mitered joins on the convex
+//   (inside) angle to eliminate overlap between segments.
 //
-// CURRENT STATUS (Phase 1 - Infrastructure):
-//   This is a conservative first step that establishes the adjacency framework
-//   without changing the visual output. We receive adjacency data and transform it,
-//   but currently emit simple line segments just like the non-adjacency version.
-//
-// NEXT STEPS (Phase 2 - Join Geometry):
-//   Future enhancements will use the adjacency information to:
-//   1. Calculate angles between adjacent segments
-//   2. Generate trapezoid/triangle geometry for proper joins (bevel or miter)
-//   3. Emit triangle strips instead of line strips for filled joins
-//   4. Handle edge cases (first/last segments, acute angles, degenerate segments)
+// CURRENT STATUS (Phase 2 - Convex Join Geometry):
+//   - Calculate miter points where outer edges of segments should meet
+//   - Emit triangle strip forming quads with mitered corners on convex joins
+//   - Convex side: segments meet at centerline intersection and miter point
+//   - Reflex side: TODO - currently uses simple offset (needs gap filling)
 //
 // INPUT VERTEX LAYOUT:
 //   For each line segment, we receive 4 vertices via lines_adjacency:
@@ -49,12 +43,12 @@
 //            *                 *
 //             \               /
 //              \             /
-//               \           /
+//               \           /     <- convex angle (miter applied here)
 //                v1-------v2
 //              (seg start)(seg end)
 //
-//   The shader processes the segment v1→v2, but has access to v0 and v3
-//   to understand the geometric context for proper join rendering.
+//   The shader processes the segment v1→v2, emitting a quad with mitered corners
+//   where the outer edges meet on the angle bisector.
 //
 // ====================================================================================
 
@@ -68,13 +62,13 @@ layout(location =  6) uniform double  height;
 layout(location =  7) uniform float   y_offset;
 layout(location =  8) uniform vec4    color;
 layout(location =  9) uniform bool    snap_to_pixels;
+layout(location = 10) uniform float   u_line_px;  // Line width in pixels
 
 // Input: lines_adjacency provides 4 vertices per invocation
 layout (lines_adjacency) in;
 
-// Output: For Phase 1, we emit simple lines (2 vertices)
-// TODO (Phase 2): Change to triangle_strip with max_vertices = 6-8 for join geometry
-layout (line_strip, max_vertices = 2) out;
+// Output: Triangle strip for thick line segments with mitered joins
+layout (triangle_strip, max_vertices = 4) out;
 
 // Input from vertex shader (4 vertices per invocation due to lines_adjacency)
 in Sample {
@@ -87,29 +81,62 @@ in Sample {
 out vec4 line_color;
 
 // ====================================================================================
-// HELPER: emit_point
+// HELPER: Calculate miter point for convex join
 // ====================================================================================
-// Transforms a point from screen pixel coordinates to clip space and emits it.
+// Calculates where the outer edges of two line segments intersect when forming
+// a convex (inside) angle. This point lies on the angle bisector.
 //
 // Parameters:
-//   xd, yd: Position in screen pixel coordinates (origin at bottom-left)
+//   center: The vertex where the two segments meet (v1)
+//   dir_in: Normalized direction of incoming segment (v0→v1)
+//   dir_out: Normalized direction of outgoing segment (v1→v2)
+//   perp_in: Perpendicular offset for incoming segment
+//   perp_out: Perpendicular offset for outgoing segment
+//   line_width: Width of the line in pixels
 //
-// Behavior:
-//   - Optionally snaps to pixel centers if snap_to_pixels is enabled
-//   - Transforms to clip space using the PMV matrix
-//   - Emits the vertex with the current color
+// Returns:
+//   The miter point where outer edges intersect, or simple offset if parallel
 //
-void emit_point(double xd, double yd)
+vec2 calculate_miter_point(vec2 center, vec2 dir_in, vec2 dir_out,
+                           vec2 perp_in, vec2 perp_out, float line_width)
 {
-    if (snap_to_pixels) {
-        // Snap to pixel centers (0.5, 1.5, 2.5, ...) to avoid subpixel rendering
-        // artifacts and ensure consistent appearance across segments.
-        xd = floor(xd) + 0.5;
-        yd = floor(yd) + 0.5;
+    // Calculate the miter direction (bisector of the angle)
+    vec2 tangent = normalize(dir_in + dir_out);
+
+    // Perpendicular to the tangent (along the bisector)
+    vec2 miter = vec2(-tangent.y, tangent.x);
+
+    // Calculate miter length
+    // The miter extends further from the centerline as the angle gets sharper
+    float dot_prod = dot(miter, perp_out);
+
+    // Avoid division by zero for parallel segments
+    if (abs(dot_prod) < 0.001) {
+        return center + perp_out;
     }
 
-    // Transform from screen pixel space to clip space
-    gl_Position = pmv * vec4(float(xd), float(yd), 0.0, 1.0);
+    // Miter length is line_width/2 divided by the projection
+    float miter_length = (line_width * 0.5) / dot_prod;
+
+    // Limit miter length to avoid extremely long spikes on acute angles
+    // TODO: Make this configurable, standard is 4.0 or so
+    const float miter_limit = 10.0;
+    miter_length = clamp(miter_length, -line_width * miter_limit, line_width * miter_limit);
+
+    return center + miter * miter_length;
+}
+
+// ====================================================================================
+// HELPER: emit_vertex
+// ====================================================================================
+// Emits a vertex with optional pixel snapping
+//
+void emit_vertex(vec2 pos)
+{
+    if (snap_to_pixels) {
+        pos = floor(pos) + vec2(0.5);
+    }
+    gl_Position = pmv * vec4(pos, 0.0, 1.0);
     line_color = color;
     EmitVertex();
 }
@@ -122,83 +149,157 @@ void main()
     // ================================================================================
     // STEP 1: Calculate safe denominators for data-to-screen transformation
     // ================================================================================
-    // Ensure we never divide by zero, even for degenerate cases where the viewport
-    // covers zero time or value range.
     double rt = max(t_max - t_min, 1e-30);  // Time range
     double rv = max(double(v_max - v_min), 1e-30);  // Value range
 
     // ================================================================================
     // STEP 2: Transform all 4 adjacency vertices from data space to screen space
     // ================================================================================
-    // We transform all vertices to screen pixel coordinates. Even though we don't
-    // use the adjacency vertices (prev/next) for rendering yet, we compute them
-    // here to prepare for Phase 2 implementation.
-    //
-    // Data space: (timestamp, value)
-    // Screen space: (pixel_x, pixel_y) where (0,0) is bottom-left
-    //
-    // Transform formula:
-    //   x = width * (t - t_min) / (t_max - t_min)
-    //   y = height * (1 - (v - v_min) / (v_max - v_min)) + y_offset
-    //
-    // Note: Y is flipped (1 - ...) because data space has higher values at top,
-    //       but screen space has higher Y values at top as well. The y_offset
-    //       accounts for multi-panel layouts.
 
-    // PREVIOUS vertex (gs_in[0]) - Used for incoming join angle calculation
-    // For the first segment in the strip, this is duplicated from gs_in[1]
-    double x_prev = width  *      (gs_in[0].t - t_min) / rt;
-    double y_prev = height * (1.0 - (double(gs_in[0].v) - double(v_min)) / rv) + double(y_offset);
+    // PREVIOUS vertex (gs_in[0])
+    vec2 p_prev = vec2(
+        float(width  *      (gs_in[0].t - t_min) / rt),
+        float(height * (1.0 - (double(gs_in[0].v) - double(v_min)) / rv) + double(y_offset))
+    );
 
-    // SEGMENT START (gs_in[1]) - The actual start of the current segment
-    double x0 = width  *      (gs_in[1].t - t_min) / rt;
-    double y0 = height * (1.0 - (double(gs_in[1].v) - double(v_min)) / rv) + double(y_offset);
+    // SEGMENT START (gs_in[1])
+    vec2 p0 = vec2(
+        float(width  *      (gs_in[1].t - t_min) / rt),
+        float(height * (1.0 - (double(gs_in[1].v) - double(v_min)) / rv) + double(y_offset))
+    );
 
-    // SEGMENT END (gs_in[2]) - The actual end of the current segment
-    double x1 = width  *      (gs_in[2].t - t_min) / rt;
-    double y1 = height * (1.0 - (double(gs_in[2].v) - double(v_min)) / rv) + double(y_offset);
+    // SEGMENT END (gs_in[2])
+    vec2 p1 = vec2(
+        float(width  *      (gs_in[2].t - t_min) / rt),
+        float(height * (1.0 - (double(gs_in[2].v) - double(v_min)) / rv) + double(y_offset))
+    );
 
-    // NEXT vertex (gs_in[3]) - Used for outgoing join angle calculation
-    // For the last segment in the strip, this is duplicated from gs_in[2]
-    double x_next = width  *      (gs_in[3].t - t_min) / rt;
-    double y_next = height * (1.0 - (double(gs_in[3].v) - double(v_min)) / rv) + double(y_offset);
+    // NEXT vertex (gs_in[3])
+    vec2 p_next = vec2(
+        float(width  *      (gs_in[3].t - t_min) / rt),
+        float(height * (1.0 - (double(gs_in[3].v) - double(v_min)) / rv) + double(y_offset))
+    );
 
     // ================================================================================
-    // STEP 3: Emit geometry (PHASE 1 - Simple line segment)
-    // ================================================================================
-    // For this conservative first implementation, we simply emit the segment as
-    // a basic line from v1 to v2, ignoring the adjacency information.
-    //
-    // TODO (Phase 2): Replace this with proper join geometry:
-    //
-    //   1. Calculate direction vectors:
-    //      vec2 dir_in  = normalize(vec2(x0 - x_prev, y0 - y_prev));  // incoming
-    //      vec2 dir_seg = normalize(vec2(x1 - x0, y1 - y0));          // current
-    //      vec2 dir_out = normalize(vec2(x_next - x1, y_next - y1));  // outgoing
-    //
-    //   2. Calculate perpendicular offsets for line width:
-    //      vec2 perp_in  = vec2(-dir_in.y,  dir_in.x)  * line_width * 0.5;
-    //      vec2 perp_seg = vec2(-dir_seg.y, dir_seg.x) * line_width * 0.5;
-    //      vec2 perp_out = vec2(-dir_out.y, dir_out.x) * line_width * 0.5;
-    //
-    //   3. Emit trapezoid vertices for the segment with proper joins:
-    //      - Start join (using dir_in and dir_seg)
-    //      - Segment body
-    //      - End join (using dir_seg and dir_out)
-    //
-    //   4. Handle edge cases:
-    //      - First segment: x_prev == x0 && y_prev == y0 → use dir_seg only
-    //      - Last segment:  x_next == x1 && y_next == y1 → use dir_seg only
-    //      - Degenerate:    x0 == x1 && y0 == y1 → skip emission
-    //
-    //   5. Change output layout to:
-    //      layout (triangle_strip, max_vertices = 8) out;
-    //
+    // STEP 3: Calculate direction vectors and perpendiculars
     // ================================================================================
 
-    // Phase 1: Emit simple line segment (no joins yet)
-    emit_point(x0, y0);  // Segment start
-    emit_point(x1, y1);  // Segment end
+    float line_width = u_line_px;
+    float half_width = line_width * 0.5;
+
+    // Direction of current segment
+    vec2 dir_curr = p1 - p0;
+    float len_curr = length(dir_curr);
+
+    // Skip degenerate segments
+    if (len_curr < 0.001) {
+        return;
+    }
+
+    dir_curr = dir_curr / len_curr;  // Normalize
+
+    // Perpendicular to current segment (rotated 90° CCW)
+    vec2 perp_curr = vec2(-dir_curr.y, dir_curr.x) * half_width;
+
+    // ================================================================================
+    // STEP 4: Calculate start join (v1 with previous segment)
+    // ================================================================================
+
+    vec2 offset_start_top, offset_start_bottom;
+
+    // Check if this is the first segment (prev == start)
+    if (length(p_prev - p0) < 0.001) {
+        // First segment: no previous, use simple perpendicular offset
+        offset_start_top = perp_curr;
+        offset_start_bottom = -perp_curr;
+    } else {
+        // Calculate previous segment direction
+        vec2 dir_prev = p0 - p_prev;
+        float len_prev = length(dir_prev);
+
+        if (len_prev > 0.001) {
+            dir_prev = dir_prev / len_prev;
+            vec2 perp_prev = vec2(-dir_prev.y, dir_prev.x) * half_width;
+
+            // Determine which side is convex using cross product
+            // cross(dir_prev, dir_curr) > 0 means turning left (CCW)
+            float cross_prod = dir_prev.x * dir_curr.y - dir_prev.y * dir_curr.x;
+
+            if (cross_prod > 0.001) {
+                // Turning left: top side is convex (needs miter), bottom is reflex
+                vec2 miter_top = calculate_miter_point(p0, dir_prev, dir_curr, perp_prev, perp_curr, line_width);
+                offset_start_top = miter_top - p0;
+                offset_start_bottom = -perp_curr;  // Simple offset on reflex side
+            } else if (cross_prod < -0.001) {
+                // Turning right: bottom side is convex (needs miter), top is reflex
+                vec2 miter_bottom = calculate_miter_point(p0, dir_prev, dir_curr, -perp_prev, -perp_curr, line_width);
+                offset_start_top = perp_curr;  // Simple offset on reflex side
+                offset_start_bottom = miter_bottom - p0;
+            } else {
+                // Straight line: use simple offsets
+                offset_start_top = perp_curr;
+                offset_start_bottom = -perp_curr;
+            }
+        } else {
+            offset_start_top = perp_curr;
+            offset_start_bottom = -perp_curr;
+        }
+    }
+
+    // ================================================================================
+    // STEP 5: Calculate end join (v2 with next segment)
+    // ================================================================================
+
+    vec2 offset_end_top, offset_end_bottom;
+
+    // Check if this is the last segment (end == next)
+    if (length(p_next - p1) < 0.001) {
+        // Last segment: no next, use simple perpendicular offset
+        offset_end_top = perp_curr;
+        offset_end_bottom = -perp_curr;
+    } else {
+        // Calculate next segment direction
+        vec2 dir_next = p_next - p1;
+        float len_next = length(dir_next);
+
+        if (len_next > 0.001) {
+            dir_next = dir_next / len_next;
+            vec2 perp_next = vec2(-dir_next.y, dir_next.x) * half_width;
+
+            // Determine which side is convex
+            float cross_prod = dir_curr.x * dir_next.y - dir_curr.y * dir_next.x;
+
+            if (cross_prod > 0.001) {
+                // Turning left: top side is convex
+                vec2 miter_top = calculate_miter_point(p1, dir_curr, dir_next, perp_curr, perp_next, line_width);
+                offset_end_top = miter_top - p1;
+                offset_end_bottom = -perp_curr;
+            } else if (cross_prod < -0.001) {
+                // Turning right: bottom side is convex
+                vec2 miter_bottom = calculate_miter_point(p1, dir_curr, dir_next, -perp_curr, -perp_next, line_width);
+                offset_end_top = perp_curr;
+                offset_end_bottom = miter_bottom - p1;
+            } else {
+                // Straight line
+                offset_end_top = perp_curr;
+                offset_end_bottom = -perp_curr;
+            }
+        } else {
+            offset_end_top = perp_curr;
+            offset_end_bottom = -perp_curr;
+        }
+    }
+
+    // ================================================================================
+    // STEP 6: Emit triangle strip forming the segment quad with mitered corners
+    // ================================================================================
+    // Triangle strip order: top-left, bottom-left, top-right, bottom-right
+    // This forms a quad (two triangles) for the line segment
+
+    emit_vertex(p0 + offset_start_top);      // Top-left
+    emit_vertex(p0 + offset_start_bottom);   // Bottom-left
+    emit_vertex(p1 + offset_end_top);        // Top-right
+    emit_vertex(p1 + offset_end_bottom);     // Bottom-right
 
     EndPrimitive();
 }
