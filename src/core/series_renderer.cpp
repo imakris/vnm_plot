@@ -107,6 +107,9 @@ void Series_renderer::cleanup_gl_resources()
             if (view->id != UINT_MAX) {
                 glDeleteBuffers(1, &view->id);
             }
+            if (view->adjacency_ebo != 0) {
+                glDeleteBuffers(1, &view->adjacency_ebo);
+            }
             view->reset();
         }
     }
@@ -671,6 +674,9 @@ void Series_renderer::render(
                     if (!skip_gl && view->id != UINT_MAX) {
                         glDeleteBuffers(1, &view->id);
                     }
+                    if (!skip_gl && view->adjacency_ebo != 0) {
+                        glDeleteBuffers(1, &view->adjacency_ebo);
+                    }
                 }
                 it = m_vbo_states.erase(it);
             }
@@ -830,8 +836,12 @@ void Series_renderer::render(
             // Minimum vertex count varies by primitive type:
             // - POINTS:              1 vertex minimum
             // - LINE_STRIP:          2 vertices minimum (one segment)
-            // - LINE_STRIP_ADJACENCY: 4 vertices minimum (one segment + 2 adjacency vertices)
-            const GLsizei min_vertices = (drawing_mode == GL_LINE_STRIP_ADJACENCY) ? 4 :
+            // - LINE_STRIP_ADJACENCY: 2 vertices minimum (expanded to 4 with boundary duplication)
+            //
+            // Note: GL_LINE_STRIP_ADJACENCY requires 4 vertices for the final draw call,
+            // but we duplicate the first and last vertices to satisfy this requirement,
+            // so we only need count >= 2 actual data vertices.
+            const GLsizei min_vertices = (drawing_mode == GL_LINE_STRIP_ADJACENCY) ? 2 :
                                         (drawing_mode == GL_LINE_STRIP) ? 2 : 1;
             if (count < min_vertices) {
                 return;
@@ -1114,22 +1124,45 @@ void Series_renderer::render(
                 //     Segment 2: gs_in[] = [v1, v2, v3, v4]  (normal)
                 //     Segment 3: gs_in[] = [v2, v3, v4, v4]  (v4 duplicated as next)
                 //
-                // PERFORMANCE CONSIDERATIONS:
-                //   - Index buffer is small (N+2 indices for N vertices)
-                //   - Created on CPU per frame (not cached)
-                //   - Future optimization: Use a persistent mapped buffer or
-                //     compute shader to generate indices GPU-side
-                //   - For typical use cases (<10K vertices), CPU generation is fine
+                // ELEMENT BUFFER MANAGEMENT:
+                //   - We maintain a persistent EBO per view to avoid recreating it every frame
+                //   - EBO is resized (with headroom) only when the index count exceeds capacity
+                //   - For OpenGL core profile, we MUST use a bound EBO; client-side index
+                //     arrays (passing indices.data() to glDrawElements) are not supported
                 //
                 // See ADJACENCY_LINE_RENDERING.md for more details.
                 //
                 if (drawing_mode == GL_LINE_STRIP_ADJACENCY) {
                     // Calculate total index count: original vertices + 2 duplicates
                     const GLsizei adjacency_count = count + 2;
+                    const std::size_t required_capacity = static_cast<std::size_t>(adjacency_count);
 
-                    // Allocate index buffer (stack allocation for small counts would be
-                    // more efficient, but std::vector is clearer and the allocation
-                    // cost is negligible compared to GPU work)
+                    // ================================================================
+                    // ENSURE EBO EXISTS AND HAS SUFFICIENT CAPACITY
+                    // ================================================================
+                    if (view_state.adjacency_ebo == 0) {
+                        // First use: create the EBO
+                        glGenBuffers(1, &view_state.adjacency_ebo);
+                    }
+
+                    // Bind the EBO (required for both allocation and drawing)
+                    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, view_state.adjacency_ebo);
+
+                    // Reallocate if current capacity is insufficient
+                    // Add 25% headroom to reduce reallocation frequency
+                    if (view_state.adjacency_ebo_capacity < required_capacity) {
+                        const std::size_t new_capacity = required_capacity + required_capacity / 4;
+                        const GLsizeiptr buffer_size = static_cast<GLsizeiptr>(new_capacity * sizeof(GLuint));
+
+                        glBufferData(GL_ELEMENT_ARRAY_BUFFER, buffer_size, nullptr, GL_DYNAMIC_DRAW);
+                        view_state.adjacency_ebo_capacity = new_capacity;
+                    }
+
+                    // ================================================================
+                    // GENERATE AND UPLOAD ADJACENCY INDICES
+                    // ================================================================
+                    // Build the index array on CPU (could be optimized to use persistent
+                    // mapped buffer, but for typical sizes this is fast enough)
                     std::vector<GLuint> indices;
                     indices.reserve(adjacency_count);
 
@@ -1146,10 +1179,18 @@ void Series_renderer::render(
                     // This provides the "next" vertex for the last segment
                     indices.push_back(static_cast<GLuint>(view_result.first + count - 1));
 
-                    // Issue indexed draw call
-                    // Note: indices.data() provides client-side index buffer
-                    // (no index VBO needed for this small buffer)
-                    glDrawElements(GL_LINE_STRIP_ADJACENCY, adjacency_count, GL_UNSIGNED_INT, indices.data());
+                    // Upload indices to GPU
+                    const GLsizeiptr upload_size = static_cast<GLsizeiptr>(adjacency_count * sizeof(GLuint));
+                    glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0, upload_size, indices.data());
+
+                    // ================================================================
+                    // ISSUE INDEXED DRAW CALL
+                    // ================================================================
+                    // With EBO bound, pass nullptr to glDrawElements (indices come from bound buffer)
+                    glDrawElements(GL_LINE_STRIP_ADJACENCY, adjacency_count, GL_UNSIGNED_INT, nullptr);
+
+                    // Unbind EBO (good practice, though not strictly required)
+                    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
                 }
                 else {
                     // Standard non-adjacency draw call (DOTS, LINE, AREA)

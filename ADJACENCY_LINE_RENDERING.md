@@ -25,17 +25,22 @@ Use OpenGL's adjacency primitives to provide geometric context for each line seg
 **Changes Made**:
 
 1. **Drawing Mode Update** (`src/core/series_renderer.cpp`)
-   - Changed from `GL_LINE_STRIP` to `GL_LINE_STRIP_ADJACENCY`
-   - Updated minimum vertex count check (4 vertices required for adjacency)
+   - Changed from `GL_LINE_STRIP` to `GL_LINE_STRIP_ADJACENCY` for COLORMAP_LINE
+   - Minimum vertex count: 2 data vertices (expanded to 4 with boundary duplication)
 
 2. **Index Buffer Generation** (`src/core/series_renderer.cpp`)
-   - Implemented indexed drawing using `glDrawElements`
+   - Implemented indexed drawing using `glDrawElements` with Element Buffer Object (EBO)
    - Duplicate first and last vertices to provide boundary adjacency:
      ```
-     Original vertices: [v0, v1, v2, v3, v4]
-     Adjacency indices: [v0, v0, v1, v2, v3, v4, v4]
+     Original vertices: [v0, v1, v2, v3, v4]  (5 data points)
+     Adjacency indices: [v0, v0, v1, v2, v3, v4, v4]  (7 indices for GPU)
                          ^adj ^actual vertices...    ^adj
      ```
+   - **Minimum vertex requirement**: Only 2 data vertices needed
+     - OpenGL requires 4 vertices total for `GL_LINE_STRIP_ADJACENCY`
+     - We satisfy this by duplicating boundaries: `[v0, v0, v1, v1]` for 2-vertex line
+     - This allows rendering of small datasets (2-3 points) that were previously skipped
+   - **EBO management**: Persistent buffer with capacity headroom to minimize reallocations
 
 3. **Adjacency-Aware Geometry Shader** (`shaders/plot_line_adjacency.geom`)
    - Input: `layout(lines_adjacency)` - receives 4 vertices per segment
