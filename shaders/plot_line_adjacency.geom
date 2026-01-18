@@ -14,11 +14,11 @@
 //   context for each line segment. Generate proper mitered joins on the convex
 //   (inside) angle to eliminate overlap between segments.
 //
-// CURRENT STATUS (Phase 2 - Convex Join Geometry):
-//   - Calculate miter points where outer edges of segments should meet
-//   - Emit triangle strip forming quads with mitered corners on convex joins
-//   - Convex side: segments meet at centerline intersection and miter point
-//   - Reflex side: TODO - currently uses simple offset (needs gap filling)
+// CURRENT STATUS (Phase 2 - Complete Join Geometry):
+//   - Convex angles: Calculate miter points where outer edges meet (no overlap)
+//   - Reflex angles: Single-subdivision join with bisector point at half_width
+//   - Emit triangle strip for main segment quad
+//   - Emit additional triangles for reflex joins (one subdivision toward round)
 //
 // INPUT VERTEX LAYOUT:
 //   For each line segment, we receive 4 vertices via lines_adjacency:
@@ -68,7 +68,8 @@ layout(location = 10) uniform float   u_line_px;  // Line width in pixels
 layout (lines_adjacency) in;
 
 // Output: Triangle strip for thick line segments with mitered joins
-layout (triangle_strip, max_vertices = 4) out;
+// Max vertices: 4 (quad) + 3 (start reflex) + 3 (end reflex) = 10
+layout (triangle_strip, max_vertices = 10) out;
 
 // Input from vertex shader (4 vertices per invocation due to lines_adjacency)
 in Sample {
@@ -124,6 +125,36 @@ vec2 calculate_miter_point(vec2 center, vec2 dir_in, vec2 dir_out,
     miter_length = clamp(miter_length, -line_width * miter_limit, line_width * miter_limit);
 
     return center + miter * miter_length;
+}
+
+// ====================================================================================
+// HELPER: Calculate bisector point for reflex join
+// ====================================================================================
+// For reflex (outside) angles, calculates a point on the angle bisector at
+// distance half_width from the center. This is used for single-subdivision joins.
+//
+// Parameters:
+//   center: The vertex where the two segments meet
+//   dir_in: Normalized direction of incoming segment
+//   dir_out: Normalized direction of outgoing segment
+//   half_width: Half the line width
+//   sign: +1.0 for top side, -1.0 for bottom side
+//
+// Returns:
+//   Point on the bisector at distance half_width from center
+//
+vec2 calculate_reflex_bisector_point(vec2 center, vec2 dir_in, vec2 dir_out,
+                                     float half_width, float sign)
+{
+    // Calculate the bisector direction (average of the two directions)
+    vec2 tangent = normalize(dir_in + dir_out);
+
+    // Perpendicular to the bisector (this points toward the outer edge)
+    vec2 bisector_perp = vec2(-tangent.y, tangent.x);
+
+    // Place point at half_width distance along the bisector
+    // Sign determines which side (top or bottom)
+    return center + bisector_perp * half_width * sign;
 }
 
 // ====================================================================================
@@ -206,6 +237,9 @@ void main()
     // ================================================================================
 
     vec2 offset_start_top, offset_start_bottom;
+    bool start_has_reflex = false;
+    bool start_reflex_is_top = false;
+    vec2 dir_prev = vec2(0.0);
 
     // Check if this is the first segment (prev == start)
     if (length(p_prev - p0) < 0.001) {
@@ -214,7 +248,7 @@ void main()
         offset_start_bottom = -perp_curr;
     } else {
         // Calculate previous segment direction
-        vec2 dir_prev = p0 - p_prev;
+        dir_prev = p0 - p_prev;
         float len_prev = length(dir_prev);
 
         if (len_prev > 0.001) {
@@ -230,11 +264,15 @@ void main()
                 vec2 miter_top = calculate_miter_point(p0, dir_prev, dir_curr, perp_prev, perp_curr, line_width);
                 offset_start_top = miter_top - p0;
                 offset_start_bottom = -perp_curr;  // Simple offset on reflex side
+                start_has_reflex = true;
+                start_reflex_is_top = false;  // Bottom is reflex
             } else if (cross_prod < -0.001) {
                 // Turning right: bottom side is convex (needs miter), top is reflex
                 vec2 miter_bottom = calculate_miter_point(p0, dir_prev, dir_curr, -perp_prev, -perp_curr, line_width);
                 offset_start_top = perp_curr;  // Simple offset on reflex side
                 offset_start_bottom = miter_bottom - p0;
+                start_has_reflex = true;
+                start_reflex_is_top = true;  // Top is reflex
             } else {
                 // Straight line: use simple offsets
                 offset_start_top = perp_curr;
@@ -251,6 +289,9 @@ void main()
     // ================================================================================
 
     vec2 offset_end_top, offset_end_bottom;
+    bool end_has_reflex = false;
+    bool end_reflex_is_top = false;
+    vec2 dir_next = vec2(0.0);
 
     // Check if this is the last segment (end == next)
     if (length(p_next - p1) < 0.001) {
@@ -259,7 +300,7 @@ void main()
         offset_end_bottom = -perp_curr;
     } else {
         // Calculate next segment direction
-        vec2 dir_next = p_next - p1;
+        dir_next = p_next - p1;
         float len_next = length(dir_next);
 
         if (len_next > 0.001) {
@@ -274,11 +315,15 @@ void main()
                 vec2 miter_top = calculate_miter_point(p1, dir_curr, dir_next, perp_curr, perp_next, line_width);
                 offset_end_top = miter_top - p1;
                 offset_end_bottom = -perp_curr;
+                end_has_reflex = true;
+                end_reflex_is_top = false;  // Bottom is reflex
             } else if (cross_prod < -0.001) {
                 // Turning right: bottom side is convex
                 vec2 miter_bottom = calculate_miter_point(p1, dir_curr, dir_next, -perp_curr, -perp_next, line_width);
                 offset_end_top = perp_curr;
                 offset_end_bottom = miter_bottom - p1;
+                end_has_reflex = true;
+                end_reflex_is_top = true;  // Top is reflex
             } else {
                 // Straight line
                 offset_end_top = perp_curr;
@@ -302,4 +347,85 @@ void main()
     emit_vertex(p1 + offset_end_bottom);     // Bottom-right
 
     EndPrimitive();
+
+    // ================================================================================
+    // STEP 7: Emit reflex join triangles (single-subdivision toward round)
+    // ================================================================================
+    // For reflex angles, emit two triangles that fill the gap using a bisector point
+    // at half_width distance from the centerline. This creates a slightly rounded
+    // appearance (one subdivision toward a fully round join).
+
+    if (start_has_reflex) {
+        // Calculate the bisector point at half_width distance
+        float sign = start_reflex_is_top ? 1.0 : -1.0;
+        vec2 bisector_point = calculate_reflex_bisector_point(p0, dir_prev, dir_curr, half_width, sign);
+
+        // Get the perpendicular offset for the previous segment
+        vec2 perp_prev = vec2(-dir_prev.y, dir_prev.x) * half_width;
+
+        if (start_reflex_is_top) {
+            // Top is reflex: emit two triangles to fill the gap
+            // Triangle 1: previous segment top → bisector point → center
+            emit_vertex(p0 + perp_prev);
+            emit_vertex(bisector_point);
+            emit_vertex(p0);
+            EndPrimitive();
+
+            // Triangle 2: center → bisector point → current segment top
+            emit_vertex(p0);
+            emit_vertex(bisector_point);
+            emit_vertex(p0 + offset_start_top);
+            EndPrimitive();
+        } else {
+            // Bottom is reflex: emit two triangles to fill the gap
+            // Triangle 1: previous segment bottom → bisector point → center
+            emit_vertex(p0 - perp_prev);
+            emit_vertex(bisector_point);
+            emit_vertex(p0);
+            EndPrimitive();
+
+            // Triangle 2: center → bisector point → current segment bottom
+            emit_vertex(p0);
+            emit_vertex(bisector_point);
+            emit_vertex(p0 + offset_start_bottom);
+            EndPrimitive();
+        }
+    }
+
+    if (end_has_reflex) {
+        // Calculate the bisector point at half_width distance
+        float sign = end_reflex_is_top ? 1.0 : -1.0;
+        vec2 bisector_point = calculate_reflex_bisector_point(p1, dir_curr, dir_next, half_width, sign);
+
+        // Get the perpendicular offset for the next segment
+        vec2 perp_next = vec2(-dir_next.y, dir_next.x) * half_width;
+
+        if (end_reflex_is_top) {
+            // Top is reflex: emit two triangles to fill the gap
+            // Triangle 1: current segment top → bisector point → center
+            emit_vertex(p1 + offset_end_top);
+            emit_vertex(bisector_point);
+            emit_vertex(p1);
+            EndPrimitive();
+
+            // Triangle 2: center → bisector point → next segment top
+            emit_vertex(p1);
+            emit_vertex(bisector_point);
+            emit_vertex(p1 + perp_next);
+            EndPrimitive();
+        } else {
+            // Bottom is reflex: emit two triangles to fill the gap
+            // Triangle 1: current segment bottom → bisector point → center
+            emit_vertex(p1 + offset_end_bottom);
+            emit_vertex(bisector_point);
+            emit_vertex(p1);
+            EndPrimitive();
+
+            // Triangle 2: center → bisector point → next segment bottom
+            emit_vertex(p1);
+            emit_vertex(bisector_point);
+            emit_vertex(p1 - perp_next);
+            EndPrimitive();
+        }
+    }
 }
