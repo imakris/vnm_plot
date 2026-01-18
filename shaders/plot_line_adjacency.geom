@@ -4,6 +4,9 @@
 // ADJACENCY-AWARE LINE GEOMETRY SHADER FOR COLORMAP_LINE
 // ====================================================================================
 //
+// SCOPE: This shader implements adjacency-aware join geometry ONLY.
+//        Colormap sampling is NOT implemented - line renders as solid color.
+//
 // PROBLEM:
 //   The original COLORMAP_LINE rendering created per-segment quads with no adjacency
 //   information. This caused line joins to look inconsistent across different zoom
@@ -17,6 +20,9 @@
 //   vertices, enabling proper join geometry:
 //   - Convex joins: Miter points where outer edges meet (eliminates overlap)
 //   - Reflex joins: Single-subdivision using bisector point at half_width (fills gaps)
+//
+// NOTE: Signal values (gs_in[].v) are available but not currently used.
+//       To implement colormap: pass signal value to fragment shader and sample texture.
 //
 // CURRENT STATUS (Phase 2 - Complete Join Geometry):
 //   - Convex angles: Calculate miter points where outer edges meet (no overlap)

@@ -10,7 +10,7 @@
 
 **WHY**: The original implementation rendered each segment as an independent quad without adjacency information, causing overlaps (convex angles) and gaps (reflex angles) that changed appearance at different zoom levels.
 
-**STATUS**: ✅ Complete - Both convex and reflex joins fully implemented and tested.
+**STATUS**: ✅ Adjacency-aware joins complete. ⚠️ Note: Colormap sampling not yet implemented (renders as solid color).
 
 ## Objective
 
@@ -164,13 +164,32 @@ This approach ensures consistent, high-quality line rendering at all zoom levels
    - Requires additional vertex attributes
    - Enables tapered lines and other effects
 
-### Phase 4: Colormap Integration (ALREADY WORKING)
+### Phase 4: Colormap Integration (NOT IMPLEMENTED)
 
-**Goal**: Apply colormap along the line based on signal values.
+**Status**: The colormap sampling functionality is **not yet implemented** in this branch.
 
-- Pass signal value per vertex
-- Sample colormap texture in fragment shader
-- Interpolate colors across join geometry
+**Current Behavior**:
+- COLORMAP_LINE requires `Data_access_policy::get_signal` callback (for future compatibility)
+- Renderer validates get_signal presence and logs errors if missing
+- **However**: Shaders do not use signal values or sample colormap texture
+- **Result**: COLORMAP_LINE currently renders as **solid color** (using uniform `color`)
+- The adjacency-aware join geometry works correctly, but color is constant along the line
+
+**Why Require get_signal If Not Using It?**:
+The get_signal requirement exists for future compatibility. When colormap sampling is
+implemented, all data sources will already be prepared. This avoids a breaking change later.
+Users should implement get_signal now, even though it's not immediately used.
+
+**Future Work** (to fully implement colormap integration):
+1. Add signal value as vertex attribute or geometry shader varying
+2. Pass signal value from vertex → geometry → fragment shader
+3. Sample colormap texture in fragment shader based on signal value
+4. Interpolate signal values across join geometry triangles
+
+**Why Not Implemented Yet**:
+The original scope of this branch was to fix join quality issues using adjacency primitives.
+Colormap sampling is orthogonal to the join geometry problem and should be implemented
+separately to avoid coupling two independent features.
 
 ## Technical Notes
 

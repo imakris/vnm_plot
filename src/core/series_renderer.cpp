@@ -732,6 +732,13 @@ void Series_renderer::render(
         }
 
         Display_style style = s->style;
+
+        // COLORMAP_LINE validation: Require get_signal callback for future compatibility
+        // NOTE: Current implementation (adjacency-aware joins) does NOT use signal values
+        //       or sample colormap texture. Shaders render solid color only.
+        //       This requirement exists to ensure data sources are prepared for when
+        //       colormap sampling is implemented in the future.
+        // TODO: Implement colormap sampling in shaders (pass signal to frag, sample texture)
         if (!!(style & Display_style::COLORMAP_LINE) && !s->access.get_signal) {
             if (m_missing_signal_logged.insert(id).second) {
                 if (ctx.config && ctx.config->log_error) {
