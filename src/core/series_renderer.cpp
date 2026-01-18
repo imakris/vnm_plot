@@ -14,6 +14,7 @@
 #include <cmath>
 #include <limits>
 #include <unordered_set>
+#include <vector>
 
 namespace vnm::plot {
 using namespace detail;
@@ -798,8 +799,15 @@ void Series_renderer::render(
                 return;
             }
 
-            const GLenum drawing_mode = (primitive_style == Display_style::DOTS) ? GL_POINTS : GL_LINE_STRIP;
-            if (drawing_mode == GL_LINE_STRIP && count < 2) {
+            const GLenum drawing_mode =
+                (primitive_style == Display_style::DOTS) ? GL_POINTS :
+                (primitive_style == Display_style::COLORMAP_LINE) ? GL_LINE_STRIP_ADJACENCY :
+                GL_LINE_STRIP;
+
+            // LINE_STRIP requires at least 2 vertices, LINE_STRIP_ADJACENCY requires at least 4
+            const GLsizei min_vertices = (drawing_mode == GL_LINE_STRIP_ADJACENCY) ? 4 :
+                                        (drawing_mode == GL_LINE_STRIP) ? 2 : 1;
+            if (count < min_vertices) {
                 return;
             }
 
@@ -1040,7 +1048,33 @@ void Series_renderer::render(
 
             if (do_draw) {
                 VNM_PLOT_PROFILE_SCOPE(profiler, "gpu_issue");
-                glDrawArrays(drawing_mode, view_result.first, count);
+
+                // For LINE_STRIP_ADJACENCY, we need to provide adjacency vertices
+                // We duplicate first and last vertices to provide the adjacency information
+                if (drawing_mode == GL_LINE_STRIP_ADJACENCY) {
+                    // Create indices: [first, first, first+1, ..., first+count-1, first+count-1]
+                    // This gives us: [v0(adj), v0, v1, ..., vN-1, vN-1(adj)]
+                    const GLsizei adjacency_count = count + 2;
+                    std::vector<GLuint> indices;
+                    indices.reserve(adjacency_count);
+
+                    // Duplicate first vertex for adjacency
+                    indices.push_back(static_cast<GLuint>(view_result.first));
+
+                    // Add all actual vertices
+                    for (GLsizei i = 0; i < count; ++i) {
+                        indices.push_back(static_cast<GLuint>(view_result.first + i));
+                    }
+
+                    // Duplicate last vertex for adjacency
+                    indices.push_back(static_cast<GLuint>(view_result.first + count - 1));
+
+                    // Use indexed draw call
+                    glDrawElements(GL_LINE_STRIP_ADJACENCY, adjacency_count, GL_UNSIGNED_INT, indices.data());
+                }
+                else {
+                    glDrawArrays(drawing_mode, view_result.first, count);
+                }
             }
 
             // Note: VAO unbinding moved to cleanup section to avoid per-draw overhead

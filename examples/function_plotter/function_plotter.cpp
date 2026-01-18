@@ -556,6 +556,11 @@ void Function_entry::setup_series()
         ":/vnm_plot/shaders/plot_line.geom",
         ":/vnm_plot/shaders/plot_line.frag"
     };
+    m_series->shaders[vnm::plot::Display_style::COLORMAP_LINE] = {
+        vert,
+        ":/vnm_plot/shaders/plot_line_adjacency.geom",
+        ":/vnm_plot/shaders/plot_line.frag"
+    };
 
     // Layout key for function_sample_t (must be unique for this vertex layout)
     m_series->access.layout_key = 0x1001;
