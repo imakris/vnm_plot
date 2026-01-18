@@ -821,23 +821,19 @@ void Series_renderer::render(
             //                - Each vertex becomes a point sprite
             //                - Geometry shader can expand to billboard quad
             //
-            // LINE:          GL_LINE_STRIP
-            //                - Vertices form a continuous polyline
-            //                - Each pair of consecutive vertices forms a line segment
-            //                - No information about neighboring segments
-            //
-            // COLORMAP_LINE: GL_LINE_STRIP_ADJACENCY
+            // LINE & COLORMAP_LINE: GL_LINE_STRIP_ADJACENCY
             //                - Enhanced line strip with adjacency information
             //                - Geometry shader receives 4 vertices per segment:
             //                  [v_prev, v_start, v_end, v_next]
             //                - Enables proper join rendering (see ADJACENCY_LINE_RENDERING.md)
             //                - Required for consistent appearance across LODs
+            //                - Both regular and colormap lines use same adjacency-aware method
             //
             // AREA:          GL_LINE_STRIP (processed differently in geometry shader)
             //
             const GLenum drawing_mode =
                 (primitive_style == Display_style::DOTS) ? GL_POINTS :
-                (primitive_style == Display_style::COLORMAP_LINE) ? GL_LINE_STRIP_ADJACENCY :
+                (primitive_style == Display_style::LINE || primitive_style == Display_style::COLORMAP_LINE) ? GL_LINE_STRIP_ADJACENCY :
                 GL_LINE_STRIP;
 
             // Minimum vertex count varies by primitive type:

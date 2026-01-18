@@ -1,14 +1,17 @@
 #version 430
 
 // ====================================================================================
-// ADJACENCY-AWARE LINE GEOMETRY SHADER FOR COLORMAP_LINE
+// ADJACENCY-AWARE LINE GEOMETRY SHADER FOR LINE AND COLORMAP_LINE
 // ====================================================================================
+//
+// USAGE: This shader is used by BOTH Display_style::LINE and Display_style::COLORMAP_LINE
+//        to ensure no code divergence. All line rendering uses adjacency-aware joins.
 //
 // SCOPE: This shader implements adjacency-aware join geometry ONLY.
 //        Colormap sampling is NOT implemented - line renders as solid color.
 //
 // PROBLEM:
-//   The original COLORMAP_LINE rendering created per-segment quads with no adjacency
+//   The original line rendering created per-segment quads with no adjacency
 //   information. This caused line joins to look inconsistent across different zoom
 //   levels (LODs):
 //   - Convex angles: Overlapping quads created visual artifacts

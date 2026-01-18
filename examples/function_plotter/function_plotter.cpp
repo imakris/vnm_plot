@@ -567,21 +567,23 @@ void Function_entry::setup_series()
         ":/vnm_plot/shaders/plot_line.frag"    // Simple color fill
     };
 
-    // LINE: Basic line rendering (no adjacency)
+    // LINE: Adjacency-aware line rendering with proper joins
+    // Both LINE and COLORMAP_LINE use the same adjacency-aware geometry shader
+    // to ensure consistent, high-quality joins across all LOD levels.
+    // See ADJACENCY_LINE_RENDERING.md for detailed documentation.
     m_series->shaders[vnm::plot::Display_style::LINE] = {
         vert,
-        ":/vnm_plot/shaders/plot_line.geom",   // Simple line segments
-        ":/vnm_plot/shaders/plot_line.frag"    // Line color
+        ":/vnm_plot/shaders/plot_line_adjacency.geom",  // Adjacency-aware joins
+        ":/vnm_plot/shaders/plot_line.frag"             // Line color
     };
 
-    // COLORMAP_LINE: Adjacency-aware line rendering with colormap support
-    // This style uses the adjacency-aware geometry shader to fix visual quality
-    // issues where line joins/corners appear inconsistent across LODs.
-    // See ADJACENCY_LINE_RENDERING.md for detailed documentation.
+    // COLORMAP_LINE: Same adjacency-aware rendering as LINE
+    // Uses the same geometry shader to ensure no code divergence.
+    // Note: Colormap sampling not yet implemented (renders as solid color).
     m_series->shaders[vnm::plot::Display_style::COLORMAP_LINE] = {
         vert,
-        ":/vnm_plot/shaders/plot_line_adjacency.geom",  // Adjacency-aware joins
-        ":/vnm_plot/shaders/plot_line.frag"             // Line color (colormap applied later)
+        ":/vnm_plot/shaders/plot_line_adjacency.geom",  // Same adjacency-aware joins as LINE
+        ":/vnm_plot/shaders/plot_line.frag"             // Line color (colormap to be added later)
     };
 
     // Layout key for function_sample_t (must be unique for this vertex layout)

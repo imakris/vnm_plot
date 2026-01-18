@@ -1,8 +1,10 @@
-# Adjacency-Aware Line Rendering for COLORMAP_LINE
+# Adjacency-Aware Line Rendering for All Line Styles
 
 ## Summary
 
-**WHAT**: Fix visual quality issues where COLORMAP_LINE joins/corners appear inconsistent across different zoom levels (LODs).
+**WHAT**: Fix visual quality issues where line joins/corners appear inconsistent across different zoom levels (LODs).
+
+**WHO**: Applies to **ALL line rendering** (Display_style::LINE and Display_style::COLORMAP_LINE). Both use the same adjacency-aware method to avoid code divergence.
 
 **HOW**: Use OpenGL's `GL_LINE_STRIP_ADJACENCY` to provide neighbor vertex information to the geometry shader, enabling proper join rendering:
 - Convex joins: Mitered corners where outer edges meet on the angle bisector
@@ -10,15 +12,17 @@
 
 **WHY**: The original implementation rendered each segment as an independent quad without adjacency information, causing overlaps (convex angles) and gaps (reflex angles) that changed appearance at different zoom levels.
 
-**STATUS**: ✅ Adjacency-aware joins complete. ⚠️ Note: Colormap sampling not yet implemented (renders as solid color).
+**STATUS**: ✅ Adjacency-aware joins complete for all line styles. ⚠️ Note: Colormap sampling not yet implemented (renders as solid color).
 
 ## Objective
 
 Implement adjacency-aware line rendering to fix visual quality issues where line joins and corners differ between LODs (Levels of Detail) and appear poor.
 
+**Design Decision**: ALL line rendering (LINE and COLORMAP_LINE) uses the same adjacency-aware geometry shader to ensure no code divergence and consistent quality across all line styles.
+
 ### Problem Statement
 
-The original COLORMAP_LINE rendering used per-segment quads with no adjacency information:
+The original line rendering used per-segment quads with no adjacency information:
 - Each line segment was rendered independently as a simple quad
 - No information about neighboring segments was available
 - **Line joins/corners looked inconsistent across different zoom levels (LODs)**:
@@ -48,7 +52,8 @@ This approach ensures consistent, high-quality line rendering at all zoom levels
 **Changes Made**:
 
 1. **Drawing Mode Update** (`src/core/series_renderer.cpp`)
-   - Changed from `GL_LINE_STRIP` to `GL_LINE_STRIP_ADJACENCY` for COLORMAP_LINE
+   - Changed from `GL_LINE_STRIP` to `GL_LINE_STRIP_ADJACENCY` for **all line styles** (LINE and COLORMAP_LINE)
+   - Both styles use the same adjacency-aware method to avoid code divergence
    - Minimum vertex count: 2 data vertices (expanded to 4 with boundary duplication)
 
 2. **Index Buffer Generation** (`src/core/series_renderer.cpp`)
@@ -75,7 +80,8 @@ This approach ensures consistent, high-quality line rendering at all zoom levels
 
 4. **Shader Registration**
    - Added shader to Qt resource system (`vnm_plot.qrc`)
-   - Configured COLORMAP_LINE to use adjacency shader (`function_plotter.cpp`)
+   - Configured **both LINE and COLORMAP_LINE** to use adjacency shader (`function_plotter.cpp`)
+   - Same shader for both styles ensures no code divergence
 
 **Status**: Infrastructure complete, builds successfully, provides adjacency data to shader.
 
