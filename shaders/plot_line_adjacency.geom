@@ -143,15 +143,30 @@ vec2 calculate_miter_point(vec2 center, vec2 dir_in, vec2 dir_out,
 //   dir_out: Normalized direction of outgoing segment
 //   half_width: Half the line width
 //   sign: +1.0 for top side, -1.0 for bottom side
+//   perp_curr: Fallback perpendicular (for near-straight angles)
 //
 // Returns:
 //   Point on the bisector at distance half_width from center
 //
+// Numerical Stability:
+//   For angles near 180°, dir_in + dir_out has very small magnitude.
+//   We detect this and fall back to simple perpendicular offset.
+//
 vec2 calculate_reflex_bisector_point(vec2 center, vec2 dir_in, vec2 dir_out,
-                                     float half_width, float sign)
+                                     float half_width, float sign, vec2 perp_curr)
 {
     // Calculate the bisector direction (average of the two directions)
-    vec2 tangent = normalize(dir_in + dir_out);
+    vec2 tangent_unnormalized = dir_in + dir_out;
+    float tangent_length = length(tangent_unnormalized);
+
+    // For near-180° angles, the sum has very small magnitude
+    // Normalizing would amplify floating-point errors
+    // Fall back to perpendicular of current segment
+    if (tangent_length < 0.01) {
+        return center + perp_curr * sign;
+    }
+
+    vec2 tangent = tangent_unnormalized / tangent_length;
 
     // Perpendicular to the bisector (this points toward the outer edge)
     vec2 bisector_perp = vec2(-tangent.y, tangent.x);
@@ -362,7 +377,7 @@ void main()
     if (start_has_reflex) {
         // Calculate the bisector point at half_width distance
         float sign = start_reflex_is_top ? 1.0 : -1.0;
-        vec2 bisector_point = calculate_reflex_bisector_point(p0, dir_prev, dir_curr, half_width, sign);
+        vec2 bisector_point = calculate_reflex_bisector_point(p0, dir_prev, dir_curr, half_width, sign, perp_curr);
 
         // Get the perpendicular offset for the previous segment
         vec2 perp_prev = vec2(-dir_prev.y, dir_prev.x) * half_width;
@@ -399,7 +414,7 @@ void main()
     if (end_has_reflex) {
         // Calculate the bisector point at half_width distance
         float sign = end_reflex_is_top ? 1.0 : -1.0;
-        vec2 bisector_point = calculate_reflex_bisector_point(p1, dir_curr, dir_next, half_width, sign);
+        vec2 bisector_point = calculate_reflex_bisector_point(p1, dir_curr, dir_next, half_width, sign, perp_curr);
 
         // Get the perpendicular offset for the next segment
         vec2 perp_next = vec2(-dir_next.y, dir_next.x) * half_width;
