@@ -92,7 +92,7 @@ Use OpenGL's adjacency primitives to provide geometric context for each line seg
    - Main quad: 4 vertices (triangle strip)
    - Start reflex join: up to 6 vertices (2 triangles) if present
    - End reflex join: up to 6 vertices (2 triangles) if present
-   - Total: up to 10 vertices per segment
+   - Total: up to 16 vertices per segment (worst case: both joins reflex)
    - First/last segments: use simple offsets (no joins needed)
 
 **Results**:
@@ -152,12 +152,12 @@ OpenGL's `GL_LINE_STRIP_ADJACENCY` provides exactly 4 vertices to the geometry s
 
 **Phase 2 Impact** (Current - Complete Implementation):
 - **Base quad**: 4 vertices per segment (triangle strip) vs 2 for line strip
-- **Reflex joins**: 0-6 additional vertices per segment (depends on geometry)
+- **Reflex joins**: 0-12 additional vertices per segment (depends on geometry)
   * Straight segments: 0 additional (4 vertices total)
   * One reflex join: 6 additional (10 vertices total)
-  * Two reflex joins: rare, but supported (10 vertices total)
+  * Two reflex joins: 12 additional (16 vertices total - rare case)
 - **Average case**: ~4-6 vertices per segment (most segments have at most one reflex join)
-- **Worst case**: 10 vertices per segment (both joins are reflex - uncommon)
+- **Worst case**: 16 vertices per segment (both joins are reflex - uncommon)
 - **Shader complexity**: Miter and bisector calculations add ~40-50 instructions
 - **Fragment shader**: Invocations increase proportional to line width
 - **Overall**: Excellent quality/performance trade-off, well within budget for typical use cases

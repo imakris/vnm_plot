@@ -68,8 +68,8 @@ layout(location = 10) uniform float   u_line_px;  // Line width in pixels
 layout (lines_adjacency) in;
 
 // Output: Triangle strip for thick line segments with mitered joins
-// Max vertices: 4 (quad) + 3 (start reflex) + 3 (end reflex) = 10
-layout (triangle_strip, max_vertices = 10) out;
+// Max vertices: 4 (quad) + 6 (start reflex: 2 triangles) + 6 (end reflex: 2 triangles) = 16
+layout (triangle_strip, max_vertices = 16) out;
 
 // Input from vertex shader (4 vertices per invocation due to lines_adjacency)
 in Sample {
