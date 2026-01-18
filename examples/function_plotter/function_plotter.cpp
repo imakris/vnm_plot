@@ -538,28 +538,50 @@ void Function_entry::setup_series()
         return {s->y_min, s->y_max};
     };
 
-    // Configure shaders for each display style.
-    // The renderer uses shaders map directly for multi-pass rendering.
+    // ============================================================================
+    // CONFIGURE SHADERS FOR EACH DISPLAY STYLE
+    // ============================================================================
+    // The renderer supports multiple display styles, each requiring different
+    // shader programs for proper rendering. The shaders map is used directly
+    // for multi-pass rendering.
+    //
+    // Shader Pipeline:
+    //   Vertex Shader → Geometry Shader → Fragment Shader
+    //
+    // All styles use the same vertex shader (function_sample.vert) which
+    // passes through the vertex data to the geometry shader for processing.
+    //
     const char* vert = ":/vnm_plot/shaders/function_sample.vert";
+
+    // DOTS: Point sprites with billboard expansion
     m_series->shaders[vnm::plot::Display_style::DOTS] = {
         vert,
-        ":/vnm_plot/shaders/plot_dot.geom",
-        ":/vnm_plot/shaders/plot_dot.frag"
+        ":/vnm_plot/shaders/plot_dot.geom",    // Expands points to quads
+        ":/vnm_plot/shaders/plot_dot.frag"     // Renders circular dots
     };
+
+    // AREA: Filled area under the curve
     m_series->shaders[vnm::plot::Display_style::AREA] = {
         vert,
-        ":/vnm_plot/shaders/plot_area.geom",
-        ":/vnm_plot/shaders/plot_line.frag"
+        ":/vnm_plot/shaders/plot_area.geom",   // Generates filled area geometry
+        ":/vnm_plot/shaders/plot_line.frag"    // Simple color fill
     };
+
+    // LINE: Basic line rendering (no adjacency)
     m_series->shaders[vnm::plot::Display_style::LINE] = {
         vert,
-        ":/vnm_plot/shaders/plot_line.geom",
-        ":/vnm_plot/shaders/plot_line.frag"
+        ":/vnm_plot/shaders/plot_line.geom",   // Simple line segments
+        ":/vnm_plot/shaders/plot_line.frag"    // Line color
     };
+
+    // COLORMAP_LINE: Adjacency-aware line rendering with colormap support
+    // This style uses the adjacency-aware geometry shader to fix visual quality
+    // issues where line joins/corners appear inconsistent across LODs.
+    // See ADJACENCY_LINE_RENDERING.md for detailed documentation.
     m_series->shaders[vnm::plot::Display_style::COLORMAP_LINE] = {
         vert,
-        ":/vnm_plot/shaders/plot_line_adjacency.geom",
-        ":/vnm_plot/shaders/plot_line.frag"
+        ":/vnm_plot/shaders/plot_line_adjacency.geom",  // Adjacency-aware joins
+        ":/vnm_plot/shaders/plot_line.frag"             // Line color (colormap applied later)
     };
 
     // Layout key for function_sample_t (must be unique for this vertex layout)

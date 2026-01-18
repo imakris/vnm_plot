@@ -799,12 +799,38 @@ void Series_renderer::render(
                 return;
             }
 
+            // ============================================================================
+            // SELECT DRAWING MODE BASED ON DISPLAY STYLE
+            // ============================================================================
+            // Different display styles require different OpenGL primitives:
+            //
+            // DOTS:          GL_POINTS
+            //                - Each vertex becomes a point sprite
+            //                - Geometry shader can expand to billboard quad
+            //
+            // LINE:          GL_LINE_STRIP
+            //                - Vertices form a continuous polyline
+            //                - Each pair of consecutive vertices forms a line segment
+            //                - No information about neighboring segments
+            //
+            // COLORMAP_LINE: GL_LINE_STRIP_ADJACENCY
+            //                - Enhanced line strip with adjacency information
+            //                - Geometry shader receives 4 vertices per segment:
+            //                  [v_prev, v_start, v_end, v_next]
+            //                - Enables proper join rendering (see ADJACENCY_LINE_RENDERING.md)
+            //                - Required for consistent appearance across LODs
+            //
+            // AREA:          GL_LINE_STRIP (processed differently in geometry shader)
+            //
             const GLenum drawing_mode =
                 (primitive_style == Display_style::DOTS) ? GL_POINTS :
                 (primitive_style == Display_style::COLORMAP_LINE) ? GL_LINE_STRIP_ADJACENCY :
                 GL_LINE_STRIP;
 
-            // LINE_STRIP requires at least 2 vertices, LINE_STRIP_ADJACENCY requires at least 4
+            // Minimum vertex count varies by primitive type:
+            // - POINTS:              1 vertex minimum
+            // - LINE_STRIP:          2 vertices minimum (one segment)
+            // - LINE_STRIP_ADJACENCY: 4 vertices minimum (one segment + 2 adjacency vertices)
             const GLsizei min_vertices = (drawing_mode == GL_LINE_STRIP_ADJACENCY) ? 4 :
                                         (drawing_mode == GL_LINE_STRIP) ? 2 : 1;
             if (count < min_vertices) {
@@ -1049,30 +1075,84 @@ void Series_renderer::render(
             if (do_draw) {
                 VNM_PLOT_PROFILE_SCOPE(profiler, "gpu_issue");
 
-                // For LINE_STRIP_ADJACENCY, we need to provide adjacency vertices
-                // We duplicate first and last vertices to provide the adjacency information
+                // ====================================================================
+                // ISSUE DRAW CALL
+                // ====================================================================
+                // For GL_LINE_STRIP_ADJACENCY, we need to provide adjacency vertices
+                // at the boundaries. Since our vertex buffer contains the actual data
+                // points without pre-duplicated boundary vertices, we use indexed
+                // drawing to duplicate the first and last vertices on-the-fly.
+                //
+                // ADJACENCY VERTEX LAYOUT FOR GL_LINE_STRIP_ADJACENCY:
+                //
+                // The geometry shader expects vertices in groups of 4 per segment:
+                //   Segment 0: [v_adj0, v0, v1, v_adj1]
+                //   Segment 1: [v_adj1, v1, v2, v_adj2]
+                //   ...
+                //
+                // For a line strip, adjacent segments share vertices, so:
+                //   v_adj1 for segment 0 = v0 (the actual start of segment 1)
+                //   v_adj0 for segment N = v_N (the actual end of segment N-1)
+                //
+                // BOUNDARY HANDLING:
+                //   - First segment: v_adj0 doesn't exist, so we duplicate v0
+                //   - Last segment:  v_adjN doesn't exist, so we duplicate v_N
+                //
+                // EXAMPLE:
+                //   Vertex buffer: [v0, v1, v2, v3, v4]  (5 vertices, 4 segments)
+                //
+                //   Index buffer:  [0, 0, 1, 2, 3, 4, 4]  (7 indices)
+                //                   ^  ^           ^  ^
+                //                   |  |           |  |
+                //                   |  first actual|  last duplicated (adjacency)
+                //                   first duplicated   last actual
+                //                   (adjacency)
+                //
+                //   Geometry shader invocations:
+                //     Segment 0: gs_in[] = [v0, v0, v1, v2]  (v0 duplicated as prev)
+                //     Segment 1: gs_in[] = [v0, v1, v2, v3]  (normal)
+                //     Segment 2: gs_in[] = [v1, v2, v3, v4]  (normal)
+                //     Segment 3: gs_in[] = [v2, v3, v4, v4]  (v4 duplicated as next)
+                //
+                // PERFORMANCE CONSIDERATIONS:
+                //   - Index buffer is small (N+2 indices for N vertices)
+                //   - Created on CPU per frame (not cached)
+                //   - Future optimization: Use a persistent mapped buffer or
+                //     compute shader to generate indices GPU-side
+                //   - For typical use cases (<10K vertices), CPU generation is fine
+                //
+                // See ADJACENCY_LINE_RENDERING.md for more details.
+                //
                 if (drawing_mode == GL_LINE_STRIP_ADJACENCY) {
-                    // Create indices: [first, first, first+1, ..., first+count-1, first+count-1]
-                    // This gives us: [v0(adj), v0, v1, ..., vN-1, vN-1(adj)]
+                    // Calculate total index count: original vertices + 2 duplicates
                     const GLsizei adjacency_count = count + 2;
+
+                    // Allocate index buffer (stack allocation for small counts would be
+                    // more efficient, but std::vector is clearer and the allocation
+                    // cost is negligible compared to GPU work)
                     std::vector<GLuint> indices;
                     indices.reserve(adjacency_count);
 
-                    // Duplicate first vertex for adjacency
+                    // Duplicate first vertex for adjacency (boundary case)
+                    // This provides the "previous" vertex for the first segment
                     indices.push_back(static_cast<GLuint>(view_result.first));
 
-                    // Add all actual vertices
+                    // Add all actual vertices in order
                     for (GLsizei i = 0; i < count; ++i) {
                         indices.push_back(static_cast<GLuint>(view_result.first + i));
                     }
 
-                    // Duplicate last vertex for adjacency
+                    // Duplicate last vertex for adjacency (boundary case)
+                    // This provides the "next" vertex for the last segment
                     indices.push_back(static_cast<GLuint>(view_result.first + count - 1));
 
-                    // Use indexed draw call
+                    // Issue indexed draw call
+                    // Note: indices.data() provides client-side index buffer
+                    // (no index VBO needed for this small buffer)
                     glDrawElements(GL_LINE_STRIP_ADJACENCY, adjacency_count, GL_UNSIGNED_INT, indices.data());
                 }
                 else {
+                    // Standard non-adjacency draw call (DOTS, LINE, AREA)
                     glDrawArrays(drawing_mode, view_result.first, count);
                 }
             }
