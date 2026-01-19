@@ -421,6 +421,10 @@ void add_text_to_buffer(const char* text, glm::vec2* pen, thread_local_font_reso
         const float x1 = pen->x + glyph.plane_right;
         const float y0 = pen->y + glyph.plane_bottom;
         const float y1 = pen->y + glyph.plane_top;
+        const float s_min = std::min(glyph.uv_left, glyph.uv_right);
+        const float s_max = std::max(glyph.uv_left, glyph.uv_right);
+        const float t_min = std::min(glyph.uv_top, glyph.uv_bottom);
+        const float t_max = std::max(glyph.uv_top, glyph.uv_bottom);
 
         const auto vertex_count = vertex_buffer_vertex_count(res->m_buffer);
         const GLuint index = static_cast<GLuint>(vertex_count);
@@ -434,10 +438,10 @@ void add_text_to_buffer(const char* text, glm::vec2* pen, thread_local_font_reso
         };
 
         const vertex_t vertices[] = {
-            {x0, y0, glyph.uv_left,  glyph.uv_bottom, glyph.uv_left,  glyph.uv_bottom, glyph.uv_right, glyph.uv_top},
-            {x0, y1, glyph.uv_left,  glyph.uv_top,    glyph.uv_left,  glyph.uv_bottom, glyph.uv_right, glyph.uv_top},
-            {x1, y1, glyph.uv_right, glyph.uv_top,    glyph.uv_left,  glyph.uv_bottom, glyph.uv_right, glyph.uv_top},
-            {x1, y0, glyph.uv_right, glyph.uv_bottom, glyph.uv_left,  glyph.uv_bottom, glyph.uv_right, glyph.uv_top}
+            {x0, y0, glyph.uv_left,  glyph.uv_bottom, s_min, t_min, s_max, t_max},
+            {x0, y1, glyph.uv_left,  glyph.uv_top,    s_min, t_min, s_max, t_max},
+            {x1, y1, glyph.uv_right, glyph.uv_top,    s_min, t_min, s_max, t_max},
+            {x1, y0, glyph.uv_right, glyph.uv_bottom, s_min, t_min, s_max, t_max}
         };
         vertex_buffer_push_back_indices(res->m_buffer, indices, 6);
         vertex_buffer_push_back_vertices(res->m_buffer, vertices, 4);
@@ -1064,7 +1068,7 @@ void Font_renderer::batch_text(float x, float y, const char* text)
 
 void Font_renderer::draw_and_flush(const glm::mat4& pmv, const glm::vec4& color)
 {
-    const auto* res = m_impl->m_resources;
+    auto* res = m_impl->m_resources;
     if (!res || !res->m_shader_program) {
         return;
     }

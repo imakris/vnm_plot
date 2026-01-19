@@ -350,6 +350,13 @@ void Plot_widget::set_vbar_width_from_renderer(double px)
     const double current = m_vbar_width_px.load(std::memory_order_acquire);
     const double target = px;
 
+    if (!std::isfinite(current) || current <= 0.0) {
+        m_vbar_width_px.store(target, std::memory_order_release);
+        emit vbar_width_changed();
+        update();
+        return;
+    }
+
     if (std::abs(target - current) <= k_vbar_width_change_threshold_d &&
         !m_vbar_width_timer.isActive())
     {
