@@ -318,7 +318,7 @@ set(VNM_PLOT_CORE_ASSETS
     "shaders/grid_quad.vert:shaders/grid_quad.vert"
     "shaders/grid_quad.frag:shaders/grid_quad.frag"
     "shaders/function_sample.vert:shaders/function_sample.vert"
-    "shaders/plot_line.geom:shaders/plot_line.geom"
+    "shaders/plot_line_adjacency.geom:shaders/plot_line_adjacency.geom"
     "shaders/plot_line.frag:shaders/plot_line.frag"
     "shaders/plot_dot.geom:shaders/plot_dot.geom"
     "shaders/plot_dot.frag:shaders/plot_dot.frag"

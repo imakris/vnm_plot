@@ -61,6 +61,11 @@ private:
         uint64_t last_sequence = 0;
         const void* cached_data_identity = nullptr;
 
+        GLuint adjacency_ebo = UINT_MAX;
+        std::size_t adjacency_ebo_capacity = 0;
+        GLint adjacency_last_first = 0;
+        GLsizei adjacency_last_count = 0;
+
         GLint last_first = 0;
         GLsizei last_count = 0;
         std::size_t last_lod_level = 0;
@@ -73,6 +78,10 @@ private:
             last_snapshot_elements = 0;
             last_sequence = 0;
             cached_data_identity = nullptr;
+            adjacency_ebo = UINT_MAX;
+            adjacency_ebo_capacity = 0;
+            adjacency_last_first = 0;
+            adjacency_last_count = 0;
             last_first = 0;
             last_count = 0;
             last_lod_level = 0;

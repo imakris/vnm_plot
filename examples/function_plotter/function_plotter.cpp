@@ -553,7 +553,7 @@ void Function_entry::setup_series()
     };
     m_series->shaders[vnm::plot::Display_style::LINE] = {
         vert,
-        ":/vnm_plot/shaders/plot_line.geom",
+        ":/vnm_plot/shaders/plot_line_adjacency.geom",
         ":/vnm_plot/shaders/plot_line.frag"
     };
 

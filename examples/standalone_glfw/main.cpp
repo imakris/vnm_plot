@@ -166,7 +166,7 @@ int main()
     series->data_source = source;
     series->shader_set = {
         "shaders/function_sample.vert",
-        "shaders/plot_line.geom",
+        "shaders/plot_line_adjacency.geom",
         "shaders/plot_line.frag"
     };
 

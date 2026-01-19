@@ -106,6 +106,9 @@ void Series_renderer::cleanup_gl_resources()
             if (view->id != UINT_MAX) {
                 glDeleteBuffers(1, &view->id);
             }
+            if (view->adjacency_ebo != UINT_MAX) {
+                glDeleteBuffers(1, &view->adjacency_ebo);
+            }
             view->reset();
         }
     }
@@ -670,6 +673,9 @@ void Series_renderer::render(
                     if (!skip_gl && view->id != UINT_MAX) {
                         glDeleteBuffers(1, &view->id);
                     }
+                    if (!skip_gl && view->adjacency_ebo != UINT_MAX) {
+                        glDeleteBuffers(1, &view->adjacency_ebo);
+                    }
                 }
                 it = m_vbo_states.erase(it);
             }
@@ -798,8 +804,11 @@ void Series_renderer::render(
                 return;
             }
 
-            const GLenum drawing_mode = (primitive_style == Display_style::DOTS) ? GL_POINTS : GL_LINE_STRIP;
-            if (drawing_mode == GL_LINE_STRIP && count < 2) {
+            const bool use_adjacency = (primitive_style == Display_style::LINE);
+            const GLenum drawing_mode = (primitive_style == Display_style::DOTS)
+                ? GL_POINTS
+                : (use_adjacency ? GL_LINE_STRIP_ADJACENCY : GL_LINE_STRIP);
+            if (drawing_mode != GL_POINTS && count < 2) {
                 return;
             }
 
@@ -1004,6 +1013,50 @@ void Series_renderer::render(
                 glBindVertexArray(vao);
             }
 
+            if (use_adjacency) {
+                VNM_PLOT_PROFILE_SCOPE(profiler, "adjacency_index_setup");
+                const std::size_t required_indices = static_cast<std::size_t>(count) + 2;
+                bool needs_upload =
+                    (view_state.adjacency_last_first != view_result.first) ||
+                    (view_state.adjacency_last_count != count);
+
+                if (view_state.adjacency_ebo == UINT_MAX) {
+                    glGenBuffers(1, &view_state.adjacency_ebo);
+                    view_state.adjacency_ebo_capacity = 0;
+                    needs_upload = true;
+                }
+
+                glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, view_state.adjacency_ebo);
+
+                if (view_state.adjacency_ebo_capacity < required_indices) {
+                    glBufferData(
+                        GL_ELEMENT_ARRAY_BUFFER,
+                        static_cast<GLsizeiptr>(required_indices * sizeof(GLuint)),
+                        nullptr,
+                        GL_DYNAMIC_DRAW);
+                    view_state.adjacency_ebo_capacity = required_indices;
+                    needs_upload = true;
+                }
+
+                if (needs_upload) {
+                    std::vector<GLuint> indices(required_indices);
+                    const GLuint first = static_cast<GLuint>(view_result.first);
+                    indices[0] = first;
+                    for (GLsizei i = 0; i < count; ++i) {
+                        indices[static_cast<std::size_t>(i + 1)] = first + static_cast<GLuint>(i);
+                    }
+                    indices[required_indices - 1] = first + static_cast<GLuint>(count - 1);
+
+                    glBufferSubData(
+                        GL_ELEMENT_ARRAY_BUFFER,
+                        0,
+                        static_cast<GLsizeiptr>(required_indices * sizeof(GLuint)),
+                        indices.data());
+                    view_state.adjacency_last_first = view_result.first;
+                    view_state.adjacency_last_count = count;
+                }
+            }
+
             // Note: glLineWidth is set once at the start of render() to avoid per-draw overhead
 
             // Scissor test is enabled at start of render() - just update rectangle
@@ -1040,7 +1093,13 @@ void Series_renderer::render(
 
             if (do_draw) {
                 VNM_PLOT_PROFILE_SCOPE(profiler, "gpu_issue");
-                glDrawArrays(drawing_mode, view_result.first, count);
+                if (use_adjacency) {
+                    const GLsizei adjacency_count = count + 2;
+                    glDrawElements(drawing_mode, adjacency_count, GL_UNSIGNED_INT, nullptr);
+                }
+                else {
+                    glDrawArrays(drawing_mode, view_result.first, count);
+                }
             }
 
             // Note: VAO unbinding moved to cleanup section to avoid per-draw overhead

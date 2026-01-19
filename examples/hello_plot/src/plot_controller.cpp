@@ -75,7 +75,7 @@ void Plot_controller::setup_series()
 
     m_series->shader_set = {
         k_vert_shader,
-        ":/vnm_plot/shaders/plot_line.geom",
+        ":/vnm_plot/shaders/plot_line_adjacency.geom",
         ":/vnm_plot/shaders/plot_line.frag"
     };
 
