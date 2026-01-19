@@ -13,7 +13,7 @@ layout(location =  9) uniform bool    snap_to_pixels;
 layout(location = 21) uniform float   u_line_px;
 
 layout(lines_adjacency) in;
-layout(triangle_strip, max_vertices = 4) out;
+layout(triangle_strip, max_vertices = 10) out;
 
 in Sample {
     double t;
@@ -58,6 +58,25 @@ vec2 safe_miter(vec2 n0, vec2 n1)
     return n1;
 }
 
+float cross2(vec2 a, vec2 b)
+{
+    return a.x * b.y - a.y * b.x;
+}
+
+float intersection_param_on_miter(
+    vec2 p,
+    vec2 miter_convex,
+    vec2 edge_point,
+    vec2 edge_dir,
+    float fallback)
+{
+    const float denom = cross2(miter_convex, edge_dir);
+    if (abs(denom) < 1e-6) {
+        return fallback;
+    }
+    return cross2(edge_point - p, edge_dir) / denom;
+}
+
 void main()
 {
     const vec2 p_prev = sample_to_pos(0);
@@ -65,41 +84,157 @@ void main()
     const vec2 p1 = sample_to_pos(2);
     const vec2 p_next = sample_to_pos(3);
 
-    const vec2 dir1 = safe_normalize(p1 - p0, vec2(1.0, 0.0));
-    const vec2 dir0 = safe_normalize(p0 - p_prev, dir1);
-    const vec2 dir2 = safe_normalize(p_next - p1, dir1);
-
-    const vec2 n0 = vec2(-dir0.y, dir0.x);
-    const vec2 n1 = vec2(-dir1.y, dir1.x);
-    const vec2 n2 = vec2(-dir2.y, dir2.x);
-
     const float half_px = max(u_line_px * 0.5, 0.5);
-    const float k_miter_limit = 4.0;
-    const float min_denom = 1.0 / k_miter_limit;
+    const float dir_eps = 1e-6;
+    const float cross_eps = 1e-6;
 
-    const vec2 miter0 = safe_miter(n0, n1);
-    const float denom0 = dot(miter0, n1);
-    const vec2 offset0 = (denom0 > min_denom) ? (miter0 * (half_px / denom0)) : (n1 * half_px);
+    const vec2 seg_vec = p1 - p0;
+    const float seg_len = length(seg_vec);
+    if (seg_len <= dir_eps) {
+        return;
+    }
+    const vec2 d_seg = seg_vec / seg_len;
+    const vec2 n_seg = vec2(-d_seg.y, d_seg.x);
 
-    const vec2 miter1 = safe_miter(n1, n2);
-    const float denom1 = dot(miter1, n1);
-    const vec2 offset1 = (denom1 > min_denom) ? (miter1 * (half_px / denom1)) : (n1 * half_px);
+    vec2 start_left = p0 + n_seg * half_px;
+    vec2 start_right = p0 - n_seg * half_px;
+    vec2 end_left = p1 + n_seg * half_px;
+    vec2 end_right = p1 - n_seg * half_px;
+    bool have_start_junction = false;
+    bool have_end_junction = false;
+    vec2 start_gc = vec2(0.0);
+    vec2 start_overlap = vec2(0.0);
+    vec2 start_cm = vec2(0.0);
+    vec2 end_gc = vec2(0.0);
+    vec2 end_overlap = vec2(0.0);
+    vec2 end_cm = vec2(0.0);
 
-    gl_Position = pmv * vec4(p0 + offset0, 0.0, 1.0);
+    {
+        const vec2 in_vec = p0 - p_prev;
+        const float in_len = length(in_vec);
+        if (in_len > dir_eps) {
+            const vec2 d_in = in_vec / in_len;
+            const vec2 d_out = d_seg;
+            const float turn = cross2(d_in, d_out);
+            if (abs(turn) > cross_eps) {
+                const float convex_sign = (turn > 0.0) ? 1.0 : -1.0;
+                const vec2 n_in = vec2(-d_in.y, d_in.x);
+                const vec2 n_out = n_seg;
+                vec2 miter = safe_miter(n_in, n_out);
+                if (length(miter) > dir_eps) {
+                    const vec2 miter_convex = miter * convex_sign;
+                    const vec2 miter_concave = -miter_convex;
+
+                    const vec2 gc_in = p0 - n_in * half_px * convex_sign;
+                    const vec2 gc_out = p0 - n_out * half_px * convex_sign;
+                    const vec2 edge_in_point = p0 + n_in * half_px * convex_sign;
+                    const vec2 edge_out_point = p0 + n_out * half_px * convex_sign;
+
+                    float s_in = intersection_param_on_miter(
+                        p0, miter_convex, edge_in_point, d_in, half_px);
+                    float s_out = intersection_param_on_miter(
+                        p0, miter_convex, edge_out_point, d_out, half_px);
+                    float s = min(s_in, s_out);
+                    s = max(s, 0.0);
+
+                    start_overlap = p0 + s * miter_convex;
+                    start_cm = p0 + miter_concave * half_px;
+                    start_gc = gc_out;
+
+                    start_left = start_overlap;
+                    start_right = gc_out;
+                    have_start_junction = true;
+                }
+            }
+        }
+    }
+
+    {
+        const vec2 out_vec = p_next - p1;
+        const float out_len = length(out_vec);
+        if (out_len > dir_eps) {
+            const vec2 d_in = d_seg;
+            const vec2 d_out = out_vec / out_len;
+            const float turn = cross2(d_in, d_out);
+            if (abs(turn) > cross_eps) {
+                const float convex_sign = (turn > 0.0) ? 1.0 : -1.0;
+                const vec2 n_in = n_seg;
+                const vec2 n_out = vec2(-d_out.y, d_out.x);
+                vec2 miter = safe_miter(n_in, n_out);
+                if (length(miter) > dir_eps) {
+                    const vec2 miter_convex = miter * convex_sign;
+                    const vec2 miter_concave = -miter_convex;
+
+                    const vec2 gc_in = p1 - n_in * half_px * convex_sign;
+                    const vec2 edge_in_point = p1 + n_in * half_px * convex_sign;
+                    const vec2 edge_out_point = p1 + n_out * half_px * convex_sign;
+
+                    float s_in = intersection_param_on_miter(
+                        p1, miter_convex, edge_in_point, d_in, half_px);
+                    float s_out = intersection_param_on_miter(
+                        p1, miter_convex, edge_out_point, d_out, half_px);
+                    float s = min(s_in, s_out);
+                    s = max(s, 0.0);
+
+                    end_overlap = p1 + s * miter_convex;
+                    end_cm = p1 + miter_concave * half_px;
+                    end_gc = gc_in;
+
+                    end_left = end_overlap;
+                    end_right = gc_in;
+                    have_end_junction = true;
+                }
+            }
+        }
+    }
+
+    gl_Position = pmv * vec4(start_left, 0.0, 1.0);
     line_color = color;
     EmitVertex();
 
-    gl_Position = pmv * vec4(p1 + offset1, 0.0, 1.0);
+    gl_Position = pmv * vec4(end_left, 0.0, 1.0);
     line_color = color;
     EmitVertex();
 
-    gl_Position = pmv * vec4(p0 - offset0, 0.0, 1.0);
+    gl_Position = pmv * vec4(start_right, 0.0, 1.0);
     line_color = color;
     EmitVertex();
 
-    gl_Position = pmv * vec4(p1 - offset1, 0.0, 1.0);
+    gl_Position = pmv * vec4(end_right, 0.0, 1.0);
     line_color = color;
     EmitVertex();
 
     EndPrimitive();
+
+    if (have_start_junction) {
+        gl_Position = pmv * vec4(start_gc, 0.0, 1.0);
+        line_color = color;
+        EmitVertex();
+
+        gl_Position = pmv * vec4(start_overlap, 0.0, 1.0);
+        line_color = color;
+        EmitVertex();
+
+        gl_Position = pmv * vec4(start_cm, 0.0, 1.0);
+        line_color = color;
+        EmitVertex();
+
+        EndPrimitive();
+    }
+
+    if (have_end_junction) {
+        gl_Position = pmv * vec4(end_gc, 0.0, 1.0);
+        line_color = color;
+        EmitVertex();
+
+        gl_Position = pmv * vec4(end_overlap, 0.0, 1.0);
+        line_color = color;
+        EmitVertex();
+
+        gl_Position = pmv * vec4(end_cm, 0.0, 1.0);
+        line_color = color;
+        EmitVertex();
+
+        EndPrimitive();
+    }
 }
