@@ -137,17 +137,6 @@ std::string normalize_asset_name(std::string_view name)
     if (out.rfind("vnm_plot/", 0) == 0) {
         out.remove_prefix(9);
     }
-    // Map legacy glsl/ paths to embedded shaders/ assets.
-    // The trade_to_plot vertex shader uses the same Sample output interface as function_sample.
-    if (out == "glsl/trade_to_plot.vert") {
-        return "shaders/function_sample.vert";
-    }
-    if (out == "glsl/plot_area.geom") {
-        return "shaders/plot_area.geom";
-    }
-    if (out == "glsl/plot_area.frag") {
-        return "shaders/plot_area.frag";
-    }
     return std::string(out);
 }
 

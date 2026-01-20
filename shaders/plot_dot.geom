@@ -17,17 +17,10 @@ in Sample
 {
     double t;
     float v;
-    flat int status;
 } gs_in[];
 
 void main()
 {
-    // 5: communication failure, 1: sampling is stopped (nothing to show)
-    if (gs_in[0].status == 1 || gs_in[0].status == 5)
-    {
-        return;
-    }
-
     float x, y;
     double r_t = max(t_max - t_min, 1e-30);
     float r_v = max(v_max - v_min, 1e-30);

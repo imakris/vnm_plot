@@ -804,7 +804,11 @@ void Series_renderer::render(
                 return;
             }
 
-            const bool use_adjacency = (primitive_style == Display_style::LINE);
+            const bool use_adjacency =
+                (primitive_style == Display_style::LINE) ||
+                (primitive_style == Display_style::AREA) ||
+                (primitive_style == Display_style::COLORMAP_AREA) ||
+                (primitive_style == Display_style::COLORMAP_LINE);
             const GLenum drawing_mode = (primitive_style == Display_style::DOTS)
                 ? GL_POINTS
                 : (use_adjacency ? GL_LINE_STRIP_ADJACENCY : GL_LINE_STRIP);

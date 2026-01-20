@@ -13,15 +13,13 @@ layout(location =  9) uniform bool    snap_to_pixels;
 layout(location = 21) uniform float   u_line_px;
 
 layout(lines_adjacency) in;
-layout(triangle_strip, max_vertices = 10) out;
+layout(triangle_strip, max_vertices = 12) out;
 
 in Sample {
     double t;
     float v;
-    flat int status;
 } gs_in[];
 
-out vec4 line_color;
 
 vec2 sample_to_pos(int idx)
 {
@@ -141,8 +139,14 @@ void main()
                     start_cm = p0 + miter_concave * half_px;
                     start_gc = gc_out;
 
-                    start_left = start_overlap;
-                    start_right = gc_out;
+                    if (convex_sign > 0.0) {
+                        start_left = start_overlap;
+                        start_right = start_gc;
+                    }
+                    else {
+                        start_left = start_gc;
+                        start_right = start_overlap;
+                    }
                     have_start_junction = true;
                 }
             }
@@ -180,8 +184,14 @@ void main()
                     end_cm = p1 + miter_concave * half_px;
                     end_gc = gc_in;
 
-                    end_left = end_overlap;
-                    end_right = gc_in;
+                    if (convex_sign > 0.0) {
+                        end_left = end_overlap;
+                        end_right = end_gc;
+                    }
+                    else {
+                        end_left = end_gc;
+                        end_right = end_overlap;
+                    }
                     have_end_junction = true;
                 }
             }
@@ -189,52 +199,46 @@ void main()
     }
 
     gl_Position = pmv * vec4(start_left, 0.0, 1.0);
-    line_color = color;
     EmitVertex();
 
     gl_Position = pmv * vec4(end_left, 0.0, 1.0);
-    line_color = color;
     EmitVertex();
 
     gl_Position = pmv * vec4(start_right, 0.0, 1.0);
-    line_color = color;
+    EmitVertex();
+    EndPrimitive();
+
+    gl_Position = pmv * vec4(end_left, 0.0, 1.0);
     EmitVertex();
 
     gl_Position = pmv * vec4(end_right, 0.0, 1.0);
-    line_color = color;
     EmitVertex();
 
+    gl_Position = pmv * vec4(start_right, 0.0, 1.0);
+    EmitVertex();
     EndPrimitive();
 
     if (have_start_junction) {
         gl_Position = pmv * vec4(start_gc, 0.0, 1.0);
-        line_color = color;
         EmitVertex();
 
         gl_Position = pmv * vec4(start_overlap, 0.0, 1.0);
-        line_color = color;
         EmitVertex();
 
         gl_Position = pmv * vec4(start_cm, 0.0, 1.0);
-        line_color = color;
         EmitVertex();
-
         EndPrimitive();
     }
 
     if (have_end_junction) {
         gl_Position = pmv * vec4(end_gc, 0.0, 1.0);
-        line_color = color;
         EmitVertex();
 
         gl_Position = pmv * vec4(end_overlap, 0.0, 1.0);
-        line_color = color;
         EmitVertex();
 
         gl_Position = pmv * vec4(end_cm, 0.0, 1.0);
-        line_color = color;
         EmitVertex();
-
         EndPrimitive();
     }
 }
