@@ -543,8 +543,8 @@ void Function_entry::setup_series()
     const char* vert = ":/vnm_plot/shaders/function_sample.vert";
     m_series->shaders[vnm::plot::Display_style::DOTS] = {
         vert,
-        ":/vnm_plot/shaders/plot_dot.geom",
-        ":/vnm_plot/shaders/plot_dot.frag"
+        ":/vnm_plot/shaders/plot_dot_quad.geom",
+        ":/vnm_plot/shaders/plot_dot_quad.frag"
     };
     m_series->shaders[vnm::plot::Display_style::AREA] = {
         vert,

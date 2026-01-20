@@ -666,8 +666,8 @@ int main(int argc, char* argv[])
         series->style = vnm::plot::Display_style::DOTS;
         series->shader_set = {
             "shaders/function_sample.vert",
-            "shaders/plot_dot.geom",
-            "shaders/plot_dot.frag"
+            "shaders/plot_dot_quad.geom",
+            "shaders/plot_dot_quad.frag"
         };
         series->data_source = std::shared_ptr<vnm::plot::Data_source>(
             trade_source.get(), [](vnm::plot::Data_source*) {});

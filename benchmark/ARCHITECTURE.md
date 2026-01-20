@@ -51,7 +51,7 @@ profiling output used by Lumis so reports are directly comparable.
 - vnm_plot Asset_loader loads embedded shaders.
 - Series_renderer draws the data using function_sample.vert plus:
   - Bars: plot_area.geom / plot_area.frag
-  - Trades: plot_dot.geom / plot_dot.frag
+  - Trades: plot_dot_quad.geom / plot_dot_quad.frag
 - Chrome_renderer draws grids and preview overlays.
 - Primitive_renderer flushes batched primitives.
 

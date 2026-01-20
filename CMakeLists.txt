@@ -320,8 +320,8 @@ set(VNM_PLOT_CORE_ASSETS
     "shaders/function_sample.vert:shaders/function_sample.vert"
     "shaders/plot_line_adjacency.geom:shaders/plot_line_adjacency.geom"
     "shaders/plot_line.frag:shaders/plot_line.frag"
-    "shaders/plot_dot.geom:shaders/plot_dot.geom"
-    "shaders/plot_dot.frag:shaders/plot_dot.frag"
+    "shaders/plot_dot_quad.geom:shaders/plot_dot_quad.geom"
+    "shaders/plot_dot_quad.frag:shaders/plot_dot_quad.frag"
     "shaders/plot_area.geom:shaders/plot_area.geom"
     "shaders/plot_area.frag:shaders/plot_area.frag"
 )
