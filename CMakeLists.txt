@@ -324,6 +324,8 @@ set(VNM_PLOT_CORE_ASSETS
     "shaders/plot_dot_quad.frag:shaders/plot_dot_quad.frag"
     "shaders/plot_area.geom:shaders/plot_area.geom"
     "shaders/plot_area.frag:shaders/plot_area.frag"
+    "shaders/plot_colormap_line_adjacency.geom:shaders/plot_colormap_line_adjacency.geom"
+    "shaders/plot_colormap_line.frag:shaders/plot_colormap_line.frag"
 )
 
 # Text rendering assets (only when text is enabled)

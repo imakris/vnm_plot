@@ -16,6 +16,8 @@
         <file alias="shaders/plot_dot_quad.frag">shaders/plot_dot_quad.frag</file>
         <file alias="shaders/plot_area.geom">shaders/plot_area.geom</file>
         <file alias="shaders/plot_area.frag">shaders/plot_area.frag</file>
+        <file alias="shaders/plot_colormap_line_adjacency.geom">shaders/plot_colormap_line_adjacency.geom</file>
+        <file alias="shaders/plot_colormap_line.frag">shaders/plot_colormap_line.frag</file>
         <!-- Fonts -->
         <file alias="fonts/monospace.ttf">fonts/monospace.ttf</file>
         <!-- QML Components -->

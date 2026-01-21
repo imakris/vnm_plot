@@ -19,10 +19,14 @@ in Sample {
     float v;
 } gs_in[];
 
+in float vs_signal[];
+
 flat out vec2 fs_p_prev;
 flat out vec2 fs_p0;
 flat out vec2 fs_p1;
 flat out vec2 fs_p_next;
+flat out float fs_signal_0;
+flat out float fs_signal_1;
 
 vec2 sample_to_pos(int idx)
 {
@@ -45,12 +49,16 @@ void emit_vertex(
     vec2 p_prev,
     vec2 p0,
     vec2 p1,
-    vec2 p_next)
+    vec2 p_next,
+    float s0,
+    float s1)
 {
     fs_p_prev = p_prev;
     fs_p0 = p0;
     fs_p1 = p1;
     fs_p_next = p_next;
+    fs_signal_0 = s0;
+    fs_signal_1 = s1;
     gl_Position = pmv * vec4(pos, 0.0, 1.0);
     EmitVertex();
 }
@@ -61,6 +69,9 @@ void main()
     const vec2 p0 = sample_to_pos(1);
     const vec2 p1 = sample_to_pos(2);
     const vec2 p_next = sample_to_pos(3);
+
+    const float s0 = vs_signal[1];
+    const float s1 = vs_signal[2];
 
     const vec2 seg = p1 - p0;
     const float seg_len = length(seg);
@@ -80,9 +91,9 @@ void main()
     const vec2 v2 = p1_ext + n * half_px;
     const vec2 v3 = p1_ext - n * half_px;
 
-    emit_vertex(v0, p_prev, p0, p1, p_next);
-    emit_vertex(v1, p_prev, p0, p1, p_next);
-    emit_vertex(v2, p_prev, p0, p1, p_next);
-    emit_vertex(v3, p_prev, p0, p1, p_next);
+    emit_vertex(v0, p_prev, p0, p1, p_next, s0, s1);
+    emit_vertex(v1, p_prev, p0, p1, p_next, s0, s1);
+    emit_vertex(v2, p_prev, p0, p1, p_next, s0, s1);
+    emit_vertex(v3, p_prev, p0, p1, p_next, s0, s1);
     EndPrimitive();
 }

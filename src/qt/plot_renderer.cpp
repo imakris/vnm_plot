@@ -310,7 +310,8 @@ bool get_lod_minmax(
     series_minmax_cache_t& cache,
     std::size_t level,
     float& out_min,
-    float& out_max)
+    float& out_max,
+    vnm::plot::Profiler* profiler)
 {
     if (!series.data_source) {
         return false;
@@ -322,7 +323,11 @@ bool get_lod_minmax(
 
     auto& entry = cache.lods[level];
 
-    auto snapshot = series.data_source->snapshot(level);
+    data_snapshot_t snapshot;
+    {
+        VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.range_calc.get_lod_minmax.snapshot");
+        snapshot = series.data_source->snapshot(level);
+    }
     if (!snapshot || snapshot.count == 0 || snapshot.stride == 0) {
         if (entry.valid) {
             out_min = entry.v_min;
@@ -339,8 +344,11 @@ bool get_lod_minmax(
 
     float v_min = 0.0f;
     float v_max = 0.0f;
-    if (!compute_snapshot_minmax(series, snapshot, v_min, v_max)) {
-        return false;
+    {
+        VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.range_calc.get_lod_minmax.scan");
+        if (!compute_snapshot_minmax(series, snapshot, v_min, v_max)) {
+            return false;
+        }
     }
 
     entry.v_min = v_min;
@@ -356,10 +364,13 @@ bool get_lod_minmax(
 std::pair<float, float> compute_global_v_range(
     const std::map<int, std::shared_ptr<series_data_t>>& series_map,
     std::unordered_map<int, series_minmax_cache_t>& cache_map,
+    vnm::plot::Profiler* profiler,
     bool use_lod_cache,
     float fallback_min,
     float fallback_max)
 {
+    VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.range_calc.global");
+
     float v_min = std::numeric_limits<float>::max();
     float v_max = std::numeric_limits<float>::lowest();
     bool have_any = false;
@@ -381,14 +392,17 @@ std::pair<float, float> compute_global_v_range(
         bool got_range = false;
 
         // Fast path: data source provides O(1) range query.
-        if (series->data_source->has_value_range() &&
-            !series->data_source->value_range_needs_rescan())
         {
-            auto [ds_min, ds_max] = series->data_source->value_range();
-            if (std::isfinite(ds_min) && std::isfinite(ds_max) && ds_min <= ds_max) {
-                series_min = ds_min;
-                series_max = ds_max;
-                got_range = true;
+            VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.range_calc.global.fast_path");
+            if (series->data_source->has_value_range() &&
+                !series->data_source->value_range_needs_rescan())
+            {
+                auto [ds_min, ds_max] = series->data_source->value_range();
+                if (std::isfinite(ds_min) && std::isfinite(ds_max) && ds_min <= ds_max) {
+                    series_min = ds_min;
+                    series_max = ds_max;
+                    got_range = true;
+                }
             }
         }
 
@@ -407,8 +421,9 @@ std::pair<float, float> compute_global_v_range(
             }
 
             const std::size_t level = use_lod_cache ? (levels - 1) : 0;
-            if (!get_lod_minmax(*series, cache, level, series_min, series_max)) {
-                if (level == 0 || !get_lod_minmax(*series, cache, 0, series_min, series_max)) {
+            if (!get_lod_minmax(*series, cache, level, series_min, series_max, profiler)) {
+                if (level == 0 ||
+                    !get_lod_minmax(*series, cache, 0, series_min, series_max, profiler)) {
                     continue;
                 }
             }
@@ -438,12 +453,15 @@ std::pair<float, float> compute_global_v_range(
 std::pair<float, float> compute_visible_v_range(
     const std::map<int, std::shared_ptr<series_data_t>>& series_map,
     std::unordered_map<int, series_minmax_cache_t>& cache_map,
+    vnm::plot::Profiler* profiler,
     double t_min,
     double t_max,
     double width_px,
     float fallback_min,
     float fallback_max)
 {
+    VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.range_calc.visible");
+
     float v_min = std::numeric_limits<float>::max();
     float v_max = std::numeric_limits<float>::lowest();
     bool have_any = false;
@@ -459,19 +477,22 @@ std::pair<float, float> compute_visible_v_range(
 
         float series_min = 0.0f;
         float series_max = 0.0f;
-        if (series->data_source->query_v_range_for_t_window(
-                t_min,
-                t_max,
-                series_min,
-                series_max))
         {
-            if (!std::isfinite(series_min) || !std::isfinite(series_max) || series_min > series_max) {
+            VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.range_calc.visible.query_v_range");
+            if (series->data_source->query_v_range_for_t_window(
+                    t_min,
+                    t_max,
+                    series_min,
+                    series_max))
+            {
+                if (!std::isfinite(series_min) || !std::isfinite(series_max) || series_min > series_max) {
+                    continue;
+                }
+                v_min = std::min(v_min, series_min);
+                v_max = std::max(v_max, series_max);
+                have_any = true;
                 continue;
             }
-            v_min = std::min(v_min, series_min);
-            v_max = std::max(v_max, series_max);
-            have_any = true;
-            continue;
         }
 
         if (!series->access.get_timestamp) {
@@ -486,31 +507,50 @@ std::pair<float, float> compute_visible_v_range(
             continue;
         }
 
-        auto snapshot0 = series->data_source->snapshot(0);
+        data_snapshot_t snapshot0;
+        {
+            VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.range_calc.visible.snapshot0");
+            snapshot0 = series->data_source->snapshot(0);
+        }
         if (!snapshot0 || snapshot0.count == 0 || snapshot0.stride == 0) {
             continue;
         }
 
         std::size_t start0 = 0;
         std::size_t end0 = 0;
-        if (!find_window_indices(*series, snapshot0, t_min, t_max, start0, end0)) {
-            continue;
+        {
+            VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.range_calc.visible.find_window");
+            if (!find_window_indices(*series, snapshot0, t_min, t_max, start0, end0)) {
+                continue;
+            }
         }
         const std::size_t count0 = (end0 > start0) ? (end0 - start0) : 0;
         if (count0 == 0) {
             continue;
         }
 
-        const std::vector<std::size_t> scales = compute_lod_scales(*series->data_source);
+        std::vector<std::size_t> scales;
+        {
+            VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.range_calc.visible.compute_lod_scales");
+            scales = compute_lod_scales(*series->data_source);
+        }
         const std::size_t base_scale = scales.empty() ? 1 : scales[0];
         const std::size_t base_samples = count0 * base_scale;
         const double base_pps = (base_samples > 0 && width_px > 0.0)
             ? width_px / static_cast<double>(base_samples)
             : 0.0;
-        const std::size_t desired_level = choose_lod_level(scales, 0, base_pps);
+        std::size_t desired_level = 0;
+        {
+            VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.range_calc.visible.choose_lod_level");
+            desired_level = choose_lod_level(scales, 0, base_pps);
+        }
 
         std::size_t applied_level = desired_level;
-        auto snapshot = series->data_source->snapshot(applied_level);
+        data_snapshot_t snapshot;
+        {
+            VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.range_calc.visible.snapshot_lod");
+            snapshot = series->data_source->snapshot(applied_level);
+        }
         if (!snapshot || snapshot.count == 0 || snapshot.stride == 0) {
             snapshot = snapshot0;
             applied_level = 0;
@@ -518,8 +558,11 @@ std::pair<float, float> compute_visible_v_range(
 
         std::size_t start = 0;
         std::size_t end = 0;
-        if (!find_window_indices(*series, snapshot, t_min, t_max, start, end)) {
-            continue;
+        {
+            VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.range_calc.visible.find_window");
+            if (!find_window_indices(*series, snapshot, t_min, t_max, start, end)) {
+                continue;
+            }
         }
 
         const bool full_range = (start == 0 && end == snapshot.count);
@@ -532,11 +575,12 @@ std::pair<float, float> compute_visible_v_range(
         }
 
         if (full_range) {
-            if (!get_lod_minmax(*series, cache, applied_level, series_min, series_max)) {
+            if (!get_lod_minmax(*series, cache, applied_level, series_min, series_max, profiler)) {
                 continue;
             }
         }
         else {
+            VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.range_calc.visible.window_minmax");
             if (!compute_window_minmax(
                     *series,
                     snapshot,
@@ -1184,6 +1228,7 @@ void Plot_renderer::render()
                         auto [auto_v0, auto_v1] = compute_visible_v_range(
                             m_impl->owner->m_series,
                             m_impl->v_range_cache,
+                            profiler,
                             m_impl->snapshot.cfg.t_min,
                             m_impl->snapshot.cfg.t_max,
                             usable_width,
@@ -1197,6 +1242,7 @@ void Plot_renderer::render()
                         auto [auto_v0, auto_v1] = compute_global_v_range(
                             m_impl->owner->m_series,
                             m_impl->v_range_cache,
+                            profiler,
                             auto_mode == Auto_v_range_mode::GLOBAL_LOD,
                             m_impl->snapshot.cfg.v_min,
                             m_impl->snapshot.cfg.v_max);
@@ -1214,6 +1260,7 @@ void Plot_renderer::render()
                 auto [auto_preview_v0, auto_preview_v1] = compute_global_v_range(
                     m_impl->owner->m_series,
                     m_impl->v_range_cache,
+                    profiler,
                     preview_use_lod_cache,
                     m_impl->snapshot.cfg.v_min,
                     m_impl->snapshot.cfg.v_max);

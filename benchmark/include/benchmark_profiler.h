@@ -15,9 +15,11 @@
 #include <limits>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <sstream>
 #include <stack>
 #include <string>
+#include <thread>
 
 namespace vnm::benchmark {
 
@@ -27,6 +29,7 @@ struct Report_metadata {
     std::string symbol = "SIM";
     std::string data_type = "Bars";      // "Bars" or "Trades"
     double target_duration = 30.0;
+    std::string filename_prefix = "inspector_benchmark";
     std::filesystem::path output_directory;
     std::chrono::system_clock::time_point started_at;
     std::chrono::system_clock::time_point generated_at;
@@ -46,7 +49,6 @@ public:
     Benchmark_profiler()
     {
         m_root.name = "[root]";
-        m_current = &m_root;
     }
 
     ~Benchmark_profiler() override = default;
@@ -54,47 +56,53 @@ public:
     /// Begin a named scope. Nested calls create child scopes.
     void begin_scope(const char* name) override
     {
-        m_start_times.push(std::chrono::steady_clock::now());
+        auto start_time = std::chrono::steady_clock::now();
+        const char* scope_name = name ? name : "";
 
-        // Find or create child with this name (aggregation!)
-        auto& children = m_current->children;
-        auto it = children.find(name);
+        std::lock_guard<std::mutex> lock(m_mutex);
+        auto& ctx = get_thread_context_locked();
+        ctx.start_times.push(start_time);
+        auto& children = ctx.current->children;
+        auto it = children.find(scope_name);
         if (it == children.end()) {
             auto child = std::make_unique<Scope_stats>();
-            child->name = name;
-            child->parent = m_current;
-            it = children.emplace(name, std::move(child)).first;
+            child->name = scope_name;
+            child->parent = ctx.current;
+            it = children.emplace(scope_name, std::move(child)).first;
         }
-        m_current = it->second.get();
+        ctx.current = it->second.get();
     }
 
     /// End the current scope and record timing.
     void end_scope() override
     {
-        if (m_start_times.empty()) {
+        auto end_time = std::chrono::steady_clock::now();
+
+        std::lock_guard<std::mutex> lock(m_mutex);
+        auto& ctx = get_thread_context_locked();
+        if (ctx.start_times.empty() || !ctx.current) {
             return;
         }
-
-        auto end_time = std::chrono::steady_clock::now();
-        auto start_time = m_start_times.top();
-        m_start_times.pop();
+        auto start_time = ctx.start_times.top();
+        ctx.start_times.pop();
 
         double elapsed_ms = std::chrono::duration<double, std::milli>(end_time - start_time).count();
 
         // Aggregate into existing stats
-        m_current->call_count++;
-        m_current->total_ms += elapsed_ms;
-        m_current->min_ms = std::min(m_current->min_ms, elapsed_ms);
-        m_current->max_ms = std::max(m_current->max_ms, elapsed_ms);
+        ctx.current->call_count++;
+        ctx.current->total_ms += elapsed_ms;
+        ctx.current->min_ms = std::min(ctx.current->min_ms, elapsed_ms);
+        ctx.current->max_ms = std::max(ctx.current->max_ms, elapsed_ms);
 
-        if (m_current->parent) {
-            m_current = m_current->parent;
+        if (ctx.current->parent) {
+            ctx.current = ctx.current->parent;
         }
     }
 
     /// Generate report string in Lumis format
     std::string generate_report(const Report_metadata& meta) const
     {
+        std::lock_guard<std::mutex> lock(m_mutex);
         std::ostringstream oss;
 
         // Header
@@ -152,7 +160,7 @@ public:
     /// Write report to file in output directory
     std::filesystem::path write_report(const Report_metadata& meta) const
     {
-        // Generate filename: inspector_benchmark_YYYYMMDD_HHMMSS_<SYMBOL>_<DataType>.txt
+        // Generate filename: <prefix>_YYYYMMDD_HHMMSS_<SYMBOL>_<DataType>.txt
         std::string filename = generate_filename(meta);
         std::filesystem::path output_path = meta.output_directory / filename;
 
@@ -171,15 +179,13 @@ public:
     /// Reset profiler for next run
     void reset()
     {
+        std::lock_guard<std::mutex> lock(m_mutex);
         m_root.children.clear();
         m_root.call_count = 0;
         m_root.total_ms = 0.0;
         m_root.min_ms = std::numeric_limits<double>::max();
         m_root.max_ms = 0.0;
-        m_current = &m_root;
-        while (!m_start_times.empty()) {
-            m_start_times.pop();
-        }
+        m_thread_contexts.clear();
     }
 
     /// Get root scope for inspection
@@ -196,9 +202,14 @@ private:
         Scope_stats* parent = nullptr;
     };
 
+    struct Thread_context {
+        Scope_stats* current = nullptr;
+        std::stack<std::chrono::steady_clock::time_point> start_times;
+    };
+
     Scope_stats m_root;
-    Scope_stats* m_current = nullptr;
-    std::stack<std::chrono::steady_clock::time_point> m_start_times;
+    mutable std::mutex m_mutex;
+    std::map<std::thread::id, Thread_context> m_thread_contexts;
 
     // Format UTC timestamp as ISO 8601
     static std::string format_utc_time(std::chrono::system_clock::time_point tp)
@@ -277,8 +288,11 @@ private:
     // Generate filename
     static std::string generate_filename(const Report_metadata& meta)
     {
+        const std::string prefix = meta.filename_prefix.empty()
+            ? "inspector_benchmark"
+            : meta.filename_prefix;
         std::ostringstream oss;
-        oss << "inspector_benchmark_" << format_filename_time(meta.started_at)
+        oss << prefix << "_" << format_filename_time(meta.started_at)
             << "_" << meta.symbol << "_" << meta.data_type << ".txt";
         return oss.str();
     }
@@ -413,6 +427,15 @@ private:
                << std::setw(6) << "-" << " "
                << std::setw(7) << unattr_percent << "%\n";
         }
+    }
+
+    Thread_context& get_thread_context_locked()
+    {
+        auto& ctx = m_thread_contexts[std::this_thread::get_id()];
+        if (!ctx.current) {
+            ctx.current = &m_root;
+        }
+        return ctx;
     }
 };
 
