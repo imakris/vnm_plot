@@ -333,7 +333,22 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
         if (!snapshot_result) {
             ++m_metrics.snapshot_failures;
 
-            result.can_draw = (view_state.active_vbo != UINT_MAX && view_state.last_count > 0);
+            // Only use stale values if identity hasn't changed (same data source).
+            // This prevents using cached indices from a previous session's data.
+            const void* current_identity = data_source.identity();
+            const bool identity_matches =
+                (view_state.cached_data_identity != nullptr) &&
+                (view_state.cached_data_identity == current_identity);
+
+            if (!identity_matches && view_state.cached_data_identity != nullptr) {
+                // Log stale identity detected during snapshot failure
+                if (profiler) {
+                    // Identity mismatch - cannot safely use stale values
+                }
+            }
+
+            result.can_draw = identity_matches &&
+                (view_state.active_vbo != UINT_MAX && view_state.last_count > 0);
             if (result.can_draw) {
                 result.first = view_state.last_first;
                 result.count = view_state.last_count;
@@ -349,7 +364,14 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
         const auto& snapshot = snapshot_result.snapshot;
         if (!snapshot || snapshot.count == 0) {
             ++m_metrics.snapshot_failures;
-            result.can_draw = (view_state.active_vbo != UINT_MAX && view_state.last_count > 0);
+            // Only use stale values if identity hasn't changed (same data source).
+            const void* current_identity = data_source.identity();
+            const bool identity_matches =
+                (view_state.cached_data_identity != nullptr) &&
+                (view_state.cached_data_identity == current_identity);
+
+            result.can_draw = identity_matches &&
+                (view_state.active_vbo != UINT_MAX && view_state.last_count > 0);
             if (result.can_draw) {
                 result.first = view_state.last_first;
                 result.count = view_state.last_count;
@@ -422,9 +444,13 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
                 result.t_min_override = first_ts;
                 result.t_max_override = last_ts;
             }
-            else if (allow_stale_on_empty &&
-                     view_state.active_vbo != UINT_MAX &&
-                     view_state.last_count > 0) {
+            else
+            if (allow_stale_on_empty &&
+                view_state.active_vbo != UINT_MAX &&
+                view_state.last_count > 0 &&
+                view_state.cached_data_identity == data_source.identity())
+            {
+                // Only use stale values if identity matches (same data source).
                 result.can_draw = true;
                 result.first = view_state.last_first;
                 result.count = view_state.last_count;
@@ -447,23 +473,14 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
             VNM_PLOT_PROFILE_SCOPE(
                 profiler,
                 "renderer.frame.execute_passes.render_data_series.series.process_view.compute_base_pps");
+            // Estimate base samples from current LOD level count and scale.
+            // This avoids an extra try_snapshot(0) call which was expensive.
             base_samples = (count > 0)
                 ? static_cast<std::size_t>(count) * applied_scale
                 : 0;
             base_pps = (base_samples > 0)
                 ? width_px / static_cast<double>(base_samples)
                 : 0.0;
-            if (allow_stale_on_empty && applied_level != 0) {
-                auto base_snapshot_result = data_source.try_snapshot(0);
-                if (base_snapshot_result && base_snapshot_result.snapshot.count > 0) {
-                    const std::size_t base_scale = scales.empty() ? 1 : scales[0];
-                    const std::size_t base_samples_ref =
-                        base_snapshot_result.snapshot.count * base_scale;
-                    if (base_samples_ref > 0) {
-                        base_pps = width_px / static_cast<double>(base_samples_ref);
-                    }
-                }
-            }
         }
 
         std::size_t desired_level = applied_level;
