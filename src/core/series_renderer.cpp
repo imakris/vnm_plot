@@ -605,6 +605,9 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
         result.count = view_state.last_count;
         result.applied_level = applied_level;
         result.applied_pps = base_pps * static_cast<double>(applied_scale);
+        // Cache snapshot for reuse in draw_pass (eliminates redundant snapshot call)
+        result.cached_snapshot = snapshot;
+        result.cached_snapshot_hold = snapshot.hold;
         break;
     }
 
@@ -935,13 +938,8 @@ void Series_renderer::render(
         std::size_t aux_range_scale = 1;
         if (primitive_style == Display_style::COLORMAP_AREA && !series.colormap.samples.empty()) {
             auto& aux_cache_entry = vbo_state.cached_aux_metric_levels[view_result.applied_level];
-            data_snapshot_t snapshot;
-            {
-                VNM_PLOT_PROFILE_SCOPE(
-                    profiler,
-                    "renderer.frame.execute_passes.render_data_series.series.ensure_full_resolution_aux_metric_range");
-                snapshot = series.data_source->snapshot(view_result.applied_level);
-            }
+            // Reuse snapshot from process_view() instead of taking a redundant one
+            const data_snapshot_t& snapshot = view_result.cached_snapshot;
             if (snapshot) {
                 const bool can_reuse =
                     aux_cache_entry.valid && aux_cache_entry.sequence == snapshot.sequence;

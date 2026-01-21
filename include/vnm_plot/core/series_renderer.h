@@ -114,6 +114,8 @@ private:
         bool use_t_override = false;
         double t_min_override = 0.0;
         double t_max_override = 0.0;
+        data_snapshot_t cached_snapshot;              // Reused in draw_pass for aux metric
+        std::shared_ptr<void> cached_snapshot_hold;   // Keep snapshot alive
     };
 
     struct colormap_resource_t

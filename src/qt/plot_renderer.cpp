@@ -674,9 +674,9 @@ struct Plot_renderer::impl_t
     double last_horizontal_seed_step = 0.0;
 
     // Range throttling state (Phase 1 optimization).
-    // Reduces range_calc from render rate (~19 Hz) to throttled rate (~10 Hz).
+    // Reduces range_calc from render rate (~19 Hz) to throttled rate (~4 Hz).
     // NOTE: Data sequence changes within the throttle interval may cause up to
-    // 100ms staleness. The internal per-LOD cache in compute_*_v_range handles
+    // 250ms staleness. The internal per-LOD cache in compute_*_v_range handles
     // sequence-based invalidation, so this is mainly a loop/call overhead skip.
     std::chrono::steady_clock::time_point last_range_calc_time{};
     float cached_v0 = 0.0f;
@@ -685,7 +685,7 @@ struct Plot_renderer::impl_t
     float cached_preview_v1 = 0.0f;
     bool range_cache_valid = false;
     range_cache_key_t last_range_key{};
-    static constexpr std::chrono::milliseconds k_range_throttle_interval{100};
+    static constexpr std::chrono::milliseconds k_range_throttle_interval{250};
 
     // V-range animation state.
     float anim_v0 = 0.0f;

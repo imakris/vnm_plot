@@ -177,6 +177,11 @@ public:
     virtual size_t sample_stride() const = 0;
     virtual const void* identity() const { return this; }
 
+    /// Returns current sequence for the given LOD level without taking a snapshot.
+    /// Useful for skip optimization when data hasn't changed.
+    /// Returns 0 if not supported or unknown.
+    virtual uint64_t current_sequence(size_t lod_level = 0) const { (void)lod_level; return 0; }
+
     // Optional value range interface for O(1) range queries.
     virtual bool has_value_range() const { return false; }
     virtual std::pair<float, float> value_range() const { return {0.0f, 0.0f}; }
