@@ -147,6 +147,12 @@ void Plot_widget::reset_assets()
     update();
 }
 
+void Plot_widget::reset_view_state()
+{
+    m_view_state_reset_requested.store(true, std::memory_order_release);
+    update();
+}
+
 bool Plot_widget::dark_mode() const
 {
     std::shared_lock lock(m_config_mutex);
@@ -1002,6 +1008,11 @@ data_config_t Plot_widget::data_cfg_snapshot() const
 {
     std::shared_lock lock(m_data_cfg_mutex);
     return m_data_cfg;
+}
+
+bool Plot_widget::consume_view_state_reset_request()
+{
+    return m_view_state_reset_requested.exchange(false, std::memory_order_acq_rel);
 }
 
 void Plot_widget::adjust_t_to_target(double target_tmin, double target_tmax)

@@ -72,6 +72,8 @@ public:
     Plot_config config() const;
     // Force asset re-registration on the renderer.
     Q_INVOKABLE void reset_assets();
+    // Reset renderer-side view state (e.g., skip auto-range smoothing once).
+    Q_INVOKABLE void reset_view_state();
 
     // Dark mode
     bool dark_mode() const;
@@ -177,6 +179,7 @@ private:
     std::atomic<bool> m_visible{false};
     std::atomic<bool> m_v_auto{true};
     std::atomic<bool> m_show_info{true};
+    std::atomic<bool> m_view_state_reset_requested{false};
     std::atomic<double> m_vbar_width_px{0.0};
     QBasicTimer m_vbar_width_timer;
     QElapsedTimer m_vbar_width_anim_elapsed;
@@ -201,6 +204,8 @@ private:
     double compute_preview_height_px(double widget_height_px) const;
     std::pair<float, float> current_v_range() const;
     data_config_t data_cfg_snapshot() const;
+
+    bool consume_view_state_reset_request();
 };
 
 } // namespace vnm::plot

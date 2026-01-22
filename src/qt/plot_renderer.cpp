@@ -105,6 +105,20 @@ bool spans_approx_equal(double a, double b)
     return diff <= scale * k_eps;
 }
 
+std::uint64_t hash_data_sources(const std::map<int, std::shared_ptr<Data_source>>& data)
+{
+    std::uint64_t hash = 1469598103934665603ULL;
+    for (const auto& [id, source] : data) {
+        const void* identity = source ? source->identity() : nullptr;
+        const std::uint64_t ptr = static_cast<std::uint64_t>(
+            reinterpret_cast<std::uintptr_t>(identity));
+        std::uint64_t value = static_cast<std::uint64_t>(id);
+        value ^= ptr + 0x9e3779b97f4a7c15ULL + (value << 6) + (value >> 2);
+        hash ^= value + 0x9e3779b97f4a7c15ULL + (hash << 6) + (hash >> 2);
+    }
+    return hash;
+}
+
 constexpr float k_auto_v_padding_factor = 0.05f;
 constexpr float k_auto_v_padding_min = 0.5f;
 constexpr float k_auto_v_sync_eps = static_cast<float>(k_eps);
@@ -648,6 +662,7 @@ struct Plot_renderer::impl_t
         bool visible = false;
         bool show_info = false;
         bool v_auto = true;
+        bool reset_view_state = false;
 
         Plot_config config;
 
@@ -660,6 +675,74 @@ struct Plot_renderer::impl_t
         double adjusted_preview_height = 0.0;
     };
 
+    struct view_state_t
+    {
+        // Range throttling state (Phase 1 optimization).
+        // Reduces range_calc from render rate (~19 Hz) to throttled rate (~4 Hz).
+        // NOTE: Data sequence changes within the throttle interval may cause up to
+        // 250ms staleness. The internal per-LOD cache in compute_*_v_range handles
+        // sequence-based invalidation, so this is mainly a loop/call overhead skip.
+        std::chrono::steady_clock::time_point last_range_calc_time{};
+        float cached_v0 = 0.0f;
+        float cached_v1 = 0.0f;
+        float cached_preview_v0 = 0.0f;
+        float cached_preview_v1 = 0.0f;
+        bool range_cache_valid = false;
+        range_cache_key_t last_range_key{};
+        static constexpr std::chrono::milliseconds k_range_throttle_interval{250};
+
+        // V-range animation state.
+        float anim_v0 = 0.0f;
+        float anim_v1 = 1.0f;
+        float anim_preview_v0 = 0.0f;
+        float anim_preview_v1 = 1.0f;
+        std::chrono::steady_clock::time_point last_anim_time{};
+        bool anim_initialized = false;
+        static constexpr float k_v_anim_speed = 15.0f;  // ~200ms to 95%
+
+        double last_vertical_span = 0.0;
+        double last_vertical_seed_step = 0.0;
+        double last_horizontal_span = 0.0;
+        double last_horizontal_seed_step = 0.0;
+        int last_vertical_seed_index = -1;
+        int last_horizontal_seed_index = -1;
+
+        std::unordered_map<int, std::shared_ptr<series_data_t>> core_series_cache;
+        std::unordered_map<int, series_minmax_cache_t> v_range_cache;
+        Layout_cache layout_cache;
+
+        std::uint64_t data_signature = 0;
+
+        void reset_for_data_change()
+        {
+            range_cache_valid = false;
+            last_range_calc_time = {};
+            cached_v0 = 0.0f;
+            cached_v1 = 0.0f;
+            cached_preview_v0 = 0.0f;
+            cached_preview_v1 = 0.0f;
+            last_range_key = {};
+
+            anim_initialized = false;
+            last_anim_time = {};
+            anim_v0 = 0.0f;
+            anim_v1 = 1.0f;
+            anim_preview_v0 = 0.0f;
+            anim_preview_v1 = 1.0f;
+
+            last_vertical_span = 0.0;
+            last_vertical_seed_step = 0.0;
+            last_horizontal_span = 0.0;
+            last_horizontal_seed_step = 0.0;
+            last_vertical_seed_index = -1;
+            last_horizontal_seed_index = -1;
+
+            core_series_cache.clear();
+            v_range_cache.clear();
+            layout_cache.invalidate();
+        }
+    };
+
     // Field order optimized to minimize padding (clang-tidy warning).
     Asset_loader asset_loader;
     Primitive_renderer primitives;
@@ -668,40 +751,9 @@ struct Plot_renderer::impl_t
     Font_renderer fonts;
     std::unique_ptr<Text_renderer> text;
 
-    double last_vertical_span = 0.0;
-    double last_vertical_seed_step = 0.0;
-    double last_horizontal_span = 0.0;
-    double last_horizontal_seed_step = 0.0;
-
-    // Range throttling state (Phase 1 optimization).
-    // Reduces range_calc from render rate (~19 Hz) to throttled rate (~4 Hz).
-    // NOTE: Data sequence changes within the throttle interval may cause up to
-    // 250ms staleness. The internal per-LOD cache in compute_*_v_range handles
-    // sequence-based invalidation, so this is mainly a loop/call overhead skip.
-    std::chrono::steady_clock::time_point last_range_calc_time{};
-    float cached_v0 = 0.0f;
-    float cached_v1 = 0.0f;
-    float cached_preview_v0 = 0.0f;
-    float cached_preview_v1 = 0.0f;
-    bool range_cache_valid = false;
-    range_cache_key_t last_range_key{};
-    static constexpr std::chrono::milliseconds k_range_throttle_interval{250};
-
-    // V-range animation state.
-    float anim_v0 = 0.0f;
-    float anim_v1 = 1.0f;
-    float anim_preview_v0 = 0.0f;
-    float anim_preview_v1 = 1.0f;
-    std::chrono::steady_clock::time_point last_anim_time{};
-    bool anim_initialized = false;
-    static constexpr float k_v_anim_speed = 15.0f;  // ~200ms to 95%
-
-    std::unordered_map<int, std::shared_ptr<series_data_t>> core_series_cache;
-    std::unordered_map<int, series_minmax_cache_t> v_range_cache;
-
     Layout_calculator layout_calc;
     Series_renderer series;
-    Layout_cache layout_cache;
+    view_state_t view;
 
     int init_failed_status = 0;
     int last_font_px = 0;
@@ -709,8 +761,6 @@ struct Plot_renderer::impl_t
     int viewport_height = 0;
     int last_opengl_status = std::numeric_limits<int>::min();
     int last_hlabels_subsecond = -1;
-    int last_vertical_seed_index = -1;
-    int last_horizontal_seed_index = -1;
     std::uint32_t assets_revision = 0;
 
     Chrome_renderer chrome;
@@ -764,7 +814,7 @@ const frame_layout_result_t& Plot_renderer::impl_t::calculate_frame_layout(
     cache_key.vbar_width_pixels = snapshot.vbar_width_pixels;
     cache_key.font_metrics_key = fonts.text_measure_cache_key();
 
-    if (const auto* cached = layout_cache.try_get(cache_key)) {
+    if (const auto* cached = view.layout_cache.try_get(cache_key)) {
         VNM_PLOT_PROFILE_SCOPE(
             profiler,
             "renderer.frame.calculate_layout.impl.cache_hit");
@@ -796,23 +846,23 @@ const frame_layout_result_t& Plot_renderer::impl_t::calculate_frame_layout(
         layout_params.h_label_vertical_nudge_factor = k_h_label_vertical_nudge_px;
 
         if (v_span > 0.0 &&
-            last_vertical_seed_index >= 0 &&
-            spans_approx_equal(v_span, last_vertical_span) &&
-            last_vertical_seed_step > 0.0)
+            view.last_vertical_seed_index >= 0 &&
+            spans_approx_equal(v_span, view.last_vertical_span) &&
+            view.last_vertical_seed_step > 0.0)
         {
             layout_params.has_vertical_seed = true;
-            layout_params.vertical_seed_index = last_vertical_seed_index;
-            layout_params.vertical_seed_step = last_vertical_seed_step;
+            layout_params.vertical_seed_index = view.last_vertical_seed_index;
+            layout_params.vertical_seed_step = view.last_vertical_seed_step;
         }
 
         if (t_span > 0.0 &&
-            last_horizontal_seed_index >= 0 &&
-            spans_approx_equal(t_span, last_horizontal_span) &&
-            last_horizontal_seed_step > 0.0)
+            view.last_horizontal_seed_index >= 0 &&
+            spans_approx_equal(t_span, view.last_horizontal_span) &&
+            view.last_horizontal_seed_step > 0.0)
         {
             layout_params.has_horizontal_seed = true;
-            layout_params.horizontal_seed_index = last_horizontal_seed_index;
-            layout_params.horizontal_seed_step = last_horizontal_seed_step;
+            layout_params.horizontal_seed_index = view.last_horizontal_seed_index;
+            layout_params.horizontal_seed_step = view.last_horizontal_seed_step;
         }
 
         if (config) {
@@ -892,7 +942,7 @@ const frame_layout_result_t& Plot_renderer::impl_t::calculate_frame_layout(
         VNM_PLOT_PROFILE_SCOPE(
             profiler,
             "renderer.frame.calculate_layout.impl.cache_miss.finalize");
-        return layout_cache.store(cache_key, std::move(frame_layout));
+        return view.layout_cache.store(cache_key, std::move(frame_layout));
     }
 }
 
@@ -902,25 +952,25 @@ void Plot_renderer::impl_t::update_seed_history(
     const frame_layout_result_t& layout)
 {
     if (v_span > 0.0) {
-        last_vertical_span = v_span;
-        last_vertical_seed_index = layout.vertical_seed_index;
-        last_vertical_seed_step = layout.vertical_seed_step;
+        view.last_vertical_span = v_span;
+        view.last_vertical_seed_index = layout.vertical_seed_index;
+        view.last_vertical_seed_step = layout.vertical_seed_step;
     }
     else {
-        last_vertical_span = 0.0;
-        last_vertical_seed_index = -1;
-        last_vertical_seed_step = 0.0;
+        view.last_vertical_span = 0.0;
+        view.last_vertical_seed_index = -1;
+        view.last_vertical_seed_step = 0.0;
     }
 
     if (t_span > 0.0) {
-        last_horizontal_span = t_span;
-        last_horizontal_seed_index = layout.horizontal_seed_index;
-        last_horizontal_seed_step = layout.horizontal_seed_step;
+        view.last_horizontal_span = t_span;
+        view.last_horizontal_seed_index = layout.horizontal_seed_index;
+        view.last_horizontal_seed_step = layout.horizontal_seed_step;
     }
     else {
-        last_horizontal_span = 0.0;
-        last_horizontal_seed_index = -1;
-        last_horizontal_seed_step = 0.0;
+        view.last_horizontal_span = 0.0;
+        view.last_horizontal_seed_index = -1;
+        view.last_horizontal_seed_step = 0.0;
     }
 }
 
@@ -984,6 +1034,7 @@ void Plot_renderer::synchronize(QQuickFramebufferObject* fbo_item)
     m_impl->snapshot.visible = (widget->width() > 0.0 && widget->height() > 0.0);
     m_impl->snapshot.show_info = widget->m_show_info.load(std::memory_order_acquire);
     m_impl->snapshot.v_auto = widget->m_v_auto.load(std::memory_order_acquire);
+    m_impl->snapshot.reset_view_state = widget->consume_view_state_reset_request();
     m_impl->snapshot.adjusted_font_px = widget->m_adjusted_font_size;
     m_impl->snapshot.base_label_height_px = widget->m_base_label_height;
     m_impl->snapshot.adjusted_preview_height = widget->m_adjusted_preview_height;
@@ -1119,7 +1170,18 @@ void Plot_renderer::render()
         return;
     }
 
-    const bool prev_v_auto = m_impl->last_range_key.v_auto;
+    const std::uint64_t data_signature = hash_data_sources(m_impl->snapshot.data);
+    const bool data_changed = (data_signature != m_impl->view.data_signature);
+    const bool view_reset = m_impl->snapshot.reset_view_state;
+    if (data_changed || view_reset) {
+        // Avoid smoothing when the series set changes or the UI requests a reset.
+        m_impl->view.data_signature = data_signature;
+        m_impl->view.reset_for_data_change();
+    }
+
+    const bool prev_v_auto = (data_changed || view_reset)
+        ? m_impl->snapshot.v_auto
+        : m_impl->view.last_range_key.v_auto;
     float v0 = 0.0f;
     float v1 = 0.0f;
     float preview_v0 = 0.0f;
@@ -1129,7 +1191,7 @@ void Plot_renderer::render()
 
         const auto now = std::chrono::steady_clock::now();
         const bool throttle_expired =
-            (now - m_impl->last_range_calc_time) >= impl_t::k_range_throttle_interval;
+            (now - m_impl->view.last_range_calc_time) >= impl_t::view_state_t::k_range_throttle_interval;
 
         // Calculate layout
         const double usable_width = win_w - m_impl->snapshot.vbar_width_pixels;
@@ -1152,8 +1214,8 @@ void Plot_renderer::render()
             current_key.t_max = m_impl->snapshot.cfg.t_max;
         }
 
-        bool cache_invalid = !m_impl->range_cache_valid ||
-                             (current_key != m_impl->last_range_key);
+        bool cache_invalid = !m_impl->view.range_cache_valid ||
+                             (current_key != m_impl->view.last_range_key);
 
         if (!cache_invalid && !throttle_expired && v_auto && can_use_series) {
             std::shared_lock lock(m_impl->owner->m_series_mutex);
@@ -1178,7 +1240,7 @@ void Plot_renderer::render()
                     }
                     sequence = snapshot_result.snapshot.sequence;
                 }
-                series_minmax_cache_t& cache = m_impl->v_range_cache[id];
+                series_minmax_cache_t& cache = m_impl->view.v_range_cache[id];
                 const void* identity = series->data_source->identity();
                 if (cache.identity != identity || cache.lods.size() != levels) {
                     cache_invalid = true;
@@ -1195,16 +1257,16 @@ void Plot_renderer::render()
         if (!cache_invalid && !throttle_expired) {
             // Use cached values (throttled path).
             if (v_auto) {
-                v0 = m_impl->cached_v0;
-                v1 = m_impl->cached_v1;
+                v0 = m_impl->view.cached_v0;
+                v1 = m_impl->view.cached_v1;
             }
             else {
                 // When v_auto is false, always use manual config directly.
                 v0 = m_impl->snapshot.cfg.v_manual_min;
                 v1 = m_impl->snapshot.cfg.v_manual_max;
             }
-            preview_v0 = m_impl->cached_preview_v0;
-            preview_v1 = m_impl->cached_preview_v1;
+            preview_v0 = m_impl->view.cached_preview_v0;
+            preview_v1 = m_impl->view.cached_preview_v1;
         }
         else {
             // Perform full range calculation.
@@ -1231,7 +1293,7 @@ void Plot_renderer::render()
                     if (auto_mode == Auto_v_range_mode::VISIBLE) {
                         auto [auto_v0, auto_v1] = compute_visible_v_range(
                             m_impl->owner->m_series,
-                            m_impl->v_range_cache,
+                            m_impl->view.v_range_cache,
                             profiler,
                             m_impl->snapshot.cfg.t_min,
                             m_impl->snapshot.cfg.t_max,
@@ -1245,7 +1307,7 @@ void Plot_renderer::render()
                     else {
                         auto [auto_v0, auto_v1] = compute_global_v_range(
                             m_impl->owner->m_series,
-                            m_impl->v_range_cache,
+                            m_impl->view.v_range_cache,
                             profiler,
                             auto_mode == Auto_v_range_mode::GLOBAL_LOD,
                             m_impl->snapshot.cfg.v_min,
@@ -1263,7 +1325,7 @@ void Plot_renderer::render()
                 preview_use_lod_cache = (auto_mode == Auto_v_range_mode::GLOBAL_LOD);
                 auto [auto_preview_v0, auto_preview_v1] = compute_global_v_range(
                     m_impl->owner->m_series,
-                    m_impl->v_range_cache,
+                    m_impl->view.v_range_cache,
                     profiler,
                     preview_use_lod_cache,
                     m_impl->snapshot.cfg.v_min,
@@ -1286,13 +1348,13 @@ void Plot_renderer::render()
             }
 
             // Update throttle cache.
-            m_impl->cached_v0 = v0;
-            m_impl->cached_v1 = v1;
-            m_impl->cached_preview_v0 = preview_v0;
-            m_impl->cached_preview_v1 = preview_v1;
-            m_impl->range_cache_valid = true;
-            m_impl->last_range_calc_time = now;
-            m_impl->last_range_key = current_key;
+            m_impl->view.cached_v0 = v0;
+            m_impl->view.cached_v1 = v1;
+            m_impl->view.cached_preview_v0 = preview_v0;
+            m_impl->view.cached_preview_v1 = preview_v1;
+            m_impl->view.range_cache_valid = true;
+            m_impl->view.last_range_calc_time = now;
+            m_impl->view.last_range_key = current_key;
         }
 
         if (v_auto) {
@@ -1302,7 +1364,7 @@ void Plot_renderer::render()
             const float target_preview_v0 = preview_v0;
             const float target_preview_v1 = preview_v1;
             const auto anim_now = std::chrono::steady_clock::now();
-            if (!m_impl->anim_initialized) {
+            if (!m_impl->view.anim_initialized) {
                 const bool auto_just_enabled = v_auto && !prev_v_auto;
                 if (auto_just_enabled) {
                     // When v_auto transitions from false to true, initialize
@@ -1313,37 +1375,37 @@ void Plot_renderer::render()
                     if (std::isfinite(manual_v0) && std::isfinite(manual_v1) &&
                         manual_v0 < manual_v1)
                     {
-                        m_impl->anim_v0 = manual_v0;
-                        m_impl->anim_v1 = manual_v1;
+                        m_impl->view.anim_v0 = manual_v0;
+                        m_impl->view.anim_v1 = manual_v1;
                     }
                     else {
-                        m_impl->anim_v0 = v0;
-                        m_impl->anim_v1 = v1;
+                        m_impl->view.anim_v0 = v0;
+                        m_impl->view.anim_v1 = v1;
                     }
                 }
                 else {
-                    m_impl->anim_v0 = v0;
-                    m_impl->anim_v1 = v1;
+                    m_impl->view.anim_v0 = v0;
+                    m_impl->view.anim_v1 = v1;
                 }
                 // Preview can start from current auto (it was always auto-ranging)
-                m_impl->anim_preview_v0 = preview_v0;
-                m_impl->anim_preview_v1 = preview_v1;
-                m_impl->last_anim_time = anim_now;
-                m_impl->anim_initialized = true;
+                m_impl->view.anim_preview_v0 = preview_v0;
+                m_impl->view.anim_preview_v1 = preview_v1;
+                m_impl->view.last_anim_time = anim_now;
+                m_impl->view.anim_initialized = true;
             }
             else {
-                const float dt = std::chrono::duration<float>(anim_now - m_impl->last_anim_time).count();
-                m_impl->last_anim_time = anim_now;
-                const float t = 1.0f - std::exp(-impl_t::k_v_anim_speed * dt);
-                m_impl->anim_v0         += (v0 - m_impl->anim_v0) * t;
-                m_impl->anim_v1         += (v1 - m_impl->anim_v1) * t;
-                m_impl->anim_preview_v0 += (preview_v0 - m_impl->anim_preview_v0) * t;
-                m_impl->anim_preview_v1 += (preview_v1 - m_impl->anim_preview_v1) * t;
+                const float dt = std::chrono::duration<float>(anim_now - m_impl->view.last_anim_time).count();
+                m_impl->view.last_anim_time = anim_now;
+                const float t = 1.0f - std::exp(-impl_t::view_state_t::k_v_anim_speed * dt);
+                m_impl->view.anim_v0         += (v0 - m_impl->view.anim_v0) * t;
+                m_impl->view.anim_v1         += (v1 - m_impl->view.anim_v1) * t;
+                m_impl->view.anim_preview_v0 += (preview_v0 - m_impl->view.anim_preview_v0) * t;
+                m_impl->view.anim_preview_v1 += (preview_v1 - m_impl->view.anim_preview_v1) * t;
             }
-            v0 = m_impl->anim_v0;
-            v1 = m_impl->anim_v1;
-            preview_v0 = m_impl->anim_preview_v0;
-            preview_v1 = m_impl->anim_preview_v1;
+            v0 = m_impl->view.anim_v0;
+            v1 = m_impl->view.anim_v1;
+            preview_v0 = m_impl->view.anim_preview_v0;
+            preview_v1 = m_impl->view.anim_preview_v1;
 
             if (m_impl->owner) {
                 // Sync auto range back to the widget so QML reads match the render range.
@@ -1376,7 +1438,7 @@ void Plot_renderer::render()
             }
         }
         else {
-            m_impl->anim_initialized = false;
+            m_impl->view.anim_initialized = false;
         }
     }
 
@@ -1388,8 +1450,8 @@ void Plot_renderer::render()
     bool fade_h_labels = false;
     {
         VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.layout_prep");
-        prev_v_span = m_impl->last_vertical_span;
-        prev_t_span = m_impl->last_horizontal_span;
+        prev_v_span = m_impl->view.last_vertical_span;
+        prev_t_span = m_impl->view.last_horizontal_span;
         v_span = double(v1) - double(v0);
         t_span = m_impl->snapshot.cfg.t_max - m_impl->snapshot.cfg.t_min;
 
@@ -1514,7 +1576,7 @@ void Plot_renderer::render()
 
                 seen_ids.insert(id);
 
-                auto& core_series = m_impl->core_series_cache[id];
+                auto& core_series = m_impl->view.core_series_cache[id];
                 if (!core_series) {
                     core_series = std::make_shared<series_data_t>();
                 }
@@ -1543,9 +1605,11 @@ void Plot_renderer::render()
             }
 
             // Cleanup stale cache entries
-            for (auto it = m_impl->core_series_cache.begin(); it != m_impl->core_series_cache.end(); ) {
+            for (auto it = m_impl->view.core_series_cache.begin();
+                it != m_impl->view.core_series_cache.end(); )
+            {
                 if (seen_ids.find(it->first) == seen_ids.end()) {
-                    it = m_impl->core_series_cache.erase(it);
+                    it = m_impl->view.core_series_cache.erase(it);
                 }
                 else {
                     ++it;

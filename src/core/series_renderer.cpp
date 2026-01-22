@@ -35,8 +35,11 @@ bool compute_aux_metric_range(
     const series_data_t& series,
     const data_snapshot_t& snapshot,
     double& out_min,
-    double& out_max)
+    double& out_max,
+    bool& out_used_data_source_range)
 {
+    out_used_data_source_range = false;
+
     if (!series.access.get_aux_metric || !snapshot || snapshot.count == 0 || snapshot.stride == 0) {
         return false;
     }
@@ -49,6 +52,7 @@ bool compute_aux_metric_range(
         if (std::isfinite(ds_min) && std::isfinite(ds_max) && ds_min <= ds_max) {
             out_min = ds_min;
             out_max = ds_max;
+            out_used_data_source_range = true;
             return true;
         }
     }
@@ -1036,13 +1040,29 @@ void Series_renderer::render(
                 if (!can_reuse) {
                     double aux_min = 0.0;
                     double aux_max = 1.0;
+                    bool used_data_source_range = false;
                     VNM_PLOT_PROFILE_SCOPE(
                         profiler,
                         "renderer.frame.execute_passes.render_data_series.series.compute_aux_metric_range");
-                    if (compute_aux_metric_range(series, snapshot, aux_min, aux_max)) {
-                        aux_cache_entry.min = aux_min;
-                        aux_cache_entry.max = aux_max;
-                        aux_cache_entry.valid = true;
+                    if (compute_aux_metric_range(series, snapshot, aux_min, aux_max, used_data_source_range)) {
+                        std::size_t cache_level = view_result.applied_level;
+                        uint64_t cache_sequence = snapshot.sequence;
+                        if (used_data_source_range) {
+                            // Data-source ranges are in LOD 0 units.
+                            cache_level = 0;
+                            cache_sequence = 0;
+                            if (series.data_source) {
+                                cache_sequence = series.data_source->current_sequence(0);
+                            }
+                            if (cache_sequence == 0) {
+                                cache_sequence = snapshot.sequence;
+                            }
+                        }
+                        auto& target_entry = vbo_state.cached_aux_metric_levels[cache_level];
+                        target_entry.min = aux_min;
+                        target_entry.max = aux_max;
+                        target_entry.valid = true;
+                        target_entry.sequence = cache_sequence;
                     }
                     else {
                         if (!aux_cache_entry.valid) {
@@ -1051,7 +1071,9 @@ void Series_renderer::render(
                             aux_cache_entry.valid = true;
                         }
                     }
-                    aux_cache_entry.sequence = snapshot.sequence;
+                    if (!used_data_source_range) {
+                        aux_cache_entry.sequence = snapshot.sequence;
+                    }
                 }
             }
             else {
