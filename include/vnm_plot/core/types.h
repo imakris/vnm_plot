@@ -186,6 +186,10 @@ public:
     virtual bool has_value_range() const { return false; }
     virtual std::pair<float, float> value_range() const { return {0.0f, 0.0f}; }
     virtual bool value_range_needs_rescan() const { return false; }
+    // Optional aux metric range interface for colormap range queries.
+    virtual bool has_aux_metric_range() const { return false; }
+    virtual std::pair<double, double> aux_metric_range() const { return {0.0, 0.0}; }
+    virtual bool aux_metric_range_needs_rescan() const { return false; }
     /// Query v-range for samples within [t_min, t_max].
     /// Returns false if unsupported, no samples are in range, or a consistent snapshot
     /// cannot be obtained without blocking.

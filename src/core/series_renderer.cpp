@@ -41,6 +41,18 @@ bool compute_aux_metric_range(
         return false;
     }
 
+    if (series.data_source &&
+        series.data_source->has_aux_metric_range() &&
+        !series.data_source->aux_metric_range_needs_rescan())
+    {
+        const auto [ds_min, ds_max] = series.data_source->aux_metric_range();
+        if (std::isfinite(ds_min) && std::isfinite(ds_max) && ds_min <= ds_max) {
+            out_min = ds_min;
+            out_max = ds_max;
+            return true;
+        }
+    }
+
     double min_value = std::numeric_limits<double>::infinity();
     double max_value = -std::numeric_limits<double>::infinity();
     bool have_any = false;
@@ -272,6 +284,8 @@ std::shared_ptr<GL_program> Series_renderer::get_or_load_shader(
 
 Series_renderer::view_render_result_t Series_renderer::process_view(
     vbo_view_state_t& view_state,
+    vbo_state_t& shared_state,
+    uint64_t frame_id,
     Data_source& data_source,
     const std::function<double(const void*)>& get_timestamp,
     const std::vector<std::size_t>& scales,
@@ -286,6 +300,13 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
 
     if (scales.empty() || t_max <= t_min || width_px <= 0.0) {
         return result;
+    }
+
+    if (shared_state.cached_snapshot_frame_id != frame_id) {
+        shared_state.cached_snapshot_frame_id = 0;
+        shared_state.cached_snapshot_level = SIZE_MAX;
+        shared_state.cached_snapshot = {};
+        shared_state.cached_snapshot_hold.reset();
     }
 
     const std::size_t level_count = scales.size();
@@ -328,7 +349,27 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
             VNM_PLOT_PROFILE_SCOPE(
                 profiler,
                 "renderer.frame.execute_passes.render_data_series.series.process_view.try_snapshot");
-            snapshot_result = data_source.try_snapshot(applied_level);
+            // Check frame-scoped snapshot cache first to avoid redundant try_snapshot calls
+            // between main view and preview view within the same frame.
+            if (shared_state.cached_snapshot_frame_id == frame_id &&
+                shared_state.cached_snapshot_level == applied_level &&
+                shared_state.cached_snapshot)
+            {
+                // Cache hit - reuse snapshot from earlier in this frame
+                snapshot_result.snapshot = shared_state.cached_snapshot;
+                snapshot_result.status = snapshot_result_t::Status::OK;
+            }
+            else {
+                // Cache miss - acquire new snapshot
+                snapshot_result = data_source.try_snapshot(applied_level);
+                if (snapshot_result) {
+                    // Update cache for potential reuse by preview view
+                    shared_state.cached_snapshot_frame_id = frame_id;
+                    shared_state.cached_snapshot_level = applied_level;
+                    shared_state.cached_snapshot = snapshot_result.snapshot;
+                    shared_state.cached_snapshot_hold = snapshot_result.snapshot.hold;
+                }
+            }
         }
         if (!snapshot_result) {
             ++m_metrics.snapshot_failures;
@@ -673,6 +714,9 @@ void Series_renderer::render(
         return;
     }
 
+    // Increment frame counter for snapshot caching
+    ++m_frame_id;
+
     vnm::plot::Profiler* profiler = ctx.config ? ctx.config->profiler : nullptr;
     VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.execute_passes.render_data_series");
 
@@ -822,6 +866,8 @@ void Series_renderer::render(
                 "renderer.frame.execute_passes.render_data_series.series.process_view");
             return process_view(
                 vbo_state.main_view,
+                vbo_state,
+                m_frame_id,
                 *s->data_source,
                 s->access.get_timestamp,
                 scales,
@@ -850,6 +896,8 @@ void Series_renderer::render(
                     "renderer.frame.execute_passes.render_data_series.series.process_view");
                 return process_view(
                     vbo_state.preview_view,
+                    vbo_state,
+                    m_frame_id,
                     *s->data_source,
                     s->access.get_timestamp,
                     scales,

@@ -102,6 +102,13 @@ private:
 
         std::vector<aux_metric_cache_t> cached_aux_metric_levels;
         const void* cached_aux_metric_identity = nullptr;
+
+        // Frame-scoped snapshot cache: shared between main_view and preview_view
+        // to avoid redundant try_snapshot() calls within the same frame.
+        uint64_t cached_snapshot_frame_id = 0;
+        std::size_t cached_snapshot_level = SIZE_MAX;
+        data_snapshot_t cached_snapshot;
+        std::shared_ptr<void> cached_snapshot_hold;
     };
 
     struct view_render_result_t
@@ -147,6 +154,7 @@ private:
     std::unique_ptr<series_pipe_t> m_pipe_colormap;
 
     metrics_t m_metrics;
+    uint64_t m_frame_id = 0;  // Monotonic frame counter for snapshot caching
 
     std::shared_ptr<GL_program> get_or_load_shader(
         const shader_set_t& shader_set,
@@ -157,6 +165,8 @@ private:
 
     view_render_result_t process_view(
         vbo_view_state_t& view_state,
+        vbo_state_t& shared_state,
+        uint64_t frame_id,
         Data_source& data_source,
         const std::function<double(const void*)>& get_timestamp,
         const std::vector<std::size_t>& scales,
