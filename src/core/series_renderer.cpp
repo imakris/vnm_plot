@@ -344,6 +344,28 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
         mark_tried(applied_level);
         const std::size_t applied_scale = scales[applied_level];
 
+        const uint64_t current_seq = data_source.current_sequence(applied_level);
+        if (current_seq != 0 &&
+            current_seq == view_state.last_sequence &&
+            applied_level == view_state.last_lod_level &&
+            view_state.active_vbo != UINT_MAX &&
+            view_state.last_count > 0 &&
+            view_state.cached_data_identity == data_source.identity() &&
+            view_state.last_t_min == t_min &&
+            view_state.last_t_max == t_max &&
+            view_state.last_width_px == width_px)
+        {
+            result.can_draw = true;
+            result.first = view_state.last_first;
+            result.count = view_state.last_count;
+            result.applied_level = applied_level;
+            result.applied_pps = view_state.last_applied_pps;
+            result.use_t_override = view_state.last_use_t_override;
+            result.t_min_override = view_state.last_t_min_override;
+            result.t_max_override = view_state.last_t_max_override;
+            return result;
+        }
+
         vnm::plot::snapshot_result_t snapshot_result;
         {
             VNM_PLOT_PROFILE_SCOPE(
@@ -394,6 +416,10 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
                 result.first = view_state.last_first;
                 result.count = view_state.last_count;
                 result.applied_level = view_state.last_lod_level;
+                result.applied_pps = view_state.last_applied_pps;
+                result.use_t_override = view_state.last_use_t_override;
+                result.t_min_override = view_state.last_t_min_override;
+                result.t_max_override = view_state.last_t_max_override;
             }
             if (!result.can_draw && applied_level > 0) {
                 target_level = applied_level - 1;
@@ -417,6 +443,10 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
                 result.first = view_state.last_first;
                 result.count = view_state.last_count;
                 result.applied_level = view_state.last_lod_level;
+                result.applied_pps = view_state.last_applied_pps;
+                result.use_t_override = view_state.last_use_t_override;
+                result.t_min_override = view_state.last_t_min_override;
+                result.t_max_override = view_state.last_t_max_override;
             }
             if (!result.can_draw && applied_level > 0) {
                 target_level = applied_level - 1;
@@ -496,6 +526,10 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
                 result.first = view_state.last_first;
                 result.count = view_state.last_count;
                 result.applied_level = view_state.last_lod_level;
+                result.applied_pps = view_state.last_applied_pps;
+                result.use_t_override = view_state.last_use_t_override;
+                result.t_min_override = view_state.last_t_min_override;
+                result.t_max_override = view_state.last_t_max_override;
                 break;
             }
             else if (applied_level > 0 && !was_tried(applied_level - 1)) {
@@ -640,12 +674,19 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
         view_state.last_count = count;
 
         view_state.last_lod_level = applied_level;
+        view_state.last_t_min = t_min;
+        view_state.last_t_max = t_max;
+        view_state.last_width_px = width_px;
 
         result.can_draw = true;
         result.first = view_state.last_first;
         result.count = view_state.last_count;
         result.applied_level = applied_level;
         result.applied_pps = base_pps * static_cast<double>(applied_scale);
+        view_state.last_applied_pps = result.applied_pps;
+        view_state.last_use_t_override = result.use_t_override;
+        view_state.last_t_min_override = result.t_min_override;
+        view_state.last_t_max_override = result.t_max_override;
         // Cache snapshot for reuse in draw_pass (eliminates redundant snapshot call)
         result.cached_snapshot = snapshot;
         result.cached_snapshot_hold = snapshot.hold;

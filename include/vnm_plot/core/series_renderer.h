@@ -69,6 +69,13 @@ private:
         GLint last_first = 0;
         GLsizei last_count = 0;
         std::size_t last_lod_level = 0;
+        double last_t_min = std::numeric_limits<double>::quiet_NaN();
+        double last_t_max = std::numeric_limits<double>::quiet_NaN();
+        double last_width_px = std::numeric_limits<double>::quiet_NaN();
+        double last_applied_pps = 0.0;
+        bool last_use_t_override = false;
+        double last_t_min_override = 0.0;
+        double last_t_max_override = 0.0;
 
         void reset()
         {
@@ -85,6 +92,13 @@ private:
             last_first = 0;
             last_count = 0;
             last_lod_level = 0;
+            last_t_min = std::numeric_limits<double>::quiet_NaN();
+            last_t_max = std::numeric_limits<double>::quiet_NaN();
+            last_width_px = std::numeric_limits<double>::quiet_NaN();
+            last_applied_pps = 0.0;
+            last_use_t_override = false;
+            last_t_min_override = 0.0;
+            last_t_max_override = 0.0;
         }
     };
 
