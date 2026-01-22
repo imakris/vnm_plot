@@ -1170,9 +1170,13 @@ void Plot_renderer::render()
                 }
                 const std::size_t check_level =
                     (auto_mode == Auto_v_range_mode::GLOBAL_LOD) ? (levels - 1) : 0;
-                auto snapshot_result = series->data_source->try_snapshot(check_level);
-                if (!snapshot_result) {
-                    continue;
+                uint64_t sequence = series->data_source->current_sequence(check_level);
+                if (sequence == 0) {
+                    auto snapshot_result = series->data_source->try_snapshot(check_level);
+                    if (!snapshot_result) {
+                        continue;
+                    }
+                    sequence = snapshot_result.snapshot.sequence;
                 }
                 series_minmax_cache_t& cache = m_impl->v_range_cache[id];
                 const void* identity = series->data_source->identity();
@@ -1181,7 +1185,7 @@ void Plot_renderer::render()
                     break;
                 }
                 const auto& entry = cache.lods[check_level];
-                if (!entry.valid || entry.sequence != snapshot_result.snapshot.sequence) {
+                if (!entry.valid || entry.sequence != sequence) {
                     cache_invalid = true;
                     break;
                 }
