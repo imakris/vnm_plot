@@ -156,6 +156,7 @@ protected:
     void timerEvent(QTimerEvent* ev) override;
     void adjust_t_to_target(double target_tmin, double target_tmax);
     std::pair<float, float> manual_v_range() const;
+    bool rendered_v_range(float& out_min, float& out_max) const;
 
 private:
     friend class Plot_renderer;
@@ -180,6 +181,9 @@ private:
     std::atomic<bool> m_v_auto{true};
     std::atomic<bool> m_show_info{true};
     std::atomic<bool> m_view_state_reset_requested{false};
+    mutable std::atomic<float> m_rendered_v_min{0.0f};
+    mutable std::atomic<float> m_rendered_v_max{1.0f};
+    mutable std::atomic<bool> m_rendered_v_range_valid{false};
     std::atomic<double> m_vbar_width_px{0.0};
     QBasicTimer m_vbar_width_timer;
     QElapsedTimer m_vbar_width_anim_elapsed;
@@ -206,6 +210,7 @@ private:
     data_config_t data_cfg_snapshot() const;
 
     bool consume_view_state_reset_request();
+    void set_rendered_v_range(float v_min, float v_max) const;
 };
 
 } // namespace vnm::plot

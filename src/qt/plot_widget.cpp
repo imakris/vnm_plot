@@ -150,6 +150,7 @@ void Plot_widget::reset_assets()
 void Plot_widget::reset_view_state()
 {
     m_view_state_reset_requested.store(true, std::memory_order_release);
+    m_rendered_v_range_valid.store(false, std::memory_order_release);
     update();
 }
 
@@ -1010,9 +1011,30 @@ data_config_t Plot_widget::data_cfg_snapshot() const
     return m_data_cfg;
 }
 
+bool Plot_widget::rendered_v_range(float& out_min, float& out_max) const
+{
+    if (!m_rendered_v_range_valid.load(std::memory_order_acquire)) {
+        return false;
+    }
+    out_min = m_rendered_v_min.load(std::memory_order_acquire);
+    out_max = m_rendered_v_max.load(std::memory_order_acquire);
+    return true;
+}
+
 bool Plot_widget::consume_view_state_reset_request()
 {
     return m_view_state_reset_requested.exchange(false, std::memory_order_acq_rel);
+}
+
+void Plot_widget::set_rendered_v_range(float v_min, float v_max) const
+{
+    if (!std::isfinite(v_min) || !std::isfinite(v_max) || v_min > v_max) {
+        m_rendered_v_range_valid.store(false, std::memory_order_release);
+        return;
+    }
+    m_rendered_v_min.store(v_min, std::memory_order_release);
+    m_rendered_v_max.store(v_max, std::memory_order_release);
+    m_rendered_v_range_valid.store(true, std::memory_order_release);
 }
 
 void Plot_widget::adjust_t_to_target(double target_tmin, double target_tmax)

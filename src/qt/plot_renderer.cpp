@@ -1442,6 +1442,10 @@ void Plot_renderer::render()
         }
     }
 
+    if (m_impl->owner) {
+        m_impl->owner->set_rendered_v_range(v0, v1);
+    }
+
     double prev_v_span = 0.0;
     double prev_t_span = 0.0;
     double v_span = 0.0;
