@@ -146,6 +146,12 @@ private:
         uint64_t revision = 0;
     };
 
+    struct colormap_resource_set_t
+    {
+        colormap_resource_t area;
+        colormap_resource_t line;
+    };
+
     struct series_pipe_t
     {
         struct entry_t
@@ -159,7 +165,7 @@ private:
     Asset_loader* m_asset_loader = nullptr;
     std::map<shader_set_t, std::shared_ptr<GL_program>> m_shaders;
     std::unordered_map<int, vbo_state_t> m_vbo_states;
-    std::unordered_map<const series_data_t*, colormap_resource_t> m_colormap_textures;
+    std::unordered_map<const series_data_t*, colormap_resource_set_t> m_colormap_textures;
     std::unordered_set<int> m_missing_signal_logged;
 
     std::unique_ptr<series_pipe_t> m_pipe_line;
@@ -175,7 +181,7 @@ private:
         const Render_config* config);
     series_pipe_t& pipe_for(Display_style style);
     GLuint ensure_series_vao(Display_style style, GLuint vbo, const series_data_t& series);
-    GLuint ensure_colormap_texture(const series_data_t& series);
+    GLuint ensure_colormap_texture(const series_data_t& series, Display_style style);
 
     view_render_result_t process_view(
         vbo_view_state_t& view_state,

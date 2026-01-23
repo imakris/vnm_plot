@@ -1617,7 +1617,8 @@ void Plot_renderer::render()
                 core_series->enabled = series->enabled;
                 core_series->style = series->style;
                 core_series->color = series->color;
-                core_series->colormap = series->colormap;
+                core_series->colormap_area = series->colormap_area;
+                core_series->colormap_line = series->colormap_line;
 
                 // Normalize shader paths (remove qrc:/ prefixes for embedded asset lookup)
                 core_series->shader_set = normalize_shader_set(series->shader_set);

@@ -132,10 +132,12 @@ void Series_renderer::cleanup_gl_resources()
 
     m_shaders.clear();
 
-    for (auto& [_, resource] : m_colormap_textures) {
-        if (resource.texture != 0) {
-            glDeleteTextures(1, &resource.texture);
-            resource.texture = 0;
+    for (auto& [_, resources] : m_colormap_textures) {
+        for (auto* resource : {&resources.area, &resources.line}) {
+            if (resource->texture != 0) {
+                glDeleteTextures(1, &resource->texture);
+                resource->texture = 0;
+            }
         }
     }
     m_colormap_textures.clear();
@@ -156,19 +158,27 @@ Series_renderer::series_pipe_t& Series_renderer::pipe_for(Display_style style)
     return *m_pipe_line;
 }
 
-GLuint Series_renderer::ensure_colormap_texture(const series_data_t& series)
+GLuint Series_renderer::ensure_colormap_texture(const series_data_t& series, Display_style style)
 {
-    if (series.colormap.samples.empty()) {
+    const bool is_line = (style == Display_style::COLORMAP_LINE);
+    const auto& colormap = is_line ? series.colormap_line : series.colormap_area;
+
+    if (colormap.samples.empty()) {
         if (auto it = m_colormap_textures.find(&series); it != m_colormap_textures.end()) {
-            if (it->second.texture != 0) {
-                glDeleteTextures(1, &it->second.texture);
+            auto& resource = is_line ? it->second.line : it->second.area;
+            if (resource.texture != 0) {
+                glDeleteTextures(1, &resource.texture);
             }
-            m_colormap_textures.erase(it);
+            resource = {};
+            if (it->second.area.texture == 0 && it->second.line.texture == 0) {
+                m_colormap_textures.erase(it);
+            }
         }
         return 0;
     }
 
-    auto& resource = m_colormap_textures[&series];
+    auto& resources = m_colormap_textures[&series];
+    auto& resource = is_line ? resources.line : resources.area;
 
     if (resource.texture == 0) {
         glGenTextures(1, &resource.texture);
@@ -183,19 +193,19 @@ GLuint Series_renderer::ensure_colormap_texture(const series_data_t& series)
         glBindTexture(GL_TEXTURE_1D, resource.texture);
     }
 
-    const std::size_t desired_size = series.colormap.samples.size();
-    const uint64_t desired_revision = series.colormap.revision;
+    const std::size_t desired_size = colormap.samples.size();
+    const uint64_t desired_revision = colormap.revision;
     const bool size_changed = (resource.size != desired_size);
     const bool revision_changed = (resource.revision != desired_revision);
 
     if (size_changed || revision_changed) {
         if (size_changed) {
             glTexImage1D(GL_TEXTURE_1D, 0, GL_RGBA32F, static_cast<GLsizei>(desired_size),
-                         0, GL_RGBA, GL_FLOAT, series.colormap.samples.data());
+                         0, GL_RGBA, GL_FLOAT, colormap.samples.data());
         }
         else {
             glTexSubImage1D(GL_TEXTURE_1D, 0, 0, static_cast<GLsizei>(desired_size),
-                            GL_RGBA, GL_FLOAT, series.colormap.samples.data());
+                            GL_RGBA, GL_FLOAT, colormap.samples.data());
         }
         resource.size = desired_size;
         resource.revision = desired_revision;
@@ -814,8 +824,12 @@ void Series_renderer::render(
                 }
             }
             if (!found) {
-                if (!skip_gl && it->second.texture != 0) {
-                    glDeleteTextures(1, &it->second.texture);
+                if (!skip_gl) {
+                    for (auto* resource : {&it->second.area, &it->second.line}) {
+                        if (resource->texture != 0) {
+                            glDeleteTextures(1, &resource->texture);
+                        }
+                    }
                 }
                 it = m_colormap_textures.erase(it);
             }
@@ -1029,7 +1043,7 @@ void Series_renderer::render(
         // CPU-side colormap aux-range computation (must run before skip_gl return)
         const vbo_state_t::aux_metric_cache_t* aux_cache = nullptr;
         std::size_t aux_range_scale = 1;
-        if (primitive_style == Display_style::COLORMAP_AREA && !series.colormap.samples.empty()) {
+        if (primitive_style == Display_style::COLORMAP_AREA && !series.colormap_area.samples.empty()) {
             auto& aux_cache_entry = vbo_state.cached_aux_metric_levels[view_result.applied_level];
             bool has_any_aux_cache = false;
             for (const auto& entry : vbo_state.cached_aux_metric_levels) {
@@ -1194,7 +1208,7 @@ void Series_renderer::render(
         GLuint colormap_tex = 0;
         if (primitive_style == Display_style::COLORMAP_AREA ||
             primitive_style == Display_style::COLORMAP_LINE) {
-            colormap_tex = ensure_colormap_texture(series);
+            colormap_tex = ensure_colormap_texture(series, primitive_style);
             if (colormap_tex != 0) {
                 glActiveTexture(GL_TEXTURE0);
                 glBindTexture(GL_TEXTURE_1D, colormap_tex);

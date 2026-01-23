@@ -47,6 +47,7 @@ class Plot_widget : public QQuickFramebufferObject
     Q_PROPERTY(bool dark_mode READ dark_mode WRITE set_dark_mode NOTIFY dark_mode_changed)
     Q_PROPERTY(double grid_visibility READ grid_visibility WRITE set_grid_visibility NOTIFY grid_visibility_changed)
     Q_PROPERTY(double preview_visibility READ preview_visibility WRITE set_preview_visibility NOTIFY preview_visibility_changed)
+    Q_PROPERTY(double line_width_px READ line_width_px WRITE set_line_width_px NOTIFY line_width_px_changed)
     Q_PROPERTY(double vbar_width_px READ vbar_width_pixels NOTIFY vbar_width_changed)
     Q_PROPERTY(double vbar_width_qml READ vbar_width_qml NOTIFY vbar_width_changed)
 
@@ -89,6 +90,10 @@ public:
     // Preview visibility (0..1 alpha; 0 = hidden, 1 = fully visible)
     double preview_visibility() const;
     void set_preview_visibility(double visibility);
+
+    // Line width in pixels
+    double line_width_px() const;
+    void set_line_width_px(double width);
 
     // --- Time Range ---
 
@@ -163,6 +168,7 @@ signals:
     void dark_mode_changed();
     void grid_visibility_changed();
     void preview_visibility_changed();
+    void line_width_px_changed();
     void vbar_width_changed();
 
 protected:

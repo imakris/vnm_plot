@@ -384,7 +384,8 @@ struct series_data_t
     std::shared_ptr<Data_source> data_source;
     Data_access_policy access;
 
-    colormap_config_t colormap;
+    colormap_config_t colormap_area;
+    colormap_config_t colormap_line;
 
     shader_set_t shader_set;
     std::map<Display_style, shader_set_t> shaders;

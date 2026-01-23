@@ -121,9 +121,11 @@ void Plot_widget::set_config(const Plot_config& config)
         std::unique_lock lock(m_config_mutex);
         const double prev_grid_visibility = m_config.grid_visibility;
         const double prev_preview_visibility = m_config.preview_visibility;
+        const double prev_line_width_px = m_config.line_width_px;
         m_config = config;
         m_config.grid_visibility = prev_grid_visibility;      // Preserve QML-controlled setting
         m_config.preview_visibility = prev_preview_visibility; // Preserve QML-controlled setting
+        m_config.line_width_px = prev_line_width_px;          // Preserve QML-controlled setting
     }
     m_adjusted_font_size = m_config.font_size_px * m_scaling_factor;
     m_base_label_height = m_config.base_label_height_px * m_scaling_factor;
@@ -216,6 +218,25 @@ void Plot_widget::set_preview_visibility(double visibility)
         m_config.preview_visibility = visibility;
     }
     emit preview_visibility_changed();
+    update();
+}
+
+double Plot_widget::line_width_px() const
+{
+    std::shared_lock lock(m_config_mutex);
+    return m_config.line_width_px;
+}
+
+void Plot_widget::set_line_width_px(double width)
+{
+    {
+        std::unique_lock lock(m_config_mutex);
+        if (m_config.line_width_px == width) {
+            return;
+        }
+        m_config.line_width_px = width;
+    }
+    emit line_width_px_changed();
     update();
 }
 
