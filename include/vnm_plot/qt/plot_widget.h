@@ -41,9 +41,12 @@ class Plot_widget : public QQuickFramebufferObject
     Q_PROPERTY(bool v_auto READ v_auto WRITE set_v_auto NOTIFY v_auto_changed)
     Q_PROPERTY(double preview_height READ preview_height WRITE set_preview_height NOTIFY preview_height_changed)
     Q_PROPERTY(double preview_height_target READ preview_height_target NOTIFY preview_height_target_changed)
+    Q_PROPERTY(double preview_height_collapsed READ preview_height_collapsed CONSTANT)
     Q_PROPERTY(double reserved_height READ reserved_height NOTIFY preview_height_changed)
     Q_PROPERTY(double scaling_factor READ scaling_factor NOTIFY scaling_factor_changed)
     Q_PROPERTY(bool dark_mode READ dark_mode WRITE set_dark_mode NOTIFY dark_mode_changed)
+    Q_PROPERTY(double grid_visibility READ grid_visibility WRITE set_grid_visibility NOTIFY grid_visibility_changed)
+    Q_PROPERTY(double preview_visibility READ preview_visibility WRITE set_preview_visibility NOTIFY preview_visibility_changed)
     Q_PROPERTY(double vbar_width_px READ vbar_width_pixels NOTIFY vbar_width_changed)
     Q_PROPERTY(double vbar_width_qml READ vbar_width_qml NOTIFY vbar_width_changed)
 
@@ -79,6 +82,14 @@ public:
     bool dark_mode() const;
     void set_dark_mode(bool dark);
 
+    // Grid visibility (0..1 alpha; 0 = hidden, 1 = fully visible)
+    double grid_visibility() const;
+    void set_grid_visibility(double visibility);
+
+    // Preview visibility (0..1 alpha; 0 = hidden, 1 = fully visible)
+    double preview_visibility() const;
+    void set_preview_visibility(double visibility);
+
     // --- Time Range ---
 
     double t_min() const;
@@ -102,6 +113,7 @@ public:
     double preview_height() const;
     void set_preview_height(double height);
     double preview_height_target() const;
+    double preview_height_collapsed() const;
     double reserved_height() const;
     double scaling_factor() const;
     double vbar_width_pixels() const;
@@ -149,6 +161,8 @@ signals:
     void preview_height_target_changed(double target);
     void scaling_factor_changed();
     void dark_mode_changed();
+    void grid_visibility_changed();
+    void preview_visibility_changed();
     void vbar_width_changed();
 
 protected:

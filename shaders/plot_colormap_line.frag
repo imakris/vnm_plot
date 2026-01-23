@@ -2,6 +2,7 @@
 
 uniform float win_h;
 uniform float u_line_px;
+uniform vec4 color_multiplier = vec4(1.0, 1.0, 1.0, 1.0);
 layout(binding = 0) uniform sampler1D u_colormap_tex;
 
 flat in vec2 fs_p_prev;
@@ -60,5 +61,5 @@ void main(void)
     // Sample colormap texture
     vec3 color = texture(u_colormap_tex, clamp(signal, 0.0, 1.0)).rgb;
 
-    frag_color = vec4(color, alpha);
+    frag_color = vec4(color, alpha) * color_multiplier;
 }

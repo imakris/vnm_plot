@@ -1511,6 +1511,8 @@ void Plot_renderer::render()
             VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.context_build.config");
             core_config.dark_mode = config->dark_mode;
             core_config.show_text = config->show_text;
+            core_config.grid_visibility = config->grid_visibility;
+            core_config.preview_visibility = config->preview_visibility;
             core_config.snap_lines_to_pixels = config->snap_lines_to_pixels;
             core_config.line_width_px = config->line_width_px;
             core_config.area_fill_alpha = config->area_fill_alpha;

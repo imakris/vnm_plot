@@ -119,7 +119,11 @@ void Plot_widget::set_config(const Plot_config& config)
 {
     {
         std::unique_lock lock(m_config_mutex);
+        const double prev_grid_visibility = m_config.grid_visibility;
+        const double prev_preview_visibility = m_config.preview_visibility;
         m_config = config;
+        m_config.grid_visibility = prev_grid_visibility;      // Preserve QML-controlled setting
+        m_config.preview_visibility = prev_preview_visibility; // Preserve QML-controlled setting
     }
     m_adjusted_font_size = m_config.font_size_px * m_scaling_factor;
     m_base_label_height = m_config.base_label_height_px * m_scaling_factor;
@@ -170,6 +174,48 @@ void Plot_widget::set_dark_mode(bool dark)
         m_config.dark_mode = dark;
     }
     emit dark_mode_changed();
+    update();
+}
+
+double Plot_widget::grid_visibility() const
+{
+    std::shared_lock lock(m_config_mutex);
+    return m_config.grid_visibility;
+}
+
+void Plot_widget::set_grid_visibility(double visibility)
+{
+    // Clamp to 0..1
+    visibility = std::clamp(visibility, 0.0, 1.0);
+    {
+        std::unique_lock lock(m_config_mutex);
+        if (m_config.grid_visibility == visibility) {
+            return;
+        }
+        m_config.grid_visibility = visibility;
+    }
+    emit grid_visibility_changed();
+    update();
+}
+
+double Plot_widget::preview_visibility() const
+{
+    std::shared_lock lock(m_config_mutex);
+    return m_config.preview_visibility;
+}
+
+void Plot_widget::set_preview_visibility(double visibility)
+{
+    // Clamp to 0..1
+    visibility = std::clamp(visibility, 0.0, 1.0);
+    {
+        std::unique_lock lock(m_config_mutex);
+        if (m_config.preview_visibility == visibility) {
+            return;
+        }
+        m_config.preview_visibility = visibility;
+    }
+    emit preview_visibility_changed();
     update();
 }
 
@@ -313,6 +359,11 @@ void Plot_widget::set_preview_height(double height)
 double Plot_widget::preview_height_target() const
 {
     return m_preview_height_target;
+}
+
+double Plot_widget::preview_height_collapsed() const
+{
+    return m_preview_height_min;
 }
 
 double Plot_widget::reserved_height() const

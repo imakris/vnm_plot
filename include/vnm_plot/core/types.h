@@ -544,6 +544,8 @@ struct Render_config
 {
     bool dark_mode = false;
     bool show_text = true;
+    double grid_visibility = 1.0;     // 0..1 alpha; 0 = hidden (skipped), 1 = fully visible
+    double preview_visibility = 1.0;  // 0..1 alpha; 0 = hidden (skipped), 1 = fully visible
 
     bool   snap_lines_to_pixels = false;
     double line_width_px        = 1.0;

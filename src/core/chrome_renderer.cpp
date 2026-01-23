@@ -176,7 +176,13 @@ void Chrome_renderer::render_grid_and_backgrounds(
 
     const glm::vec4 h_label_color = palette.h_label_background;
     const glm::vec4 v_label_color = palette.v_label_background;
-    const glm::vec4 grid_rgb = palette.grid_line;
+    const double grid_visibility = ctx.config ? ctx.config->grid_visibility : 1.0;
+    const glm::vec4 grid_rgb = glm::vec4(
+        palette.grid_line.r,
+        palette.grid_line.g,
+        palette.grid_line.b,
+        palette.grid_line.a * static_cast<float>(grid_visibility));
+    const glm::vec4 tick_rgb = palette.grid_line;  // Tick marks stay visible
     const glm::vec4 preview_background = palette.preview_background;
     const glm::vec4 separator_color = palette.separator;
 
@@ -199,7 +205,8 @@ void Chrome_renderer::render_grid_and_backgrounds(
 
     if (!skip_gl) {
         prims.flush_rects(ctx.pmv);
-    } else {
+    }
+    else {
         prims.clear_rect_batch();
     }
 
@@ -219,7 +226,7 @@ void Chrome_renderer::render_grid_and_backgrounds(
 
     const grid_layer_params_t vertical_levels_gl = flip_grid_levels_y(vertical_levels, main_size.y);
 
-    if (!skip_gl) {
+    if (!skip_gl && grid_visibility > 0.0) {
         prims.draw_grid_shader(main_origin, main_size, grid_rgb, vertical_levels_gl, horizontal_levels);
     }
 
@@ -288,14 +295,14 @@ void Chrome_renderer::render_grid_and_backgrounds(
         const glm::vec2 top_left{float(pl.usable_width), 0.0f};
         const glm::vec2 size{float(pl.v_bar_width), float(pl.usable_height)};
         const glm::vec2 origin = to_gl_origin(ctx, top_left, size);
-        prims.draw_grid_shader(origin, size, grid_rgb, vertical_tick_levels_gl, empty_levels);
+        prims.draw_grid_shader(origin, size, tick_rgb, vertical_tick_levels_gl, empty_levels);
     }
 
     if (!skip_gl && ctx.base_label_height_px > 0.5 && horizontal_tick_levels.count > 0) {
         const glm::vec2 top_left{0.0f, float(pl.usable_height)};
         const glm::vec2 size{float(pl.usable_width), float(ctx.base_label_height_px)};
         const glm::vec2 origin = to_gl_origin(ctx, top_left, size);
-        prims.draw_grid_shader(origin, size, grid_rgb, empty_levels, horizontal_tick_levels);
+        prims.draw_grid_shader(origin, size, tick_rgb, empty_levels, horizontal_tick_levels);
     }
 }
 

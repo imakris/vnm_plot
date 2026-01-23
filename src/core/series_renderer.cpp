@@ -854,7 +854,8 @@ void Series_renderer::render(
     std::vector<Series_draw_state> draw_states;
     draw_states.reserve(series.size());
 
-    const bool preview_visible = ctx.adjusted_preview_height > 0.0;
+    const double preview_visibility = ctx.config ? ctx.config->preview_visibility : 1.0;
+    const bool preview_visible = ctx.adjusted_preview_height > 0.0 && preview_visibility > 0.0;
 
     for (const auto& [id, s] : series) {
         VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.execute_passes.render_data_series.series");
@@ -1016,6 +1017,12 @@ void Series_renderer::render(
             line_col = series.color;
             if (dark_mode && is_default_series_color(line_col)) {
                 line_col = k_default_series_color_dark;
+            }
+            // Apply preview visibility alpha
+            if (is_preview) {
+                const float pv = static_cast<float>(preview_visibility);
+                draw_color.w *= pv;
+                line_col.w *= pv;
             }
         }
 
@@ -1231,6 +1238,11 @@ void Series_renderer::render(
                     if (const GLint loc = pass_shader->uniform_location("u_colormap_tex"); loc >= 0) {
                         glUniform1i(loc, 0);
                     }
+                }
+                // Set color_multiplier for preview fading
+                if (const GLint loc = pass_shader->uniform_location("color_multiplier"); loc >= 0) {
+                    const float pv = is_preview ? static_cast<float>(preview_visibility) : 1.0f;
+                    glUniform4f(loc, 1.0f, 1.0f, 1.0f, pv);
                 }
             }
         }

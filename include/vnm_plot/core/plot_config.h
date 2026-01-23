@@ -87,6 +87,8 @@ struct Plot_config
     // --- Theme ---
     bool dark_mode = false;
     bool show_text = true;
+    double grid_visibility = 1.0;     // 0..1 alpha; 0 = hidden (skipped), 1 = fully visible
+    double preview_visibility = 1.0;  // 0..1 alpha; 0 = hidden (skipped), 1 = fully visible
 
     // --- Timestamp Formatting ---
     // Callback to format timestamps for axis labels.
@@ -142,6 +144,8 @@ struct Plot_config
         Plot_config cfg;
         cfg.dark_mode = false;
         cfg.show_text = true;
+        cfg.grid_visibility = 1.0;
+        cfg.preview_visibility = 1.0;
         cfg.font_size_px = 10.0;
         cfg.base_label_height_px = 14.0;
         cfg.auto_v_range_mode = Auto_v_range_mode::GLOBAL;
