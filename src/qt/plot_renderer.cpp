@@ -137,6 +137,8 @@ struct series_minmax_cache_t
 {
     const void* identity = nullptr;
     std::vector<lod_minmax_cache_t> lods;
+    uint64_t query_sequence = 0;
+    bool query_sequence_valid = false;
 };
 
 std::string normalize_asset_name(std::string_view name)
@@ -493,15 +495,26 @@ std::pair<float, float> compute_visible_v_range(
         float series_max = 0.0f;
         {
             VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.range_calc.visible.query_v_range");
+            uint64_t query_sequence = 0;
             if (series->data_source->query_v_range_for_t_window(
                     t_min,
                     t_max,
                     series_min,
-                    series_max))
+                    series_max,
+                    &query_sequence))
             {
                 if (!std::isfinite(series_min) || !std::isfinite(series_max) || series_min > series_max) {
                     continue;
                 }
+                series_minmax_cache_t& cache = cache_map[id];
+                const void* identity = series->data_source->identity();
+                const std::size_t levels = series->data_source->lod_levels();
+                if (cache.identity != identity || cache.lods.size() != levels) {
+                    cache.identity = identity;
+                    cache.lods.assign(levels, lod_minmax_cache_t{});
+                }
+                cache.query_sequence = query_sequence;
+                cache.query_sequence_valid = (query_sequence != 0);
                 v_min = std::min(v_min, series_min);
                 v_max = std::max(v_max, series_max);
                 have_any = true;
@@ -587,6 +600,8 @@ std::pair<float, float> compute_visible_v_range(
             cache.identity = identity;
             cache.lods.assign(levels, lod_minmax_cache_t{});
         }
+        cache.query_sequence = 0;
+        cache.query_sequence_valid = false;
 
         if (full_range) {
             if (!get_lod_minmax(*series, cache, applied_level, series_min, series_max, profiler)) {
@@ -640,6 +655,7 @@ struct Plot_renderer::impl_t
         double extra_scale = 0.0;
         double t_min = 0.0;
         double t_max = 0.0;
+        double usable_width = 0.0;
 
         bool operator==(const range_cache_key_t& other) const noexcept
         {
@@ -647,7 +663,8 @@ struct Plot_renderer::impl_t
                    v_auto == other.v_auto &&
                    extra_scale == other.extra_scale &&
                    t_min == other.t_min &&
-                   t_max == other.t_max;
+                   t_max == other.t_max &&
+                   usable_width == other.usable_width;
         }
 
         bool operator!=(const range_cache_key_t& other) const noexcept
@@ -1212,6 +1229,7 @@ void Plot_renderer::render()
         if (auto_mode == Auto_v_range_mode::VISIBLE) {
             current_key.t_min = m_impl->snapshot.cfg.t_min;
             current_key.t_max = m_impl->snapshot.cfg.t_max;
+            current_key.usable_width = usable_width;
         }
 
         bool cache_invalid = !m_impl->view.range_cache_valid ||
@@ -1245,6 +1263,13 @@ void Plot_renderer::render()
                 if (cache.identity != identity || cache.lods.size() != levels) {
                     cache_invalid = true;
                     break;
+                }
+                if (auto_mode == Auto_v_range_mode::VISIBLE && cache.query_sequence_valid) {
+                    if (cache.query_sequence != sequence) {
+                        cache_invalid = true;
+                        break;
+                    }
+                    continue;
                 }
                 const auto& entry = cache.lods[check_level];
                 if (!entry.valid || entry.sequence != sequence) {

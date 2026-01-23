@@ -407,13 +407,6 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
                 (view_state.cached_data_identity != nullptr) &&
                 (view_state.cached_data_identity == current_identity);
 
-            if (!identity_matches && view_state.cached_data_identity != nullptr) {
-                // Log stale identity detected during snapshot failure
-                if (profiler) {
-                    // Identity mismatch - cannot safely use stale values
-                }
-            }
-
             result.can_draw = identity_matches &&
                 (view_state.active_vbo != UINT_MAX && view_state.last_count > 0);
             if (result.can_draw) {
@@ -1031,8 +1024,35 @@ void Series_renderer::render(
         std::size_t aux_range_scale = 1;
         if (primitive_style == Display_style::COLORMAP_AREA && !series.colormap.samples.empty()) {
             auto& aux_cache_entry = vbo_state.cached_aux_metric_levels[view_result.applied_level];
-            // Reuse snapshot from process_view() instead of taking a redundant one
-            const data_snapshot_t& snapshot = view_result.cached_snapshot;
+            bool has_any_aux_cache = false;
+            for (const auto& entry : vbo_state.cached_aux_metric_levels) {
+                if (entry.valid) {
+                    has_any_aux_cache = true;
+                    break;
+                }
+            }
+            // Reuse snapshot from process_view() instead of taking a redundant one.
+            // If we don't have a cached snapshot and no aux cache exists yet, grab one.
+            data_snapshot_t snapshot = view_result.cached_snapshot;
+            if (!snapshot && !has_any_aux_cache) {
+                if (vbo_state.cached_snapshot_frame_id == m_frame_id &&
+                    vbo_state.cached_snapshot_level == view_result.applied_level &&
+                    vbo_state.cached_snapshot)
+                {
+                    snapshot = vbo_state.cached_snapshot;
+                }
+                else
+                if (series.data_source) {
+                    auto snapshot_result = series.data_source->try_snapshot(view_result.applied_level);
+                    if (snapshot_result) {
+                        snapshot = snapshot_result.snapshot;
+                        vbo_state.cached_snapshot_frame_id = m_frame_id;
+                        vbo_state.cached_snapshot_level = view_result.applied_level;
+                        vbo_state.cached_snapshot = snapshot_result.snapshot;
+                        vbo_state.cached_snapshot_hold = snapshot_result.snapshot.hold;
+                    }
+                }
+            }
             if (snapshot) {
                 const bool can_reuse =
                     aux_cache_entry.valid && aux_cache_entry.sequence == snapshot.sequence;
@@ -1147,11 +1167,6 @@ void Series_renderer::render(
         {
             VNM_PLOT_PROFILE_SCOPE(profiler, "series_uniforms");
             glUniform4fv(pass_shader->uniform_location("color"), 1, glm::value_ptr(draw_color));
-
-            if (primitive_style == Display_style::AREA || primitive_style == Display_style::COLORMAP_AREA) {
-                glUniform1f(pass_shader->uniform_location("line_width"), line_width);
-                glUniform4fv(pass_shader->uniform_location("line_color"), 1, glm::value_ptr(line_col));
-            }
 
             if (const GLint loc = pass_shader->uniform_location("u_line_px"); loc >= 0) {
                 glUniform1f(loc, line_width);

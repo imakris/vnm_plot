@@ -232,6 +232,8 @@ public:
         };
     }
 
+    uint64_t current_sequence(size_t /*lod_level*/ = 0) const override { return m_sequence; }
+
     size_t sample_stride() const override { return sizeof(T); }
 
     void set_data(std::vector<T> data)
