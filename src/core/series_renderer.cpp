@@ -1083,6 +1083,12 @@ void Series_renderer::render(
                         target_entry.max = aux_max;
                         target_entry.valid = true;
                         target_entry.sequence = cache_sequence;
+                        if (used_data_source_range && cache_level != view_result.applied_level) {
+                            aux_cache_entry.min = aux_min;
+                            aux_cache_entry.max = aux_max;
+                            aux_cache_entry.valid = true;
+                            aux_cache_entry.sequence = snapshot.sequence;
+                        }
                     }
                     else {
                         if (!aux_cache_entry.valid) {
