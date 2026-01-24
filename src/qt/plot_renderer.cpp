@@ -6,6 +6,7 @@
 #include <vnm_plot/core/layout_calculator.h>
 #include <vnm_plot/core/algo.h>
 #include <vnm_plot/core/asset_loader.h>
+#include <vnm_plot/core/range_cache.h>
 #include <vnm_plot/core/chrome_renderer.h>
 #include <vnm_plot/core/font_renderer.h>
 #include <vnm_plot/core/primitive_renderer.h>
@@ -124,22 +125,6 @@ constexpr float k_auto_v_padding_min = 0.5f;
 constexpr float k_auto_v_sync_eps = static_cast<float>(k_eps);
 constexpr float k_anim_span_min = static_cast<float>(k_eps);
 constexpr float k_anim_target_frac = 0.001f;
-
-struct lod_minmax_cache_t
-{
-    float v_min = std::numeric_limits<float>::max();
-    float v_max = std::numeric_limits<float>::lowest();
-    uint64_t sequence = 0;
-    bool valid = false;
-};
-
-struct series_minmax_cache_t
-{
-    const void* identity = nullptr;
-    std::vector<lod_minmax_cache_t> lods;
-    uint64_t query_sequence = 0;
-    bool query_sequence_valid = false;
-};
 
 std::string normalize_asset_name(std::string_view name)
 {
@@ -1237,49 +1222,10 @@ void Plot_renderer::render()
 
         if (!cache_invalid && !throttle_expired && v_auto && can_use_series) {
             std::shared_lock lock(m_impl->owner->m_series_mutex);
-            for (const auto& [id, series] : m_impl->owner->m_series) {
-                if (!series || !series->enabled || !series->data_source) {
-                    continue;
-                }
-                if (!series->access.get_value && !series->access.get_range) {
-                    continue;
-                }
-                const std::size_t levels = series->data_source->lod_levels();
-                if (levels == 0) {
-                    continue;
-                }
-                const std::size_t check_level =
-                    (auto_mode == Auto_v_range_mode::GLOBAL_LOD) ? (levels - 1) : 0;
-                uint64_t sequence = series->data_source->current_sequence(check_level);
-                if (sequence == 0) {
-                    auto snapshot_result = series->data_source->try_snapshot(check_level);
-                    if (!snapshot_result) {
-                        // Snapshot failed - invalidate cache to force full recalculation
-                        // rather than serving potentially stale cached ranges.
-                        cache_invalid = true;
-                        break;
-                    }
-                    sequence = snapshot_result.snapshot.sequence;
-                }
-                series_minmax_cache_t& cache = m_impl->view.v_range_cache[id];
-                const void* identity = series->data_source->identity();
-                if (cache.identity != identity || cache.lods.size() != levels) {
-                    cache_invalid = true;
-                    break;
-                }
-                if (auto_mode == Auto_v_range_mode::VISIBLE && cache.query_sequence_valid) {
-                    if (cache.query_sequence != sequence) {
-                        cache_invalid = true;
-                        break;
-                    }
-                    continue;
-                }
-                const auto& entry = cache.lods[check_level];
-                if (!entry.valid || entry.sequence != sequence) {
-                    cache_invalid = true;
-                    break;
-                }
-            }
+            cache_invalid = !validate_range_cache_sequences(
+                m_impl->owner->m_series,
+                m_impl->view.v_range_cache,
+                auto_mode);
         }
 
         if (!cache_invalid && !throttle_expired) {

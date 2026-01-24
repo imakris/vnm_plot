@@ -58,6 +58,42 @@ public:
     uint64_t current_sequence(size_t /*lod_level*/) const override { return sequence; }
 };
 
+class Two_level_source final : public Data_source {
+public:
+    std::vector<Test_sample> lod0;
+    std::vector<Test_sample> lod1;
+    std::array<int, 2> snapshot_calls{{0, 0}};
+    std::array<uint64_t, 2> sequences{{1, 1}};
+
+    snapshot_result_t try_snapshot(size_t lod_level) override
+    {
+        if (lod_level >= 2) {
+            return {data_snapshot_t{}, snapshot_result_t::Status::FAILED};
+        }
+        ++snapshot_calls[lod_level];
+        const auto& data = (lod_level == 0) ? lod0 : lod1;
+        auto hold = std::make_shared<int>(21);
+        data_snapshot_t snapshot{
+            data.data(),
+            data.size(),
+            sizeof(Test_sample),
+            sequences[lod_level],
+            nullptr,
+            0,
+            hold
+        };
+        if (data.empty()) {
+            return {data_snapshot_t{}, snapshot_result_t::Status::EMPTY};
+        }
+        return {snapshot, snapshot_result_t::Status::OK};
+    }
+
+    size_t lod_levels() const override { return 2; }
+    size_t lod_scale(size_t level) const override { return level == 0 ? 1 : 4; }
+    size_t sample_stride() const override { return sizeof(Test_sample); }
+    uint64_t current_sequence(size_t /*lod_level*/) const override { return 0; }
+};
+
 Data_access_policy make_policy()
 {
     Data_access_policy policy;
@@ -86,6 +122,21 @@ frame_context_t make_context(const frame_layout_result_t& layout, Render_config&
     ctx.win_h = 120;
     ctx.config = &config;
     return ctx;
+}
+
+void fill_lod_samples(Two_level_source& source)
+{
+    source.lod0.resize(100);
+    for (size_t i = 0; i < source.lod0.size(); ++i) {
+        source.lod0[i].t = static_cast<double>(i);
+        source.lod0[i].v = 1.0f + static_cast<float>(i);
+    }
+    source.lod1.resize(25);
+    for (size_t i = 0; i < source.lod1.size(); ++i) {
+        const size_t src = i * 4;
+        source.lod1[i].t = static_cast<double>(src);
+        source.lod1[i].v = 1.0f + static_cast<float>(src);
+    }
 }
 
 #define TEST_ASSERT(cond, msg) \
@@ -150,6 +201,98 @@ bool test_frame_scoped_cache_reuse()
     return true;
 }
 
+bool test_frame_change_invalidates_snapshot_cache()
+{
+    auto data_source = std::make_shared<Single_level_source>();
+    data_source->samples.resize(12);
+    for (size_t i = 0; i < data_source->samples.size(); ++i) {
+        data_source->samples[i].t = static_cast<double>(i);
+        data_source->samples[i].v = 0.5f + static_cast<float>(i);
+    }
+
+    auto series = std::make_shared<series_data_t>();
+    series->id = 8;
+    series->style = Display_style::LINE;
+    series->data_source = data_source;
+    series->access = make_policy();
+
+    frame_layout_result_t layout;
+    layout.usable_width = 140.0;
+    layout.usable_height = 80.0;
+
+    Render_config config;
+    config.skip_gl_calls = true;
+
+    frame_context_t ctx = make_context(layout, config);
+
+    Series_renderer renderer;
+    Asset_loader asset_loader;
+    renderer.initialize(asset_loader);
+
+    std::map<int, std::shared_ptr<series_data_t>> series_map;
+    series_map[series->id] = series;
+
+    renderer.render(ctx, series_map);
+    renderer.render(ctx, series_map);
+
+    TEST_ASSERT(data_source->snapshot_calls == 2,
+                "expected snapshot refresh on frame change");
+
+    return true;
+}
+
+bool test_lod_level_separation()
+{
+    auto data_source = std::make_shared<Two_level_source>();
+    fill_lod_samples(*data_source);
+
+    auto series = std::make_shared<series_data_t>();
+    series->id = 9;
+    series->style = Display_style::LINE;
+    series->data_source = data_source;
+    series->access = make_policy();
+
+    Render_config config;
+    config.skip_gl_calls = true;
+
+    Series_renderer renderer;
+    Asset_loader asset_loader;
+    renderer.initialize(asset_loader);
+
+    std::map<int, std::shared_ptr<series_data_t>> series_map;
+    series_map[series->id] = series;
+
+    frame_layout_result_t layout_wide;
+    layout_wide.usable_width = 100.0;
+    layout_wide.usable_height = 80.0;
+    frame_context_t ctx_wide = make_context(layout_wide, config);
+    ctx_wide.t0 = 0.0;
+    ctx_wide.t1 = 99.0;
+    ctx_wide.win_w = 100;
+
+    renderer.render(ctx_wide, series_map);
+
+    TEST_ASSERT(data_source->snapshot_calls[0] >= 1,
+                "expected LOD0 snapshot at wide width");
+    TEST_ASSERT(data_source->snapshot_calls[1] == 0,
+                "did not expect LOD1 snapshot at wide width");
+
+    frame_layout_result_t layout_narrow;
+    layout_narrow.usable_width = 20.0;
+    layout_narrow.usable_height = 80.0;
+    frame_context_t ctx_narrow = make_context(layout_narrow, config);
+    ctx_narrow.t0 = 0.0;
+    ctx_narrow.t1 = 99.0;
+    ctx_narrow.win_w = 20;
+
+    renderer.render(ctx_narrow, series_map);
+
+    TEST_ASSERT(data_source->snapshot_calls[1] >= 1,
+                "expected LOD1 snapshot at narrow width");
+
+    return true;
+}
+
 bool test_snapshot_released_on_series_removal()
 {
     auto data_source = std::make_shared<Single_level_source>();
@@ -207,6 +350,8 @@ int main()
     int failed = 0;
 
     RUN_TEST(test_frame_scoped_cache_reuse);
+    RUN_TEST(test_frame_change_invalidates_snapshot_cache);
+    RUN_TEST(test_lod_level_separation);
     RUN_TEST(test_snapshot_released_on_series_removal);
 
     std::cout << "Results: " << passed << " passed, " << failed << " failed" << std::endl;

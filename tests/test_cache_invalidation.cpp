@@ -3,6 +3,7 @@
 #include <vnm_plot/core/asset_loader.h>
 #include <vnm_plot/core/series_renderer.h>
 #include <vnm_plot/core/plot_config.h>
+#include <vnm_plot/core/range_cache.h>
 
 #include <glm/glm.hpp>
 
@@ -13,6 +14,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 using namespace vnm::plot;
@@ -65,6 +67,46 @@ public:
     bool aux_metric_range_needs_rescan() const override { return false; }
 };
 
+class Range_cache_source final : public Data_source {
+public:
+    std::vector<Test_sample> samples;
+    size_t levels = 1;
+    uint64_t current_sequence_value = 1;
+    uint64_t snapshot_sequence_value = 1;
+    bool fail_snapshot = false;
+    int snapshot_calls = 0;
+
+    snapshot_result_t try_snapshot(size_t lod_level) override
+    {
+        if (lod_level >= levels) {
+            return {data_snapshot_t{}, snapshot_result_t::Status::FAILED};
+        }
+        ++snapshot_calls;
+        if (fail_snapshot) {
+            return {data_snapshot_t{}, snapshot_result_t::Status::FAILED};
+        }
+        auto hold = std::make_shared<int>(13);
+        data_snapshot_t snapshot{
+            samples.data(),
+            samples.size(),
+            sizeof(Test_sample),
+            snapshot_sequence_value,
+            nullptr,
+            0,
+            hold
+        };
+        if (samples.empty()) {
+            return {data_snapshot_t{}, snapshot_result_t::Status::EMPTY};
+        }
+        return {snapshot, snapshot_result_t::Status::OK};
+    }
+
+    size_t lod_levels() const override { return levels; }
+    size_t lod_scale(size_t level) const override { return level == 0 ? 1 : 4; }
+    size_t sample_stride() const override { return sizeof(Test_sample); }
+    uint64_t current_sequence(size_t /*lod_level*/) const override { return current_sequence_value; }
+};
+
 Data_access_policy make_policy()
 {
     Data_access_policy policy;
@@ -83,6 +125,18 @@ Data_access_policy make_policy()
     };
     policy.sample_stride = sizeof(Test_sample);
     return policy;
+}
+
+std::shared_ptr<series_data_t> make_series(
+    int id,
+    const std::shared_ptr<Data_source>& source)
+{
+    auto series = std::make_shared<series_data_t>();
+    series->id = id;
+    series->style = Display_style::LINE;
+    series->data_source = source;
+    series->access = make_policy();
+    return series;
 }
 
 frame_context_t make_context(const frame_layout_result_t& layout, Render_config& config)
@@ -177,6 +231,73 @@ bool test_lod0_sequence_fallback_calls_snapshot()
     return true;
 }
 
+bool test_failed_snapshot_invalidates_range_cache()
+{
+    auto data_source = std::make_shared<Range_cache_source>();
+    data_source->samples.resize(1);
+    data_source->current_sequence_value = 0;
+    data_source->snapshot_sequence_value = 5;
+    data_source->fail_snapshot = true;
+
+    auto series = make_series(10, data_source);
+
+    std::map<int, std::shared_ptr<series_data_t>> series_map;
+    series_map[series->id] = series;
+
+    std::unordered_map<int, series_minmax_cache_t> cache_map;
+    auto& cache = cache_map[series->id];
+    cache.identity = data_source->identity();
+    cache.lods.assign(data_source->lod_levels(), lod_minmax_cache_t{});
+    cache.lods[0].valid = true;
+    cache.lods[0].sequence = 5;
+
+    const bool valid = validate_range_cache_sequences(
+        series_map,
+        cache_map,
+        Auto_v_range_mode::GLOBAL);
+
+    TEST_ASSERT(!valid, "expected range cache invalidation on failed snapshot");
+    TEST_ASSERT(data_source->snapshot_calls == 1,
+                "expected snapshot attempt when current_sequence is 0");
+
+    return true;
+}
+
+bool test_sequence_change_invalidates_range_cache()
+{
+    auto data_source = std::make_shared<Range_cache_source>();
+    data_source->samples.resize(1);
+    data_source->current_sequence_value = 7;
+    data_source->snapshot_sequence_value = 7;
+
+    auto series = make_series(11, data_source);
+
+    std::map<int, std::shared_ptr<series_data_t>> series_map;
+    series_map[series->id] = series;
+
+    std::unordered_map<int, series_minmax_cache_t> cache_map;
+    auto& cache = cache_map[series->id];
+    cache.identity = data_source->identity();
+    cache.lods.assign(data_source->lod_levels(), lod_minmax_cache_t{});
+    cache.lods[0].valid = true;
+    cache.lods[0].sequence = 7;
+
+    const bool valid = validate_range_cache_sequences(
+        series_map,
+        cache_map,
+        Auto_v_range_mode::GLOBAL);
+    TEST_ASSERT(valid, "expected range cache to stay valid when sequence matches");
+
+    data_source->current_sequence_value = 8;
+    const bool valid_after = validate_range_cache_sequences(
+        series_map,
+        cache_map,
+        Auto_v_range_mode::GLOBAL);
+    TEST_ASSERT(!valid_after, "expected range cache invalidation on sequence change");
+
+    return true;
+}
+
 }  // namespace
 
 int main()
@@ -187,6 +308,8 @@ int main()
     int failed = 0;
 
     RUN_TEST(test_lod0_sequence_fallback_calls_snapshot);
+    RUN_TEST(test_failed_snapshot_invalidates_range_cache);
+    RUN_TEST(test_sequence_change_invalidates_range_cache);
 
     std::cout << "Results: " << passed << " passed, " << failed << " failed" << std::endl;
 

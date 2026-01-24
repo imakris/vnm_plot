@@ -278,6 +278,7 @@ set(VNM_PLOT_CORE_HEADERS
     include/vnm_plot/core/constants.h
     include/vnm_plot/core/color_palette.h
     include/vnm_plot/core/algo.h
+    include/vnm_plot/core/range_cache.h
     include/vnm_plot/core/primitive_renderer.h
     include/vnm_plot/core/chrome_renderer.h
     include/vnm_plot/core/font_renderer.h
