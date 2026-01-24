@@ -8,6 +8,10 @@
 /build-benchmark-*/
 /benchmark_headless/build/
 
+# Test binaries
+/tests/test_cache_invalidation
+/tests/test_snapshot_caching
+
 # Benchmark output files
 inspector_benchmark_*.txt
 
