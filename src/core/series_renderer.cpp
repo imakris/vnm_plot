@@ -802,6 +802,10 @@ void Series_renderer::render(
                         glDeleteBuffers(1, &view->adjacency_ebo);
                     }
                 }
+                // Explicitly clear snapshot cache (will be cleared by erase, but be explicit)
+                state.cached_snapshot_hold.reset();
+                state.cached_snapshot = {};
+                state.cached_snapshot_frame_id = 0;
                 it = m_vbo_states.erase(it);
             }
             else {
@@ -1096,7 +1100,24 @@ void Series_renderer::render(
                                 cache_sequence = series.data_source->current_sequence(0);
                             }
                             if (cache_sequence == 0) {
-                                cache_sequence = snapshot.sequence;
+                                // If we can't get LOD 0 sequence, try to get it from a snapshot.
+                                // This fallback is necessary when current_sequence() is not implemented.
+                                if (view_result.applied_level == 0) {
+                                    // We're already at LOD 0, so snapshot sequence is correct.
+                                    cache_sequence = snapshot.sequence;
+                                } else {
+                                    // We need LOD 0 sequence but have a different LOD snapshot.
+                                    // Try to get LOD 0 snapshot for correct sequence tracking.
+                                    auto lod0_snapshot = series.data_source->try_snapshot(0);
+                                    if (lod0_snapshot) {
+                                        cache_sequence = lod0_snapshot.snapshot.sequence;
+                                    } else {
+                                        // Can't get reliable LOD 0 sequence - use applied level
+                                        // sequence and don't cache at LOD 0 to avoid staleness.
+                                        cache_level = view_result.applied_level;
+                                        cache_sequence = snapshot.sequence;
+                                    }
+                                }
                             }
                         }
                         auto& target_entry = vbo_state.cached_aux_metric_levels[cache_level];
