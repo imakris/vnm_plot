@@ -4,6 +4,9 @@ cmake_minimum_required(VERSION 3.16)
 add_executable(test_cache_invalidation test_cache_invalidation.cpp)
 add_executable(test_snapshot_caching test_snapshot_caching.cpp)
 
+target_link_libraries(test_cache_invalidation PRIVATE vnm_plot_core)
+target_link_libraries(test_snapshot_caching PRIVATE vnm_plot_core)
+
 # Set C++17 standard
 set_target_properties(test_cache_invalidation PROPERTIES
     CXX_STANDARD 17
@@ -16,7 +19,6 @@ set_target_properties(test_snapshot_caching PROPERTIES
 )
 
 # Add tests
-enable_testing()
 add_test(NAME CacheInvalidation COMMAND test_cache_invalidation)
 add_test(NAME SnapshotCaching COMMAND test_snapshot_caching)
 

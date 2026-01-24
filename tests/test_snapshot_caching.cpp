@@ -1,306 +1,215 @@
-/**
- * Test program for snapshot caching behavior
- *
- * This test validates:
- * 1. Frame-scoped snapshot cache reuse between main and preview views
- * 2. Cache invalidation on frame ID change
- * 3. Proper snapshot hold lifetime management
- */
+// vnm_plot core snapshot cache tests
 
-#include <iostream>
+#include <vnm_plot/core/asset_loader.h>
+#include <vnm_plot/core/series_renderer.h>
+#include <vnm_plot/core/plot_config.h>
+
+#include <array>
 #include <cassert>
-#include <memory>
 #include <cstdint>
-#include <cstring>
+#include <iostream>
+#include <map>
+#include <memory>
+#include <string>
+#include <vector>
 
-// Mock snapshot structure
-struct Mock_snapshot {
-    void* data = nullptr;
-    std::size_t count = 0;
-    std::uint64_t sequence = 0;
-    std::shared_ptr<void> hold;
+using namespace vnm::plot;
 
-    Mock_snapshot() = default;
-    Mock_snapshot(void* d, std::size_t c, std::uint64_t seq, std::shared_ptr<void> h)
-        : data(d), count(c), sequence(seq), hold(h) {}
+namespace {
 
-    operator bool() const { return data != nullptr; }
+struct Test_sample {
+    double t = 0.0;
+    float v = 0.0f;
 };
 
-// Mock VBO state with snapshot caching
-struct Mock_VBO_state {
-    std::uint64_t cached_snapshot_frame_id = 0;
-    std::size_t cached_snapshot_level = SIZE_MAX;
-    Mock_snapshot cached_snapshot;
-    std::shared_ptr<void> cached_snapshot_hold;
-
-    void clear_cache() {
-        cached_snapshot_frame_id = 0;
-        cached_snapshot_level = SIZE_MAX;
-        cached_snapshot = {};
-        cached_snapshot_hold.reset();
-    }
-};
-
-// Mock data source
-class Mock_data_source {
+class Single_level_source final : public Data_source {
 public:
-    std::uint64_t snapshot_call_count = 0;
-    std::uint64_t sequence_value = 100;
-    bool should_fail = false;
+    std::vector<Test_sample> samples;
+    int snapshot_calls = 0;
+    uint64_t sequence = 1;
+    std::weak_ptr<void> last_hold;
 
-    Mock_snapshot try_snapshot(std::size_t level) {
-        (void)level;  // Suppress unused parameter warning
-        ++snapshot_call_count;
-        if (should_fail) {
-            return {};
+    snapshot_result_t try_snapshot(size_t lod_level) override
+    {
+        if (lod_level != 0) {
+            return {data_snapshot_t{}, snapshot_result_t::Status::FAILED};
         }
-        auto hold = std::make_shared<int>(42);
-        return Mock_snapshot{
-            reinterpret_cast<void*>(0x1000),  // Fake data pointer
-            1000,
-            sequence_value,
+        ++snapshot_calls;
+        auto hold = std::make_shared<int>(7);
+        last_hold = hold;
+        data_snapshot_t snapshot{
+            samples.data(),
+            samples.size(),
+            sizeof(Test_sample),
+            sequence,
+            nullptr,
+            0,
             hold
         };
+        if (samples.empty()) {
+            return {data_snapshot_t{}, snapshot_result_t::Status::EMPTY};
+        }
+        return {snapshot, snapshot_result_t::Status::OK};
     }
+
+    size_t lod_levels() const override { return 1; }
+    size_t lod_scale(size_t /*level*/) const override { return 1; }
+    size_t sample_stride() const override { return sizeof(Test_sample); }
+    uint64_t current_sequence(size_t /*lod_level*/) const override { return sequence; }
 };
 
-// Test 1: Frame-scoped cache reuse
-void test_frame_scoped_cache_reuse() {
-    std::cout << "Test 1: Frame-scoped cache reuse between views..." << std::endl;
-
-    Mock_data_source ds;
-    Mock_VBO_state state;
-    const std::uint64_t frame_id = 1;
-    const std::size_t level = 0;
-
-    // Simulate main view requesting snapshot
-    Mock_snapshot snapshot;
-    if (state.cached_snapshot_frame_id == frame_id &&
-        state.cached_snapshot_level == level &&
-        state.cached_snapshot) {
-        // Cache hit
-        snapshot = state.cached_snapshot;
-    } else {
-        // Cache miss - acquire new snapshot
-        snapshot = ds.try_snapshot(level);
-        if (snapshot) {
-            state.cached_snapshot_frame_id = frame_id;
-            state.cached_snapshot_level = level;
-            state.cached_snapshot = snapshot;
-            state.cached_snapshot_hold = snapshot.hold;
-        }
-    }
-
-    assert(snapshot && "Main view should get snapshot");
-    assert(ds.snapshot_call_count == 1 && "Should call try_snapshot once");
-
-    // Simulate preview view requesting same snapshot in same frame
-    Mock_snapshot preview_snapshot;
-    if (state.cached_snapshot_frame_id == frame_id &&
-        state.cached_snapshot_level == level &&
-        state.cached_snapshot) {
-        // Cache hit - reuse!
-        preview_snapshot = state.cached_snapshot;
-    } else {
-        // Cache miss
-        preview_snapshot = ds.try_snapshot(level);
-        if (preview_snapshot) {
-            state.cached_snapshot_frame_id = frame_id;
-            state.cached_snapshot_level = level;
-            state.cached_snapshot = preview_snapshot;
-            state.cached_snapshot_hold = preview_snapshot.hold;
-        }
-    }
-
-    assert(preview_snapshot && "Preview view should get snapshot");
-    assert(ds.snapshot_call_count == 1 && "Should NOT call try_snapshot again (cache hit)");
-    assert(preview_snapshot.data == snapshot.data && "Should reuse same snapshot");
-    // Note: hold count will be higher due to copies, but data pointer should match
-
-    std::cout << "  ✓ Frame-scoped cache correctly reuses snapshots" << std::endl;
+Data_access_policy make_policy()
+{
+    Data_access_policy policy;
+    policy.get_timestamp = [](const void* sample) {
+        return static_cast<const Test_sample*>(sample)->t;
+    };
+    policy.get_value = [](const void* sample) {
+        return static_cast<const Test_sample*>(sample)->v;
+    };
+    policy.get_range = [](const void* sample) {
+        const float value = static_cast<const Test_sample*>(sample)->v;
+        return std::make_pair(value, value);
+    };
+    policy.sample_stride = sizeof(Test_sample);
+    return policy;
 }
 
-// Test 2: Cache invalidation on frame change
-void test_cache_invalidation_on_frame_change() {
-    std::cout << "Test 2: Cache invalidation on frame change..." << std::endl;
-
-    Mock_data_source ds;
-    Mock_VBO_state state;
-    const std::size_t level = 0;
-
-    // Frame 1
-    std::uint64_t frame_id = 1;
-
-    auto snapshot1 = ds.try_snapshot(level);
-    state.cached_snapshot_frame_id = frame_id;
-    state.cached_snapshot_level = level;
-    state.cached_snapshot = snapshot1;
-    state.cached_snapshot_hold = snapshot1.hold;
-
-    assert(ds.snapshot_call_count == 1 && "First frame should call try_snapshot");
-
-    // Frame 2 - cache should be invalidated
-    frame_id = 2;
-
-    // At start of frame, invalidate cache if frame changed
-    if (state.cached_snapshot_frame_id != frame_id) {
-        state.clear_cache();
-    }
-
-    Mock_snapshot snapshot2;
-    if (state.cached_snapshot_frame_id == frame_id &&
-        state.cached_snapshot_level == level &&
-        state.cached_snapshot) {
-        // Cache hit
-        snapshot2 = state.cached_snapshot;
-    } else {
-        // Cache miss - must acquire new snapshot
-        snapshot2 = ds.try_snapshot(level);
-        if (snapshot2) {
-            state.cached_snapshot_frame_id = frame_id;
-            state.cached_snapshot_level = level;
-            state.cached_snapshot = snapshot2;
-            state.cached_snapshot_hold = snapshot2.hold;
-        }
-    }
-
-    assert(snapshot2 && "Frame 2 should get snapshot");
-    assert(ds.snapshot_call_count == 2 && "Frame 2 MUST call try_snapshot (cache invalidated)");
-
-    std::cout << "  ✓ Cache correctly invalidated on frame change" << std::endl;
+frame_context_t make_context(const frame_layout_result_t& layout, Render_config& config)
+{
+    frame_context_t ctx{layout};
+    ctx.t0 = 0.0;
+    ctx.t1 = 10.0;
+    ctx.t_available_min = 0.0;
+    ctx.t_available_max = 10.0;
+    ctx.win_w = 200;
+    ctx.win_h = 120;
+    ctx.config = &config;
+    return ctx;
 }
 
-// Test 3: Different LOD levels don't share cache
-void test_different_lod_levels() {
-    std::cout << "Test 3: Different LOD levels have separate caches..." << std::endl;
+#define TEST_ASSERT(cond, msg) \
+    do { \
+        if (!(cond)) { \
+            std::cerr << "FAIL: " << msg << " (line " << __LINE__ << ")" << std::endl; \
+            return false; \
+        } \
+    } while (0)
 
-    Mock_data_source ds;
-    Mock_VBO_state state;
-    const std::uint64_t frame_id = 1;
+#define RUN_TEST(test_fn) \
+    do { \
+        std::cout << "Running " << #test_fn << "... "; \
+        if (test_fn()) { \
+            std::cout << "OK" << std::endl; \
+            ++passed; \
+        } else { \
+            std::cout << "FAIL" << std::endl; \
+            ++failed; \
+        } \
+    } while (0)
 
-    // Request LOD 0
-    auto snapshot_lod0 = ds.try_snapshot(0);
-    state.cached_snapshot_frame_id = frame_id;
-    state.cached_snapshot_level = 0;
-    state.cached_snapshot = snapshot_lod0;
-    state.cached_snapshot_hold = snapshot_lod0.hold;
-
-    assert(ds.snapshot_call_count == 1 && "LOD 0 should call try_snapshot");
-
-    // Request LOD 2 in same frame
-    Mock_snapshot snapshot_lod2;
-    if (state.cached_snapshot_frame_id == frame_id &&
-        state.cached_snapshot_level == 2 &&  // Different level!
-        state.cached_snapshot) {
-        // Cache hit
-        snapshot_lod2 = state.cached_snapshot;
-    } else {
-        // Cache miss - different level
-        snapshot_lod2 = ds.try_snapshot(2);
-        if (snapshot_lod2) {
-            state.cached_snapshot_frame_id = frame_id;
-            state.cached_snapshot_level = 2;
-            state.cached_snapshot = snapshot_lod2;
-            state.cached_snapshot_hold = snapshot_lod2.hold;
-        }
+bool test_frame_scoped_cache_reuse()
+{
+    auto data_source = std::make_shared<Single_level_source>();
+    data_source->samples.resize(16);
+    for (size_t i = 0; i < data_source->samples.size(); ++i) {
+        data_source->samples[i].t = static_cast<double>(i);
+        data_source->samples[i].v = 1.0f + static_cast<float>(i);
     }
 
-    assert(snapshot_lod2 && "LOD 2 should get snapshot");
-    assert(ds.snapshot_call_count == 2 && "LOD 2 MUST call try_snapshot (different level)");
+    auto series = std::make_shared<series_data_t>();
+    series->id = 7;
+    series->style = Display_style::LINE;
+    series->data_source = data_source;
+    series->access = make_policy();
 
-    std::cout << "  ✓ Different LOD levels correctly maintain separate caches" << std::endl;
+    frame_layout_result_t layout;
+    layout.usable_width = 200.0;
+    layout.usable_height = 80.0;
+
+    Render_config config;
+    config.skip_gl_calls = true;
+    config.preview_visibility = 1.0;
+
+    frame_context_t ctx = make_context(layout, config);
+    ctx.adjusted_preview_height = 20.0;
+
+    Series_renderer renderer;
+    Asset_loader asset_loader;
+    renderer.initialize(asset_loader);
+
+    std::map<int, std::shared_ptr<series_data_t>> series_map;
+    series_map[series->id] = series;
+
+    renderer.render(ctx, series_map);
+
+    TEST_ASSERT(data_source->snapshot_calls == 1,
+                std::string("expected shared snapshot between main and preview views, got ") +
+                    std::to_string(data_source->snapshot_calls));
+
+    return true;
 }
 
-// Test 4: Snapshot hold lifetime management
-void test_snapshot_hold_lifetime() {
-    std::cout << "Test 4: Snapshot hold lifetime management..." << std::endl;
+bool test_snapshot_released_on_series_removal()
+{
+    auto data_source = std::make_shared<Single_level_source>();
+    data_source->samples.resize(8);
+    for (size_t i = 0; i < data_source->samples.size(); ++i) {
+        data_source->samples[i].t = static_cast<double>(i);
+        data_source->samples[i].v = 2.0f + static_cast<float>(i);
+    }
 
-    Mock_data_source ds;
-    Mock_VBO_state state;
+    auto series = std::make_shared<series_data_t>();
+    series->id = 3;
+    series->style = Display_style::LINE;
+    series->data_source = data_source;
+    series->access = make_policy();
 
-    auto snapshot = ds.try_snapshot(0);
-    std::weak_ptr<void> weak_hold = snapshot.hold;
+    frame_layout_result_t layout;
+    layout.usable_width = 160.0;
+    layout.usable_height = 80.0;
 
-    assert(!weak_hold.expired() && "Hold should be alive");
+    Render_config config;
+    config.skip_gl_calls = true;
 
-    // Cache snapshot
-    state.cached_snapshot_frame_id = 1;
-    state.cached_snapshot_level = 0;
-    state.cached_snapshot = snapshot;
-    state.cached_snapshot_hold = snapshot.hold;
+    Series_renderer renderer;
+    Asset_loader asset_loader;
+    renderer.initialize(asset_loader);
 
-    // Release local snapshot
-    snapshot = {};
+    std::map<int, std::shared_ptr<series_data_t>> series_map;
+    series_map[series->id] = series;
 
-    assert(!weak_hold.expired() && "Hold should still be alive (cached)");
-    assert(weak_hold.use_count() == 2 && "Two references: cache + cached_snapshot_hold");
+    frame_context_t ctx = make_context(layout, config);
+    renderer.render(ctx, series_map);
 
-    // Clear cache
-    state.clear_cache();
+    std::weak_ptr<void> hold = data_source->last_hold;
+    TEST_ASSERT(!hold.expired(), "expected snapshot hold to stay alive in cache");
 
-    assert(weak_hold.expired() && "Hold should be released after cache clear");
+    std::map<int, std::shared_ptr<series_data_t>> replacement_map;
+    auto placeholder = std::make_shared<series_data_t>();
+    placeholder->id = 99;
+    placeholder->enabled = false;
+    replacement_map[placeholder->id] = placeholder;
+    renderer.render(ctx, replacement_map);
 
-    std::cout << "  ✓ Snapshot hold lifetime correctly managed" << std::endl;
+    TEST_ASSERT(hold.expired(), "expected snapshot hold to release after series removal");
+
+    return true;
 }
 
-// Test 5: Cache behavior on failed snapshots
-void test_cache_on_failed_snapshots() {
-    std::cout << "Test 5: Cache behavior on failed snapshots..." << std::endl;
+}  // namespace
 
-    Mock_data_source ds;
-    Mock_VBO_state state;
-    const std::uint64_t frame_id = 1;
-    const std::size_t level = 0;
+int main()
+{
+    std::cout << "Core snapshot cache tests" << std::endl;
 
-    // First: successful snapshot
-    auto snapshot1 = ds.try_snapshot(level);
-    state.cached_snapshot_frame_id = frame_id;
-    state.cached_snapshot_level = level;
-    state.cached_snapshot = snapshot1;
-    state.cached_snapshot_hold = snapshot1.hold;
+    int passed = 0;
+    int failed = 0;
 
-    assert(snapshot1 && "First snapshot should succeed");
-    assert(state.cached_snapshot && "Cache should hold snapshot");
+    RUN_TEST(test_frame_scoped_cache_reuse);
+    RUN_TEST(test_snapshot_released_on_series_removal);
 
-    // Second: failed snapshot (new frame)
-    const std::uint64_t frame_id2 = 2;
-    ds.should_fail = true;
+    std::cout << "Results: " << passed << " passed, " << failed << " failed" << std::endl;
 
-    // Invalidate cache for new frame
-    if (state.cached_snapshot_frame_id != frame_id2) {
-        state.clear_cache();
-    }
-
-    auto snapshot2 = ds.try_snapshot(level);
-    if (snapshot2) {
-        state.cached_snapshot_frame_id = frame_id2;
-        state.cached_snapshot_level = level;
-        state.cached_snapshot = snapshot2;
-        state.cached_snapshot_hold = snapshot2.hold;
-    }
-
-    assert(!snapshot2 && "Second snapshot should fail");
-    assert(!state.cached_snapshot && "Cache should NOT hold failed snapshot");
-    assert(state.cached_snapshot_frame_id == 0 && "Frame ID should remain 0 after failure");
-
-    std::cout << "  ✓ Cache correctly handles failed snapshots" << std::endl;
-}
-
-int main() {
-    std::cout << "=== Snapshot Caching Tests ===" << std::endl << std::endl;
-
-    try {
-        test_frame_scoped_cache_reuse();
-        test_cache_invalidation_on_frame_change();
-        test_different_lod_levels();
-        test_snapshot_hold_lifetime();
-        test_cache_on_failed_snapshots();
-
-        std::cout << std::endl << "=== All tests passed! ===" << std::endl;
-        return 0;
-    } catch (const std::exception& e) {
-        std::cerr << "Test failed with exception: " << e.what() << std::endl;
-        return 1;
-    }
+    return failed > 0 ? 1 : 0;
 }

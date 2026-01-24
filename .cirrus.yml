@@ -21,9 +21,11 @@ task:
         - pkg install -y git cmake mesa-libs pkgconf freeglut libX11 libXrandr libXinerama libXcursor libXi libXext
         - if [ ! -e /usr/local/lib/libGL.so ] && [ -e /usr/local/lib/libGL.so.1 ]; then ln -s /usr/local/lib/libGL.so.1 /usr/local/lib/libGL.so; fi
       configure_script:
-      - cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DVNM_PLOT_CORE_ONLY=ON -DVNM_PLOT_ENABLE_TEXT=OFF -DCMAKE_C_FLAGS=-I/usr/local/include -DCMAKE_CXX_FLAGS=-I/usr/local/include
+      - cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DVNM_PLOT_CORE_ONLY=ON -DVNM_PLOT_ENABLE_TEXT=OFF -DVNM_PLOT_BUILD_TESTS=ON -DCMAKE_C_FLAGS=-I/usr/local/include -DCMAKE_CXX_FLAGS=-I/usr/local/include
       build_script:
         - cmake --build build --config Release
+      test_script:
+        - cd build && ctest --output-on-failure
       summary_script:
         - echo "=== FreeBSD Core Build Completed ==="
         - ls -la build/*.a 2>/dev/null || echo "Static libraries built"

@@ -20,10 +20,16 @@ jobs:
           cmake -B build -S . \
             -DCMAKE_BUILD_TYPE=Release \
             -DVNM_PLOT_CORE_ONLY=ON \
-            -DVNM_PLOT_ENABLE_TEXT=OFF
+            -DVNM_PLOT_ENABLE_TEXT=OFF \
+            -DVNM_PLOT_BUILD_TESTS=ON
 
       - name: Build core library
         run: cmake --build build --config Release
+
+      - name: Run core tests
+        shell: bash
+        working-directory: build
+        run: ctest --output-on-failure -C Release
 
       - name: Build summary
         shell: bash

@@ -16,6 +16,7 @@ option(VNM_PLOT_BUILD_EXAMPLES "Build example applications" OFF)
 option(VNM_PLOT_BUILD_QT "Build Qt wrapper library (requires Qt6)" ON)
 option(VNM_PLOT_CORE_ONLY "Build only the Qt-free core library" OFF)
 option(VNM_PLOT_ENABLE_TEXT "Enable MSDF text rendering (requires FreeType + msdfgen)" ON)
+option(VNM_PLOT_BUILD_TESTS "Build core tests" OFF)
 
 include(FetchContent)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/EmbedAssets.cmake)
@@ -550,6 +551,15 @@ option(VNM_PLOT_BUILD_BENCHMARK_HEADLESS "Build headless GLFW benchmark (CI-comp
 
 if(VNM_PLOT_BUILD_BENCHMARK_HEADLESS)
     add_subdirectory(benchmark_headless)
+endif()
+
+# -----------------------------------------------------------------------------
+# Tests (headless, core-only)
+# -----------------------------------------------------------------------------
+
+if(VNM_PLOT_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
 endif()
 
 # -----------------------------------------------------------------------------
