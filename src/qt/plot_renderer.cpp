@@ -1254,7 +1254,10 @@ void Plot_renderer::render()
                 if (sequence == 0) {
                     auto snapshot_result = series->data_source->try_snapshot(check_level);
                     if (!snapshot_result) {
-                        continue;
+                        // Snapshot failed - invalidate cache to force full recalculation
+                        // rather than serving potentially stale cached ranges.
+                        cache_invalid = true;
+                        break;
                     }
                     sequence = snapshot_result.snapshot.sequence;
                 }
