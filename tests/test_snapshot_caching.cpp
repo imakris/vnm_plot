@@ -340,6 +340,72 @@ bool test_snapshot_released_on_series_removal()
     return true;
 }
 
+bool test_render_empty_series_map()
+{
+    frame_layout_result_t layout;
+    layout.usable_width = 120.0;
+    layout.usable_height = 80.0;
+
+    Render_config config;
+    config.skip_gl_calls = true;
+
+    frame_context_t ctx = make_context(layout, config);
+
+    Series_renderer renderer;
+    Asset_loader asset_loader;
+    renderer.initialize(asset_loader);
+
+    std::map<int, std::shared_ptr<series_data_t>> empty_map;
+    renderer.render(ctx, empty_map);
+
+    return true;
+}
+
+bool test_render_skips_invalid_series()
+{
+    auto data_source = std::make_shared<Single_level_source>();
+    data_source->samples.resize(4);
+
+    auto disabled_series = std::make_shared<series_data_t>();
+    disabled_series->id = 12;
+    disabled_series->enabled = false;
+    disabled_series->style = Display_style::LINE;
+    disabled_series->data_source = data_source;
+    disabled_series->access = make_policy();
+
+    auto null_source_series = std::make_shared<series_data_t>();
+    null_source_series->id = 13;
+    null_source_series->enabled = true;
+    null_source_series->style = Display_style::LINE;
+    null_source_series->data_source.reset();
+    null_source_series->access = make_policy();
+
+    frame_layout_result_t layout;
+    layout.usable_width = 140.0;
+    layout.usable_height = 80.0;
+
+    Render_config config;
+    config.skip_gl_calls = true;
+
+    frame_context_t ctx = make_context(layout, config);
+
+    Series_renderer renderer;
+    Asset_loader asset_loader;
+    renderer.initialize(asset_loader);
+
+    std::map<int, std::shared_ptr<series_data_t>> series_map;
+    series_map[disabled_series->id] = disabled_series;
+    series_map[null_source_series->id] = null_source_series;
+    series_map[99] = nullptr;
+
+    renderer.render(ctx, series_map);
+
+    TEST_ASSERT(data_source->snapshot_calls == 0,
+                "expected disabled series to skip snapshots");
+
+    return true;
+}
+
 }  // namespace
 
 int main()
@@ -353,6 +419,8 @@ int main()
     RUN_TEST(test_frame_change_invalidates_snapshot_cache);
     RUN_TEST(test_lod_level_separation);
     RUN_TEST(test_snapshot_released_on_series_removal);
+    RUN_TEST(test_render_empty_series_map);
+    RUN_TEST(test_render_skips_invalid_series);
 
     std::cout << "Results: " << passed << " passed, " << failed << " failed" << std::endl;
 
