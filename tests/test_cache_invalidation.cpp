@@ -298,6 +298,112 @@ bool test_sequence_change_invalidates_range_cache()
     return true;
 }
 
+bool test_validate_range_cache_with_empty_series()
+{
+    std::map<int, std::shared_ptr<series_data_t>> series_map;
+    std::unordered_map<int, series_minmax_cache_t> cache_map;
+
+    const bool valid = validate_range_cache_sequences(
+        series_map,
+        cache_map,
+        Auto_v_range_mode::GLOBAL);
+
+    TEST_ASSERT(valid, "expected empty series map to keep cache valid");
+
+    return true;
+}
+
+bool test_validate_range_cache_skips_null_series()
+{
+    std::map<int, std::shared_ptr<series_data_t>> series_map;
+    series_map[1] = nullptr;
+
+    std::unordered_map<int, series_minmax_cache_t> cache_map;
+
+    const bool valid = validate_range_cache_sequences(
+        series_map,
+        cache_map,
+        Auto_v_range_mode::GLOBAL);
+
+    TEST_ASSERT(valid, "expected null series entries to be ignored");
+
+    return true;
+}
+
+bool test_validate_range_cache_skips_null_data_source()
+{
+    auto series = std::make_shared<series_data_t>();
+    series->id = 2;
+    series->data_source.reset();
+    series->access = make_policy();
+
+    std::map<int, std::shared_ptr<series_data_t>> series_map;
+    series_map[series->id] = series;
+
+    std::unordered_map<int, series_minmax_cache_t> cache_map;
+
+    const bool valid = validate_range_cache_sequences(
+        series_map,
+        cache_map,
+        Auto_v_range_mode::GLOBAL);
+
+    TEST_ASSERT(valid, "expected null data sources to be ignored");
+
+    return true;
+}
+
+bool test_validate_range_cache_skips_missing_accessors()
+{
+    auto data_source = std::make_shared<Range_cache_source>();
+    data_source->samples.resize(1);
+
+    auto series = std::make_shared<series_data_t>();
+    series->id = 3;
+    series->data_source = data_source;
+    series->access = Data_access_policy{};
+    series->access.sample_stride = sizeof(Test_sample);
+
+    std::map<int, std::shared_ptr<series_data_t>> series_map;
+    series_map[series->id] = series;
+
+    std::unordered_map<int, series_minmax_cache_t> cache_map;
+
+    const bool valid = validate_range_cache_sequences(
+        series_map,
+        cache_map,
+        Auto_v_range_mode::GLOBAL);
+
+    TEST_ASSERT(valid, "expected series without value accessors to be ignored");
+
+    return true;
+}
+
+bool test_validate_range_cache_skips_disabled_series()
+{
+    auto data_source = std::make_shared<Range_cache_source>();
+    data_source->samples.resize(1);
+
+    auto series = std::make_shared<series_data_t>();
+    series->id = 4;
+    series->enabled = false;
+    series->data_source = data_source;
+    series->access = make_policy();
+
+    std::map<int, std::shared_ptr<series_data_t>> series_map;
+    series_map[series->id] = series;
+
+    std::unordered_map<int, series_minmax_cache_t> cache_map;
+
+    const bool valid = validate_range_cache_sequences(
+        series_map,
+        cache_map,
+        Auto_v_range_mode::GLOBAL);
+
+    TEST_ASSERT(valid, "expected disabled series to be ignored");
+
+    return true;
+}
+
 }  // namespace
 
 int main()
@@ -310,6 +416,11 @@ int main()
     RUN_TEST(test_lod0_sequence_fallback_calls_snapshot);
     RUN_TEST(test_failed_snapshot_invalidates_range_cache);
     RUN_TEST(test_sequence_change_invalidates_range_cache);
+    RUN_TEST(test_validate_range_cache_with_empty_series);
+    RUN_TEST(test_validate_range_cache_skips_null_series);
+    RUN_TEST(test_validate_range_cache_skips_null_data_source);
+    RUN_TEST(test_validate_range_cache_skips_missing_accessors);
+    RUN_TEST(test_validate_range_cache_skips_disabled_series);
 
     std::cout << "Results: " << passed << " passed, " << failed << " failed" << std::endl;
 
