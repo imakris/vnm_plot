@@ -306,6 +306,48 @@ void Chrome_renderer::render_grid_and_backgrounds(
     }
 }
 
+void Chrome_renderer::render_zero_line(
+    const frame_context_t& ctx,
+    Primitive_renderer& prims)
+{
+    const bool skip_gl = ctx.config && ctx.config->skip_gl_calls;
+    if (skip_gl) {
+        return;
+    }
+
+    const double range_v = double(ctx.v1) - double(ctx.v0);
+    if (!(range_v > 0.0)) {
+        return;
+    }
+
+    // Pixel position of value 0.0 measured from bottom of plot area (GL convention)
+    const float zero_y_gl = static_cast<float>(
+        ctx.layout.usable_height * (0.0 - double(ctx.v0)) / range_v);
+
+    if (zero_y_gl < 0.0f || zero_y_gl > static_cast<float>(ctx.layout.usable_height)) {
+        return;
+    }
+
+    const bool dark_mode = ctx.config ? ctx.config->dark_mode : false;
+    const Color_palette palette = dark_mode ? Color_palette::dark() : Color_palette::light();
+    const glm::vec4 color = palette.grid_line;
+
+    const auto& pl = ctx.layout;
+    const glm::vec2 main_top_left{0.0f, 0.0f};
+    const glm::vec2 main_size{float(pl.usable_width), float(pl.usable_height)};
+    const glm::vec2 main_origin = to_gl_origin(ctx, main_top_left, main_size);
+
+    grid_layer_params_t zero_level;
+    zero_level.count = 1;
+    zero_level.spacing_px[0] = 1e6f;
+    zero_level.start_px[0] = zero_y_gl;
+    zero_level.alpha[0] = k_grid_line_alpha_base;
+    zero_level.thickness_px[0] = 1.2f;
+
+    grid_layer_params_t empty_levels;
+    prims.draw_grid_shader(main_origin, main_size, color, zero_level, empty_levels);
+}
+
 void Chrome_renderer::render_preview_overlay(
     const frame_context_t& ctx,
     Primitive_renderer& prims)

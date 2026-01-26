@@ -21,6 +21,9 @@ public:
     // Batches background rects, calculates grid parameters, and draws grid.
     void render_grid_and_backgrounds(const frame_context_t& ctx, Primitive_renderer& prims);
 
+    // Draws a single horizontal gridline at value 0, regardless of grid_visibility.
+    void render_zero_line(const frame_context_t& ctx, Primitive_renderer& prims);
+
     // Draws preview handles and dimming overlay.
     void render_preview_overlay(const frame_context_t& ctx, Primitive_renderer& prims);
 

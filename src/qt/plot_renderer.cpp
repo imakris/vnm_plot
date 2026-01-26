@@ -1606,6 +1606,9 @@ void Plot_renderer::render()
         }
     }
 
+    // Always draw the zero-value gridline on top of series
+    m_impl->chrome.render_zero_line(core_ctx, m_impl->primitives);
+
     // Render preview overlay
     m_impl->chrome.render_preview_overlay(core_ctx, m_impl->primitives);
     m_impl->primitives.flush_rects(core_ctx.pmv);
