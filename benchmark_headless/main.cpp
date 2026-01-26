@@ -13,11 +13,6 @@
 
 #include <glatter/glatter.h>
 
-// Undef X11 Status macro that conflicts with snapshot_result_t::Status
-// This must be done immediately after glatter.h includes X11 headers
-#ifdef Status
-#undef Status
-#endif
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>

@@ -13,10 +13,6 @@
 #include <memory>
 #include <vector>
 
-#ifdef Status
-#undef Status
-#endif
-
 struct Sample
 {
     double x;
@@ -41,8 +37,8 @@ public:
         res.snapshot.stride = sizeof(Sample);
         res.snapshot.sequence = m_sequence;
         res.status = m_samples.empty()
-            ? vnm::plot::snapshot_result_t::Status::EMPTY
-            : vnm::plot::snapshot_result_t::Status::READY;
+            ? vnm::plot::snapshot_result_t::Snapshot_status::EMPTY
+            : vnm::plot::snapshot_result_t::Snapshot_status::READY;
         return res;
     }
 

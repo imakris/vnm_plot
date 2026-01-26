@@ -40,7 +40,7 @@ public:
     /// Take a snapshot view of the ring buffer.
     /// Thread-safe: holds a shared lock for the snapshot lifetime.
     vnm::plot::snapshot_result_t try_snapshot(size_t lod_level = 0) override {
-        using Status = vnm::plot::snapshot_result_t::Status;
+        using Status = vnm::plot::snapshot_result_t::Snapshot_status;
 
         // Only LOD level 0 is supported
         if (lod_level > 0) {
