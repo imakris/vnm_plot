@@ -39,7 +39,7 @@ void update_view_range_from_source(
 
     // Take snapshot to read timestamps directly.
     auto result = source->try_snapshot();
-    if (result.status != vnm::plot::snapshot_result_t::Status::OK) {
+    if (result.status != vnm::plot::snapshot_result_t::Status::READY) {
         return;
     }
 

@@ -54,7 +54,7 @@ public:
         if (data.empty()) {
             return {data_snapshot_t{}, snapshot_result_t::Status::EMPTY};
         }
-        return {snapshot, snapshot_result_t::Status::OK};
+        return {snapshot, snapshot_result_t::Status::READY};
     }
 
     size_t lod_levels() const override { return 2; }
@@ -98,7 +98,7 @@ public:
         if (samples.empty()) {
             return {data_snapshot_t{}, snapshot_result_t::Status::EMPTY};
         }
-        return {snapshot, snapshot_result_t::Status::OK};
+        return {snapshot, snapshot_result_t::Status::READY};
     }
 
     size_t lod_levels() const override { return levels; }

@@ -71,7 +71,7 @@ public:
 
         return {
             snapshot,
-            Status::OK
+            Status::READY
         };
     }
 

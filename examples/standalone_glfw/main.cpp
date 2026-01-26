@@ -42,7 +42,7 @@ public:
         res.snapshot.sequence = m_sequence;
         res.status = m_samples.empty()
             ? vnm::plot::snapshot_result_t::Status::EMPTY
-            : vnm::plot::snapshot_result_t::Status::OK;
+            : vnm::plot::snapshot_result_t::Status::READY;
         return res;
     }
 

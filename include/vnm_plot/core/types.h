@@ -149,9 +149,9 @@ struct data_snapshot_t
 struct snapshot_result_t
 {
     data_snapshot_t snapshot;
-    enum class Status { OK, EMPTY, BUSY, FAILED } status = Status::OK;
+    enum class Status { READY, EMPTY, BUSY, FAILED } status = Status::READY;
 
-    explicit operator bool() const { return status == Status::OK && snapshot; }
+    explicit operator bool() const { return status == Status::READY && snapshot; }
 };
 
 // -----------------------------------------------------------------------------
@@ -169,7 +169,7 @@ public:
     data_snapshot_t snapshot(size_t lod_level = 0)
     {
         auto result = try_snapshot(lod_level);
-        return result.status == snapshot_result_t::Status::OK ? result.snapshot : data_snapshot_t{};
+        return result.status == snapshot_result_t::Status::READY ? result.snapshot : data_snapshot_t{};
     }
 
     virtual size_t lod_levels() const { return 1; }
@@ -228,7 +228,7 @@ public:
     {
         return {
             data_snapshot_t{m_data.data(), m_data.size(), sizeof(T), m_sequence},
-            m_data.empty() ? snapshot_result_t::Status::EMPTY : snapshot_result_t::Status::OK
+            m_data.empty() ? snapshot_result_t::Status::EMPTY : snapshot_result_t::Status::READY
         };
     }
 
