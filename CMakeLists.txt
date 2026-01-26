@@ -419,6 +419,16 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "FreeBSD")
     endif()
 endif()
 
+# Glatter's GLX support uses X11 symbols (e.g., XGetErrorText).
+# On GLVND systems OpenGL::GLX pulls X11 in transitively, but when
+# the GLX target is unavailable we must link X11 explicitly.
+if(UNIX AND NOT APPLE)
+    find_package(X11 QUIET)
+    if(X11_FOUND)
+        target_link_libraries(vnm_plot_core PUBLIC ${X11_LIBRARIES})
+    endif()
+endif()
+
 # Platform-specific settings for core
 if(WIN32)
     target_compile_definitions(vnm_plot_core PRIVATE NOMINMAX)
