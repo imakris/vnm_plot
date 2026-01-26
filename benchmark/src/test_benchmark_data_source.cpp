@@ -36,7 +36,7 @@ bool test_empty_buffer() {
 
     auto result = source.try_snapshot();
 
-    TEST_ASSERT(result.status == vnm::plot::snapshot_result_t::Status::EMPTY,
+    TEST_ASSERT(result.status == vnm::plot::snapshot_result_t::Snapshot_status::EMPTY,
                 "empty buffer should return EMPTY status");
     TEST_ASSERT(result.snapshot.count == 0, "snapshot count should be 0");
     TEST_ASSERT(!source.has_value_range(), "empty buffer should not have valid range");
@@ -62,7 +62,7 @@ bool test_snapshot_with_data() {
 
     auto result = source.try_snapshot();
 
-    TEST_ASSERT(result.status == vnm::plot::snapshot_result_t::Status::READY,
+    TEST_ASSERT(result.status == vnm::plot::snapshot_result_t::Snapshot_status::READY,
                 "should return OK status");
     TEST_ASSERT(result.snapshot.count == 1, "snapshot count should be 1");
     TEST_ASSERT(result.snapshot.stride == sizeof(Bar_sample), "stride should match");
@@ -286,7 +286,7 @@ bool test_brownian_integration() {
     }
 
     auto result = source.try_snapshot();
-    TEST_ASSERT(result.status == vnm::plot::snapshot_result_t::Status::READY, "should be READY");
+    TEST_ASSERT(result.status == vnm::plot::snapshot_result_t::Snapshot_status::READY, "should be READY");
     TEST_ASSERT(result.snapshot.count == 100, "should have 100 samples");
 
     // Value range should be valid
@@ -308,17 +308,17 @@ bool test_unsupported_lod() {
 
     // LOD 0 should work
     auto result0 = source.try_snapshot(0);
-    TEST_ASSERT(result0.status == vnm::plot::snapshot_result_t::Status::READY,
+    TEST_ASSERT(result0.status == vnm::plot::snapshot_result_t::Snapshot_status::READY,
                 "LOD 0 should return OK");
 
     // LOD 1 should fail
     auto result1 = source.try_snapshot(1);
-    TEST_ASSERT(result1.status == vnm::plot::snapshot_result_t::Status::FAILED,
+    TEST_ASSERT(result1.status == vnm::plot::snapshot_result_t::Snapshot_status::FAILED,
                 "LOD 1 should return FAILED");
 
     // LOD 100 should fail
     auto result100 = source.try_snapshot(100);
-    TEST_ASSERT(result100.status == vnm::plot::snapshot_result_t::Status::FAILED,
+    TEST_ASSERT(result100.status == vnm::plot::snapshot_result_t::Snapshot_status::FAILED,
                 "LOD 100 should return FAILED");
 
     return true;
@@ -336,13 +336,13 @@ bool test_sequence_short_circuit() {
 
     // First snapshot
     auto result1 = source.try_snapshot();
-    TEST_ASSERT(result1.status == vnm::plot::snapshot_result_t::Status::READY,
+    TEST_ASSERT(result1.status == vnm::plot::snapshot_result_t::Snapshot_status::READY,
                 "first snapshot should be READY");
     uint64_t seq1 = source.sequence();
 
     // Second snapshot without any new data should return cached result
     auto result2 = source.try_snapshot();
-    TEST_ASSERT(result2.status == vnm::plot::snapshot_result_t::Status::READY,
+    TEST_ASSERT(result2.status == vnm::plot::snapshot_result_t::Snapshot_status::READY,
                 "cached snapshot should be READY");
     TEST_ASSERT(result2.snapshot.count == result1.snapshot.count,
                 "cached snapshot should have same count");
@@ -356,7 +356,7 @@ bool test_sequence_short_circuit() {
 
     // Third snapshot should detect change and copy new data
     auto result3 = source.try_snapshot();
-    TEST_ASSERT(result3.status == vnm::plot::snapshot_result_t::Status::READY,
+    TEST_ASSERT(result3.status == vnm::plot::snapshot_result_t::Snapshot_status::READY,
                 "new snapshot should be READY");
     TEST_ASSERT(result3.snapshot.count == 2, "new snapshot should have 2 samples");
     TEST_ASSERT(source.sequence() > seq1, "sequence should have increased");

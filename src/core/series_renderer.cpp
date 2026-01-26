@@ -393,7 +393,7 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
             {
                 // Cache hit - reuse snapshot from earlier in this frame
                 snapshot_result.snapshot = shared_state.cached_snapshot;
-                snapshot_result.status = snapshot_result_t::Status::READY;
+                snapshot_result.status = snapshot_result_t::Snapshot_status::READY;
             }
             else {
                 // Cache miss - acquire new snapshot

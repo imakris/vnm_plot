@@ -4,10 +4,6 @@
 
 #include <glatter/glatter.h>
 
-// Undef X11 Status macro that conflicts with snapshot_result_t::Status
-#ifdef Status
-#undef Status
-#endif
 #include <glm/gtc/matrix_transform.hpp>
 
 #include <algorithm>
@@ -39,7 +35,7 @@ void update_view_range_from_source(
 
     // Take snapshot to read timestamps directly.
     auto result = source->try_snapshot();
-    if (result.status != vnm::plot::snapshot_result_t::Status::READY) {
+    if (result.status != vnm::plot::snapshot_result_t::Snapshot_status::READY) {
         return;
     }
 

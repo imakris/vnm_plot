@@ -37,7 +37,7 @@ public:
     snapshot_result_t try_snapshot(size_t lod_level) override
     {
         if (lod_level >= 2) {
-            return {data_snapshot_t{}, snapshot_result_t::Status::FAILED};
+            return {data_snapshot_t{}, snapshot_result_t::Snapshot_status::FAILED};
         }
         ++snapshot_calls[lod_level];
         const auto& data = (lod_level == 0) ? lod0 : lod1;
@@ -52,9 +52,9 @@ public:
             hold
         };
         if (data.empty()) {
-            return {data_snapshot_t{}, snapshot_result_t::Status::EMPTY};
+            return {data_snapshot_t{}, snapshot_result_t::Snapshot_status::EMPTY};
         }
-        return {snapshot, snapshot_result_t::Status::READY};
+        return {snapshot, snapshot_result_t::Snapshot_status::READY};
     }
 
     size_t lod_levels() const override { return 2; }
@@ -79,11 +79,11 @@ public:
     snapshot_result_t try_snapshot(size_t lod_level) override
     {
         if (lod_level >= levels) {
-            return {data_snapshot_t{}, snapshot_result_t::Status::FAILED};
+            return {data_snapshot_t{}, snapshot_result_t::Snapshot_status::FAILED};
         }
         ++snapshot_calls;
         if (fail_snapshot) {
-            return {data_snapshot_t{}, snapshot_result_t::Status::FAILED};
+            return {data_snapshot_t{}, snapshot_result_t::Snapshot_status::FAILED};
         }
         auto hold = std::make_shared<int>(13);
         data_snapshot_t snapshot{
@@ -96,9 +96,9 @@ public:
             hold
         };
         if (samples.empty()) {
-            return {data_snapshot_t{}, snapshot_result_t::Status::EMPTY};
+            return {data_snapshot_t{}, snapshot_result_t::Snapshot_status::EMPTY};
         }
-        return {snapshot, snapshot_result_t::Status::READY};
+        return {snapshot, snapshot_result_t::Snapshot_status::READY};
     }
 
     size_t lod_levels() const override { return levels; }
