@@ -53,7 +53,6 @@ void main()
     float y1     = float(height * (1.lf - (cv1 - v_min) / r_v)) + y_offset;
     // Always anchor fill to data value 0.0, even if it is outside the current view range.
     float y_axis = float(height * (1.lf - (0.0 - v_min) / r_v)) + y_offset;
-    y_axis = clamp(y_axis, y_offset, y_offset + float(height));
 
     if (cv0 * cv1 > 0) {
         gl_Position = pmv * vec4(x0,        y0, 0, 1); gs_out.color = v0_color;    gs_out.t=0.; EmitVertex();
