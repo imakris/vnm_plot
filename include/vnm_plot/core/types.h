@@ -53,54 +53,6 @@ using ByteBuffer = std::string;
 using ByteView = std::string_view;
 
 // -----------------------------------------------------------------------------
-// Asset Reference
-// -----------------------------------------------------------------------------
-// LIFETIME WARNING: AssetRef stores std::string_view members, which do NOT own
-// the underlying data. The referenced strings must outlive the AssetRef.
-// Typically used with compile-time embedded data or paths that remain valid
-// for the duration of use.
-struct AssetRef
-{
-    enum class Type : uint8_t
-    {
-        Empty,
-        Embedded,  // Data embedded in binary
-        FilePath   // Path to external file
-    };
-
-    Type             type = Type::Empty;
-    std::string_view data;
-    std::string_view name;
-
-    [[nodiscard]] constexpr bool is_valid() const noexcept
-    {
-        return type != Type::Empty && !data.empty();
-    }
-
-    [[nodiscard]] constexpr bool is_embedded() const noexcept
-    {
-        return type == Type::Embedded;
-    }
-
-    [[nodiscard]] constexpr bool is_file() const noexcept
-    {
-        return type == Type::FilePath;
-    }
-
-    static constexpr AssetRef embedded(std::string_view embedded_data,
-                                        std::string_view asset_name = {})
-    {
-        return AssetRef{Type::Embedded, embedded_data, asset_name};
-    }
-
-    static constexpr AssetRef file(std::string_view path,
-                                    std::string_view asset_name = {})
-    {
-        return AssetRef{Type::FilePath, path, asset_name};
-    }
-};
-
-// -----------------------------------------------------------------------------
 // data_snapshot_t: A view of sample data (optionally split into two segments)
 // -----------------------------------------------------------------------------
 // Represents a snapshot of data that can be safely read. The data pointer
@@ -409,16 +361,6 @@ struct series_data_t
     std::pair<float, float> get_range(const void* sample) const
     {
         return access.get_range ? access.get_range(sample) : std::make_pair(0.0f, 0.0f);
-    }
-
-    double get_aux_metric(const void* sample) const
-    {
-        return access.get_aux_metric ? access.get_aux_metric(sample) : 0.0;
-    }
-
-    float get_signal(const void* sample) const
-    {
-        return access.get_signal ? access.get_signal(sample) : 0.0f;
     }
 };
 

@@ -3,7 +3,6 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
-#include <mutex>
 #include <utility>
 
 namespace vnm::plot {
@@ -88,30 +87,6 @@ std::optional<ByteBuffer> Asset_loader::load(std::string_view name) const
     return std::nullopt;
 }
 
-std::optional<ByteView> Asset_loader::load_embedded_view(std::string_view name) const
-{
-    auto it = m_embedded.find(std::string(name));
-    if (it != m_embedded.end()) {
-        return it->second;
-    }
-    return std::nullopt;
-}
-
-bool Asset_loader::exists(std::string_view name) const
-{
-    // Check override directory
-    if (!m_override_dir.empty()) {
-        std::filesystem::path override_path = m_override_dir;
-        override_path /= name;
-        if (std::filesystem::exists(override_path)) {
-            return true;
-        }
-    }
-
-    // Check embedded
-    return m_embedded.find(std::string(name)) != m_embedded.end();
-}
-
 std::optional<Asset_loader::ShaderSources> Asset_loader::load_shader(std::string_view base_name) const
 {
     ShaderSources sources;
@@ -126,9 +101,14 @@ std::optional<Asset_loader::ShaderSources> Asset_loader::load_shader(std::string
     }
     sources.vertex = std::move(*vert);
 
-    // Load geometry shader (optional)
-    if (exists(base + ".geom")) {
-        auto geom = load(base + ".geom");
+    // Load geometry shader (optional — check existence first to avoid spurious error log)
+    const std::string geom_name = base + ".geom";
+    const bool geom_exists =
+        m_embedded.find(geom_name) != m_embedded.end() ||
+        (!m_override_dir.empty() &&
+         std::filesystem::exists(std::filesystem::path(m_override_dir) / geom_name));
+    if (geom_exists) {
+        auto geom = load(geom_name);
         if (geom) {
             sources.geometry = std::move(*geom);
         }
@@ -144,34 +124,5 @@ std::optional<Asset_loader::ShaderSources> Asset_loader::load_shader(std::string
 
     return sources;
 }
-
-// -----------------------------------------------------------------------------
-// Global default asset loader
-// -----------------------------------------------------------------------------
-
-namespace {
-
-std::once_flag s_embedded_assets_init_flag;
-
-Asset_loader& get_default_loader_instance()
-{
-    static Asset_loader instance;
-    return instance;
-}
-
-} // anonymous namespace
-
-Asset_loader& default_asset_loader()
-{
-    auto& loader = get_default_loader_instance();
-    // Auto-register embedded assets on first access
-    // We pass the loader directly to avoid re-entrancy (deadlock).
-    std::call_once(s_embedded_assets_init_flag, [&loader]() {
-        init_embedded_assets(loader);
-    });
-    return loader;
-}
-
-// Note: init_embedded_assets() is defined in the generated embedded_assets.cpp
 
 } // namespace vnm::plot

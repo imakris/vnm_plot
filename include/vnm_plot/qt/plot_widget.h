@@ -74,8 +74,6 @@ public:
     // Set the plot configuration
     void set_config(const Plot_config& config);
     Plot_config config() const;
-    // Force asset re-registration on the renderer.
-    Q_INVOKABLE void reset_assets();
     // Reset renderer-side view state (e.g., skip auto-range smoothing once).
     Q_INVOKABLE void reset_view_state();
 
@@ -111,7 +109,6 @@ public:
     bool v_auto() const;
     void set_v_auto(bool auto_scale);
     void set_v_range(float v_min, float v_max);
-    void set_v_data_bounds(float v_min, float v_max);
 
     // --- Preview ---
 
@@ -134,12 +131,8 @@ public:
     Q_INVOKABLE void adjust_t_from_mouse_diff_on_preview(double ref_width, double diff);
     Q_INVOKABLE void adjust_t_from_mouse_pos_on_preview(double ref_width, double x_pos);
     Q_INVOKABLE void adjust_t_from_pivot_and_scale(double pivot, double scale);
-    Q_INVOKABLE void pan_time(double delta_px, double viewport_width);
-    Q_INVOKABLE void zoom_time(double pivot, double scale);
     Q_INVOKABLE void adjust_v_from_mouse_diff(float ref_height, float diff);
     Q_INVOKABLE void adjust_v_from_pivot_and_scale(float pivot, float scale);
-    Q_INVOKABLE void pan_value(float delta_px, float viewport_height);
-    Q_INVOKABLE void zoom_value(float pivot, float scale);
     Q_INVOKABLE void adjust_v_to_target(float target_vmin, float target_vmax);
     Q_INVOKABLE void auto_adjust_view(bool adjust_t, double extra_v_scale);
     Q_INVOKABLE void auto_adjust_view(bool adjust_t, double extra_v_scale, bool anchor_zero);
