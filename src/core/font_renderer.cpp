@@ -866,11 +866,6 @@ void Font_renderer::set_log_callbacks(
     m_impl->m_log_debug = log_debug;
 }
 
-bool Font_renderer::is_initialized() const
-{
-    return m_impl->m_resources != nullptr;
-}
-
 void Font_renderer::initialize(Asset_loader& asset_loader, int pixel_height, bool force_rebuild)
 {
     auto& resources = thread_local_resources();

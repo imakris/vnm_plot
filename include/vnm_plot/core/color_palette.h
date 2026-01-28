@@ -44,11 +44,6 @@ struct Color_palette
     glm::vec4 grid_line               = hex_to_vec4("ffd2d4d7");
     glm::vec4 preview_cover           = hex_to_vec4("26555555");
     glm::vec4 preview_cover_secondary = hex_to_vec4("10505050");
-    glm::vec4 default_series          = hex_to_vec4("ff4da0e0");
-    glm::vec4 text_primary            = hex_to_vec4("ffffffff");
-    glm::vec4 text_secondary          = hex_to_vec4("ff999999");
-    glm::vec4 black                   = hex_to_vec4("ff000000");
-    glm::vec4 white                   = hex_to_vec4("ffffffff");
 
     // --- Factory methods ---
 
@@ -68,11 +63,6 @@ struct Color_palette
         p.grid_line                   = hex_to_vec4("ff000000");
         p.preview_cover               = hex_to_vec4("99707070");
         p.preview_cover_secondary     = hex_to_vec4("85707070");
-        p.default_series              = hex_to_vec4("ff2972a3");
-        p.text_primary                = hex_to_vec4("ff000000");
-        p.text_secondary              = hex_to_vec4("ff666666");
-        p.black                       = hex_to_vec4("ff000000");
-        p.white                       = hex_to_vec4("ffffffff");
         return p;
     }
 

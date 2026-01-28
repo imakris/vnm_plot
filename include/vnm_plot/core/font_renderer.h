@@ -49,9 +49,6 @@ public:
     // force_rebuild recreates GL resources even if the pixel height matches.
     void initialize(Asset_loader& asset_loader, int pixel_height, bool force_rebuild = false);
 
-    // Returns true when the renderer is currently bound to a thread-local resource set.
-    bool is_initialized() const;
-
     // Releases this instance's weak reference to the shared resources.
     void deinitialize();
 

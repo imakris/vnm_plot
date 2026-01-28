@@ -138,24 +138,6 @@ struct Plot_config
     // Extra scale applied to auto v-range (0 = no padding).
     double auto_v_range_extra_scale = 0.0;
 
-    // Default configuration
-    static Plot_config make_default()
-    {
-        Plot_config cfg;
-        cfg.dark_mode = false;
-        cfg.show_text = true;
-        cfg.grid_visibility = 1.0;
-        cfg.preview_visibility = 1.0;
-        cfg.font_size_px = 10.0;
-        cfg.base_label_height_px = 14.0;
-        cfg.auto_v_range_mode = Auto_v_range_mode::GLOBAL;
-        cfg.clear_to_transparent = false;
-        cfg.snap_lines_to_pixels = false;
-        cfg.line_width_px = 1.0;
-        cfg.area_fill_alpha = 0.3;
-        cfg.auto_v_range_extra_scale = 0.0;
-        return cfg;
-    }
 };
 
 // -----------------------------------------------------------------------------

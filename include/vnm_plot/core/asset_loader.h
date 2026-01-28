@@ -48,13 +48,6 @@ public:
     // First checks override directory, then embedded assets.
     [[nodiscard]] std::optional<ByteBuffer> load(std::string_view name) const;
 
-    // Load an asset, returning a view if embedded (avoiding copy)
-    // Returns nullopt if not found or if only available as file.
-    [[nodiscard]] std::optional<ByteView> load_embedded_view(std::string_view name) const;
-
-    // Check if an asset exists (in either embedded or override location)
-    [[nodiscard]] bool exists(std::string_view name) const;
-
     // --- Convenience methods for shader loading ---
 
     // Load a shader program's sources (vertex, optional geometry, fragment)
@@ -80,18 +73,8 @@ private:
     std::unordered_map<std::string, std::string_view> m_embedded;
 };
 
-// -----------------------------------------------------------------------------
-// Default Asset Registry
-// -----------------------------------------------------------------------------
-// Provides access to embedded default assets (shaders, fonts).
-// Populated at library initialization.
-
-// Get the global default asset loader with embedded assets.
-// Embedded assets are auto-registered on first access.
-[[nodiscard]] Asset_loader& default_asset_loader();
-
 // Initialize embedded assets into the given loader.
-// (Called internally by default_asset_loader; defined in generated embedded_assets.cpp)
+// (Defined in generated embedded_assets.cpp)
 void init_embedded_assets(Asset_loader& loader);
 
 } // namespace vnm::plot

@@ -144,15 +144,6 @@ Plot_config Plot_widget::config() const
     return m_config;
 }
 
-void Plot_widget::reset_assets()
-{
-    {
-        std::unique_lock lock(m_config_mutex);
-        ++m_config.assets_revision;
-    }
-    update();
-}
-
 void Plot_widget::reset_view_state()
 {
     m_view_state_reset_requested.store(true, std::memory_order_release);
@@ -343,20 +334,6 @@ void Plot_widget::set_v_range(float v_min, float v_max)
         m_data_cfg.v_max = v_max;
         m_data_cfg.v_manual_min = v_min;
         m_data_cfg.v_manual_max = v_max;
-    }
-    emit v_limits_changed();
-    update();
-}
-
-void Plot_widget::set_v_data_bounds(float v_min, float v_max)
-{
-    if (!std::isfinite(v_min) || !std::isfinite(v_max) || v_min > v_max) {
-        return;
-    }
-    {
-        std::unique_lock lock(m_data_cfg_mutex);
-        m_data_cfg.v_min = v_min;
-        m_data_cfg.v_max = v_max;
     }
     emit v_limits_changed();
     update();
@@ -650,38 +627,6 @@ void Plot_widget::adjust_t_from_pivot_and_scale(double pivot, double scale)
     adjust_t_to_target(new_min, new_max);
 }
 
-void Plot_widget::pan_time(double delta_px, double viewport_width)
-{
-    if (viewport_width <= 0.0) {
-        return;
-    }
-
-    const auto cfg = data_cfg_snapshot();
-    const double t_min_val = cfg.t_min;
-    const double t_max_val = cfg.t_max;
-
-    const double t_span = t_max_val - t_min_val;
-    const double delta_t = (delta_px / viewport_width) * t_span;
-
-    adjust_t_to_target(t_min_val - delta_t, t_max_val - delta_t);
-}
-
-void Plot_widget::zoom_time(double pivot, double scale)
-{
-    if (scale <= 0.0) {
-        return;
-    }
-
-    const auto cfg = data_cfg_snapshot();
-    const double t_min_val = cfg.t_min;
-    const double t_max_val = cfg.t_max;
-
-    const double new_t_min = pivot - (pivot - t_min_val) * scale;
-    const double new_t_max = pivot + (t_max_val - pivot) * scale;
-
-    adjust_t_to_target(new_t_min, new_t_max);
-}
-
 void Plot_widget::adjust_v_from_mouse_diff(float ref_height, float diff)
 {
     if (ref_height <= 0.0f) {
@@ -705,34 +650,6 @@ void Plot_widget::adjust_v_from_pivot_and_scale(float pivot, float scale)
     const float v0 = v_pivot - (v_pivot - vmin) * scale;
     const float v1 = v_pivot + (vmax - v_pivot) * scale;
     adjust_v_to_target(v0, v1);
-}
-
-void Plot_widget::pan_value(float delta_px, float viewport_height)
-{
-    if (viewport_height <= 0.0f) {
-        return;
-    }
-
-    const auto [v_min_val, v_max_val] = current_v_range();
-
-    const float v_span = v_max_val - v_min_val;
-    const float delta_v = (delta_px / viewport_height) * v_span;
-
-    adjust_v_to_target(v_min_val + delta_v, v_max_val + delta_v);
-}
-
-void Plot_widget::zoom_value(float pivot, float scale)
-{
-    if (scale <= 0.0f) {
-        return;
-    }
-
-    const auto [v_min_val, v_max_val] = current_v_range();
-
-    const float new_v_min = pivot - (pivot - v_min_val) * scale;
-    const float new_v_max = pivot + (v_max_val - pivot) * scale;
-
-    adjust_v_to_target(new_v_min, new_v_max);
 }
 
 void Plot_widget::adjust_v_to_target(float target_vmin, float target_vmax)
