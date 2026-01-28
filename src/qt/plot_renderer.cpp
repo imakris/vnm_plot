@@ -120,7 +120,7 @@ std::uint64_t hash_data_sources(const std::map<int, std::shared_ptr<Data_source>
     return hash;
 }
 
-constexpr float k_auto_v_padding_factor = 0.05f;
+constexpr float k_auto_v_padding_factor = 0.125f;
 constexpr float k_auto_v_padding_min = 0.5f;
 constexpr float k_auto_v_sync_eps = static_cast<float>(k_eps);
 constexpr float k_anim_span_min = static_cast<float>(k_eps);
