@@ -11,6 +11,9 @@ Item {
     property color selectedColor: "#638ceb"
     property bool showVerticalLine: true
     property bool showHorizontalLine: false
+    property bool linkIndicator: false
+
+    readonly property var timeAxis: plotWidget ? plotWidget.timeAxis : null
 
     readonly property real usableWidth: width - plotWidget.vbar_width_qml
     readonly property real usableHeight: height - plotWidget.reserved_height
@@ -25,10 +28,17 @@ Item {
     }
 
     function setMouseInPlot(inPlot) {
+        var wasInPlot = internal.hasMouseInPlot
         internal.hasMouseInPlot = inPlot
         if (!inPlot) {
             internal.mouseX = -1
             internal.mouseY = -1
+        }
+        if (wasInPlot && !inPlot && root.linkIndicator && root.timeAxis) {
+            root.timeAxis.set_indicator_state(plotWidget, false, 0.0)
+        }
+        if (!inPlot) {
+            internal.indicatorOwned = false
         }
         canvas.requestPaint()
     }
@@ -39,12 +49,20 @@ Item {
         property var indicatorSamples: []
         property real mouseX: -1
         property real mouseY: -1
+        property bool indicatorActive: false
+        property bool indicatorOwned: false
+        property real lastSharedT: 0.0
     }
 
     Connections {
         target: plotWidget
         function onV_limits_changed() { refreshIndicator() }
         function onT_limits_changed() { refreshIndicator() }
+    }
+
+    Connections {
+        target: root.linkIndicator ? root.timeAxis : null
+        function onIndicator_state_changed() { refreshIndicator() }
     }
 
     onSelectedSampleChanged: canvas.requestPaint()
@@ -81,23 +99,61 @@ Item {
             && internal.mouseX >= 0 && internal.mouseX <= usableWidth
             && internal.mouseY >= 0 && internal.mouseY < usableHeight
 
-        if (!inMainPlot) {
-            internal.indicatorSamples = []
-            canvas.requestPaint()
-            return
-        }
-
         var tmin = plotWidget.t_min
         var tmax = plotWidget.t_max
         var tspan = tmax - tmin
         if (tspan <= 0 || usableWidth <= 0 || usableHeight <= 0) {
             internal.indicatorSamples = []
+            internal.indicatorActive = false
             canvas.requestPaint()
             return
         }
 
-        var xVal = tmin + (internal.mouseX / usableWidth) * tspan
-        internal.indicatorSamples = plotWidget.get_indicator_samples(xVal, usableWidth, usableHeight)
+        var localT = 0.0
+        if (inMainPlot) {
+            localT = tmin + (internal.mouseX / usableWidth) * tspan
+            if (root.linkIndicator && root.timeAxis) {
+                var canUpdate = true
+                if (root.timeAxis.indicator_active &&
+                    root.timeAxis.indicator_owned_by(plotWidget) &&
+                    Math.abs(root.timeAxis.indicator_t - localT) <= 1e-12) {
+                    canUpdate = false
+                }
+                if (Math.abs(internal.lastSharedT - localT) <= 1e-12) {
+                    canUpdate = false
+                }
+                if (canUpdate) {
+                    internal.lastSharedT = localT
+                    root.timeAxis.set_indicator_state(plotWidget, true, localT)
+                }
+            }
+        }
+
+        if (!inMainPlot && internal.hasMouseInPlot && root.linkIndicator && root.timeAxis) {
+            if (root.timeAxis.indicator_active &&
+                root.timeAxis.indicator_owned_by(plotWidget)) {
+                internal.indicatorOwned = false
+                root.timeAxis.set_indicator_state(plotWidget, false, 0.0)
+            }
+        }
+
+        if (root.linkIndicator && root.timeAxis) {
+            internal.indicatorOwned = root.timeAxis.indicator_owned_by(plotWidget)
+        }
+
+        var allowShared = !(internal.hasMouseInPlot && !inMainPlot)
+        var useShared = root.linkIndicator && root.timeAxis && root.timeAxis.indicator_active && allowShared
+        var targetT = useShared ? root.timeAxis.indicator_t : (inMainPlot ? localT : null)
+        if (targetT === null || targetT === undefined) {
+            internal.indicatorSamples = []
+            internal.indicatorActive = false
+            canvas.requestPaint()
+            return
+        }
+
+        internal.indicatorSamples = plotWidget.get_indicator_samples(
+            targetT, usableWidth, usableHeight)
+        internal.indicatorActive = internal.indicatorSamples.length > 0
         canvas.requestPaint()
     }
 
@@ -121,7 +177,7 @@ Item {
             var PI = Math.PI
             var bulletChar = "\u2022"
 
-            if (internal.hasMouseInPlot && internal.indicatorSamples.length > 0) {
+            if (internal.indicatorActive && internal.indicatorSamples.length > 0) {
                 var samples = internal.indicatorSamples
                 var xLine = samples[0].px
                 var xVal = samples[0].x
@@ -223,7 +279,7 @@ Item {
                 }
             }
 
-            if (!internal.hasMouseInPlot && root.selectedSample) {
+            if (!internal.indicatorActive && root.selectedSample) {
                 var tsSel = root.selectedSample.x
                 var vSel = root.selectedSample.y
 

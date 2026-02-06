@@ -335,7 +335,7 @@ bool compute_window_minmax(
 }
 
 bool get_lod_minmax(
-    const Data_source& data_source,
+    Data_source& data_source,
     const Data_access_policy& access,
     series_minmax_cache_t& cache,
     std::size_t level,
@@ -389,7 +389,7 @@ bool get_lod_minmax(
 
 struct series_view_t
 {
-    const Data_source* source = nullptr;
+    Data_source* source = nullptr;
     const Data_access_policy* access = nullptr;
     std::unordered_map<int, series_minmax_cache_t>* cache = nullptr;
 };
@@ -1368,7 +1368,7 @@ void Plot_renderer::render()
                 const auto resolve_main = [&](int /*series_id*/,
                                               const series_data_t& series,
                                               series_view_t& view) -> bool {
-                    const Data_source* source = series.main_source();
+                    Data_source* source = series.main_source();
                     if (!source) {
                         return false;
                     }
@@ -1381,13 +1381,11 @@ void Plot_renderer::render()
                 const auto resolve_preview = [&](int /*series_id*/,
                                                  const series_data_t& series,
                                                  series_view_t& view) -> bool {
-                    const Data_source* source = series.preview_source();
+                    Data_source* source = series.preview_source();
                     if (!source) {
                         return false;
                     }
-                    const bool preview_access_invalid =
-                        series.has_preview_config() && !series.preview_config->access.is_valid();
-                    if (preview_access_invalid && source != series.main_source()) {
+                    if (series.preview_access_invalid_for_source()) {
                         return false;
                     }
                     const Data_access_policy& access = series.preview_access();

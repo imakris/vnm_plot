@@ -82,11 +82,9 @@ inline bool validate_preview_range_cache_sequences(
         if (!series || !series->enabled) {
             continue;
         }
-        if (series->has_preview_config() && !series->preview_config->access.is_valid()) {
-            if (series->preview_source() != series->main_source()) {
-                // Renderer skips preview when access is invalid and source differs.
-                continue;
-            }
+        if (series->preview_access_invalid_for_source()) {
+            // Renderer skips preview when access is invalid and source differs.
+            continue;
         }
         if (series->preview_matches_main()) {
             // Preview cache is only used when preview differs from main.

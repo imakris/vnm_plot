@@ -932,6 +932,7 @@ void Series_renderer::render(
         const bool has_preview_config = s->has_preview_config();
         const bool preview_access_invalid =
             has_preview_config && !s->preview_config->access.is_valid();
+        const bool preview_skip_invalid = s->preview_access_invalid_for_source();
         Data_source* preview_source = nullptr;
         const Data_access_policy* preview_access = nullptr;
         Display_style preview_style = static_cast<Display_style>(0);
@@ -954,7 +955,7 @@ void Series_renderer::render(
             }
 
             if (preview_access_invalid && preview_source) {
-                if (preview_source != main_source) {
+                if (preview_skip_invalid) {
                     log_error_once(
                         m_preview_invalid_access_logged,
                         id,

@@ -179,6 +179,7 @@ cmake --build build
 ```
 
 - `vnm_plot_hello` - renders a sine wave using `Function_data_source`
+- `vnm_plot_preview_config` - preview uses a separate data source and AREA style via `preview_config`
 - `function_plotter` - multiple functions, per-series styles, expression evaluation via mexce
 - `standalone_glfw` - standalone core validation example using GLFW
 

@@ -1,5 +1,6 @@
 #include <vnm_plot/qt/plot_time_axis.h>
 
+#include <algorithm>
 #include <cmath>
 
 namespace vnm::plot {
@@ -30,6 +31,77 @@ double Plot_time_axis::t_available_min() const
 double Plot_time_axis::t_available_max() const
 {
     return m_t_available_max;
+}
+
+bool Plot_time_axis::sync_vbar_width() const
+{
+    return m_sync_vbar_width;
+}
+
+void Plot_time_axis::set_sync_vbar_width(bool v)
+{
+    if (m_sync_vbar_width == v) {
+        return;
+    }
+
+    m_sync_vbar_width = v;
+    if (!m_sync_vbar_width) {
+        m_vbar_width_by_owner.clear();
+        if (m_shared_vbar_width_px != 0.0) {
+            m_shared_vbar_width_px = 0.0;
+            emit shared_vbar_width_changed(m_shared_vbar_width_px);
+        }
+    }
+    emit sync_vbar_width_changed();
+}
+
+double Plot_time_axis::shared_vbar_width_px() const
+{
+    return m_shared_vbar_width_px;
+}
+
+void Plot_time_axis::update_shared_vbar_width(const QObject* owner, double width_px)
+{
+    if (!m_sync_vbar_width || !owner) {
+        return;
+    }
+    if (!std::isfinite(width_px) || width_px <= 0.0) {
+        return;
+    }
+
+    m_vbar_width_by_owner[owner] = width_px;
+
+    double max_width = 0.0;
+    for (const auto& entry : m_vbar_width_by_owner) {
+        max_width = std::max(max_width, entry.second);
+    }
+
+    if (std::abs(max_width - m_shared_vbar_width_px) > k_axis_eps) {
+        m_shared_vbar_width_px = max_width;
+        emit shared_vbar_width_changed(m_shared_vbar_width_px);
+    }
+}
+
+void Plot_time_axis::clear_shared_vbar_width(const QObject* owner)
+{
+    if (!owner) {
+        return;
+    }
+
+    const auto erased = m_vbar_width_by_owner.erase(owner);
+    if (erased == 0) {
+        return;
+    }
+
+    double max_width = 0.0;
+    for (const auto& entry : m_vbar_width_by_owner) {
+        max_width = std::max(max_width, entry.second);
+    }
+
+    if (std::abs(max_width - m_shared_vbar_width_px) > k_axis_eps) {
+        m_shared_vbar_width_px = max_width;
+        emit shared_vbar_width_changed(m_shared_vbar_width_px);
+    }
 }
 
 void Plot_time_axis::set_t_min(double v)
@@ -177,6 +249,58 @@ void Plot_time_axis::adjust_t_to_target(double target_min, double target_max)
     }
 
     set_limits_if_changed(new_min, new_max, m_t_available_min, m_t_available_max);
+}
+
+void Plot_time_axis::set_indicator_state(QObject* owner, bool active, double t)
+{
+    if (!owner) {
+        return;
+    }
+
+    bool changed = false;
+    if (active) {
+        if (m_indicator_owner != owner) {
+            m_indicator_owner = owner;
+            changed = true;
+        }
+        if (!m_indicator_active) {
+            m_indicator_active = true;
+            changed = true;
+        }
+        if (std::isfinite(t) && std::abs(m_indicator_t - t) > k_axis_eps) {
+            m_indicator_t = t;
+            changed = true;
+        }
+    }
+    else {
+        if (m_indicator_owner == owner && m_indicator_active) {
+            m_indicator_owner = nullptr;
+            m_indicator_active = false;
+            changed = true;
+        }
+    }
+
+    if (changed) {
+        emit indicator_state_changed();
+    }
+}
+
+bool Plot_time_axis::indicator_active() const
+{
+    return m_indicator_active;
+}
+
+double Plot_time_axis::indicator_t() const
+{
+    return m_indicator_t;
+}
+
+bool Plot_time_axis::indicator_owned_by(QObject* owner) const
+{
+    if (!owner) {
+        return false;
+    }
+    return m_indicator_owner == owner;
 }
 
 bool Plot_time_axis::set_limits_if_changed(

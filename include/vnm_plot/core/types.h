@@ -415,6 +415,22 @@ struct series_data_t
         return style;
     }
 
+    // True when preview access is invalid and preview source differs from main.
+    bool preview_access_invalid_for_source() const
+    {
+        if (!preview_config) {
+            return false;
+        }
+        if (preview_config->access.is_valid()) {
+            return false;
+        }
+        Data_source* preview = preview_config->data_source.get();
+        if (!preview) {
+            return false;
+        }
+        return preview != data_source.get();
+    }
+
     // True when preview_config is set.
     bool has_preview_config() const
     {

@@ -317,9 +317,13 @@ void Plot_widget::set_time_axis(Plot_time_axis* axis)
     }
 
     if (m_time_axis) {
+        if (m_time_axis->sync_vbar_width()) {
+            m_time_axis->clear_shared_vbar_width(this);
+        }
         QObject::disconnect(m_time_axis, nullptr, this, nullptr);
         m_time_axis_connection = {};
         m_time_axis_destroyed_connection = {};
+        m_time_axis_vbar_connection = {};
     }
 
     m_time_axis = axis;
@@ -335,7 +339,30 @@ void Plot_widget::set_time_axis(Plot_time_axis* axis)
             &QObject::destroyed,
             this,
             [this]() { clear_time_axis(); });
+        m_time_axis_vbar_connection = QObject::connect(
+            m_time_axis,
+            &Plot_time_axis::shared_vbar_width_changed,
+            this,
+            [this](double px) {
+                if (!m_time_axis || !m_time_axis->sync_vbar_width()) {
+                    return;
+                }
+                if (px <= 0.0 || !std::isfinite(px)) {
+                    return;
+                }
+                apply_vbar_width_target(px);
+            });
         sync_time_axis_state();
+        if (m_time_axis->sync_vbar_width()) {
+            const double current_px = m_vbar_width_px.load(std::memory_order_acquire);
+            if (std::isfinite(current_px) && current_px > 0.0) {
+                m_time_axis->update_shared_vbar_width(this, current_px);
+            }
+            const double shared_px = m_time_axis->shared_vbar_width_px();
+            if (std::isfinite(shared_px) && shared_px > 0.0) {
+                apply_vbar_width_target(shared_px);
+            }
+        }
     }
 
     emit time_axis_changed();
@@ -459,12 +486,15 @@ void Plot_widget::set_vbar_width(double vbar_width)
     m_vbar_width_px.store(px, std::memory_order_release);
     emit vbar_width_changed();
     update();
+
+    if (m_time_axis && m_time_axis->sync_vbar_width()) {
+        m_time_axis->update_shared_vbar_width(this, px);
+    }
 }
 
-void Plot_widget::set_vbar_width_from_renderer(double px)
+void Plot_widget::apply_vbar_width_target(double target)
 {
     const double current = m_vbar_width_px.load(std::memory_order_acquire);
-    const double target = px;
 
     if (!std::isfinite(current) || current <= 0.0) {
         m_vbar_width_px.store(target, std::memory_order_release);
@@ -492,6 +522,16 @@ void Plot_widget::set_vbar_width_from_renderer(double px)
     if (!m_vbar_width_timer.isActive()) {
         m_vbar_width_timer.start(16, this);
     }
+}
+
+void Plot_widget::set_vbar_width_from_renderer(double px)
+{
+    if (m_time_axis && m_time_axis->sync_vbar_width()) {
+        m_time_axis->update_shared_vbar_width(this, px);
+        return;
+    }
+
+    apply_vbar_width_target(px);
 }
 
 void Plot_widget::set_auto_v_range_from_renderer(float v_min, float v_max)
@@ -1100,6 +1140,7 @@ void Plot_widget::clear_time_axis()
     m_time_axis = nullptr;
     m_time_axis_connection = {};
     m_time_axis_destroyed_connection = {};
+    m_time_axis_vbar_connection = {};
     emit time_axis_changed();
     update();
 }

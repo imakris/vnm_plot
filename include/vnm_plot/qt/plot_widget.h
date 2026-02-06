@@ -236,10 +236,12 @@ private:
     void set_rendered_v_range(float v_min, float v_max) const;
     void sync_time_axis_state();
     void clear_time_axis();
+    void apply_vbar_width_target(double px);
 
     QPointer<Plot_time_axis> m_time_axis;
     QMetaObject::Connection m_time_axis_connection;
     QMetaObject::Connection m_time_axis_destroyed_connection;
+    QMetaObject::Connection m_time_axis_vbar_connection;
 };
 
 } // namespace vnm::plot
