@@ -6,6 +6,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -235,6 +236,18 @@ struct Data_access_policy
 };
 
 // -----------------------------------------------------------------------------
+// Preview Configuration
+// -----------------------------------------------------------------------------
+enum class Display_style : int;
+
+struct preview_config_t
+{
+    std::shared_ptr<Data_source> data_source;   // required when preview_config is set
+    Data_access_policy access;                  // optional; if invalid, fall back to main access
+    std::optional<Display_style> style;         // nullopt means use main style
+};
+
+// -----------------------------------------------------------------------------
 // Display Styles (bit flags for combination)
 // -----------------------------------------------------------------------------
 enum class Display_style : int
@@ -335,6 +348,9 @@ struct series_data_t
 
     std::shared_ptr<Data_source> data_source;
     Data_access_policy access;
+    // Optional per-series preview configuration. When set, preview rendering can
+    // use a distinct data source, access policy, and style.
+    std::optional<preview_config_t> preview_config;
 
     colormap_config_t colormap_area;
     colormap_config_t colormap_line;
@@ -361,6 +377,75 @@ struct series_data_t
     std::pair<float, float> get_range(const void* sample) const
     {
         return access.get_range ? access.get_range(sample) : std::make_pair(0.0f, 0.0f);
+    }
+
+    const Data_source* main_source() const
+    {
+        return data_source.get();
+    }
+
+    // Returns preview source; null means preview is skipped.
+    const Data_source* preview_source() const
+    {
+        if (!preview_config) {
+            return data_source.get();
+        }
+        return preview_config->data_source.get();
+    }
+
+    // Main access policy.
+    const Data_access_policy& main_access() const
+    {
+        return access;
+    }
+
+    // Preview access policy (falls back to main when invalid).
+    const Data_access_policy& preview_access() const
+    {
+        if (preview_config && preview_config->access.is_valid()) {
+            return preview_config->access;
+        }
+        return access;
+    }
+
+    // Preview style (falls back to main when unset).
+    Display_style effective_preview_style() const
+    {
+        if (preview_config && preview_config->style) {
+            return *preview_config->style;
+        }
+        return style;
+    }
+
+    // True when preview_config is set.
+    bool has_preview_config() const
+    {
+        return preview_config.has_value();
+    }
+
+    // True when preview uses same source pointer, layout key, and style as main.
+    bool preview_matches_main() const
+    {
+        if (!preview_config) {
+            return true;
+        }
+
+        const Data_source* main = data_source.get();
+        const Data_source* preview = preview_source();
+        if (!main || !preview) {
+            return false;
+        }
+        if (main != preview) {
+            return false;
+        }
+
+        const Data_access_policy& preview_acc = preview_access();
+        if (preview_acc.layout_key != access.layout_key) {
+            return false;
+        }
+
+        const Display_style preview_style = effective_preview_style();
+        return preview_style == style;
     }
 };
 

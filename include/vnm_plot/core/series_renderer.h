@@ -115,12 +115,15 @@ private:
         };
 
         std::vector<aux_metric_cache_t> cached_aux_metric_levels;
+        std::vector<aux_metric_cache_t> cached_aux_metric_levels_preview;
         const void* cached_aux_metric_identity = nullptr;
+        const void* cached_aux_metric_identity_preview = nullptr;
 
         // Frame-scoped snapshot cache: shared between main_view and preview_view
         // to avoid redundant try_snapshot() calls within the same frame.
         uint64_t cached_snapshot_frame_id = 0;
         std::size_t cached_snapshot_level = SIZE_MAX;
+        const Data_source* cached_snapshot_source = nullptr;
         data_snapshot_t cached_snapshot;
         std::shared_ptr<void> cached_snapshot_hold;
     };
@@ -167,6 +170,10 @@ private:
     std::unordered_map<int, vbo_state_t> m_vbo_states;
     std::unordered_map<const series_data_t*, colormap_resource_set_t> m_colormap_textures;
     std::unordered_set<int> m_missing_signal_logged;
+    std::unordered_set<int> m_missing_signal_preview_logged;
+    std::unordered_set<int> m_preview_missing_source_logged;
+    std::unordered_set<int> m_preview_invalid_access_logged;
+    std::unordered_set<int> m_preview_incompatible_stride_logged;
 
     std::unique_ptr<series_pipe_t> m_pipe_line;
     std::unique_ptr<series_pipe_t> m_pipe_dots;
@@ -180,7 +187,7 @@ private:
         const shader_set_t& shader_set,
         const Render_config* config);
     series_pipe_t& pipe_for(Display_style style);
-    GLuint ensure_series_vao(Display_style style, GLuint vbo, const series_data_t& series);
+    GLuint ensure_series_vao(Display_style style, GLuint vbo, const Data_access_policy& access);
     GLuint ensure_colormap_texture(const series_data_t& series, Display_style style);
 
     view_render_result_t process_view(

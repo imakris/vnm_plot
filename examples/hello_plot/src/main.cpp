@@ -22,6 +22,7 @@ int main(int argc, char* argv[])
 
     qmlRegisterType<vnm::plot::Plot_widget>("VnmPlot", 1, 0, "PlotWidget");
     qmlRegisterType<vnm::plot::Plot_interaction_item>("VnmPlot", 1, 0, "PlotInteractionItem");
+    qmlRegisterType<vnm::plot::Plot_time_axis>("VnmPlot", 1, 0, "PlotTimeAxis");
     qmlRegisterType<Plot_controller>("Example", 1, 0, "PlotController");
 
     QQmlApplicationEngine engine;

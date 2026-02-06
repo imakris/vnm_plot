@@ -77,6 +77,7 @@ Register the type in C++:
 #include <vnm_plot/vnm_plot.h>
 
 qmlRegisterType<vnm::plot::Plot_widget>("VnmPlot", 1, 0, "PlotWidget");
+qmlRegisterType<vnm::plot::Plot_time_axis>("VnmPlot", 1, 0, "PlotTimeAxis");
 ```
 
 Use it in QML:
@@ -87,6 +88,19 @@ import VnmPlot 1.0
 PlotWidget {
     id: plot
     anchors.fill: parent
+}
+```
+
+Shared time axis across plots:
+
+```qml
+import VnmPlot 1.0
+
+PlotTimeAxis { id: sharedAxis }
+
+Column {
+    PlotView { timeAxis: sharedAxis }
+    PlotView { timeAxis: sharedAxis }
 }
 ```
 

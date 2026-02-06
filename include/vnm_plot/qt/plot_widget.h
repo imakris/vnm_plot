@@ -8,6 +8,8 @@
 
 #include <QBasicTimer>
 #include <QElapsedTimer>
+#include <QMetaObject>
+#include <QPointer>
 #include <QQuickFramebufferObject>
 
 #include <QVariantList>
@@ -22,6 +24,7 @@
 namespace vnm::plot {
 
 class Plot_renderer;
+class Plot_time_axis;
 
 // -----------------------------------------------------------------------------
 // Plot Widget
@@ -50,6 +53,7 @@ class Plot_widget : public QQuickFramebufferObject
     Q_PROPERTY(double line_width_px READ line_width_px WRITE set_line_width_px NOTIFY line_width_px_changed)
     Q_PROPERTY(double vbar_width_px READ vbar_width_pixels NOTIFY vbar_width_changed)
     Q_PROPERTY(double vbar_width_qml READ vbar_width_qml NOTIFY vbar_width_changed)
+    Q_PROPERTY(Plot_time_axis* timeAxis READ time_axis WRITE set_time_axis NOTIFY time_axis_changed)
 
 public:
     Plot_widget();
@@ -101,6 +105,11 @@ public:
     double t_available_max() const;
     void set_t_range(double t_min, double t_max);
     void set_available_t_range(double t_min, double t_max);
+    // Optional shared time axis (non-owning). When set, this widget mirrors its values.
+    Plot_time_axis* time_axis() const;
+    void set_time_axis(Plot_time_axis* axis);
+    // Attach to another widget's time axis (no-op if missing).
+    Q_INVOKABLE void attach_time_axis(Plot_widget* other);
 
     // --- Value Range ---
 
@@ -163,6 +172,7 @@ signals:
     void preview_visibility_changed();
     void line_width_px_changed();
     void vbar_width_changed();
+    void time_axis_changed();
 
 protected:
     void geometryChange(const QRectF& newGeometry, const QRectF& oldGeometry) override;
@@ -224,6 +234,12 @@ private:
 
     bool consume_view_state_reset_request();
     void set_rendered_v_range(float v_min, float v_max) const;
+    void sync_time_axis_state();
+    void clear_time_axis();
+
+    QPointer<Plot_time_axis> m_time_axis;
+    QMetaObject::Connection m_time_axis_connection;
+    QMetaObject::Connection m_time_axis_destroyed_connection;
 };
 
 } // namespace vnm::plot

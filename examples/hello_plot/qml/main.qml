@@ -11,13 +11,36 @@ Window {
     title: "vnm_plot hello"
     color: "#0b0d12"
 
-    PlotView {
-        id: plotView
+    PlotTimeAxis {
+        id: sharedAxis
+    }
+
+    Column {
         anchors.fill: parent
-        Component.onCompleted: plotWidget.update_dpi_scaling_factor()
+        spacing: 8
+
+        PlotView {
+            id: plotViewTop
+            height: parent.height * 0.5 - spacing * 0.5
+            width: parent.width
+            timeAxis: sharedAxis
+            Component.onCompleted: plotWidget.update_dpi_scaling_factor()
+        }
+
+        PlotView {
+            id: plotViewBottom
+            height: parent.height * 0.5 - spacing * 0.5
+            width: parent.width
+            timeAxis: sharedAxis
+            Component.onCompleted: plotWidget.update_dpi_scaling_factor()
+        }
     }
 
     PlotController {
-        plot_widget: plotView.plotWidget
+        plot_widget: plotViewTop.plotWidget
+    }
+
+    PlotController {
+        plot_widget: plotViewBottom.plotWidget
     }
 }

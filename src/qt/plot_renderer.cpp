@@ -106,15 +106,40 @@ bool spans_approx_equal(double a, double b)
     return diff <= scale * k_eps;
 }
 
-std::uint64_t hash_data_sources(const std::map<int, std::shared_ptr<Data_source>>& data)
+std::uint64_t hash_data_sources(const std::map<int, std::shared_ptr<series_data_t>>& series_map)
 {
     std::uint64_t hash = 1469598103934665603ULL;
-    for (const auto& [id, source] : data) {
-        const void* identity = source ? source->identity() : nullptr;
-        const std::uint64_t ptr = static_cast<std::uint64_t>(
-            reinterpret_cast<std::uintptr_t>(identity));
+    for (const auto& [id, series] : series_map) {
+        if (!series) {
+            continue;
+        }
+
+        const Data_source* main_source = series->main_source();
+        const Data_source* preview_source = series->preview_source();
+        const bool has_preview = series->has_preview_config();
+
+        const std::uint64_t main_ptr = static_cast<std::uint64_t>(
+            reinterpret_cast<std::uintptr_t>(main_source));
+        const std::uint64_t preview_ptr = has_preview
+            ? static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(preview_source))
+            : 0ULL;
+        const std::uint64_t preview_layout_key = has_preview
+            ? series->preview_access().layout_key
+            : 0ULL;
+        const Display_style preview_style = series->effective_preview_style();
+        const std::uint64_t preview_style_bits =
+            (has_preview && preview_style != series->style)
+                ? static_cast<std::uint64_t>(preview_style)
+                : 0ULL;
+
         std::uint64_t value = static_cast<std::uint64_t>(id);
-        value ^= ptr + 0x9e3779b97f4a7c15ULL + (value << 6) + (value >> 2);
+        value ^= main_ptr + 0x9e3779b97f4a7c15ULL + (value << 6) + (value >> 2);
+        if (has_preview) {
+            value ^= 0x0f0f0f0f0f0f0f0fULL + (value << 6) + (value >> 2);
+            value ^= preview_ptr + 0x9e3779b97f4a7c15ULL + (value << 6) + (value >> 2);
+            value ^= preview_layout_key + 0x9e3779b97f4a7c15ULL + (value << 6) + (value >> 2);
+            value ^= preview_style_bits + 0x9e3779b97f4a7c15ULL + (value << 6) + (value >> 2);
+        }
         hash ^= value + 0x9e3779b97f4a7c15ULL + (hash << 6) + (hash >> 2);
     }
     return hash;
@@ -151,14 +176,14 @@ shader_set_t normalize_shader_set(const shader_set_t& shader)
 }
 
 bool scan_snapshot_minmax(
-    const series_data_t& series,
+    const Data_access_policy& access,
     const data_snapshot_t& snapshot,
     std::size_t start_idx,
     std::size_t end_idx,
     float& out_min,
     float& out_max)
 {
-    if (!series.access.get_value && !series.access.get_range) {
+    if (!access.get_value && !access.get_range) {
         return false;
     }
 
@@ -184,13 +209,13 @@ bool scan_snapshot_minmax(
 
         float low = 0.0f;
         float high = 0.0f;
-        if (series.access.get_range) {
-            auto [lo, hi] = series.get_range(sample);
+        if (access.get_range) {
+            auto [lo, hi] = access.get_range(sample);
             low = lo;
             high = hi;
         }
         else {
-            low = series.get_value(sample);
+            low = access.get_value(sample);
             high = low;
         }
 
@@ -213,16 +238,16 @@ bool scan_snapshot_minmax(
 }
 
 bool compute_snapshot_minmax(
-    const series_data_t& series,
+    const Data_access_policy& access,
     const data_snapshot_t& snapshot,
     float& out_min,
     float& out_max)
 {
-    return scan_snapshot_minmax(series, snapshot, 0, snapshot.count, out_min, out_max);
+    return scan_snapshot_minmax(access, snapshot, 0, snapshot.count, out_min, out_max);
 }
 
 bool find_window_indices(
-    const series_data_t& series,
+    const Data_access_policy& access,
     const data_snapshot_t& snapshot,
     double t_min,
     double t_max,
@@ -232,7 +257,7 @@ bool find_window_indices(
     start_idx = 0;
     end_idx = snapshot.count;
 
-    if (!series.access.get_timestamp || !snapshot || snapshot.count == 0 || snapshot.stride == 0) {
+    if (!access.get_timestamp || !snapshot || snapshot.count == 0 || snapshot.stride == 0) {
         return false;
     }
 
@@ -245,8 +270,8 @@ bool find_window_indices(
     if (!first_sample || !last_sample) {
         return false;
     }
-    const double first_ts = series.get_timestamp(first_sample);
-    const double last_ts = series.get_timestamp(last_sample);
+    const double first_ts = access.get_timestamp(first_sample);
+    const double last_ts = access.get_timestamp(last_sample);
     if (std::isfinite(first_ts) && std::isfinite(last_ts)) {
         if (t_max < first_ts || t_min > last_ts) {
             return false;
@@ -261,7 +286,7 @@ bool find_window_indices(
         if (!sample) {
             break;
         }
-        const double ts = series.get_timestamp(sample);
+        const double ts = access.get_timestamp(sample);
         if (ts < t_min) {
             lo = mid + 1;
         }
@@ -279,7 +304,7 @@ bool find_window_indices(
         if (!sample) {
             break;
         }
-        const double ts = series.get_timestamp(sample);
+        const double ts = access.get_timestamp(sample);
         if (ts <= t_max) {
             lo = mid + 1;
         }
@@ -296,28 +321,25 @@ bool find_window_indices(
 }
 
 bool compute_window_minmax(
-    const series_data_t& series,
+    const Data_access_policy& access,
     const data_snapshot_t& snapshot,
     std::size_t start_idx,
     std::size_t end_idx,
     float& out_min,
     float& out_max)
 {
-    return scan_snapshot_minmax(series, snapshot, start_idx, end_idx, out_min, out_max);
+    return scan_snapshot_minmax(access, snapshot, start_idx, end_idx, out_min, out_max);
 }
 
 bool get_lod_minmax(
-    const series_data_t& series,
+    const Data_source& data_source,
+    const Data_access_policy& access,
     series_minmax_cache_t& cache,
     std::size_t level,
     float& out_min,
     float& out_max,
     vnm::plot::Profiler* profiler)
 {
-    if (!series.data_source) {
-        return false;
-    }
-
     if (level >= cache.lods.size()) {
         return false;
     }
@@ -327,7 +349,7 @@ bool get_lod_minmax(
     data_snapshot_t snapshot;
     {
         VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.range_calc.get_lod_minmax.snapshot");
-        snapshot = series.data_source->snapshot(level);
+        snapshot = data_source.snapshot(level);
     }
     if (!snapshot || snapshot.count == 0 || snapshot.stride == 0) {
         if (entry.valid) {
@@ -347,7 +369,7 @@ bool get_lod_minmax(
     float v_max = 0.0f;
     {
         VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.range_calc.get_lod_minmax.scan");
-        if (!compute_snapshot_minmax(series, snapshot, v_min, v_max)) {
+        if (!compute_snapshot_minmax(access, snapshot, v_min, v_max)) {
             return false;
         }
     }
@@ -362,9 +384,19 @@ bool get_lod_minmax(
     return true;
 }
 
+struct series_view_t
+{
+    const Data_source* source = nullptr;
+    const Data_access_policy* access = nullptr;
+    std::unordered_map<int, series_minmax_cache_t>* cache = nullptr;
+};
+
+template <typename Resolver>
 std::pair<float, float> compute_global_v_range(
     const std::map<int, std::shared_ptr<series_data_t>>& series_map,
     std::unordered_map<int, series_minmax_cache_t>& cache_map,
+    std::unordered_map<int, series_minmax_cache_t>* alt_cache_map,
+    Resolver&& resolve,
     vnm::plot::Profiler* profiler,
     bool use_lod_cache,
     float fallback_min,
@@ -377,16 +409,30 @@ std::pair<float, float> compute_global_v_range(
     bool have_any = false;
 
     std::unordered_set<int> active_ids;
+    std::unordered_set<int> active_alt_ids;
 
     for (const auto& [id, series] : series_map) {
-        if (!series || !series->enabled || !series->data_source) {
-            continue;
-        }
-        if (!series->access.get_value && !series->access.get_range) {
+        if (!series || !series->enabled) {
             continue;
         }
 
-        active_ids.insert(id);
+        series_view_t view;
+        if (!resolve(id, *series, view)) {
+            continue;
+        }
+        if (!view.source || !view.access || !view.cache) {
+            continue;
+        }
+        if (!view.access->get_value && !view.access->get_range) {
+            continue;
+        }
+
+        if (view.cache == &cache_map) {
+            active_ids.insert(id);
+        }
+        else if (alt_cache_map && view.cache == alt_cache_map) {
+            active_alt_ids.insert(id);
+        }
 
         float series_min = 0.0f;
         float series_max = 0.0f;
@@ -395,10 +441,10 @@ std::pair<float, float> compute_global_v_range(
         // Fast path: data source provides O(1) range query.
         {
             VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.range_calc.global.fast_path");
-            if (series->data_source->has_value_range() &&
-                !series->data_source->value_range_needs_rescan())
+            if (view.source->has_value_range() &&
+                !view.source->value_range_needs_rescan())
             {
-                auto [ds_min, ds_max] = series->data_source->value_range();
+                auto [ds_min, ds_max] = view.source->value_range();
                 if (std::isfinite(ds_min) && std::isfinite(ds_max) && ds_min <= ds_max) {
                     series_min = ds_min;
                     series_max = ds_max;
@@ -409,9 +455,9 @@ std::pair<float, float> compute_global_v_range(
 
         if (!got_range) {
             // Slow path: scan LOD data with caching.
-            series_minmax_cache_t& cache = cache_map[id];
-            const void* identity = series->data_source->identity();
-            const std::size_t levels = series->data_source->lod_levels();
+            series_minmax_cache_t& cache = (*view.cache)[id];
+            const void* identity = view.source->identity();
+            const std::size_t levels = view.source->lod_levels();
             if (levels == 0) {
                 continue;
             }
@@ -422,9 +468,9 @@ std::pair<float, float> compute_global_v_range(
             }
 
             const std::size_t level = use_lod_cache ? (levels - 1) : 0;
-            if (!get_lod_minmax(*series, cache, level, series_min, series_max, profiler)) {
+            if (!get_lod_minmax(*view.source, *view.access, cache, level, series_min, series_max, profiler)) {
                 if (level == 0 ||
-                    !get_lod_minmax(*series, cache, 0, series_min, series_max, profiler)) {
+                    !get_lod_minmax(*view.source, *view.access, cache, 0, series_min, series_max, profiler)) {
                     continue;
                 }
             }
@@ -444,6 +490,17 @@ std::pair<float, float> compute_global_v_range(
         }
     }
 
+    if (alt_cache_map) {
+        for (auto it = alt_cache_map->begin(); it != alt_cache_map->end();) {
+            if (active_alt_ids.find(it->first) == active_alt_ids.end()) {
+                it = alt_cache_map->erase(it);
+            }
+            else {
+                ++it;
+            }
+        }
+    }
+
     if (!have_any) {
         return {fallback_min, fallback_max};
     }
@@ -451,9 +508,12 @@ std::pair<float, float> compute_global_v_range(
     return {v_min, v_max};
 }
 
+template <typename Resolver>
 std::pair<float, float> compute_visible_v_range(
     const std::map<int, std::shared_ptr<series_data_t>>& series_map,
     std::unordered_map<int, series_minmax_cache_t>& cache_map,
+    std::unordered_map<int, series_minmax_cache_t>* alt_cache_map,
+    Resolver&& resolve,
     vnm::plot::Profiler* profiler,
     double t_min,
     double t_max,
@@ -468,20 +528,34 @@ std::pair<float, float> compute_visible_v_range(
     bool have_any = false;
 
     std::unordered_set<int> active_ids;
+    std::unordered_set<int> active_alt_ids;
 
     for (const auto& [id, series] : series_map) {
-        if (!series || !series->enabled || !series->data_source) {
+        if (!series || !series->enabled) {
             continue;
         }
 
-        active_ids.insert(id);
+        series_view_t view;
+        if (!resolve(id, *series, view)) {
+            continue;
+        }
+        if (!view.source || !view.access || !view.cache) {
+            continue;
+        }
+
+        if (view.cache == &cache_map) {
+            active_ids.insert(id);
+        }
+        else if (alt_cache_map && view.cache == alt_cache_map) {
+            active_alt_ids.insert(id);
+        }
 
         float series_min = 0.0f;
         float series_max = 0.0f;
         {
             VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.range_calc.visible.query_v_range");
             uint64_t query_sequence = 0;
-            if (series->data_source->query_v_range_for_t_window(
+            if (view.source->query_v_range_for_t_window(
                     t_min,
                     t_max,
                     series_min,
@@ -491,9 +565,9 @@ std::pair<float, float> compute_visible_v_range(
                 if (!std::isfinite(series_min) || !std::isfinite(series_max) || series_min > series_max) {
                     continue;
                 }
-                series_minmax_cache_t& cache = cache_map[id];
-                const void* identity = series->data_source->identity();
-                const std::size_t levels = series->data_source->lod_levels();
+                series_minmax_cache_t& cache = (*view.cache)[id];
+                const void* identity = view.source->identity();
+                const std::size_t levels = view.source->lod_levels();
                 if (cache.identity != identity || cache.lods.size() != levels) {
                     cache.identity = identity;
                     cache.lods.assign(levels, lod_minmax_cache_t{});
@@ -507,14 +581,14 @@ std::pair<float, float> compute_visible_v_range(
             }
         }
 
-        if (!series->access.get_timestamp) {
+        if (!view.access->get_timestamp) {
             continue;
         }
-        if (!series->access.get_value && !series->access.get_range) {
+        if (!view.access->get_value && !view.access->get_range) {
             continue;
         }
 
-        const std::size_t levels = series->data_source->lod_levels();
+        const std::size_t levels = view.source->lod_levels();
         if (levels == 0) {
             continue;
         }
@@ -522,7 +596,7 @@ std::pair<float, float> compute_visible_v_range(
         data_snapshot_t snapshot0;
         {
             VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.range_calc.visible.snapshot0");
-            snapshot0 = series->data_source->snapshot(0);
+            snapshot0 = view.source->snapshot(0);
         }
         if (!snapshot0 || snapshot0.count == 0 || snapshot0.stride == 0) {
             continue;
@@ -532,7 +606,7 @@ std::pair<float, float> compute_visible_v_range(
         std::size_t end0 = 0;
         {
             VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.range_calc.visible.find_window");
-            if (!find_window_indices(*series, snapshot0, t_min, t_max, start0, end0)) {
+            if (!find_window_indices(*view.access, snapshot0, t_min, t_max, start0, end0)) {
                 continue;
             }
         }
@@ -544,7 +618,7 @@ std::pair<float, float> compute_visible_v_range(
         std::vector<std::size_t> scales;
         {
             VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.range_calc.visible.compute_lod_scales");
-            scales = compute_lod_scales(*series->data_source);
+            scales = compute_lod_scales(*view.source);
         }
         const std::size_t base_scale = scales.empty() ? 1 : scales[0];
         const std::size_t base_samples = count0 * base_scale;
@@ -561,7 +635,7 @@ std::pair<float, float> compute_visible_v_range(
         data_snapshot_t snapshot;
         {
             VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.range_calc.visible.snapshot_lod");
-            snapshot = series->data_source->snapshot(applied_level);
+            snapshot = view.source->snapshot(applied_level);
         }
         if (!snapshot || snapshot.count == 0 || snapshot.stride == 0) {
             snapshot = snapshot0;
@@ -572,15 +646,15 @@ std::pair<float, float> compute_visible_v_range(
         std::size_t end = 0;
         {
             VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.range_calc.visible.find_window");
-            if (!find_window_indices(*series, snapshot, t_min, t_max, start, end)) {
+            if (!find_window_indices(*view.access, snapshot, t_min, t_max, start, end)) {
                 continue;
             }
         }
 
         const bool full_range = (start == 0 && end == snapshot.count);
 
-        series_minmax_cache_t& cache = cache_map[id];
-        const void* identity = series->data_source->identity();
+        series_minmax_cache_t& cache = (*view.cache)[id];
+        const void* identity = view.source->identity();
         if (cache.identity != identity || cache.lods.size() != levels) {
             cache.identity = identity;
             cache.lods.assign(levels, lod_minmax_cache_t{});
@@ -589,14 +663,14 @@ std::pair<float, float> compute_visible_v_range(
         cache.query_sequence_valid = false;
 
         if (full_range) {
-            if (!get_lod_minmax(*series, cache, applied_level, series_min, series_max, profiler)) {
+            if (!get_lod_minmax(*view.source, *view.access, cache, applied_level, series_min, series_max, profiler)) {
                 continue;
             }
         }
         else {
             VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.range_calc.visible.window_minmax");
             if (!compute_window_minmax(
-                    *series,
+                    *view.access,
                     snapshot,
                     start,
                     end,
@@ -620,6 +694,17 @@ std::pair<float, float> compute_visible_v_range(
         }
     }
 
+    if (alt_cache_map) {
+        for (auto it = alt_cache_map->begin(); it != alt_cache_map->end();) {
+            if (active_alt_ids.find(it->first) == active_alt_ids.end()) {
+                it = alt_cache_map->erase(it);
+            }
+            else {
+                ++it;
+            }
+        }
+    }
+
     if (!have_any) {
         return {fallback_min, fallback_max};
     }
@@ -637,6 +722,7 @@ struct Plot_renderer::impl_t
     {
         Auto_v_range_mode auto_mode = Auto_v_range_mode::GLOBAL;
         bool v_auto = true;
+        bool preview_enabled = false;
         double extra_scale = 0.0;
         double t_min = 0.0;
         double t_max = 0.0;
@@ -646,6 +732,7 @@ struct Plot_renderer::impl_t
         {
             return auto_mode == other.auto_mode &&
                    v_auto == other.v_auto &&
+                   preview_enabled == other.preview_enabled &&
                    extra_scale == other.extra_scale &&
                    t_min == other.t_min &&
                    t_max == other.t_max &&
@@ -668,7 +755,7 @@ struct Plot_renderer::impl_t
 
         Plot_config config;
 
-        std::map<int, std::shared_ptr<Data_source>> data;
+        std::uint64_t data_signature = 0;
 
         double adjusted_font_px = 12.0;
         double base_label_height_px = 14.0;
@@ -711,6 +798,7 @@ struct Plot_renderer::impl_t
 
         std::unordered_map<int, std::shared_ptr<series_data_t>> core_series_cache;
         std::unordered_map<int, series_minmax_cache_t> v_range_cache;
+        std::unordered_map<int, series_minmax_cache_t> preview_v_range_cache;
         Layout_cache layout_cache;
 
         std::uint64_t data_signature = 0;
@@ -741,6 +829,7 @@ struct Plot_renderer::impl_t
 
             core_series_cache.clear();
             v_range_cache.clear();
+            preview_v_range_cache.clear();
             layout_cache.invalidate();
         }
     };
@@ -1020,16 +1109,10 @@ void Plot_renderer::synchronize(QQuickFramebufferObject* fbo_item)
     }
     m_impl->snapshot.vbar_width_pixels = widget->vbar_width_pixels();
 
-    // Copy series data
+    // Snapshot series signature (main + preview sources/styles/layouts)
     {
         std::shared_lock lock(widget->m_series_mutex);
-        // Convert series to data sources
-        m_impl->snapshot.data.clear();
-        for (const auto& [id, series] : widget->m_series) {
-            if (series && series->data_source) {
-                m_impl->snapshot.data[id] = series->data_source;
-            }
-        }
+        m_impl->snapshot.data_signature = hash_data_sources(widget->m_series);
     }
 
     // Copy UI state
@@ -1172,7 +1255,11 @@ void Plot_renderer::render()
         return;
     }
 
-    const std::uint64_t data_signature = hash_data_sources(m_impl->snapshot.data);
+    const double preview_visibility = config ? config->preview_visibility : 1.0;
+    const bool preview_enabled =
+        (m_impl->snapshot.adjusted_preview_height > 0.0) && (preview_visibility > 0.0);
+
+    const std::uint64_t data_signature = m_impl->snapshot.data_signature;
     const bool data_changed = (data_signature != m_impl->view.data_signature);
     const bool view_reset = m_impl->snapshot.reset_view_state;
     if (data_changed || view_reset) {
@@ -1210,6 +1297,7 @@ void Plot_renderer::render()
         impl_t::range_cache_key_t current_key;
         current_key.auto_mode = auto_mode;
         current_key.v_auto = v_auto;
+        current_key.preview_enabled = preview_enabled;
         current_key.extra_scale = auto_v_extra_scale;
         if (auto_mode == Auto_v_range_mode::VISIBLE) {
             current_key.t_min = m_impl->snapshot.cfg.t_min;
@@ -1226,6 +1314,12 @@ void Plot_renderer::render()
                 m_impl->owner->m_series,
                 m_impl->view.v_range_cache,
                 auto_mode);
+            if (!cache_invalid && preview_enabled) {
+                cache_invalid = !validate_preview_range_cache_sequences(
+                    m_impl->owner->m_series,
+                    m_impl->view.preview_v_range_cache,
+                    auto_mode);
+            }
         }
 
         if (!cache_invalid && !throttle_expired) {
@@ -1239,8 +1333,14 @@ void Plot_renderer::render()
                 v0 = m_impl->snapshot.cfg.v_manual_min;
                 v1 = m_impl->snapshot.cfg.v_manual_max;
             }
-            preview_v0 = m_impl->view.cached_preview_v0;
-            preview_v1 = m_impl->view.cached_preview_v1;
+            if (preview_enabled) {
+                preview_v0 = m_impl->view.cached_preview_v0;
+                preview_v1 = m_impl->view.cached_preview_v1;
+            }
+            else {
+                preview_v0 = v0;
+                preview_v1 = v1;
+            }
         }
         else {
             // Perform full range calculation.
@@ -1260,14 +1360,49 @@ void Plot_renderer::render()
                 v_max = static_cast<float>(center + padded_span * 0.5);
             };
 
-            bool preview_use_lod_cache = false;
             if (can_use_series) {
                 std::shared_lock lock(m_impl->owner->m_series_mutex);
+                const auto resolve_main = [&](int /*series_id*/,
+                                              const series_data_t& series,
+                                              series_view_t& view) -> bool {
+                    const Data_source* source = series.main_source();
+                    if (!source) {
+                        return false;
+                    }
+                    view.source = source;
+                    view.access = &series.main_access();
+                    view.cache = &m_impl->view.v_range_cache;
+                    return true;
+                };
+
+                const auto resolve_preview = [&](int /*series_id*/,
+                                                 const series_data_t& series,
+                                                 series_view_t& view) -> bool {
+                    const Data_source* source = series.preview_source();
+                    if (!source) {
+                        return false;
+                    }
+                    const Data_access_policy& access = series.preview_access();
+                    if (access.sample_stride > 0 &&
+                        source->sample_stride() != access.sample_stride)
+                    {
+                        return false;
+                    }
+                    view.source = source;
+                    view.access = &access;
+                    view.cache = series.preview_matches_main()
+                        ? &m_impl->view.v_range_cache
+                        : &m_impl->view.preview_v_range_cache;
+                    return true;
+                };
+
                 if (v_auto) {
                     if (auto_mode == Auto_v_range_mode::VISIBLE) {
                         auto [auto_v0, auto_v1] = compute_visible_v_range(
                             m_impl->owner->m_series,
                             m_impl->view.v_range_cache,
+                            nullptr,
+                            resolve_main,
                             profiler,
                             m_impl->snapshot.cfg.t_min,
                             m_impl->snapshot.cfg.t_max,
@@ -1282,6 +1417,8 @@ void Plot_renderer::render()
                         auto [auto_v0, auto_v1] = compute_global_v_range(
                             m_impl->owner->m_series,
                             m_impl->view.v_range_cache,
+                            nullptr,
+                            resolve_main,
                             profiler,
                             auto_mode == Auto_v_range_mode::GLOBAL_LOD,
                             m_impl->snapshot.cfg.v_min,
@@ -1296,17 +1433,25 @@ void Plot_renderer::render()
                     v1 = m_impl->snapshot.cfg.v_manual_max;
                 }
 
-                preview_use_lod_cache = (auto_mode == Auto_v_range_mode::GLOBAL_LOD);
-                auto [auto_preview_v0, auto_preview_v1] = compute_global_v_range(
-                    m_impl->owner->m_series,
-                    m_impl->view.v_range_cache,
-                    profiler,
-                    preview_use_lod_cache,
-                    m_impl->snapshot.cfg.v_min,
-                    m_impl->snapshot.cfg.v_max);
-                preview_v0 = auto_preview_v0;
-                preview_v1 = auto_preview_v1;
-                apply_auto_padding(preview_v0, preview_v1);
+                if (preview_enabled) {
+                    const bool preview_use_lod_cache = (auto_mode == Auto_v_range_mode::GLOBAL_LOD);
+                    auto [auto_preview_v0, auto_preview_v1] = compute_global_v_range(
+                        m_impl->owner->m_series,
+                        m_impl->view.v_range_cache,
+                        &m_impl->view.preview_v_range_cache,
+                        resolve_preview,
+                        profiler,
+                        preview_use_lod_cache,
+                        m_impl->snapshot.cfg.v_min,
+                        m_impl->snapshot.cfg.v_max);
+                    preview_v0 = auto_preview_v0;
+                    preview_v1 = auto_preview_v1;
+                    apply_auto_padding(preview_v0, preview_v1);
+                }
+                else {
+                    preview_v0 = v0;
+                    preview_v1 = v1;
+                }
             }
             else if (v_auto) {
                 v0 = m_impl->snapshot.cfg.v_min;
@@ -1398,7 +1543,7 @@ void Plot_renderer::render()
             const bool main_animating =
                 std::abs(v0 - target_v0) > span * k_anim_target_frac ||
                 std::abs(v1 - target_v1) > span * k_anim_target_frac;
-            const bool preview_visible = m_impl->snapshot.adjusted_preview_height > 0.0f;
+            const bool preview_visible = preview_enabled;
             const float preview_span =
                 std::max(std::abs(target_preview_v1 - target_preview_v0), k_anim_span_min);
             const bool preview_animating = preview_visible &&
@@ -1568,6 +1713,7 @@ void Plot_renderer::render()
                 core_series->color = series->color;
                 core_series->colormap_area = series->colormap_area;
                 core_series->colormap_line = series->colormap_line;
+                core_series->preview_config = series->preview_config;
 
                 // Normalize shader paths (remove qrc:/ prefixes for embedded asset lookup)
                 core_series->shader_set = normalize_shader_set(series->shader_set);
@@ -1610,7 +1756,9 @@ void Plot_renderer::render()
     m_impl->chrome.render_zero_line(core_ctx, m_impl->primitives);
 
     // Render preview overlay
-    m_impl->chrome.render_preview_overlay(core_ctx, m_impl->primitives);
+    if (preview_enabled) {
+        m_impl->chrome.render_preview_overlay(core_ctx, m_impl->primitives);
+    }
     m_impl->primitives.flush_rects(core_ctx.pmv);
 
     // Render text labels

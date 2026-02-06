@@ -1,9 +1,11 @@
 #include <vnm_plot/qt/plot_widget.h>
 #include <vnm_plot/qt/plot_renderer.h>
+#include <vnm_plot/qt/plot_time_axis.h>
 #include <vnm_plot/core/constants.h>
 #include <vnm_plot/core/algo.h>
 
 #include <QGuiApplication>
+#include <QDebug>
 #include <QQuickWindow>
 #include <QScreen>
 
@@ -233,30 +235,46 @@ void Plot_widget::set_line_width_px(double width)
 
 double Plot_widget::t_min() const
 {
+    if (m_time_axis) {
+        return m_time_axis->t_min();
+    }
     std::shared_lock lock(m_data_cfg_mutex);
     return m_data_cfg.t_min;
 }
 
 double Plot_widget::t_max() const
 {
+    if (m_time_axis) {
+        return m_time_axis->t_max();
+    }
     std::shared_lock lock(m_data_cfg_mutex);
     return m_data_cfg.t_max;
 }
 
 double Plot_widget::t_available_min() const
 {
+    if (m_time_axis) {
+        return m_time_axis->t_available_min();
+    }
     std::shared_lock lock(m_data_cfg_mutex);
     return m_data_cfg.t_available_min;
 }
 
 double Plot_widget::t_available_max() const
 {
+    if (m_time_axis) {
+        return m_time_axis->t_available_max();
+    }
     std::shared_lock lock(m_data_cfg_mutex);
     return m_data_cfg.t_available_max;
 }
 
 void Plot_widget::set_t_range(double t_min, double t_max)
 {
+    if (m_time_axis) {
+        m_time_axis->set_t_range(t_min, t_max);
+        return;
+    }
     {
         std::unique_lock lock(m_data_cfg_mutex);
         m_data_cfg.t_min = t_min;
@@ -268,6 +286,10 @@ void Plot_widget::set_t_range(double t_min, double t_max)
 
 void Plot_widget::set_available_t_range(double t_min, double t_max)
 {
+    if (m_time_axis) {
+        m_time_axis->set_available_t_range(t_min, t_max);
+        return;
+    }
     {
         std::unique_lock lock(m_data_cfg_mutex);
         if (t_max > t_min) {
@@ -293,6 +315,56 @@ void Plot_widget::set_available_t_range(double t_min, double t_max)
     }
     emit t_limits_changed();
     update();
+}
+
+Plot_time_axis* Plot_widget::time_axis() const
+{
+    return m_time_axis.data();
+}
+
+void Plot_widget::set_time_axis(Plot_time_axis* axis)
+{
+    if (m_time_axis == axis) {
+        return;
+    }
+
+    if (m_time_axis) {
+        QObject::disconnect(m_time_axis, nullptr, this, nullptr);
+        m_time_axis_connection = {};
+        m_time_axis_destroyed_connection = {};
+    }
+
+    m_time_axis = axis;
+
+    if (m_time_axis) {
+        m_time_axis_connection = QObject::connect(
+            m_time_axis,
+            &Plot_time_axis::t_limits_changed,
+            this,
+            [this]() { sync_time_axis_state(); });
+        m_time_axis_destroyed_connection = QObject::connect(
+            m_time_axis,
+            &QObject::destroyed,
+            this,
+            [this]() { clear_time_axis(); });
+        sync_time_axis_state();
+    }
+
+    emit time_axis_changed();
+    update();
+}
+
+void Plot_widget::attach_time_axis(Plot_widget* other)
+{
+    if (!other) {
+        qWarning() << "vnm_plot: attach_time_axis called with null widget.";
+        return;
+    }
+    if (!other->time_axis()) {
+        qWarning() << "vnm_plot: attach_time_axis called but other widget has no time axis.";
+        return;
+    }
+    set_time_axis(other->time_axis());
 }
 
 float Plot_widget::v_min() const
@@ -562,6 +634,10 @@ void Plot_widget::set_preview_height_steps(int steps)
 
 void Plot_widget::adjust_t_from_mouse_diff(double ref_width, double diff)
 {
+    if (m_time_axis) {
+        m_time_axis->adjust_t_from_mouse_diff(ref_width, diff);
+        return;
+    }
     if (ref_width <= 0.0) {
         return;
     }
@@ -577,6 +653,10 @@ void Plot_widget::adjust_t_from_mouse_diff(double ref_width, double diff)
 
 void Plot_widget::adjust_t_from_mouse_diff_on_preview(double ref_width, double diff)
 {
+    if (m_time_axis) {
+        m_time_axis->adjust_t_from_mouse_diff_on_preview(ref_width, diff);
+        return;
+    }
     if (ref_width <= 0.0) {
         return;
     }
@@ -594,6 +674,10 @@ void Plot_widget::adjust_t_from_mouse_diff_on_preview(double ref_width, double d
 
 void Plot_widget::adjust_t_from_mouse_pos_on_preview(double ref_width, double x_pos)
 {
+    if (m_time_axis) {
+        m_time_axis->adjust_t_from_mouse_pos_on_preview(ref_width, x_pos);
+        return;
+    }
     if (ref_width <= 0.0) {
         return;
     }
@@ -613,6 +697,10 @@ void Plot_widget::adjust_t_from_mouse_pos_on_preview(double ref_width, double x_
 
 void Plot_widget::adjust_t_from_pivot_and_scale(double pivot, double scale)
 {
+    if (m_time_axis) {
+        m_time_axis->adjust_t_from_pivot_and_scale(pivot, scale);
+        return;
+    }
     if (scale <= 0.0) {
         return;
     }
@@ -809,14 +897,13 @@ void Plot_widget::auto_adjust_view(bool adjust_t, double extra_v_scale, bool anc
         adjust_t = false;
     }
 
+    const bool has_time_axis = (m_time_axis != nullptr);
     if (adjust_t) {
         std::unique_lock lock(m_data_cfg_mutex);
         m_data_cfg.v_manual_min = static_cast<float>(new_vmin);
         m_data_cfg.v_manual_max = static_cast<float>(new_vmax);
         m_data_cfg.v_min = static_cast<float>(new_vmin);
         m_data_cfg.v_max = static_cast<float>(new_vmax);
-        m_data_cfg.t_min = agg.tmin;
-        m_data_cfg.t_max = agg.tmax;
     }
     else {
         std::unique_lock lock(m_data_cfg_mutex);
@@ -826,10 +913,19 @@ void Plot_widget::auto_adjust_view(bool adjust_t, double extra_v_scale, bool anc
         m_data_cfg.v_max = static_cast<float>(new_vmax);
     }
 
+    if (adjust_t && has_time_axis) {
+        m_time_axis->set_t_range(agg.tmin, agg.tmax);
+    }
+    else if (adjust_t) {
+        std::unique_lock lock(m_data_cfg_mutex);
+        m_data_cfg.t_min = agg.tmin;
+        m_data_cfg.t_max = agg.tmax;
+    }
+
     set_v_auto(false);
 
     emit v_limits_changed();
-    if (adjust_t) {
+    if (adjust_t && !has_time_axis) {
         emit t_limits_changed();
     }
     update();
@@ -1000,6 +1096,33 @@ data_config_t Plot_widget::data_cfg_snapshot() const
     return m_data_cfg;
 }
 
+void Plot_widget::sync_time_axis_state()
+{
+    if (!m_time_axis) {
+        return;
+    }
+
+    {
+        std::unique_lock lock(m_data_cfg_mutex);
+        m_data_cfg.t_min = m_time_axis->t_min();
+        m_data_cfg.t_max = m_time_axis->t_max();
+        m_data_cfg.t_available_min = m_time_axis->t_available_min();
+        m_data_cfg.t_available_max = m_time_axis->t_available_max();
+    }
+
+    emit t_limits_changed();
+    update();
+}
+
+void Plot_widget::clear_time_axis()
+{
+    m_time_axis = nullptr;
+    m_time_axis_connection = {};
+    m_time_axis_destroyed_connection = {};
+    emit time_axis_changed();
+    update();
+}
+
 bool Plot_widget::rendered_v_range(float& out_min, float& out_max) const
 {
     if (!m_rendered_v_range_valid.load(std::memory_order_acquire)) {
@@ -1028,6 +1151,10 @@ void Plot_widget::set_rendered_v_range(float v_min, float v_max) const
 
 void Plot_widget::adjust_t_to_target(double target_tmin, double target_tmax)
 {
+    if (m_time_axis) {
+        m_time_axis->adjust_t_to_target(target_tmin, target_tmax);
+        return;
+    }
     if (!(target_tmax > target_tmin)) {
         return;
     }
