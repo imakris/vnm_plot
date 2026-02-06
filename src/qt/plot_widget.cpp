@@ -116,11 +116,13 @@ Plot_widget::~Plot_widget() = default;
 
 void Plot_widget::add_series(int id, std::shared_ptr<series_data_t> series)
 {
+    std::shared_ptr<series_data_t> copy;
     if (series) {
-        normalize_series_shaders(*series);
+        copy = std::make_shared<series_data_t>(*series);
+        normalize_series_shaders(*copy);
     }
     std::unique_lock lock(m_series_mutex);
-    m_series[id] = std::move(series);
+    m_series[id] = std::move(copy);
     update();
 }
 

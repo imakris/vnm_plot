@@ -95,6 +95,7 @@ private:
     void set_is_playing(bool playing);
     void setup_series();
     void update_series_color();
+    void push_series_update();
     void set_style_flag(vnm::plot::Display_style flag, bool enabled);
 
     Function_plotter* m_plotter;

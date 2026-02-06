@@ -474,9 +474,11 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
             last_idx = std::min(last_idx + 2, snapshot.count);
         }
 
-        if (allow_stale_on_empty && have_ts_bounds && last_ts > first_ts) {
-            const bool out_of_range = (t_max <= first_ts) || (t_min >= last_ts);
-            if (out_of_range) {
+        if (allow_stale_on_empty && have_ts_bounds && last_ts > first_ts &&
+            !result.use_t_override)
+        {
+            const bool covers_window = (first_ts <= t_min) && (last_ts >= t_max);
+            if (!covers_window) {
                 first_idx = 0;
                 last_idx = snapshot.count;
                 result.use_t_override = true;
