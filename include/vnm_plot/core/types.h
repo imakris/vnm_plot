@@ -415,51 +415,23 @@ struct series_data_t
         return style;
     }
 
-    // True when preview access is invalid and preview source differs from main.
     bool preview_access_invalid_for_source() const
     {
-        if (!preview_config) {
-            return false;
-        }
-        if (preview_config->access.is_valid()) {
-            return false;
-        }
-        Data_source* preview = preview_config->data_source.get();
-        if (!preview) {
-            return false;
-        }
-        return preview != data_source.get();
+        return preview_config
+            && !preview_config->access.is_valid()
+            && preview_config->data_source
+            && preview_config->data_source.get() != data_source.get();
     }
 
-    // True when preview_config is set.
-    bool has_preview_config() const
-    {
-        return preview_config.has_value();
-    }
+    bool has_preview_config() const { return preview_config.has_value(); }
 
-    // True when preview uses same source pointer, layout key, and style as main.
     bool preview_matches_main() const
     {
-        if (!preview_config) {
-            return true;
-        }
-
-        Data_source* main = data_source.get();
-        Data_source* preview = preview_source();
-        if (!main || !preview) {
-            return false;
-        }
-        if (main != preview) {
-            return false;
-        }
-
-        const Data_access_policy& preview_acc = preview_access();
-        if (preview_acc.layout_key != access.layout_key) {
-            return false;
-        }
-
-        const Display_style preview_style = effective_preview_style();
-        return preview_style == style;
+        if (!preview_config) return true;
+        Data_source* prev = preview_source();
+        if (!data_source || !prev || data_source.get() != prev) return false;
+        return preview_access().layout_key == access.layout_key
+            && effective_preview_style() == style;
     }
 };
 

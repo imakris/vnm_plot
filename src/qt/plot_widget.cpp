@@ -66,6 +66,30 @@ double dpi_scaling_for_window([[maybe_unused]] void* native_handle)
 #endif
 }
 
+std::string normalize_asset_name(std::string_view name)
+{
+    std::string_view out = name;
+    if (out.rfind("qrc:/", 0) == 0) out.remove_prefix(5);
+    else if (out.rfind(":/", 0) == 0) out.remove_prefix(2);
+    if (out.rfind("vnm_plot/", 0) == 0) out.remove_prefix(9);
+    return std::string(out);
+}
+
+void normalize_shader_set_inplace(vnm::plot::shader_set_t& s)
+{
+    s.vert = normalize_asset_name(s.vert);
+    s.geom = normalize_asset_name(s.geom);
+    s.frag = normalize_asset_name(s.frag);
+}
+
+void normalize_series_shaders(vnm::plot::series_data_t& series)
+{
+    normalize_shader_set_inplace(series.shader_set);
+    for (auto& [style, shader] : series.shaders) {
+        normalize_shader_set_inplace(shader);
+    }
+}
+
 } // anonymous namespace
 
 namespace vnm::plot {
@@ -92,6 +116,9 @@ Plot_widget::~Plot_widget() = default;
 
 void Plot_widget::add_series(int id, std::shared_ptr<series_data_t> series)
 {
+    if (series) {
+        normalize_series_shaders(*series);
+    }
     std::unique_lock lock(m_series_mutex);
     m_series[id] = std::move(series);
     update();
@@ -662,85 +689,41 @@ void Plot_widget::set_preview_height_steps(int steps)
 
 void Plot_widget::adjust_t_from_mouse_diff(double ref_width, double diff)
 {
-    if (m_time_axis) {
-        m_time_axis->adjust_t_from_mouse_diff(ref_width, diff);
-        return;
-    }
-    if (ref_width <= 0.0) {
-        return;
-    }
-
+    if (m_time_axis) { m_time_axis->adjust_t_from_mouse_diff(ref_width, diff); return; }
+    if (ref_width <= 0.0) return;
     const auto cfg = data_cfg_snapshot();
-    const double t_min_val = cfg.t_min;
-    const double t_max_val = cfg.t_max;
-
-    const double span = t_max_val - t_min_val;
-    const double delta = diff * span / ref_width;
-    adjust_t_to_target(t_min_val - delta, t_max_val - delta);
+    const double delta = diff * (cfg.t_max - cfg.t_min) / ref_width;
+    adjust_t_to_target(cfg.t_min - delta, cfg.t_max - delta);
 }
 
 void Plot_widget::adjust_t_from_mouse_diff_on_preview(double ref_width, double diff)
 {
-    if (m_time_axis) {
-        m_time_axis->adjust_t_from_mouse_diff_on_preview(ref_width, diff);
-        return;
-    }
-    if (ref_width <= 0.0) {
-        return;
-    }
-
+    if (m_time_axis) { m_time_axis->adjust_t_from_mouse_diff_on_preview(ref_width, diff); return; }
+    if (ref_width <= 0.0) return;
     const auto cfg = data_cfg_snapshot();
-    const double t_min_val = cfg.t_min;
-    const double t_max_val = cfg.t_max;
-    const double avail_min = cfg.t_available_min;
-    const double avail_max = cfg.t_available_max;
-
-    const double avail_span = avail_max - avail_min;
-    const double delta = diff * avail_span / ref_width;
-    adjust_t_to_target(t_min_val + delta, t_max_val + delta);
+    const double delta = diff * (cfg.t_available_max - cfg.t_available_min) / ref_width;
+    adjust_t_to_target(cfg.t_min + delta, cfg.t_max + delta);
 }
 
 void Plot_widget::adjust_t_from_mouse_pos_on_preview(double ref_width, double x_pos)
 {
-    if (m_time_axis) {
-        m_time_axis->adjust_t_from_mouse_pos_on_preview(ref_width, x_pos);
-        return;
-    }
-    if (ref_width <= 0.0) {
-        return;
-    }
-
+    if (m_time_axis) { m_time_axis->adjust_t_from_mouse_pos_on_preview(ref_width, x_pos); return; }
+    if (ref_width <= 0.0) return;
     const auto cfg = data_cfg_snapshot();
-    const double t_min_val = cfg.t_min;
-    const double t_max_val = cfg.t_max;
-    const double avail_min = cfg.t_available_min;
-    const double avail_max = cfg.t_available_max;
-
-    const double span = t_max_val - t_min_val;
-    const double avail_span = avail_max - avail_min;
-    const double rel = x_pos / ref_width;
-    const double new_center = avail_min + rel * avail_span;
-    adjust_t_to_target(new_center - span * 0.5, new_center + span * 0.5);
+    const double span = cfg.t_max - cfg.t_min;
+    const double center = cfg.t_available_min
+        + (x_pos / ref_width) * (cfg.t_available_max - cfg.t_available_min);
+    adjust_t_to_target(center - span * 0.5, center + span * 0.5);
 }
 
 void Plot_widget::adjust_t_from_pivot_and_scale(double pivot, double scale)
 {
-    if (m_time_axis) {
-        m_time_axis->adjust_t_from_pivot_and_scale(pivot, scale);
-        return;
-    }
-    if (scale <= 0.0) {
-        return;
-    }
-
+    if (m_time_axis) { m_time_axis->adjust_t_from_pivot_and_scale(pivot, scale); return; }
+    if (scale <= 0.0) return;
     const auto cfg = data_cfg_snapshot();
-    const double t_min_val = cfg.t_min;
-    const double t_max_val = cfg.t_max;
-
-    const double t_pivot = t_min_val + (t_max_val - t_min_val) * pivot;
-    const double new_min = t_pivot - (t_pivot - t_min_val) * scale;
-    const double new_max = t_pivot + (t_max_val - t_pivot) * scale;
-    adjust_t_to_target(new_min, new_max);
+    const double t_pivot = cfg.t_min + (cfg.t_max - cfg.t_min) * pivot;
+    adjust_t_to_target(t_pivot - (t_pivot - cfg.t_min) * scale,
+                       t_pivot + (cfg.t_max - t_pivot) * scale);
 }
 
 void Plot_widget::adjust_v_from_mouse_diff(float ref_height, float diff)

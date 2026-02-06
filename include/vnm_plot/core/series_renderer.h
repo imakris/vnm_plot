@@ -77,29 +77,7 @@ private:
         double last_t_min_override = 0.0;
         double last_t_max_override = 0.0;
 
-        void reset()
-        {
-            id = UINT_MAX;
-            active_vbo = UINT_MAX;
-            last_ring_size = 0;
-            last_snapshot_elements = 0;
-            last_sequence = 0;
-            cached_data_identity = nullptr;
-            adjacency_ebo = UINT_MAX;
-            adjacency_ebo_capacity = 0;
-            adjacency_last_first = 0;
-            adjacency_last_count = 0;
-            last_first = 0;
-            last_count = 0;
-            last_lod_level = 0;
-            last_t_min = std::numeric_limits<double>::quiet_NaN();
-            last_t_max = std::numeric_limits<double>::quiet_NaN();
-            last_width_px = std::numeric_limits<double>::quiet_NaN();
-            last_applied_pps = 0.0;
-            last_use_t_override = false;
-            last_t_min_override = 0.0;
-            last_t_max_override = 0.0;
-        }
+        void reset() { *this = vbo_view_state_t{}; }
     };
 
     struct vbo_state_t
@@ -169,11 +147,9 @@ private:
     std::map<shader_set_t, std::shared_ptr<GL_program>> m_shaders;
     std::unordered_map<int, vbo_state_t> m_vbo_states;
     std::unordered_map<const series_data_t*, colormap_resource_set_t> m_colormap_textures;
-    std::unordered_set<int> m_missing_signal_logged;
-    std::unordered_set<int> m_missing_signal_preview_logged;
-    std::unordered_set<int> m_preview_missing_source_logged;
-    std::unordered_set<int> m_preview_invalid_access_logged;
-    std::unordered_set<int> m_preview_incompatible_stride_logged;
+    // Consolidated once-per-series error log deduplication.
+    // Key encodes (series_id, error_category) as uint64_t.
+    std::unordered_set<uint64_t> m_logged_errors;
 
     std::unique_ptr<series_pipe_t> m_pipe_line;
     std::unique_ptr<series_pipe_t> m_pipe_dots;

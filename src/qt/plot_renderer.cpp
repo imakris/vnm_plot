@@ -151,30 +151,6 @@ constexpr float k_auto_v_sync_eps = static_cast<float>(k_eps);
 constexpr float k_anim_span_min = static_cast<float>(k_eps);
 constexpr float k_anim_target_frac = 0.001f;
 
-std::string normalize_asset_name(std::string_view name)
-{
-    std::string_view out = name;
-    if (out.rfind("qrc:/", 0) == 0) {
-        out.remove_prefix(5);
-    }
-    else if (out.rfind(":/", 0) == 0) {
-        out.remove_prefix(2);
-    }
-    if (out.rfind("vnm_plot/", 0) == 0) {
-        out.remove_prefix(9);
-    }
-    return std::string(out);
-}
-
-shader_set_t normalize_shader_set(const shader_set_t& shader)
-{
-    shader_set_t res;
-    res.vert = normalize_asset_name(shader.vert);
-    res.geom = normalize_asset_name(shader.geom);
-    res.frag = normalize_asset_name(shader.frag);
-    return res;
-}
-
 bool scan_snapshot_minmax(
     const Data_access_policy& access,
     const data_snapshot_t& snapshot,
@@ -240,15 +216,6 @@ bool scan_snapshot_minmax(
     return true;
 }
 
-bool compute_snapshot_minmax(
-    const Data_access_policy& access,
-    const data_snapshot_t& snapshot,
-    float& out_min,
-    float& out_max)
-{
-    return scan_snapshot_minmax(access, snapshot, 0, snapshot.count, out_min, out_max);
-}
-
 bool find_window_indices(
     const Data_access_policy& access,
     const data_snapshot_t& snapshot,
@@ -263,7 +230,6 @@ bool find_window_indices(
     if (!access.get_timestamp || !snapshot || snapshot.count == 0 || snapshot.stride == 0) {
         return false;
     }
-
     if (!(t_max > t_min)) {
         return true;
     }
@@ -275,63 +241,20 @@ bool find_window_indices(
     }
     const double first_ts = access.get_timestamp(first_sample);
     const double last_ts = access.get_timestamp(last_sample);
-    if (std::isfinite(first_ts) && std::isfinite(last_ts)) {
-        if (t_max < first_ts || t_min > last_ts) {
-            return false;
-        }
+    if (std::isfinite(first_ts) && std::isfinite(last_ts) &&
+        (t_max < first_ts || t_min > last_ts)) {
+        return false;
     }
 
-    std::size_t lo = 0;
-    std::size_t hi = snapshot.count;
-    while (lo < hi) {
-        const std::size_t mid = (lo + hi) / 2;
-        const void* sample = snapshot.at(mid);
-        if (!sample) {
-            break;
-        }
-        const double ts = access.get_timestamp(sample);
-        if (ts < t_min) {
-            lo = mid + 1;
-        }
-        else {
-            hi = mid;
-        }
-    }
-    start_idx = (lo > 0) ? (lo - 1) : 0;
-
-    lo = start_idx;
-    hi = snapshot.count;
-    while (lo < hi) {
-        const std::size_t mid = (lo + hi) / 2;
-        const void* sample = snapshot.at(mid);
-        if (!sample) {
-            break;
-        }
-        const double ts = access.get_timestamp(sample);
-        if (ts <= t_max) {
-            lo = mid + 1;
-        }
-        else {
-            hi = mid;
-        }
-    }
-    end_idx = std::min(lo + 1, snapshot.count);
+    const auto& get_ts = access.get_timestamp;
+    std::size_t lb = detail::lower_bound_timestamp(snapshot, get_ts, t_min);
+    start_idx = (lb > 0) ? (lb - 1) : 0;
+    std::size_t ub = detail::upper_bound_timestamp(snapshot, get_ts, t_max);
+    end_idx = std::min(ub + 1, snapshot.count);
     if (end_idx <= start_idx) {
         end_idx = std::min(start_idx + 1, snapshot.count);
     }
-
     return true;
-}
-
-bool compute_window_minmax(
-    const Data_access_policy& access,
-    const data_snapshot_t& snapshot,
-    std::size_t start_idx,
-    std::size_t end_idx,
-    float& out_min,
-    float& out_max)
-{
-    return scan_snapshot_minmax(access, snapshot, start_idx, end_idx, out_min, out_max);
 }
 
 bool get_lod_minmax(
@@ -372,7 +295,7 @@ bool get_lod_minmax(
     float v_max = 0.0f;
     {
         VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.range_calc.get_lod_minmax.scan");
-        if (!compute_snapshot_minmax(access, snapshot, v_min, v_max)) {
+        if (!scan_snapshot_minmax(access, snapshot, 0, snapshot.count, v_min, v_max)) {
             return false;
         }
     }
@@ -393,6 +316,15 @@ struct series_view_t
     const Data_access_policy* access = nullptr;
     std::unordered_map<int, series_minmax_cache_t>* cache = nullptr;
 };
+
+void purge_stale_cache(std::unordered_map<int, series_minmax_cache_t>& cache,
+                       const std::unordered_set<int>& active)
+{
+    for (auto it = cache.begin(); it != cache.end();) {
+        if (active.find(it->first) == active.end()) it = cache.erase(it);
+        else ++it;
+    }
+}
 
 template <typename Resolver>
 std::pair<float, float> compute_global_v_range(
@@ -441,18 +373,12 @@ std::pair<float, float> compute_global_v_range(
         float series_max = 0.0f;
         bool got_range = false;
 
-        // Fast path: data source provides O(1) range query.
-        {
-            VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.range_calc.global.fast_path");
-            if (view.source->has_value_range() &&
-                !view.source->value_range_needs_rescan())
-            {
-                auto [ds_min, ds_max] = view.source->value_range();
-                if (std::isfinite(ds_min) && std::isfinite(ds_max) && ds_min <= ds_max) {
-                    series_min = ds_min;
-                    series_max = ds_max;
-                    got_range = true;
-                }
+        if (view.source->has_value_range() && !view.source->value_range_needs_rescan()) {
+            auto [ds_min, ds_max] = view.source->value_range();
+            if (std::isfinite(ds_min) && std::isfinite(ds_max) && ds_min <= ds_max) {
+                series_min = ds_min;
+                series_max = ds_max;
+                got_range = true;
             }
         }
 
@@ -484,25 +410,8 @@ std::pair<float, float> compute_global_v_range(
         have_any = true;
     }
 
-    for (auto it = cache_map.begin(); it != cache_map.end();) {
-        if (active_ids.find(it->first) == active_ids.end()) {
-            it = cache_map.erase(it);
-        }
-        else {
-            ++it;
-        }
-    }
-
-    if (alt_cache_map) {
-        for (auto it = alt_cache_map->begin(); it != alt_cache_map->end();) {
-            if (active_alt_ids.find(it->first) == active_alt_ids.end()) {
-                it = alt_cache_map->erase(it);
-            }
-            else {
-                ++it;
-            }
-        }
-    }
+    purge_stale_cache(cache_map, active_ids);
+    if (alt_cache_map) purge_stale_cache(*alt_cache_map, active_alt_ids);
 
     if (!have_any) {
         return {fallback_min, fallback_max};
@@ -555,104 +464,59 @@ std::pair<float, float> compute_visible_v_range(
 
         float series_min = 0.0f;
         float series_max = 0.0f;
+        uint64_t query_sequence = 0;
+        if (view.source->query_v_range_for_t_window(
+                t_min, t_max, series_min, series_max, &query_sequence))
         {
-            VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.range_calc.visible.query_v_range");
-            uint64_t query_sequence = 0;
-            if (view.source->query_v_range_for_t_window(
-                    t_min,
-                    t_max,
-                    series_min,
-                    series_max,
-                    &query_sequence))
-            {
-                if (!std::isfinite(series_min) || !std::isfinite(series_max) || series_min > series_max) {
-                    continue;
-                }
-                series_minmax_cache_t& cache = (*view.cache)[id];
-                const void* identity = view.source->identity();
-                const std::size_t levels = view.source->lod_levels();
-                if (cache.identity != identity || cache.lods.size() != levels) {
-                    cache.identity = identity;
-                    cache.lods.assign(levels, lod_minmax_cache_t{});
-                }
-                cache.query_sequence = query_sequence;
-                cache.query_sequence_valid = (query_sequence != 0);
-                v_min = std::min(v_min, series_min);
-                v_max = std::max(v_max, series_max);
-                have_any = true;
+            if (!std::isfinite(series_min) || !std::isfinite(series_max) || series_min > series_max) {
                 continue;
             }
+            series_minmax_cache_t& cache = (*view.cache)[id];
+            const void* identity = view.source->identity();
+            const std::size_t levels = view.source->lod_levels();
+            if (cache.identity != identity || cache.lods.size() != levels) {
+                cache.identity = identity;
+                cache.lods.assign(levels, lod_minmax_cache_t{});
+            }
+            cache.query_sequence = query_sequence;
+            cache.query_sequence_valid = (query_sequence != 0);
+            v_min = std::min(v_min, series_min);
+            v_max = std::max(v_max, series_max);
+            have_any = true;
+            continue;
         }
 
-        if (!view.access->get_timestamp) {
-            continue;
-        }
-        if (!view.access->get_value && !view.access->get_range) {
-            continue;
-        }
+        if (!view.access->get_timestamp) continue;
+        if (!view.access->get_value && !view.access->get_range) continue;
 
         const std::size_t levels = view.source->lod_levels();
-        if (levels == 0) {
-            continue;
-        }
+        if (levels == 0) continue;
 
-        data_snapshot_t snapshot0;
-        {
-            VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.range_calc.visible.snapshot0");
-            snapshot0 = view.source->snapshot(0);
-        }
-        if (!snapshot0 || snapshot0.count == 0 || snapshot0.stride == 0) {
-            continue;
-        }
+        data_snapshot_t snapshot0 = view.source->snapshot(0);
+        if (!snapshot0 || snapshot0.count == 0 || snapshot0.stride == 0) continue;
 
-        std::size_t start0 = 0;
-        std::size_t end0 = 0;
-        {
-            VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.range_calc.visible.find_window");
-            if (!find_window_indices(*view.access, snapshot0, t_min, t_max, start0, end0)) {
-                continue;
-            }
-        }
+        std::size_t start0 = 0, end0 = 0;
+        if (!find_window_indices(*view.access, snapshot0, t_min, t_max, start0, end0)) continue;
         const std::size_t count0 = (end0 > start0) ? (end0 - start0) : 0;
-        if (count0 == 0) {
-            continue;
-        }
+        if (count0 == 0) continue;
 
-        std::vector<std::size_t> scales;
-        {
-            VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.range_calc.visible.compute_lod_scales");
-            scales = compute_lod_scales(*view.source);
-        }
+        auto scales = compute_lod_scales(*view.source);
         const std::size_t base_scale = scales.empty() ? 1 : scales[0];
         const std::size_t base_samples = count0 * base_scale;
         const double base_pps = (base_samples > 0 && width_px > 0.0)
             ? width_px / static_cast<double>(base_samples)
             : 0.0;
-        std::size_t desired_level = 0;
-        {
-            VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.range_calc.visible.choose_lod_level");
-            desired_level = choose_lod_level(scales, 0, base_pps);
-        }
+        const std::size_t desired_level = choose_lod_level(scales, 0, base_pps);
 
         std::size_t applied_level = desired_level;
-        data_snapshot_t snapshot;
-        {
-            VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.range_calc.visible.snapshot_lod");
-            snapshot = view.source->snapshot(applied_level);
-        }
+        data_snapshot_t snapshot = view.source->snapshot(applied_level);
         if (!snapshot || snapshot.count == 0 || snapshot.stride == 0) {
             snapshot = snapshot0;
             applied_level = 0;
         }
 
-        std::size_t start = 0;
-        std::size_t end = 0;
-        {
-            VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.range_calc.visible.find_window");
-            if (!find_window_indices(*view.access, snapshot, t_min, t_max, start, end)) {
-                continue;
-            }
-        }
+        std::size_t start = 0, end = 0;
+        if (!find_window_indices(*view.access, snapshot, t_min, t_max, start, end)) continue;
 
         const bool full_range = (start == 0 && end == snapshot.count);
 
@@ -671,14 +535,8 @@ std::pair<float, float> compute_visible_v_range(
             }
         }
         else {
-            VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.range_calc.visible.window_minmax");
-            if (!compute_window_minmax(
-                    *view.access,
-                    snapshot,
-                    start,
-                    end,
-                    series_min,
-                    series_max)) {
+            if (!scan_snapshot_minmax(*view.access, snapshot, start, end,
+                    series_min, series_max)) {
                 continue;
             }
         }
@@ -688,25 +546,8 @@ std::pair<float, float> compute_visible_v_range(
         have_any = true;
     }
 
-    for (auto it = cache_map.begin(); it != cache_map.end();) {
-        if (active_ids.find(it->first) == active_ids.end()) {
-            it = cache_map.erase(it);
-        }
-        else {
-            ++it;
-        }
-    }
-
-    if (alt_cache_map) {
-        for (auto it = alt_cache_map->begin(); it != alt_cache_map->end();) {
-            if (active_alt_ids.find(it->first) == active_alt_ids.end()) {
-                it = alt_cache_map->erase(it);
-            }
-            else {
-                ++it;
-            }
-        }
-    }
+    purge_stale_cache(cache_map, active_ids);
+    if (alt_cache_map) purge_stale_cache(*alt_cache_map, active_alt_ids);
 
     if (!have_any) {
         return {fallback_min, fallback_max};
@@ -799,7 +640,6 @@ struct Plot_renderer::impl_t
         int last_vertical_seed_index = -1;
         int last_horizontal_seed_index = -1;
 
-        std::unordered_map<int, std::shared_ptr<series_data_t>> core_series_cache;
         std::unordered_map<int, series_minmax_cache_t> v_range_cache;
         std::unordered_map<int, series_minmax_cache_t> preview_v_range_cache;
         Layout_cache layout_cache;
@@ -830,7 +670,6 @@ struct Plot_renderer::impl_t
             last_vertical_seed_index = -1;
             last_horizontal_seed_index = -1;
 
-            core_series_cache.clear();
             v_range_cache.clear();
             preview_v_range_cache.clear();
             layout_cache.invalidate();
@@ -1647,11 +1486,6 @@ void Plot_renderer::render()
         };
     }();
 
-    frame_context_t series_ctx = [&]() -> frame_context_t {
-        VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.context_build.series_ctx");
-        return core_ctx;
-    }();
-
     // Clear to transparent - let QML provide the background color (matches Lumis behavior)
     const bool dark_mode = config ? config->dark_mode : false;
     const bool clear_to_transparent = config ? config->clear_to_transparent : false;
@@ -1659,7 +1493,6 @@ void Plot_renderer::render()
         dark_mode ? Color_palette::dark() : Color_palette::light();
     GLboolean was_multisample = GL_FALSE;
     {
-        VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.gl_setup");
         if (clear_to_transparent) {
             glClearColor(0.f, 0.f, 0.f, 0.f);
         }
@@ -1687,75 +1520,8 @@ void Plot_renderer::render()
 
     // Render series
     if (m_impl->owner) {
-        VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.execute_passes");
-        std::shared_lock lock(m_impl->owner->m_series_mutex, std::defer_lock);
-        {
-            VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.execute_passes.lock");
-            lock.lock();
-        }
-        std::map<int, std::shared_ptr<series_data_t>> core_series_map;
-        std::unordered_set<int> seen_ids;
-        {
-            VNM_PLOT_PROFILE_SCOPE(
-                profiler,
-                "renderer.frame.execute_passes.series_prepare");
-            core_series_map.clear();
-            for (const auto& [id, series] : m_impl->owner->m_series) {
-                if (!series) {
-                    continue;
-                }
-
-                seen_ids.insert(id);
-
-                auto& core_series = m_impl->view.core_series_cache[id];
-                if (!core_series) {
-                    core_series = std::make_shared<series_data_t>();
-                }
-
-                // Copy basic fields (types are now unified, no conversion needed)
-                core_series->id = id;
-                core_series->enabled = series->enabled;
-                core_series->style = series->style;
-                core_series->color = series->color;
-                core_series->colormap_area = series->colormap_area;
-                core_series->colormap_line = series->colormap_line;
-                core_series->preview_config = series->preview_config;
-
-                // Normalize shader paths (remove qrc:/ prefixes for embedded asset lookup)
-                core_series->shader_set = normalize_shader_set(series->shader_set);
-                core_series->shaders.clear();
-                for (const auto& [style, shader] : series->shaders) {
-                    core_series->shaders.emplace(style, normalize_shader_set(shader));
-                }
-
-                // Copy access policy (types are now unified)
-                core_series->access = series->access;
-
-                // Use data source directly (types are now unified, no adapter needed)
-                core_series->data_source = series->data_source;
-
-                core_series_map[id] = core_series;
-            }
-
-            // Cleanup stale cache entries
-            for (auto it = m_impl->view.core_series_cache.begin();
-                it != m_impl->view.core_series_cache.end(); )
-            {
-                if (seen_ids.find(it->first) == seen_ids.end()) {
-                    it = m_impl->view.core_series_cache.erase(it);
-                }
-                else {
-                    ++it;
-                }
-            }
-        }
-
-        {
-            VNM_PLOT_PROFILE_SCOPE(
-                profiler,
-                "renderer.frame.execute_passes.series_render");
-            m_impl->series.render(series_ctx, core_series_map);
-        }
+        std::shared_lock lock(m_impl->owner->m_series_mutex);
+        m_impl->series.render(core_ctx, m_impl->owner->m_series);
     }
 
     // Always draw the zero-value gridline on top of series
@@ -1778,12 +1544,9 @@ void Plot_renderer::render()
         }
     }
 
-    {
-        VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.gl_cleanup");
-        glDisable(GL_BLEND);
-        if (!was_multisample) {
-            glDisable(GL_MULTISAMPLE);
-        }
+    glDisable(GL_BLEND);
+    if (!was_multisample) {
+        glDisable(GL_MULTISAMPLE);
     }
 }
 
