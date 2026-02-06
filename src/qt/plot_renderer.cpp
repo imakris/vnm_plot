@@ -214,9 +214,12 @@ bool scan_snapshot_minmax(
             low = lo;
             high = hi;
         }
-        else {
+        else if (access.get_value) {
             low = access.get_value(sample);
             high = low;
+        }
+        else {
+            continue;
         }
 
         if (!std::isfinite(low) || !std::isfinite(high)) {

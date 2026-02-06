@@ -235,36 +235,24 @@ void Plot_widget::set_line_width_px(double width)
 
 double Plot_widget::t_min() const
 {
-    if (m_time_axis) {
-        return m_time_axis->t_min();
-    }
     std::shared_lock lock(m_data_cfg_mutex);
     return m_data_cfg.t_min;
 }
 
 double Plot_widget::t_max() const
 {
-    if (m_time_axis) {
-        return m_time_axis->t_max();
-    }
     std::shared_lock lock(m_data_cfg_mutex);
     return m_data_cfg.t_max;
 }
 
 double Plot_widget::t_available_min() const
 {
-    if (m_time_axis) {
-        return m_time_axis->t_available_min();
-    }
     std::shared_lock lock(m_data_cfg_mutex);
     return m_data_cfg.t_available_min;
 }
 
 double Plot_widget::t_available_max() const
 {
-    if (m_time_axis) {
-        return m_time_axis->t_available_max();
-    }
     std::shared_lock lock(m_data_cfg_mutex);
     return m_data_cfg.t_available_max;
 }
