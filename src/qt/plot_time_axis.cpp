@@ -6,20 +6,6 @@ namespace vnm::plot {
 
 namespace {
 constexpr double k_axis_eps = 1e-12;
-constexpr double k_axis_min_span_abs = 1e-9;
-constexpr double k_axis_min_span_rel = 1e-9;
-
-double min_span_for(double value, double avail_span)
-{
-    double span = std::max(k_axis_min_span_abs, std::abs(value) * k_axis_min_span_rel);
-    if (avail_span > 0.0) {
-        span = std::min(span, avail_span);
-        if (!(span > 0.0)) {
-            span = std::max(k_axis_min_span_abs, std::abs(value) * k_axis_min_span_rel);
-        }
-    }
-    return span;
-}
 }
 
 Plot_time_axis::Plot_time_axis(QObject* parent)
@@ -51,14 +37,13 @@ void Plot_time_axis::set_t_min(double v)
     double new_min = v;
     double new_max = m_t_max;
     if (v >= m_t_max) {
-        double span = m_t_max - m_t_min;
+        const double span = m_t_max - m_t_min;
         if (!(span > 0.0)) {
-            const double avail_span = m_t_available_max - m_t_available_min;
-            span = min_span_for(v, avail_span);
+            return;
         }
         new_max = v + span;
     }
-    adjust_t_to_target(new_min, new_max);
+    set_limits_if_changed(new_min, new_max, m_t_available_min, m_t_available_max);
 }
 
 void Plot_time_axis::set_t_max(double v)
@@ -66,14 +51,13 @@ void Plot_time_axis::set_t_max(double v)
     double new_min = m_t_min;
     double new_max = v;
     if (v <= m_t_min) {
-        double span = m_t_max - m_t_min;
+        const double span = m_t_max - m_t_min;
         if (!(span > 0.0)) {
-            const double avail_span = m_t_available_max - m_t_available_min;
-            span = min_span_for(v, avail_span);
+            return;
         }
         new_min = v - span;
     }
-    adjust_t_to_target(new_min, new_max);
+    set_limits_if_changed(new_min, new_max, m_t_available_min, m_t_available_max);
 }
 
 void Plot_time_axis::set_t_available_min(double v)

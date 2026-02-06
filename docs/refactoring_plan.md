@@ -70,7 +70,7 @@ bool preview_matches_main() const;
 `Data_access_policy` already has a `layout_key` member. This key should be computed once at policy construction (not per-frame) and used for VAO/cache identity.
 
 ### Data_access_policy Validity
-`Data_access_policy` validity is determined by `access.is_valid()` (non-null `get_timestamp` and either `get_value` or `get_range`, plus `sample_stride > 0`). A default-constructed policy is considered invalid and will fall back to the main access policy.
+`Data_access_policy` validity is determined by `access.is_valid()` (non-null `get_timestamp`/`get_value`/`get_range` and `sample_stride > 0`). A default-constructed policy is considered invalid and will fall back to the main access policy.
 
 ## Renderer and Cache Changes
 

@@ -963,28 +963,17 @@ QVariantList Plot_widget::get_indicator_samples(double x, double plot_width, dou
         }
 
         const std::size_t count = snap.count;
-        const auto sample_at = [&](std::size_t idx) -> const void* {
-            return snap.at(idx);
-        };
+        const auto* base = static_cast<const std::uint8_t*>(snap.data);
 
-        const void* first_sample = sample_at(0);
-        const void* last_sample = sample_at(count - 1);
-        if (!first_sample || !last_sample) {
-            continue;
-        }
-        const double first_ts = series->get_timestamp(first_sample);
-        const double last_ts = series->get_timestamp(last_sample);
+        const double first_ts = series->get_timestamp(base);
+        const double last_ts = series->get_timestamp(base + (count - 1) * snap.stride);
         const bool ascending = first_ts <= last_ts;
 
         std::size_t lo = 0;
         std::size_t hi = count - 1;
         while (lo < hi) {
             std::size_t mid = (lo + hi) / 2;
-            const void* sample = sample_at(mid);
-            if (!sample) {
-                break;
-            }
-            const double ts = series->get_timestamp(sample);
+            const double ts = series->get_timestamp(base + mid * snap.stride);
             if (ascending ? (ts < x) : (ts > x)) {
                 lo = mid + 1;
             }
@@ -1029,15 +1018,10 @@ QVariantList Plot_widget::get_indicator_samples(double x, double plot_width, dou
             }
         }
 
-        const void* sample0 = sample_at(i0);
-        const void* sample1 = sample_at(i1);
-        if (!sample0 || !sample1) {
-            continue;
-        }
-        const double x0 = series->get_timestamp(sample0);
-        const double x1 = series->get_timestamp(sample1);
-        const double y0 = static_cast<double>(series->get_value(sample0));
-        const double y1 = static_cast<double>(series->get_value(sample1));
+        const double x0 = series->get_timestamp(base + i0 * snap.stride);
+        const double x1 = series->get_timestamp(base + i1 * snap.stride);
+        const double y0 = static_cast<double>(series->get_value(base + i0 * snap.stride));
+        const double y1 = static_cast<double>(series->get_value(base + i1 * snap.stride));
 
         double y = y0;
         const double denom = x1 - x0;
