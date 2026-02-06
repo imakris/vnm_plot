@@ -145,6 +145,22 @@ std::uint64_t hash_data_sources(const std::map<int, std::shared_ptr<series_data_
     return hash;
 }
 
+std::uint64_t hash_series_snapshot(const std::map<int, std::shared_ptr<series_data_t>>& series_map)
+{
+    std::uint64_t hash = 1469598103934665603ULL;
+    for (const auto& [id, series] : series_map) {
+        if (!series) {
+            continue;
+        }
+        const std::uint64_t series_ptr = static_cast<std::uint64_t>(
+            reinterpret_cast<std::uintptr_t>(series.get()));
+        std::uint64_t value = static_cast<std::uint64_t>(id);
+        value ^= series_ptr + 0x9e3779b97f4a7c15ULL + (value << 6) + (value >> 2);
+        hash ^= value + 0x9e3779b97f4a7c15ULL + (hash << 6) + (hash >> 2);
+    }
+    return hash;
+}
+
 constexpr float k_auto_v_padding_factor = 0.125f;
 constexpr float k_auto_v_padding_min = 0.5f;
 constexpr float k_auto_v_sync_eps = static_cast<float>(k_eps);
@@ -600,6 +616,7 @@ struct Plot_renderer::impl_t
         Plot_config config;
 
         std::uint64_t data_signature = 0;
+        std::uint64_t series_snapshot_signature = 0;
 
         double adjusted_font_px = 12.0;
         double base_label_height_px = 14.0;
@@ -640,11 +657,13 @@ struct Plot_renderer::impl_t
         int last_vertical_seed_index = -1;
         int last_horizontal_seed_index = -1;
 
+        std::map<int, std::shared_ptr<series_data_t>> series_snapshot;
         std::unordered_map<int, series_minmax_cache_t> v_range_cache;
         std::unordered_map<int, series_minmax_cache_t> preview_v_range_cache;
         Layout_cache layout_cache;
 
         std::uint64_t data_signature = 0;
+        std::uint64_t series_snapshot_signature = 0;
 
         void reset_for_data_change()
         {
@@ -955,6 +974,7 @@ void Plot_renderer::synchronize(QQuickFramebufferObject* fbo_item)
     {
         std::shared_lock lock(widget->m_series_mutex);
         m_impl->snapshot.data_signature = hash_data_sources(widget->m_series);
+        m_impl->snapshot.series_snapshot_signature = hash_series_snapshot(widget->m_series);
     }
 
     // Copy UI state
@@ -1102,6 +1122,7 @@ void Plot_renderer::render()
         (m_impl->snapshot.adjusted_preview_height > 0.0) && (preview_visibility > 0.0);
 
     const std::uint64_t data_signature = m_impl->snapshot.data_signature;
+    const std::uint64_t series_signature = m_impl->snapshot.series_snapshot_signature;
     const bool data_changed = (data_signature != m_impl->view.data_signature);
     const bool view_reset = m_impl->snapshot.reset_view_state;
     if (data_changed || view_reset) {
@@ -1109,6 +1130,17 @@ void Plot_renderer::render()
         m_impl->view.data_signature = data_signature;
         m_impl->view.reset_for_data_change();
     }
+
+    const bool series_snapshot_changed =
+        (series_signature != m_impl->view.series_snapshot_signature);
+    if (m_impl->owner &&
+        (data_changed || series_snapshot_changed || m_impl->view.series_snapshot.empty()))
+    {
+        std::shared_lock lock(m_impl->owner->m_series_mutex);
+        m_impl->view.series_snapshot = m_impl->owner->m_series;
+        m_impl->view.series_snapshot_signature = series_signature;
+    }
+    const auto& series_snapshot = m_impl->view.series_snapshot;
 
     const bool prev_v_auto = (data_changed || view_reset)
         ? m_impl->snapshot.v_auto
@@ -1132,7 +1164,7 @@ void Plot_renderer::render()
             config ? config->auto_v_range_mode : Auto_v_range_mode::GLOBAL;
         const double auto_v_extra_scale = config ? config->auto_v_range_extra_scale : 0.0;
         const bool v_auto = m_impl->snapshot.v_auto;
-        const bool can_use_series = (m_impl->owner != nullptr);
+        const bool can_use_series = (m_impl->owner != nullptr) && !series_snapshot.empty();
 
         // Check for cache invalidation conditions.
         // Invalidate when: mode changes, v_auto changes, config changes, or window changes.
@@ -1151,14 +1183,13 @@ void Plot_renderer::render()
                              (current_key != m_impl->view.last_range_key);
 
         if (!cache_invalid && !throttle_expired && v_auto && can_use_series) {
-            std::shared_lock lock(m_impl->owner->m_series_mutex);
             cache_invalid = !validate_range_cache_sequences(
-                m_impl->owner->m_series,
+                series_snapshot,
                 m_impl->view.v_range_cache,
                 auto_mode);
             if (!cache_invalid && preview_enabled) {
                 cache_invalid = !validate_preview_range_cache_sequences(
-                    m_impl->owner->m_series,
+                    series_snapshot,
                     m_impl->view.preview_v_range_cache,
                     auto_mode);
             }
@@ -1202,11 +1233,10 @@ void Plot_renderer::render()
                 v_max = static_cast<float>(center + padded_span * 0.5);
             };
 
-            if (can_use_series) {
-                std::shared_lock lock(m_impl->owner->m_series_mutex);
-                const auto resolve_main = [&](int /*series_id*/,
-                                              const series_data_t& series,
-                                              series_view_t& view) -> bool {
+        if (can_use_series) {
+            const auto resolve_main = [&](int /*series_id*/,
+                                          const series_data_t& series,
+                                          series_view_t& view) -> bool {
                     Data_source* source = series.main_source();
                     if (!source) {
                         return false;
@@ -1242,12 +1272,12 @@ void Plot_renderer::render()
                 };
 
                 if (v_auto) {
-                    if (auto_mode == Auto_v_range_mode::VISIBLE) {
-                        auto [auto_v0, auto_v1] = compute_visible_v_range(
-                            m_impl->owner->m_series,
-                            m_impl->view.v_range_cache,
-                            nullptr,
-                            resolve_main,
+                if (auto_mode == Auto_v_range_mode::VISIBLE) {
+                    auto [auto_v0, auto_v1] = compute_visible_v_range(
+                        series_snapshot,
+                        m_impl->view.v_range_cache,
+                        nullptr,
+                        resolve_main,
                             profiler,
                             m_impl->snapshot.cfg.t_min,
                             m_impl->snapshot.cfg.t_max,
@@ -1258,12 +1288,12 @@ void Plot_renderer::render()
                         v1 = auto_v1;
                         apply_auto_padding(v0, v1);
                     }
-                    else {
-                        auto [auto_v0, auto_v1] = compute_global_v_range(
-                            m_impl->owner->m_series,
-                            m_impl->view.v_range_cache,
-                            nullptr,
-                            resolve_main,
+                else {
+                    auto [auto_v0, auto_v1] = compute_global_v_range(
+                        series_snapshot,
+                        m_impl->view.v_range_cache,
+                        nullptr,
+                        resolve_main,
                             profiler,
                             auto_mode == Auto_v_range_mode::GLOBAL_LOD,
                             m_impl->snapshot.cfg.v_min,
@@ -1278,13 +1308,13 @@ void Plot_renderer::render()
                     v1 = m_impl->snapshot.cfg.v_manual_max;
                 }
 
-                if (preview_enabled) {
-                    const bool preview_use_lod_cache = (auto_mode == Auto_v_range_mode::GLOBAL_LOD);
-                    auto [auto_preview_v0, auto_preview_v1] = compute_global_v_range(
-                        m_impl->owner->m_series,
-                        m_impl->view.v_range_cache,
-                        &m_impl->view.preview_v_range_cache,
-                        resolve_preview,
+            if (preview_enabled) {
+                const bool preview_use_lod_cache = (auto_mode == Auto_v_range_mode::GLOBAL_LOD);
+                auto [auto_preview_v0, auto_preview_v1] = compute_global_v_range(
+                    series_snapshot,
+                    m_impl->view.v_range_cache,
+                    &m_impl->view.preview_v_range_cache,
+                    resolve_preview,
                         profiler,
                         preview_use_lod_cache,
                         m_impl->snapshot.cfg.v_min,
@@ -1519,9 +1549,8 @@ void Plot_renderer::render()
     m_impl->chrome.render_grid_and_backgrounds(core_ctx, m_impl->primitives);
 
     // Render series
-    if (m_impl->owner) {
-        std::shared_lock lock(m_impl->owner->m_series_mutex);
-        m_impl->series.render(core_ctx, m_impl->owner->m_series);
+    if (m_impl->owner && !series_snapshot.empty()) {
+        m_impl->series.render(core_ctx, series_snapshot);
     }
 
     // Always draw the zero-value gridline on top of series

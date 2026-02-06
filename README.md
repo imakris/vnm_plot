@@ -69,6 +69,9 @@ series->access = policy;
 plot_widget->add_series(series->id, series);
 ```
 
+**Thread Safety**
+`Plot_widget` renders on a separate GL thread. Treat `series_data_t` as immutable once added. To change series config (style, shaders, access policy, preview config, color), update a copy and call `add_series` again with the same id to replace it. Make sure your `Data_source` implementation is safe to read from the render thread.
+
 ### QML Quickstart
 
 Register the type in C++:

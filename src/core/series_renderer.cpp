@@ -13,6 +13,7 @@
 #include <array>
 #include <cmath>
 #include <limits>
+#include <string_view>
 #include <unordered_set>
 
 namespace vnm::plot {
@@ -23,6 +24,30 @@ namespace {
 constexpr glm::vec4 k_default_series_color(0.16f, 0.45f, 0.64f, 1.0f);
 constexpr glm::vec4 k_default_series_color_dark(0.30f, 0.63f, 0.88f, 1.0f);
 constexpr float k_default_color_epsilon = 0.01f;
+
+std::string normalize_asset_name(std::string_view name)
+{
+    std::string_view out = name;
+    if (out.rfind("qrc:/", 0) == 0) {
+        out.remove_prefix(5);
+    }
+    else if (out.rfind(":/", 0) == 0) {
+        out.remove_prefix(2);
+    }
+    if (out.rfind("vnm_plot/", 0) == 0) {
+        out.remove_prefix(9);
+    }
+    return std::string(out);
+}
+
+shader_set_t normalize_shader_set(const shader_set_t& shader)
+{
+    shader_set_t res;
+    res.vert = normalize_asset_name(shader.vert);
+    res.geom = normalize_asset_name(shader.geom);
+    res.frag = normalize_asset_name(shader.frag);
+    return res;
+}
 
 bool is_default_series_color(const glm::vec4& color)
 {
@@ -252,20 +277,21 @@ std::shared_ptr<GL_program> Series_renderer::get_or_load_shader(
         return nullptr;
     }
 
-    if (auto found = m_shaders.find(shader_set); found != m_shaders.end()) {
+    const shader_set_t normalized = normalize_shader_set(shader_set);
+    if (auto found = m_shaders.find(normalized); found != m_shaders.end()) {
         return found->second;
     }
 
-    auto vert_src = m_asset_loader->load(shader_set.vert);
-    auto frag_src = m_asset_loader->load(shader_set.frag);
+    auto vert_src = m_asset_loader->load(normalized.vert);
+    auto frag_src = m_asset_loader->load(normalized.frag);
     std::optional<ByteBuffer> geom_src;
-    if (!shader_set.geom.empty()) {
-        geom_src = m_asset_loader->load(shader_set.geom);
+    if (!normalized.geom.empty()) {
+        geom_src = m_asset_loader->load(normalized.geom);
     }
 
     if (!vert_src || !frag_src) {
         if (config && config->log_error) {
-            config->log_error("Failed to load shader sources: " + shader_set.vert);
+            config->log_error("Failed to load shader sources: " + normalized.vert);
         }
         return nullptr;
     }
@@ -284,7 +310,7 @@ std::shared_ptr<GL_program> Series_renderer::get_or_load_shader(
         return nullptr;
     }
     auto shared_sp = std::shared_ptr<GL_program>(std::move(sp));
-    m_shaders.emplace(shader_set, shared_sp);
+    m_shaders.emplace(normalized, shared_sp);
     return shared_sp;
 }
 
