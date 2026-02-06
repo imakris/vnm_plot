@@ -404,6 +404,78 @@ bool test_validate_range_cache_skips_disabled_series()
     return true;
 }
 
+bool test_preview_matches_main_helpers()
+{
+    auto data_source = std::make_shared<Range_cache_source>();
+    data_source->samples.resize(1);
+
+    auto series = make_series(20, data_source);
+    series->preview_config = preview_config_t{};
+    series->preview_config->data_source = data_source;
+    series->preview_config->access = Data_access_policy{};
+
+    TEST_ASSERT(series->preview_matches_main(),
+                "expected preview matches main with same source and style");
+
+    series->preview_config->style = Display_style::AREA;
+    TEST_ASSERT(!series->preview_matches_main(),
+                "expected preview mismatch when preview style differs");
+
+    series->preview_config->style.reset();
+    series->preview_config->access = make_policy();
+    series->preview_config->access.layout_key = 0x9999;
+    TEST_ASSERT(!series->preview_matches_main(),
+                "expected preview mismatch when layout_key differs");
+
+    series->preview_config->data_source.reset();
+    TEST_ASSERT(!series->preview_matches_main(),
+                "expected preview mismatch when preview source is null");
+
+    return true;
+}
+
+bool test_validate_preview_range_cache_sequences()
+{
+    auto main_source = std::make_shared<Range_cache_source>();
+    main_source->samples.resize(1);
+
+    auto preview_source = std::make_shared<Range_cache_source>();
+    preview_source->samples.resize(1);
+    preview_source->current_sequence_value = 3;
+    preview_source->snapshot_sequence_value = 3;
+
+    auto series = make_series(30, main_source);
+    preview_config_t preview_cfg;
+    preview_cfg.data_source = preview_source;
+    preview_cfg.access = make_policy();
+    series->preview_config = preview_cfg;
+
+    std::map<int, std::shared_ptr<series_data_t>> series_map;
+    series_map[series->id] = series;
+
+    std::unordered_map<int, series_minmax_cache_t> cache_map;
+    auto& cache = cache_map[series->id];
+    cache.identity = preview_source->identity();
+    cache.lods.assign(preview_source->lod_levels(), lod_minmax_cache_t{});
+    cache.lods[0].valid = true;
+    cache.lods[0].sequence = preview_source->current_sequence(0);
+
+    const bool valid = validate_preview_range_cache_sequences(
+        series_map,
+        cache_map,
+        Auto_v_range_mode::GLOBAL);
+    TEST_ASSERT(valid, "expected preview cache to be valid when sequences match");
+
+    preview_source->current_sequence_value = cache.lods[0].sequence + 1;
+    const bool valid_after = validate_preview_range_cache_sequences(
+        series_map,
+        cache_map,
+        Auto_v_range_mode::GLOBAL);
+    TEST_ASSERT(!valid_after, "expected preview cache invalidation on sequence change");
+
+    return true;
+}
+
 }  // namespace
 
 int main()
@@ -421,6 +493,8 @@ int main()
     RUN_TEST(test_validate_range_cache_skips_null_data_source);
     RUN_TEST(test_validate_range_cache_skips_missing_accessors);
     RUN_TEST(test_validate_range_cache_skips_disabled_series);
+    RUN_TEST(test_preview_matches_main_helpers);
+    RUN_TEST(test_validate_preview_range_cache_sequences);
 
     std::cout << "Results: " << passed << " passed, " << failed << " failed" << std::endl;
 

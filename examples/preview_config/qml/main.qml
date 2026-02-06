@@ -5,42 +5,56 @@ import Example 1.0
 
 Window {
     id: window
-    width: 900
-    height: 600
+    width: 960
+    height: 640
     visible: true
-    title: "vnm_plot hello"
+    title: "vnm_plot preview config"
     color: "#0b0d12"
 
     PlotTimeAxis {
         id: sharedAxis
+        sync_vbar_width: true
     }
 
     Column {
         anchors.fill: parent
+        anchors.margins: 12
         spacing: 8
+        property real contentHeight: height - header.implicitHeight - spacing * 2
+
+        Text {
+            id: header
+            text: "Shared time axis. Top plot: separate style and range, no preview bar. Bottom plot: preview source + AREA style."
+            color: "#c8d0d8"
+            font.pixelSize: 14
+        }
 
         PlotView {
             id: plotViewTop
-            height: parent.height * 0.5 - spacing * 0.5
             width: parent.width
+            height: parent.contentHeight * 0.5
+            darkMode: true
+            linkIndicator: true
             timeAxis: sharedAxis
             Component.onCompleted: plotWidget.update_dpi_scaling_factor()
         }
 
         PlotView {
             id: plotViewBottom
-            height: parent.height * 0.5 - spacing * 0.5
             width: parent.width
+            height: parent.contentHeight * 0.5
+            darkMode: true
+            linkIndicator: true
             timeAxis: sharedAxis
             Component.onCompleted: plotWidget.update_dpi_scaling_factor()
         }
     }
 
-    PlotController {
+    TopController {
         plot_widget: plotViewTop.plotWidget
     }
 
-    PlotController {
+    PreviewController {
         plot_widget: plotViewBottom.plotWidget
     }
 }

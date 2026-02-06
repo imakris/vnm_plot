@@ -297,6 +297,7 @@ set(VNM_PLOT_SOURCES
     src/qt/plot_renderer.cpp
     src/qt/plot_widget.cpp
     src/qt/plot_interaction_item.cpp
+    src/qt/plot_time_axis.cpp
 )
 
 set(VNM_PLOT_HEADERS
@@ -304,6 +305,7 @@ set(VNM_PLOT_HEADERS
     include/vnm_plot/qt/plot_renderer.h
     include/vnm_plot/qt/plot_widget.h
     include/vnm_plot/qt/plot_interaction_item.h
+    include/vnm_plot/qt/plot_time_axis.h
 )
 
 # -----------------------------------------------------------------------------

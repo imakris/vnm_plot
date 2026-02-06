@@ -37,6 +37,7 @@
 #if defined(VNM_PLOT_WITH_QT)
 #include <vnm_plot/qt/plot_widget.h>
 #include <vnm_plot/qt/plot_interaction_item.h>
+#include <vnm_plot/qt/plot_time_axis.h>
 #endif
 
 namespace vnm::plot {

@@ -201,6 +201,104 @@ bool test_frame_scoped_cache_reuse()
     return true;
 }
 
+bool test_preview_uses_distinct_source_snapshot()
+{
+    auto main_source = std::make_shared<Single_level_source>();
+    auto preview_source = std::make_shared<Single_level_source>();
+    main_source->samples.resize(8);
+    preview_source->samples.resize(8);
+    for (size_t i = 0; i < main_source->samples.size(); ++i) {
+        main_source->samples[i].t = static_cast<double>(i);
+        main_source->samples[i].v = 1.0f + static_cast<float>(i);
+        preview_source->samples[i].t = static_cast<double>(i);
+        preview_source->samples[i].v = 2.0f + static_cast<float>(i);
+    }
+
+    auto series = std::make_shared<series_data_t>();
+    series->id = 14;
+    series->style = Display_style::LINE;
+    series->data_source = main_source;
+    series->access = make_policy();
+
+    preview_config_t preview_cfg;
+    preview_cfg.data_source = preview_source;
+    preview_cfg.access = make_policy();
+    series->preview_config = preview_cfg;
+
+    frame_layout_result_t layout;
+    layout.usable_width = 200.0;
+    layout.usable_height = 80.0;
+
+    Render_config config;
+    config.skip_gl_calls = true;
+    config.preview_visibility = 1.0;
+
+    frame_context_t ctx = make_context(layout, config);
+    ctx.adjusted_preview_height = 20.0;
+
+    Series_renderer renderer;
+    Asset_loader asset_loader;
+    renderer.initialize(asset_loader);
+
+    std::map<int, std::shared_ptr<series_data_t>> series_map;
+    series_map[series->id] = series;
+
+    renderer.render(ctx, series_map);
+
+    TEST_ASSERT(main_source->snapshot_calls == 1,
+                "expected main source snapshot call");
+    TEST_ASSERT(preview_source->snapshot_calls == 1,
+                "expected preview source snapshot call");
+
+    return true;
+}
+
+bool test_preview_disabled_skips_preview_snapshot()
+{
+    auto main_source = std::make_shared<Single_level_source>();
+    auto preview_source = std::make_shared<Single_level_source>();
+    main_source->samples.resize(8);
+    preview_source->samples.resize(8);
+
+    auto series = std::make_shared<series_data_t>();
+    series->id = 15;
+    series->style = Display_style::LINE;
+    series->data_source = main_source;
+    series->access = make_policy();
+
+    preview_config_t preview_cfg;
+    preview_cfg.data_source = preview_source;
+    preview_cfg.access = make_policy();
+    series->preview_config = preview_cfg;
+
+    frame_layout_result_t layout;
+    layout.usable_width = 200.0;
+    layout.usable_height = 80.0;
+
+    Render_config config;
+    config.skip_gl_calls = true;
+    config.preview_visibility = 1.0;
+
+    frame_context_t ctx = make_context(layout, config);
+    ctx.adjusted_preview_height = 0.0;
+
+    Series_renderer renderer;
+    Asset_loader asset_loader;
+    renderer.initialize(asset_loader);
+
+    std::map<int, std::shared_ptr<series_data_t>> series_map;
+    series_map[series->id] = series;
+
+    renderer.render(ctx, series_map);
+
+    TEST_ASSERT(main_source->snapshot_calls == 1,
+                "expected main source snapshot call");
+    TEST_ASSERT(preview_source->snapshot_calls == 0,
+                "expected preview source to be skipped when preview disabled");
+
+    return true;
+}
+
 bool test_frame_change_invalidates_snapshot_cache()
 {
     auto data_source = std::make_shared<Single_level_source>();
@@ -416,6 +514,8 @@ int main()
     int failed = 0;
 
     RUN_TEST(test_frame_scoped_cache_reuse);
+    RUN_TEST(test_preview_uses_distinct_source_snapshot);
+    RUN_TEST(test_preview_disabled_skips_preview_snapshot);
     RUN_TEST(test_frame_change_invalidates_snapshot_cache);
     RUN_TEST(test_lod_level_separation);
     RUN_TEST(test_snapshot_released_on_series_removal);

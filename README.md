@@ -77,6 +77,7 @@ Register the type in C++:
 #include <vnm_plot/vnm_plot.h>
 
 qmlRegisterType<vnm::plot::Plot_widget>("VnmPlot", 1, 0, "PlotWidget");
+qmlRegisterType<vnm::plot::Plot_time_axis>("VnmPlot", 1, 0, "PlotTimeAxis");
 ```
 
 Use it in QML:
@@ -87,6 +88,19 @@ import VnmPlot 1.0
 PlotWidget {
     id: plot
     anchors.fill: parent
+}
+```
+
+Shared time axis across plots:
+
+```qml
+import VnmPlot 1.0
+
+PlotTimeAxis { id: sharedAxis }
+
+Column {
+    PlotView { timeAxis: sharedAxis }
+    PlotView { timeAxis: sharedAxis }
 }
 ```
 
@@ -165,6 +179,7 @@ cmake --build build
 ```
 
 - `vnm_plot_hello` - renders a sine wave using `Function_data_source`
+- `vnm_plot_preview_config` - preview uses a separate data source and AREA style via `preview_config`
 - `function_plotter` - multiple functions, per-series styles, expression evaluation via mexce
 - `standalone_glfw` - standalone core validation example using GLFW
 

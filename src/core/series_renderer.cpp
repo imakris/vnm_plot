@@ -32,7 +32,8 @@ bool is_default_series_color(const glm::vec4& color)
 }
 
 bool compute_aux_metric_range(
-    const series_data_t& series,
+    const Data_source* data_source,
+    const Data_access_policy& access,
     const data_snapshot_t& snapshot,
     double& out_min,
     double& out_max,
@@ -40,15 +41,15 @@ bool compute_aux_metric_range(
 {
     out_used_data_source_range = false;
 
-    if (!series.access.get_aux_metric || !snapshot || snapshot.count == 0 || snapshot.stride == 0) {
+    if (!access.get_aux_metric || !snapshot || snapshot.count == 0 || snapshot.stride == 0) {
         return false;
     }
 
-    if (series.data_source &&
-        series.data_source->has_aux_metric_range() &&
-        !series.data_source->aux_metric_range_needs_rescan())
+    if (data_source &&
+        data_source->has_aux_metric_range() &&
+        !data_source->aux_metric_range_needs_rescan())
     {
-        const auto [ds_min, ds_max] = series.data_source->aux_metric_range();
+        const auto [ds_min, ds_max] = data_source->aux_metric_range();
         if (std::isfinite(ds_min) && std::isfinite(ds_max) && ds_min <= ds_max) {
             out_min = ds_min;
             out_max = ds_max;
@@ -66,7 +67,7 @@ bool compute_aux_metric_range(
         if (!sample) {
             continue;
         }
-        const double value = series.access.get_aux_metric(sample);
+        const double value = access.get_aux_metric(sample);
         if (!std::isfinite(value)) {
             continue;
         }
@@ -142,6 +143,10 @@ void Series_renderer::cleanup_gl_resources()
     }
     m_colormap_textures.clear();
     m_missing_signal_logged.clear();
+    m_missing_signal_preview_logged.clear();
+    m_preview_missing_source_logged.clear();
+    m_preview_invalid_access_logged.clear();
+    m_preview_incompatible_stride_logged.clear();
 }
 
 Series_renderer::series_pipe_t& Series_renderer::pipe_for(Display_style style)
@@ -218,10 +223,10 @@ GLuint Series_renderer::ensure_colormap_texture(const series_data_t& series, Dis
 GLuint Series_renderer::ensure_series_vao(
     Display_style style,
     GLuint vbo,
-    const series_data_t& series)
+    const Data_access_policy& access)
 {
     auto& pipe = pipe_for(style);
-    auto& entry = pipe.by_layout[series.access.layout_key];
+    auto& entry = pipe.by_layout[access.layout_key];
 
     if (entry.vao != 0 && entry.vbo == vbo) {
         return entry.vao;
@@ -233,8 +238,8 @@ GLuint Series_renderer::ensure_series_vao(
 
     glBindVertexArray(entry.vao);
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    if (series.access.setup_vertex_attributes) {
-        series.access.setup_vertex_attributes();
+    if (access.setup_vertex_attributes) {
+        access.setup_vertex_attributes();
     }
     entry.vbo = vbo;
 
@@ -319,6 +324,7 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
     if (shared_state.cached_snapshot_frame_id != frame_id) {
         shared_state.cached_snapshot_frame_id = 0;
         shared_state.cached_snapshot_level = SIZE_MAX;
+        shared_state.cached_snapshot_source = nullptr;
         shared_state.cached_snapshot = {};
         shared_state.cached_snapshot_hold.reset();
     }
@@ -389,6 +395,7 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
             // between main view and preview view within the same frame.
             if (shared_state.cached_snapshot_frame_id == frame_id &&
                 shared_state.cached_snapshot_level == applied_level &&
+                shared_state.cached_snapshot_source == &data_source &&
                 shared_state.cached_snapshot)
             {
                 // Cache hit - reuse snapshot from earlier in this frame
@@ -402,6 +409,7 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
                     // Update cache for potential reuse by preview view
                     shared_state.cached_snapshot_frame_id = frame_id;
                     shared_state.cached_snapshot_level = applied_level;
+                    shared_state.cached_snapshot_source = &data_source;
                     shared_state.cached_snapshot = snapshot_result.snapshot;
                     shared_state.cached_snapshot_hold = snapshot_result.snapshot.hold;
                 }
@@ -793,6 +801,7 @@ void Series_renderer::render(
                 state.cached_snapshot_hold.reset();
                 state.cached_snapshot = {};
                 state.cached_snapshot_frame_id = 0;
+                state.cached_snapshot_source = nullptr;
                 it = m_vbo_states.erase(it);
             }
             else {
@@ -848,12 +857,19 @@ void Series_renderer::render(
     {
         int id = 0;
         std::shared_ptr<series_data_t> series;
-        Display_style style = static_cast<Display_style>(0);
+        Data_source* main_source = nullptr;
+        Data_source* preview_source = nullptr;
+        const Data_access_policy* main_access = nullptr;
+        const Data_access_policy* preview_access = nullptr;
+        Display_style main_style = static_cast<Display_style>(0);
+        Display_style preview_style = static_cast<Display_style>(0);
         vbo_state_t* vbo_state = nullptr;
-        std::vector<std::size_t> scales;
+        std::vector<std::size_t> main_scales;
+        std::vector<std::size_t> preview_scales;
         view_render_result_t main_result;
         view_render_result_t preview_result;
         bool has_preview = false;
+        bool preview_matches_main = false;
     };
 
     std::vector<Series_draw_state> draw_states;
@@ -862,44 +878,164 @@ void Series_renderer::render(
     const double preview_visibility = ctx.config ? ctx.config->preview_visibility : 1.0;
     const bool preview_visible = ctx.adjusted_preview_height > 0.0 && preview_visibility > 0.0;
 
+    const auto log_error_once = [&](std::unordered_set<int>& logged,
+                                    int series_id,
+                                    const std::string& message) {
+        if (!ctx.config || !ctx.config->log_error) {
+            return;
+        }
+        if (logged.insert(series_id).second) {
+            ctx.config->log_error(message);
+        }
+    };
+
     for (const auto& [id, s] : series) {
         VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.execute_passes.render_data_series.series");
-        if (!s || !s->enabled || !s->data_source) {
+        if (!s || !s->enabled) {
             continue;
         }
 
-        Display_style style = s->style;
-        if (!!(style & Display_style::COLORMAP_LINE) && !s->access.get_signal) {
-            if (m_missing_signal_logged.insert(id).second) {
-                if (ctx.config && ctx.config->log_error) {
-                    ctx.config->log_error(
-                        "COLORMAP_LINE requires Data_access_policy::get_signal (series "
+        Data_source* main_source = s->main_source();
+        if (!main_source) {
+            continue;
+        }
+
+        const Data_access_policy& main_access = s->main_access();
+
+        Display_style main_style = s->style;
+        if (!!(main_style & Display_style::COLORMAP_LINE) && !main_access.get_signal) {
+            log_error_once(
+                m_missing_signal_logged,
+                id,
+                "COLORMAP_LINE requires Data_access_policy::get_signal (series "
+                    + std::to_string(id) + ")");
+            main_style = static_cast<Display_style>(
+                static_cast<int>(main_style) & ~static_cast<int>(Display_style::COLORMAP_LINE));
+        }
+        if (!main_style) {
+            continue;
+        }
+
+        const bool has_preview_config = s->has_preview_config();
+        const bool preview_access_invalid =
+            has_preview_config && !s->preview_config->access.is_valid();
+        const bool preview_skip_invalid = s->preview_access_invalid_for_source();
+        Data_source* preview_source = nullptr;
+        const Data_access_policy* preview_access = nullptr;
+        Display_style preview_style = static_cast<Display_style>(0);
+        bool preview_matches_main = false;
+        bool preview_valid = false;
+
+        if (preview_visible) {
+            preview_source = s->preview_source();
+            preview_access = &s->preview_access();
+            preview_style = s->effective_preview_style();
+            preview_matches_main = s->preview_matches_main();
+
+            if (has_preview_config && !preview_source) {
+                log_error_once(
+                    m_preview_missing_source_logged,
+                    id,
+                    "Preview config set but preview data_source is null (series "
                         + std::to_string(id) + ")");
+                preview_style = static_cast<Display_style>(0);
+            }
+
+            if (preview_access_invalid && preview_source) {
+                if (preview_skip_invalid) {
+                    log_error_once(
+                        m_preview_invalid_access_logged,
+                        id,
+                        "Preview access policy invalid; skipping preview for mismatched source (series "
+                            + std::to_string(id) + ")");
+                    preview_source = nullptr;
+                    preview_style = static_cast<Display_style>(0);
+                }
+                else {
+                    log_error_once(
+                        m_preview_invalid_access_logged,
+                        id,
+                        "Preview access policy invalid; using main access (series "
+                            + std::to_string(id) + ")");
                 }
             }
-            style = static_cast<Display_style>(
-                static_cast<int>(style) & ~static_cast<int>(Display_style::COLORMAP_LINE));
-        }
-        if (!style) {
-            continue;
+
+            if (preview_source && preview_access && preview_access->sample_stride > 0) {
+                if (preview_source->sample_stride() != preview_access->sample_stride) {
+                    log_error_once(
+                        m_preview_incompatible_stride_logged,
+                        id,
+                        "Preview access sample_stride does not match preview data source stride (series "
+                            + std::to_string(id) + ")");
+                    preview_source = nullptr;
+                    preview_style = static_cast<Display_style>(0);
+                }
+            }
+
+            if (!!(preview_style & Display_style::COLORMAP_LINE) &&
+                !(preview_access && preview_access->get_signal))
+            {
+                log_error_once(
+                    m_missing_signal_preview_logged,
+                    id,
+                    "COLORMAP_LINE requires Data_access_policy::get_signal (preview series "
+                        + std::to_string(id) + ")");
+                preview_style = static_cast<Display_style>(
+                    static_cast<int>(preview_style) & ~static_cast<int>(Display_style::COLORMAP_LINE));
+            }
+
+            if (preview_source && preview_access && !!preview_style) {
+                preview_valid = true;
+            }
+            else {
+                preview_source = nullptr;
+            }
         }
 
         auto& vbo_state = m_vbo_states[id];
 
         // Build LOD scales vector using shared helper
-        std::vector<std::size_t> scales = [&]() {
+        std::vector<std::size_t> main_scales = [&]() {
             VNM_PLOT_PROFILE_SCOPE(
                 profiler,
                 "renderer.frame.execute_passes.render_data_series.series.prepare");
-            return compute_lod_scales(*s->data_source);
+            return compute_lod_scales(*main_source);
         }();
-        const void* data_identity = s->data_source->identity();
-        if (vbo_state.cached_aux_metric_identity != data_identity) {
-            vbo_state.cached_aux_metric_identity = data_identity;
+        const void* main_identity = main_source->identity();
+        if (vbo_state.cached_aux_metric_identity != main_identity) {
+            vbo_state.cached_aux_metric_identity = main_identity;
             vbo_state.cached_aux_metric_levels.clear();
         }
-        if (vbo_state.cached_aux_metric_levels.size() != scales.size()) {
-            vbo_state.cached_aux_metric_levels.assign(scales.size(), {});
+        if (vbo_state.cached_aux_metric_levels.size() != main_scales.size()) {
+            vbo_state.cached_aux_metric_levels.assign(main_scales.size(), {});
+        }
+
+        std::vector<std::size_t> preview_scales;
+        if (preview_valid) {
+            if (preview_matches_main) {
+                preview_scales = main_scales;
+            }
+            else {
+                VNM_PLOT_PROFILE_SCOPE(
+                    profiler,
+                    "renderer.frame.execute_passes.render_data_series.series.prepare_preview");
+                preview_scales = compute_lod_scales(*preview_source);
+            }
+        }
+
+        if (preview_valid && !preview_matches_main) {
+            const void* preview_identity = preview_source->identity();
+            if (vbo_state.cached_aux_metric_identity_preview != preview_identity) {
+                vbo_state.cached_aux_metric_identity_preview = preview_identity;
+                vbo_state.cached_aux_metric_levels_preview.clear();
+            }
+            if (vbo_state.cached_aux_metric_levels_preview.size() != preview_scales.size()) {
+                vbo_state.cached_aux_metric_levels_preview.assign(preview_scales.size(), {});
+            }
+        }
+        else {
+            vbo_state.cached_aux_metric_identity_preview = nullptr;
+            vbo_state.cached_aux_metric_levels_preview.clear();
         }
 
         // Process main view
@@ -912,9 +1048,9 @@ void Series_renderer::render(
                 vbo_state.main_view,
                 vbo_state,
                 m_frame_id,
-                *s->data_source,
-                s->access.get_timestamp,
-                scales,
+                *main_source,
+                main_access.get_timestamp,
+                main_scales,
                 ctx.t0, ctx.t1,
                 layout.usable_width,
                 false,
@@ -932,7 +1068,7 @@ void Series_renderer::render(
         }
 
         view_render_result_t preview_result;
-        if (preview_visible) {
+        if (preview_visible && preview_valid) {
             auto next_preview_result = [&]() {
                 VNM_PLOT_PROFILE_SCOPE(
                     profiler,
@@ -941,9 +1077,9 @@ void Series_renderer::render(
                     vbo_state.preview_view,
                     vbo_state,
                     m_frame_id,
-                    *s->data_source,
-                    s->access.get_timestamp,
-                    scales,
+                    *preview_source,
+                    preview_access->get_timestamp,
+                    preview_scales,
                     ctx.t_available_min, ctx.t_available_max,
                     ctx.win_w,
                     true,
@@ -956,12 +1092,19 @@ void Series_renderer::render(
         Series_draw_state draw_state;
         draw_state.id = id;
         draw_state.series = s;
-        draw_state.style = style;
+        draw_state.main_source = main_source;
+        draw_state.preview_source = preview_source;
+        draw_state.main_access = &main_access;
+        draw_state.preview_access = preview_access;
+        draw_state.main_style = main_style;
+        draw_state.preview_style = preview_style;
         draw_state.vbo_state = &vbo_state;
-        draw_state.scales = std::move(scales);
+        draw_state.main_scales = std::move(main_scales);
+        draw_state.preview_scales = std::move(preview_scales);
         draw_state.main_result = main_result;
         draw_state.preview_result = preview_result;
-        draw_state.has_preview = preview_visible;
+        draw_state.has_preview = preview_visible && preview_valid;
+        draw_state.preview_matches_main = preview_matches_main;
         draw_states.push_back(std::move(draw_state));
     }
 
@@ -992,7 +1135,16 @@ void Series_renderer::render(
 
         const series_data_t& series = *draw_state.series;
         auto& vbo_state = *draw_state.vbo_state;
-        const auto& scales = draw_state.scales;
+        Data_source* data_source = is_preview
+            ? draw_state.preview_source
+            : draw_state.main_source;
+        const Data_access_policy* access = is_preview ? draw_state.preview_access : draw_state.main_access;
+        const auto& scales = is_preview ? draw_state.preview_scales : draw_state.main_scales;
+        const bool use_preview_cache = is_preview && !draw_state.preview_matches_main;
+
+        if (!data_source || !access) {
+            return;
+        }
 
         // CPU-side color/uniform preparation (no GL calls)
         glm::vec4 draw_color;
@@ -1024,9 +1176,15 @@ void Series_renderer::render(
         const vbo_state_t::aux_metric_cache_t* aux_cache = nullptr;
         std::size_t aux_range_scale = 1;
         if (primitive_style == Display_style::COLORMAP_AREA && !series.colormap_area.samples.empty()) {
-            auto& aux_cache_entry = vbo_state.cached_aux_metric_levels[view_result.applied_level];
+            auto& aux_cache_levels = use_preview_cache
+                ? vbo_state.cached_aux_metric_levels_preview
+                : vbo_state.cached_aux_metric_levels;
+            if (view_result.applied_level >= aux_cache_levels.size()) {
+                return;
+            }
+            auto& aux_cache_entry = aux_cache_levels[view_result.applied_level];
             bool has_any_aux_cache = false;
-            for (const auto& entry : vbo_state.cached_aux_metric_levels) {
+            for (const auto& entry : aux_cache_levels) {
                 if (entry.valid) {
                     has_any_aux_cache = true;
                     break;
@@ -1038,17 +1196,19 @@ void Series_renderer::render(
             if (!snapshot && !has_any_aux_cache) {
                 if (vbo_state.cached_snapshot_frame_id == m_frame_id &&
                     vbo_state.cached_snapshot_level == view_result.applied_level &&
+                    vbo_state.cached_snapshot_source == data_source &&
                     vbo_state.cached_snapshot)
                 {
                     snapshot = vbo_state.cached_snapshot;
                 }
                 else
-                if (series.data_source) {
-                    auto snapshot_result = series.data_source->try_snapshot(view_result.applied_level);
+                if (data_source) {
+                    auto snapshot_result = data_source->try_snapshot(view_result.applied_level);
                     if (snapshot_result) {
                         snapshot = snapshot_result.snapshot;
                         vbo_state.cached_snapshot_frame_id = m_frame_id;
                         vbo_state.cached_snapshot_level = view_result.applied_level;
+                        vbo_state.cached_snapshot_source = data_source;
                         vbo_state.cached_snapshot = snapshot_result.snapshot;
                         vbo_state.cached_snapshot_hold = snapshot_result.snapshot.hold;
                     }
@@ -1065,15 +1225,21 @@ void Series_renderer::render(
                     VNM_PLOT_PROFILE_SCOPE(
                         profiler,
                         "renderer.frame.execute_passes.render_data_series.series.compute_aux_metric_range");
-                    if (compute_aux_metric_range(series, snapshot, aux_min, aux_max, used_data_source_range)) {
+                    if (compute_aux_metric_range(
+                            data_source,
+                            *access,
+                            snapshot,
+                            aux_min,
+                            aux_max,
+                            used_data_source_range)) {
                         std::size_t cache_level = view_result.applied_level;
                         uint64_t cache_sequence = snapshot.sequence;
                         if (used_data_source_range) {
                             // Data-source ranges are in LOD 0 units.
                             cache_level = 0;
                             cache_sequence = 0;
-                            if (series.data_source) {
-                                cache_sequence = series.data_source->current_sequence(0);
+                            if (data_source) {
+                                cache_sequence = data_source->current_sequence(0);
                             }
                             if (cache_sequence == 0) {
                                 // If we can't get LOD 0 sequence, try to get it from a snapshot.
@@ -1084,7 +1250,7 @@ void Series_renderer::render(
                                 } else {
                                     // We need LOD 0 sequence but have a different LOD snapshot.
                                     // Try to get LOD 0 snapshot for correct sequence tracking.
-                                    auto lod0_snapshot = series.data_source->try_snapshot(0);
+                                    auto lod0_snapshot = data_source->try_snapshot(0);
                                     if (lod0_snapshot) {
                                         cache_sequence = lod0_snapshot.snapshot.sequence;
                                     } else {
@@ -1096,7 +1262,7 @@ void Series_renderer::render(
                                 }
                             }
                         }
-                        auto& target_entry = vbo_state.cached_aux_metric_levels[cache_level];
+                        auto& target_entry = aux_cache_levels[cache_level];
                         target_entry.min = aux_min;
                         target_entry.max = aux_max;
                         target_entry.valid = true;
@@ -1129,13 +1295,13 @@ void Series_renderer::render(
             }
 
             std::size_t aux_range_level = view_result.applied_level;
-            for (std::size_t i = 0; i < vbo_state.cached_aux_metric_levels.size(); ++i) {
-                if (vbo_state.cached_aux_metric_levels[i].valid) {
+            for (std::size_t i = 0; i < aux_cache_levels.size(); ++i) {
+                if (aux_cache_levels[i].valid) {
                     aux_range_level = i;
                     break;
                 }
             }
-            aux_cache = &vbo_state.cached_aux_metric_levels[aux_range_level];
+            aux_cache = &aux_cache_levels[aux_range_level];
             if (aux_range_level < scales.size()) {
                 aux_range_scale = scales[aux_range_level];
             }
@@ -1196,8 +1362,8 @@ void Series_renderer::render(
                 glUniform1f(loc, line_width);
             }
 
-            if (series.access.bind_uniforms) {
-                series.access.bind_uniforms(pass_shader->program_id());
+            if (access->bind_uniforms) {
+                access->bind_uniforms(pass_shader->program_id());
             }
         }
 
@@ -1260,7 +1426,7 @@ void Series_renderer::render(
 
         {
             VNM_PLOT_PROFILE_SCOPE(profiler, "vao_bind");
-            const GLuint vao = ensure_series_vao(primitive_style, view_state.active_vbo, series);
+            const GLuint vao = ensure_series_vao(primitive_style, view_state.active_vbo, *access);
             glBindVertexArray(vao);
         }
 
@@ -1365,7 +1531,10 @@ void Series_renderer::render(
             if (!draw_state.series || !draw_state.vbo_state) {
                 continue;
             }
-            if (!(draw_state.style & primitive_style)) {
+            const Display_style view_style = is_preview
+                ? draw_state.preview_style
+                : draw_state.main_style;
+            if (!(view_style & primitive_style)) {
                 continue;
             }
             if (is_preview && !draw_state.has_preview) {

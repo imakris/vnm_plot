@@ -37,6 +37,7 @@ int main(int argc, char* argv[])
     // Register QML types
     qmlRegisterType<vnm::plot::Plot_widget>("VnmPlot", 1, 0, "PlotWidget");
     qmlRegisterType<vnm::plot::Plot_interaction_item>("VnmPlot", 1, 0, "PlotInteractionItem");
+    qmlRegisterType<vnm::plot::Plot_time_axis>("VnmPlot", 1, 0, "PlotTimeAxis");
     qmlRegisterUncreatableType<Function_entry>("FunctionPlotter", 1, 0, "FunctionEntry",
         "Function entries are created by Function_plotter");
 

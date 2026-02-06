@@ -7,6 +7,7 @@ Item {
     id: control
 
     property alias plot_widget: libPlotView.plotWidget
+    property var timeAxis: null
 
     property real preview_height: 0
     property real preview_height_target: 0
@@ -74,6 +75,7 @@ Item {
         id: libPlotView
         anchors.fill: parent
         darkMode: true
+        timeAxis: control.timeAxis
     }
 
     Component.onCompleted: {

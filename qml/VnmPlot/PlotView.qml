@@ -8,16 +8,20 @@ Item {
     // Optional override; when unset (null), PlotWidget retains its own setting.
     property var darkMode: null
     property bool interactionEnabled: true
+    property bool linkIndicator: false
+    property PlotTimeAxis timeAxis: null
 
     PlotWidget {
         id: plot
         anchors.fill: parent
+        timeAxis: root.timeAxis
     }
 
     PlotIndicator {
         id: indicator
         anchors.fill: parent
         plotWidget: plot
+        linkIndicator: root.linkIndicator
     }
 
     PlotInteractionItem {
