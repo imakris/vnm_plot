@@ -237,6 +237,7 @@ private:
     void sync_time_axis_state();
     void clear_time_axis();
 
+    // GUI-thread only. Render thread uses m_data_cfg snapshot.
     QPointer<Plot_time_axis> m_time_axis;
     QMetaObject::Connection m_time_axis_connection;
     QMetaObject::Connection m_time_axis_destroyed_connection;

@@ -94,7 +94,7 @@ struct data_snapshot_t
         return static_cast<const char*>(data2) + (index - count1) * stride;
     }
 
-    size_t count1() const { return count - count2; }
+    size_t count1() const { return count2 > count ? 0 : count - count2; }
 
     bool is_segmented() const { return data2 != nullptr && count2 > 0; }
 };

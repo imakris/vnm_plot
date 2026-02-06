@@ -118,10 +118,12 @@ std::uint64_t hash_data_sources(const std::map<int, std::shared_ptr<series_data_
         const Data_source* preview_source = series->preview_source();
         const bool has_preview = series->has_preview_config();
 
+        const void* main_identity = main_source ? main_source->identity() : nullptr;
+        const void* preview_identity = preview_source ? preview_source->identity() : nullptr;
         const std::uint64_t main_ptr = static_cast<std::uint64_t>(
-            reinterpret_cast<std::uintptr_t>(main_source));
+            reinterpret_cast<std::uintptr_t>(main_identity));
         const std::uint64_t preview_ptr = has_preview
-            ? static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(preview_source))
+            ? static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(preview_identity))
             : 0ULL;
         const std::uint64_t preview_layout_key = has_preview
             ? series->preview_access().layout_key
