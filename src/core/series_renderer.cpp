@@ -498,19 +498,6 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
             }
         }
 
-        if (allow_stale_on_empty && have_ts_bounds && last_ts > first_ts &&
-            !result.use_t_override)
-        {
-            const bool covers_window = (first_ts <= t_min) && (last_ts >= t_max);
-            if (!covers_window) {
-                first_idx = 0;
-                last_idx = snapshot.count;
-                result.use_t_override = true;
-                result.t_min_override = first_ts;
-                result.t_max_override = last_ts;
-            }
-        }
-
         if (first_idx >= last_idx) {
             const bool can_override =
                 allow_stale_on_empty && have_ts_bounds && last_ts > first_ts &&
@@ -946,7 +933,6 @@ void Series_renderer::render(
 
         view_render_result_t preview_result;
         if (preview_visible) {
-            const std::size_t prev_preview_lod_level = vbo_state.preview_view.last_lod_level;
             auto next_preview_result = [&]() {
                 VNM_PLOT_PROFILE_SCOPE(
                     profiler,
@@ -964,16 +950,6 @@ void Series_renderer::render(
                     profiler,
                     skip_gl);
             }();
-            if (ctx.config && ctx.config->log_debug &&
-                next_preview_result.can_draw &&
-                next_preview_result.applied_level != prev_preview_lod_level)
-            {
-                std::string message =
-                    "LOD selection (preview): series=" + std::to_string(id)
-                    + " level=" + std::to_string(next_preview_result.applied_level)
-                    + " pps=" + std::to_string(next_preview_result.applied_pps);
-                ctx.config->log_debug(message);
-            }
             preview_result = next_preview_result;
         }
 
