@@ -66,30 +66,6 @@ double dpi_scaling_for_window([[maybe_unused]] void* native_handle)
 #endif
 }
 
-std::string normalize_asset_name(std::string_view name)
-{
-    std::string_view out = name;
-    if (out.rfind("qrc:/", 0) == 0) out.remove_prefix(5);
-    else if (out.rfind(":/", 0) == 0) out.remove_prefix(2);
-    if (out.rfind("vnm_plot/", 0) == 0) out.remove_prefix(9);
-    return std::string(out);
-}
-
-void normalize_shader_set_inplace(vnm::plot::shader_set_t& s)
-{
-    s.vert = normalize_asset_name(s.vert);
-    s.geom = normalize_asset_name(s.geom);
-    s.frag = normalize_asset_name(s.frag);
-}
-
-void normalize_series_shaders(vnm::plot::series_data_t& series)
-{
-    normalize_shader_set_inplace(series.shader_set);
-    for (auto& [style, shader] : series.shaders) {
-        normalize_shader_set_inplace(shader);
-    }
-}
-
 } // anonymous namespace
 
 namespace vnm::plot {
@@ -119,7 +95,6 @@ void Plot_widget::add_series(int id, std::shared_ptr<series_data_t> series)
     std::shared_ptr<series_data_t> copy;
     if (series) {
         copy = std::make_shared<series_data_t>(*series);
-        normalize_series_shaders(*copy);
     }
     std::unique_lock lock(m_series_mutex);
     m_series[id] = std::move(copy);
