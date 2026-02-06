@@ -898,14 +898,7 @@ void Plot_widget::auto_adjust_view(bool adjust_t, double extra_v_scale, bool anc
     }
 
     const bool has_time_axis = (m_time_axis != nullptr);
-    if (adjust_t) {
-        std::unique_lock lock(m_data_cfg_mutex);
-        m_data_cfg.v_manual_min = static_cast<float>(new_vmin);
-        m_data_cfg.v_manual_max = static_cast<float>(new_vmax);
-        m_data_cfg.v_min = static_cast<float>(new_vmin);
-        m_data_cfg.v_max = static_cast<float>(new_vmax);
-    }
-    else {
+    {
         std::unique_lock lock(m_data_cfg_mutex);
         m_data_cfg.v_manual_min = static_cast<float>(new_vmin);
         m_data_cfg.v_manual_max = static_cast<float>(new_vmax);

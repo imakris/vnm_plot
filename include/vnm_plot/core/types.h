@@ -231,20 +231,8 @@ struct Data_access_policy
 
     bool is_valid() const
     {
-        return get_timestamp && get_value && get_range && sample_stride > 0;
+        return get_timestamp && (get_value || get_range) && sample_stride > 0;
     }
-};
-
-// -----------------------------------------------------------------------------
-// Preview Configuration
-// -----------------------------------------------------------------------------
-enum class Display_style : int;
-
-struct preview_config_t
-{
-    std::shared_ptr<Data_source> data_source;   // required when preview_config is set
-    Data_access_policy access;                  // optional; if invalid, fall back to main access
-    std::optional<Display_style> style;         // nullopt means use main style
 };
 
 // -----------------------------------------------------------------------------
@@ -277,6 +265,16 @@ inline bool operator!(Display_style s)
 {
     return static_cast<int>(s) == 0;
 }
+
+// -----------------------------------------------------------------------------
+// Preview Configuration
+// -----------------------------------------------------------------------------
+struct preview_config_t
+{
+    std::shared_ptr<Data_source> data_source;   // required when preview_config is set
+    Data_access_policy access;                  // optional; if invalid, fall back to main access
+    std::optional<Display_style> style;         // nullopt means use main style
+};
 
 // -----------------------------------------------------------------------------
 // Shader Set: identifies a shader program by asset names
@@ -379,13 +377,13 @@ struct series_data_t
         return access.get_range ? access.get_range(sample) : std::make_pair(0.0f, 0.0f);
     }
 
-    const Data_source* main_source() const
+    Data_source* main_source() const
     {
         return data_source.get();
     }
 
     // Returns preview source; null means preview is skipped.
-    const Data_source* preview_source() const
+    Data_source* preview_source() const
     {
         if (!preview_config) {
             return data_source.get();
@@ -430,8 +428,8 @@ struct series_data_t
             return true;
         }
 
-        const Data_source* main = data_source.get();
-        const Data_source* preview = preview_source();
+        Data_source* main = data_source.get();
+        Data_source* preview = preview_source();
         if (!main || !preview) {
             return false;
         }

@@ -1,6 +1,5 @@
 #include <vnm_plot/qt/plot_time_axis.h>
 
-#include <algorithm>
 #include <cmath>
 
 namespace vnm::plot {
@@ -35,12 +34,30 @@ double Plot_time_axis::t_available_max() const
 
 void Plot_time_axis::set_t_min(double v)
 {
-    set_limits_if_changed(v, m_t_max, m_t_available_min, m_t_available_max);
+    double new_min = v;
+    double new_max = m_t_max;
+    if (v >= m_t_max) {
+        const double span = m_t_max - m_t_min;
+        if (!(span > 0.0)) {
+            return;
+        }
+        new_max = v + span;
+    }
+    set_limits_if_changed(new_min, new_max, m_t_available_min, m_t_available_max);
 }
 
 void Plot_time_axis::set_t_max(double v)
 {
-    set_limits_if_changed(m_t_min, v, m_t_available_min, m_t_available_max);
+    double new_min = m_t_min;
+    double new_max = v;
+    if (v <= m_t_min) {
+        const double span = m_t_max - m_t_min;
+        if (!(span > 0.0)) {
+            return;
+        }
+        new_min = v - span;
+    }
+    set_limits_if_changed(new_min, new_max, m_t_available_min, m_t_available_max);
 }
 
 void Plot_time_axis::set_t_available_min(double v)

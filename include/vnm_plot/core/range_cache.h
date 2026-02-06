@@ -82,11 +82,16 @@ inline bool validate_preview_range_cache_sequences(
         if (!series || !series->enabled) {
             continue;
         }
+        if (series->has_preview_config() && !series->preview_config->access.is_valid()) {
+            if (series->preview_source() != series->main_source()) {
+                continue;
+            }
+        }
         if (series->preview_matches_main()) {
             // Preview cache is only used when preview differs from main.
             continue;
         }
-        const Data_source* preview_source = series->preview_source();
+        Data_source* preview_source = series->preview_source();
         if (!preview_source) {
             continue;
         }
@@ -102,8 +107,7 @@ inline bool validate_preview_range_cache_sequences(
             (auto_mode == Auto_v_range_mode::GLOBAL_LOD) ? (levels - 1) : 0;
         uint64_t sequence = preview_source->current_sequence(check_level);
         if (sequence == 0) {
-            auto* preview_source_nc = const_cast<Data_source*>(preview_source);
-            auto snapshot_result = preview_source_nc->try_snapshot(check_level);
+            auto snapshot_result = preview_source->try_snapshot(check_level);
             if (!snapshot_result) {
                 return false;
             }

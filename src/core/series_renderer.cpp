@@ -870,8 +870,8 @@ void Series_renderer::render(
     {
         int id = 0;
         std::shared_ptr<series_data_t> series;
-        const Data_source* main_source = nullptr;
-        const Data_source* preview_source = nullptr;
+        Data_source* main_source = nullptr;
+        Data_source* preview_source = nullptr;
         const Data_access_policy* main_access = nullptr;
         const Data_access_policy* preview_access = nullptr;
         Display_style main_style = static_cast<Display_style>(0);
@@ -908,7 +908,7 @@ void Series_renderer::render(
             continue;
         }
 
-        const Data_source* main_source = s->main_source();
+        Data_source* main_source = s->main_source();
         if (!main_source) {
             continue;
         }
@@ -930,7 +930,9 @@ void Series_renderer::render(
         }
 
         const bool has_preview_config = s->has_preview_config();
-        const Data_source* preview_source = nullptr;
+        const bool preview_access_invalid =
+            has_preview_config && !s->preview_config->access.is_valid();
+        Data_source* preview_source = nullptr;
         const Data_access_policy* preview_access = nullptr;
         Display_style preview_style = static_cast<Display_style>(0);
         bool preview_matches_main = false;
@@ -951,12 +953,23 @@ void Series_renderer::render(
                 preview_style = static_cast<Display_style>(0);
             }
 
-            if (has_preview_config && !s->preview_config->access.is_valid()) {
-                log_error_once(
-                    m_preview_invalid_access_logged,
-                    id,
-                    "Preview access policy invalid; falling back to main access (series "
-                        + std::to_string(id) + ")");
+            if (preview_access_invalid && preview_source) {
+                if (preview_source != main_source) {
+                    log_error_once(
+                        m_preview_invalid_access_logged,
+                        id,
+                        "Preview access policy invalid; skipping preview for mismatched source (series "
+                            + std::to_string(id) + ")");
+                    preview_source = nullptr;
+                    preview_style = static_cast<Display_style>(0);
+                }
+                else {
+                    log_error_once(
+                        m_preview_invalid_access_logged,
+                        id,
+                        "Preview access policy invalid; using main access (series "
+                            + std::to_string(id) + ")");
+                }
             }
 
             if (preview_source && preview_access && preview_access->sample_stride > 0) {
@@ -1039,7 +1052,6 @@ void Series_renderer::render(
 
         // Process main view
         const std::size_t prev_lod_level = vbo_state.main_view.last_lod_level;
-        auto* main_source_nc = const_cast<Data_source*>(main_source);
         auto main_result = [&]() {
             VNM_PLOT_PROFILE_SCOPE(
                 profiler,
@@ -1048,7 +1060,7 @@ void Series_renderer::render(
                 vbo_state.main_view,
                 vbo_state,
                 m_frame_id,
-                *main_source_nc,
+                *main_source,
                 main_access.get_timestamp,
                 main_scales,
                 ctx.t0, ctx.t1,
@@ -1070,7 +1082,6 @@ void Series_renderer::render(
         view_render_result_t preview_result;
         if (preview_visible && preview_valid) {
             const std::size_t prev_preview_lod_level = vbo_state.preview_view.last_lod_level;
-            auto* preview_source_nc = const_cast<Data_source*>(preview_source);
             auto next_preview_result = [&]() {
                 VNM_PLOT_PROFILE_SCOPE(
                     profiler,
@@ -1079,7 +1090,7 @@ void Series_renderer::render(
                     vbo_state.preview_view,
                     vbo_state,
                     m_frame_id,
-                    *preview_source_nc,
+                    *preview_source,
                     preview_access->get_timestamp,
                     preview_scales,
                     ctx.t_available_min, ctx.t_available_max,
@@ -1148,8 +1159,8 @@ void Series_renderer::render(
         const series_data_t& series = *draw_state.series;
         auto& vbo_state = *draw_state.vbo_state;
         Data_source* data_source = is_preview
-            ? const_cast<Data_source*>(draw_state.preview_source)
-            : const_cast<Data_source*>(draw_state.main_source);
+            ? draw_state.preview_source
+            : draw_state.main_source;
         const Data_access_policy* access = is_preview ? draw_state.preview_access : draw_state.main_access;
         const auto& scales = is_preview ? draw_state.preview_scales : draw_state.main_scales;
         const bool use_preview_cache = is_preview && !draw_state.preview_matches_main;

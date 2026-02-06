@@ -1382,6 +1382,11 @@ void Plot_renderer::render()
                     if (!source) {
                         return false;
                     }
+                    const bool preview_access_invalid =
+                        series.has_preview_config() && !series.preview_config->access.is_valid();
+                    if (preview_access_invalid && source != series.main_source()) {
+                        return false;
+                    }
                     const Data_access_policy& access = series.preview_access();
                     if (access.sample_stride > 0 &&
                         source->sample_stride() != access.sample_stride)
