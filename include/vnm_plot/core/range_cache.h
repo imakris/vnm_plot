@@ -28,34 +28,39 @@ struct series_minmax_cache_t
     bool query_sequence_valid = false;
 };
 
-inline bool validate_range_cache_sequences(
+// Unified validation: ResolverFn returns (Data_source*, const Data_access_policy*)
+// or nullptr to skip the series.
+template<typename ResolverFn>
+bool validate_range_cache_impl(
     const std::map<int, std::shared_ptr<series_data_t>>& series_map,
     std::unordered_map<int, series_minmax_cache_t>& cache_map,
-    Auto_v_range_mode auto_mode)
+    Auto_v_range_mode auto_mode,
+    ResolverFn&& resolve)
 {
     for (const auto& [id, series] : series_map) {
-        if (!series || !series->enabled || !series->data_source) {
+        if (!series || !series->enabled) {
             continue;
         }
-        if (!series->access.get_value && !series->access.get_range) {
+        auto [source, access] = resolve(*series);
+        if (!source || !access || (!access->get_value && !access->get_range)) {
             continue;
         }
-        const std::size_t levels = series->data_source->lod_levels();
+        const std::size_t levels = source->lod_levels();
         if (levels == 0) {
             continue;
         }
         const std::size_t check_level =
             (auto_mode == Auto_v_range_mode::GLOBAL_LOD) ? (levels - 1) : 0;
-        uint64_t sequence = series->data_source->current_sequence(check_level);
+        uint64_t sequence = source->current_sequence(check_level);
         if (sequence == 0) {
-            auto snapshot_result = series->data_source->try_snapshot(check_level);
+            auto snapshot_result = source->try_snapshot(check_level);
             if (!snapshot_result) {
                 return false;
             }
             sequence = snapshot_result.snapshot.sequence;
         }
         series_minmax_cache_t& cache = cache_map[id];
-        const void* identity = series->data_source->identity();
+        const void* identity = source->identity();
         if (cache.identity != identity || cache.lods.size() != levels) {
             return false;
         }
@@ -73,62 +78,33 @@ inline bool validate_range_cache_sequences(
     return true;
 }
 
+inline bool validate_range_cache_sequences(
+    const std::map<int, std::shared_ptr<series_data_t>>& series_map,
+    std::unordered_map<int, series_minmax_cache_t>& cache_map,
+    Auto_v_range_mode auto_mode)
+{
+    return validate_range_cache_impl(series_map, cache_map, auto_mode,
+        [](const series_data_t& s)
+            -> std::pair<Data_source*, const Data_access_policy*> {
+            if (!s.data_source) return {nullptr, nullptr};
+            return {s.data_source.get(), &s.access};
+        });
+}
+
 inline bool validate_preview_range_cache_sequences(
     const std::map<int, std::shared_ptr<series_data_t>>& series_map,
     std::unordered_map<int, series_minmax_cache_t>& cache_map,
     Auto_v_range_mode auto_mode)
 {
-    for (const auto& [id, series] : series_map) {
-        if (!series || !series->enabled) {
-            continue;
-        }
-        if (series->preview_access_invalid_for_source()) {
-            // Renderer skips preview when access is invalid and source differs.
-            continue;
-        }
-        if (series->preview_matches_main()) {
-            // Preview cache is only used when preview differs from main.
-            continue;
-        }
-        Data_source* preview_source = series->preview_source();
-        if (!preview_source) {
-            continue;
-        }
-        const Data_access_policy& access = series->preview_access();
-        if (!access.get_value && !access.get_range) {
-            continue;
-        }
-        const std::size_t levels = preview_source->lod_levels();
-        if (levels == 0) {
-            continue;
-        }
-        const std::size_t check_level =
-            (auto_mode == Auto_v_range_mode::GLOBAL_LOD) ? (levels - 1) : 0;
-        uint64_t sequence = preview_source->current_sequence(check_level);
-        if (sequence == 0) {
-            auto snapshot_result = preview_source->try_snapshot(check_level);
-            if (!snapshot_result) {
-                return false;
-            }
-            sequence = snapshot_result.snapshot.sequence;
-        }
-        series_minmax_cache_t& cache = cache_map[id];
-        const void* identity = preview_source->identity();
-        if (cache.identity != identity || cache.lods.size() != levels) {
-            return false;
-        }
-        if (auto_mode == Auto_v_range_mode::VISIBLE && cache.query_sequence_valid) {
-            if (cache.query_sequence != sequence) {
-                return false;
-            }
-            continue;
-        }
-        const auto& entry = cache.lods[check_level];
-        if (!entry.valid || entry.sequence != sequence) {
-            return false;
-        }
-    }
-    return true;
+    return validate_range_cache_impl(series_map, cache_map, auto_mode,
+        [](const series_data_t& s)
+            -> std::pair<Data_source*, const Data_access_policy*> {
+            if (s.preview_access_invalid_for_source()) return {nullptr, nullptr};
+            if (s.preview_matches_main()) return {nullptr, nullptr};
+            Data_source* src = s.preview_source();
+            if (!src) return {nullptr, nullptr};
+            return {src, &s.preview_access()};
+        });
 }
 
 } // namespace vnm::plot

@@ -151,11 +151,7 @@ void Function_entry::set_color(const QColor& color)
     if (m_color != color) {
         m_color = color;
         update_series_color();
-        if (m_plotter) {
-            if (auto* widget = m_plotter->plot_widget()) {
-                widget->update();
-            }
-        }
+        push_series_update();
         emit color_changed();
     }
 }
@@ -243,11 +239,7 @@ void Function_entry::set_style_flag(vnm::plot::Display_style flag, bool enabled)
     }
     m_series->style = static_cast<vnm::plot::Display_style>(style);
 
-    if (m_plotter) {
-        if (auto* widget = m_plotter->plot_widget()) {
-            widget->update();
-        }
-    }
+    push_series_update();
     emit display_style_changed();
 }
 
@@ -600,6 +592,16 @@ void Function_entry::update_series_color()
             m_color.blueF(),
             m_color.alphaF()
         );
+    }
+}
+
+void Function_entry::push_series_update()
+{
+    if (!m_series || !m_plotter) {
+        return;
+    }
+    if (auto* widget = m_plotter->plot_widget()) {
+        widget->add_series(m_series_id, m_series);
     }
 }
 

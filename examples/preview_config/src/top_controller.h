@@ -24,7 +24,6 @@ signals:
 private:
     void setup_series();
     void configure_plot_widget();
-    void apply_time_range();
     void generate_samples();
 
     vnm::plot::Plot_widget* m_plot_widget = nullptr;

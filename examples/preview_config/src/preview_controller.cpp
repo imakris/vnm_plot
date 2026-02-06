@@ -1,6 +1,6 @@
 #include "preview_controller.h"
+#include "example_utils.h"
 
-#include <glatter/glatter.h>
 #include <glm/vec4.hpp>
 
 #include <cmath>
@@ -13,7 +13,6 @@ constexpr double k_x_max = 20.0;
 constexpr std::size_t k_main_samples = 4000;
 constexpr std::size_t k_preview_samples = 320;
 constexpr double k_auto_v_scale = 0.2;
-const char* k_vert_shader = ":/vnm_plot/shaders/function_sample.vert";
 
 float sample_signal(double x)
 {
@@ -33,9 +32,7 @@ Preview_controller::Preview_controller(QObject* parent)
 
 void Preview_controller::set_plot_widget(vnm::plot::Plot_widget* widget)
 {
-    if (m_plot_widget == widget) {
-        return;
-    }
+    if (m_plot_widget == widget) return;
 
     if (m_plot_widget) {
         if (m_time_axis_connection) {
@@ -43,30 +40,24 @@ void Preview_controller::set_plot_widget(vnm::plot::Plot_widget* widget)
             m_time_axis_connection = {};
         }
         QObject::disconnect(m_plot_widget, nullptr, this, nullptr);
-        if (m_series) {
-            m_plot_widget->remove_series(m_series->id);
-        }
+        if (m_series) m_plot_widget->remove_series(m_series->id);
     }
 
     m_plot_widget = widget;
 
     if (m_plot_widget) {
         configure_plot_widget();
-        if (m_series) {
-            m_plot_widget->add_series(m_series->id, m_series);
-        }
-        apply_time_range();
+        if (m_series) m_plot_widget->add_series(m_series->id, m_series);
+        m_plot_widget->set_t_range(k_x_min, k_x_max);
+        m_plot_widget->set_available_t_range(k_x_min, k_x_max);
         m_plot_widget->set_v_auto(true);
         m_plot_widget->update();
         m_time_axis_connection = QObject::connect(
-            m_plot_widget,
-            &vnm::plot::Plot_widget::time_axis_changed,
-            this,
+            m_plot_widget, &vnm::plot::Plot_widget::time_axis_changed, this,
             [this]() {
-                if (!m_plot_widget) {
-                    return;
-                }
-                apply_time_range();
+                if (!m_plot_widget) return;
+                m_plot_widget->set_t_range(k_x_min, k_x_max);
+                m_plot_widget->set_available_t_range(k_x_min, k_x_max);
             });
     }
 
@@ -83,37 +74,10 @@ void Preview_controller::setup_series()
 
     m_series->access = vnm::plot::make_function_sample_policy();
     m_series->access.layout_key = 0x2001;
+    m_series->access.setup_vertex_attributes = setup_function_sample_vertex_attributes;
 
-    m_series->access.setup_vertex_attributes = []() {
-        glVertexAttribLPointer(0, 1, GL_DOUBLE, sizeof(vnm::plot::function_sample_t),
-            reinterpret_cast<void*>(offsetof(vnm::plot::function_sample_t, x)));
-        glEnableVertexAttribArray(0);
-
-        glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, sizeof(vnm::plot::function_sample_t),
-            reinterpret_cast<void*>(offsetof(vnm::plot::function_sample_t, y)));
-        glEnableVertexAttribArray(1);
-
-        glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, sizeof(vnm::plot::function_sample_t),
-            reinterpret_cast<void*>(offsetof(vnm::plot::function_sample_t, y_min)));
-        glEnableVertexAttribArray(2);
-
-        glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, sizeof(vnm::plot::function_sample_t),
-            reinterpret_cast<void*>(offsetof(vnm::plot::function_sample_t, y_max)));
-        glEnableVertexAttribArray(3);
-    };
-
-    m_series->shader_set = {
-        k_vert_shader,
-        ":/vnm_plot/shaders/plot_line_adjacency.geom",
-        ":/vnm_plot/shaders/plot_line.frag"
-    };
-
-    m_series->shaders[vnm::plot::Display_style::AREA] = {
-        k_vert_shader,
-        ":/vnm_plot/shaders/plot_area.geom",
-        ":/vnm_plot/shaders/plot_area.frag"
-    };
-
+    m_series->shader_set = line_shader_set();
+    m_series->shaders[vnm::plot::Display_style::AREA] = area_shader_set();
     m_series->data_source = m_main_source;
 
     vnm::plot::preview_config_t preview_cfg;
@@ -125,9 +89,7 @@ void Preview_controller::setup_series()
 
 void Preview_controller::configure_plot_widget()
 {
-    if (!m_plot_widget) {
-        return;
-    }
+    if (!m_plot_widget) return;
 
     vnm::plot::Plot_config config;
     config.dark_mode = true;
@@ -138,35 +100,12 @@ void Preview_controller::configure_plot_widget()
     config.preview_visibility = 0.6;
     config.line_width_px = 1.35;
     config.auto_v_range_extra_scale = k_auto_v_scale;
-
     m_plot_widget->set_config(config);
-}
-
-void Preview_controller::apply_time_range()
-{
-    if (!m_plot_widget) {
-        return;
-    }
-
-    m_plot_widget->set_t_range(k_x_min, k_x_max);
-    m_plot_widget->set_available_t_range(k_x_min, k_x_max);
 }
 
 void Preview_controller::generate_samples()
 {
-    m_main_source->generate(
-        [](double x) {
-            return sample_signal(x);
-        },
-        k_x_min,
-        k_x_max,
-        k_main_samples);
-
-    m_preview_source->generate(
-        [](double x) {
-            return sample_signal(x);
-        },
-        k_x_min,
-        k_x_max,
-        k_preview_samples);
+    auto gen = [](double x) { return sample_signal(x); };
+    m_main_source->generate(gen, k_x_min, k_x_max, k_main_samples);
+    m_preview_source->generate(gen, k_x_min, k_x_max, k_preview_samples);
 }
