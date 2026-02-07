@@ -90,6 +90,8 @@ public:
     // --- Configuration ---
 
     // Set the plot configuration
+    // Note: grid_visibility, preview_visibility, and line_width_px are controlled by QML
+    // properties and preserved across set_config() calls.
     void set_config(const Plot_config& config);
     Plot_config config() const;
     // Reset renderer-side view state (e.g., skip auto-range smoothing once).

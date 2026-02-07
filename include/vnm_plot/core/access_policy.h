@@ -44,12 +44,16 @@ constexpr Vertex_attrib_type vertex_attrib_type_for()
 }
 
 template<typename Sample, typename Member>
-constexpr std::size_t member_offset(Member Sample::* member)
+std::size_t member_offset(Member Sample::* member)
 {
     static_assert(std::is_standard_layout_v<Sample>,
         "Sample type must be standard-layout for member offsets.");
-    return static_cast<std::size_t>(
-        reinterpret_cast<std::uintptr_t>(&(reinterpret_cast<const Sample*>(0)->*member)));
+    static_assert(std::is_default_constructible_v<Sample>,
+        "Sample type must be default-constructible for member offsets.");
+    const Sample instance{};
+    const auto base = reinterpret_cast<const char*>(&instance);
+    const auto field = reinterpret_cast<const char*>(&(instance.*member));
+    return static_cast<std::size_t>(field - base);
 }
 
 } // namespace detail
