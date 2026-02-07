@@ -24,6 +24,9 @@ Item {
         internal.hasMouseInPlot = true
         internal.mouseX = x
         internal.mouseY = y
+        internal.inMainPlotAtMove =
+            x >= 0 && x <= usableWidth &&
+            y >= 0 && y < usableHeight
         refreshIndicator()
     }
 
@@ -33,6 +36,7 @@ Item {
         if (!inPlot) {
             internal.mouseX = -1
             internal.mouseY = -1
+            internal.inMainPlotAtMove = false
         }
         if (wasInPlot && !inPlot && root.linkIndicator && root.timeAxis) {
             root.timeAxis.set_indicator_state(plotWidget, false, 0.0)
@@ -52,6 +56,7 @@ Item {
         property bool indicatorActive: false
         property bool indicatorOwned: false
         property real lastSharedT: 0.0
+        property bool inMainPlotAtMove: false
     }
 
     Connections {
@@ -96,7 +101,7 @@ Item {
 
     function refreshIndicator() {
         var inMainPlot = internal.hasMouseInPlot
-            && internal.mouseX >= 0 && internal.mouseX <= usableWidth
+            && internal.inMainPlotAtMove
             && internal.mouseY >= 0 && internal.mouseY < usableHeight
 
         var tmin = plotWidget.t_min
@@ -111,7 +116,8 @@ Item {
 
         var localT = 0.0
         if (inMainPlot) {
-            localT = tmin + (internal.mouseX / usableWidth) * tspan
+            var xClamped = Math.max(0.0, Math.min(internal.mouseX, usableWidth))
+            localT = tmin + (xClamped / usableWidth) * tspan
             if (root.linkIndicator && root.timeAxis) {
                 var canUpdate = true
                 if (root.timeAxis.indicator_active &&
