@@ -174,7 +174,6 @@ inline vnm::plot::Data_access_policy make_bar_access_policy() {
         return static_cast<double>(static_cast<const Bar_sample*>(sample)->volume);
     };
 
-    policy.sample_stride = sizeof(Bar_sample);
     policy.layout_key = k_bar_sample_layout_key;
 
     // Setup vertex attributes matching function_sample.vert:
@@ -229,7 +228,6 @@ inline vnm::plot::Data_access_policy make_trade_access_policy() {
         return static_cast<double>(static_cast<const Trade_sample*>(sample)->size);
     };
 
-    policy.sample_stride = sizeof(Trade_sample);
     policy.layout_key = k_trade_sample_layout_key;
 
     // Setup vertex attributes matching function_sample.vert:

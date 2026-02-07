@@ -108,8 +108,8 @@ private:
     std::unique_ptr<vnm::plot::Text_renderer> m_text_renderer;
 #endif
     vnm::plot::Layout_calculator m_layout_calc;
-    std::map<int, std::shared_ptr<vnm::plot::series_data_t>> m_series_map;
-    vnm::plot::Render_config m_render_config;
+    std::map<int, std::shared_ptr<const vnm::plot::series_data_t>> m_series_map;
+    vnm::plot::Plot_config m_render_config;
     vnm::plot::Layout_cache m_layout_cache;
 
     // View state

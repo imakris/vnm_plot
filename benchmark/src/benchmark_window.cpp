@@ -165,7 +165,8 @@ void Benchmark_window::initializeGL()
     m_render_config.snap_lines_to_pixels = false;
     m_render_config.line_width_px = 1.5;
     m_render_config.format_timestamp = format_benchmark_timestamp;
-    m_render_config.profiler = &m_profiler;  // Wire up profiler for vnm_plot internal scopes
+    m_render_config.profiler = std::shared_ptr<vnm::plot::Profiler>(
+        &m_profiler, [](vnm::plot::Profiler*) {});  // Wire up profiler for vnm_plot internal scopes
 
     // Set up series
     setup_series();
@@ -265,8 +266,8 @@ void Benchmark_window::on_benchmark_timeout()
 
 void Benchmark_window::setup_series()
 {
+    const int series_id = 1;
     auto series = std::make_shared<vnm::plot::series_data_t>();
-    series->id = 1;
     series->enabled = true;
     series->color = glm::vec4(0.2f, 0.7f, 0.9f, 1.0f);
 
@@ -278,8 +279,7 @@ void Benchmark_window::setup_series()
             "shaders/plot_dot_quad.geom",
             "shaders/plot_dot_quad.frag"
         };
-        series->data_source = std::shared_ptr<vnm::plot::Data_source>(
-            m_trade_source.get(), [](vnm::plot::Data_source*) {});
+        series->set_data_source_ref(*m_trade_source);
         series->access = make_trade_access_policy();
     }
     else {
@@ -290,12 +290,11 @@ void Benchmark_window::setup_series()
             "shaders/plot_area.geom",
             "shaders/plot_area.frag"
         };
-        series->data_source = std::shared_ptr<vnm::plot::Data_source>(
-            m_bar_source.get(), [](vnm::plot::Data_source*) {});
+        series->set_data_source_ref(*m_bar_source);
         series->access = make_bar_access_policy();
     }
 
-    m_series_map[series->id] = series;
+    m_series_map[series_id] = series;
 }
 
 }  // namespace vnm::benchmark

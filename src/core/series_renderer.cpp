@@ -271,7 +271,7 @@ GLuint Series_renderer::ensure_series_vao(
 
 std::shared_ptr<GL_program> Series_renderer::get_or_load_shader(
     const shader_set_t& shader_set,
-    const Render_config* config)
+    const Plot_config* config)
 {
     if (shader_set.vert.empty() || !m_asset_loader) {
         return nullptr;
@@ -648,7 +648,7 @@ void Series_renderer::modify_uniforms_for_preview(
 
 void Series_renderer::render(
     const frame_context_t& ctx,
-    const std::map<int, std::shared_ptr<series_data_t>>& series)
+    const std::map<int, std::shared_ptr<const series_data_t>>& series)
 {
     if (series.empty() || !m_asset_loader) {
         return;
@@ -662,7 +662,7 @@ void Series_renderer::render(
     // Increment frame counter for snapshot caching
     ++m_frame_id;
 
-    vnm::plot::Profiler* profiler = ctx.config ? ctx.config->profiler : nullptr;
+    vnm::plot::Profiler* profiler = ctx.config ? ctx.config->profiler.get() : nullptr;
     VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.execute_passes.render_data_series");
 
     // Skip all GL calls if configured (for pure CPU profiling)
@@ -730,7 +730,7 @@ void Series_renderer::render(
     struct Series_draw_state
     {
         int id = 0;
-        std::shared_ptr<series_data_t> series;
+        std::shared_ptr<const series_data_t> series;
         Data_source* main_source = nullptr;
         Data_source* preview_source = nullptr;
         const Data_access_policy* main_access = nullptr;
@@ -752,11 +752,11 @@ void Series_renderer::render(
     const double preview_visibility = ctx.config ? ctx.config->preview_visibility : 1.0;
     const bool preview_visible = ctx.adjusted_preview_height > 0.0 && preview_visibility > 0.0;
 
-    enum class Error_cat : uint32_t {
-        MISSING_SIGNAL, MISSING_SIGNAL_PREVIEW,
-        PREVIEW_MISSING_SOURCE, PREVIEW_INVALID_ACCESS,
-        PREVIEW_INCOMPATIBLE_STRIDE
-    };
+      enum class Error_cat : uint32_t {
+          MISSING_SIGNAL, MISSING_SIGNAL_PREVIEW,
+          PREVIEW_MISSING_SOURCE, PREVIEW_INVALID_ACCESS,
+          MISSING_SHADER
+      };
     const auto log_error_once = [&](Error_cat cat, int series_id,
                                     const std::string& message) {
         if (!ctx.config || !ctx.config->log_error) return;
@@ -827,16 +827,6 @@ void Series_renderer::render(
                     log_error_once(Error_cat::PREVIEW_INVALID_ACCESS, id,
                         "Preview access policy invalid; using main access (series "
                             + std::to_string(id) + ")");
-                }
-            }
-
-            if (preview_source && preview_access && preview_access->sample_stride > 0) {
-                if (preview_source->sample_stride() != preview_access->sample_stride) {
-                    log_error_once(Error_cat::PREVIEW_INCOMPATIBLE_STRIDE, id,
-                        "Preview access sample_stride does not match preview data source stride (series "
-                            + std::to_string(id) + ")");
-                    preview_source = nullptr;
-                    preview_style = static_cast<Display_style>(0);
                 }
             }
 
@@ -1141,7 +1131,14 @@ void Series_renderer::render(
             return;
         }
 
-        auto pass_shader = get_or_load_shader(series.shader_for(primitive_style), ctx.config);
+        const shader_set_t& shader_set = series.shader_for(primitive_style);
+        if (shader_set.empty()) {
+            log_error_once(Error_cat::MISSING_SHADER, draw_state.id,
+                "Missing shader set for series " + std::to_string(draw_state.id)
+                    + " (layout_key=" + std::to_string(series.access.layout_key) + ")");
+            return;
+        }
+        auto pass_shader = get_or_load_shader(shader_set, ctx.config);
         if (!pass_shader) {
             return;
         }

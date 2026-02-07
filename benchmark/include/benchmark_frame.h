@@ -56,13 +56,13 @@ struct Benchmark_frame_params {
 /// Renderers and caches used by the benchmark frame
 struct Benchmark_frame_context {
     vnm::benchmark::Benchmark_profiler& profiler;
-    vnm::plot::Render_config& render_config;
+    vnm::plot::Plot_config& render_config;
     vnm::plot::Layout_calculator& layout_calc;
     vnm::plot::Layout_cache& layout_cache;
     vnm::plot::Primitive_renderer& primitives;
     vnm::plot::Series_renderer& series_renderer;
     vnm::plot::Chrome_renderer& chrome_renderer;
-    std::map<int, std::shared_ptr<vnm::plot::series_data_t>>& series_map;
+    std::map<int, std::shared_ptr<const vnm::plot::series_data_t>>& series_map;
     vnm::plot::Data_source* data_source;
 #if defined(VNM_PLOT_ENABLE_TEXT)
     vnm::plot::Font_renderer* font_renderer = nullptr;

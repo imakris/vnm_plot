@@ -193,7 +193,6 @@ bool test_bar_access_policy() {
     auto policy = make_bar_access_policy();
 
     TEST_ASSERT(policy.is_valid(), "policy should be valid");
-    TEST_ASSERT(policy.sample_stride == 28, "stride should be 28");
 
     Bar_sample bar{};
     bar.timestamp = 1000.0;
@@ -219,7 +218,6 @@ bool test_trade_access_policy() {
     auto policy = make_trade_access_policy();
 
     TEST_ASSERT(policy.is_valid(), "policy should be valid");
-    TEST_ASSERT(policy.sample_stride == 16, "stride should be 16");
 
     Trade_sample trade{};
     trade.timestamp = 2000.0;

@@ -106,7 +106,7 @@ bool spans_approx_equal(double a, double b)
     return diff <= scale * k_eps;
 }
 
-std::uint64_t hash_data_sources(const std::map<int, std::shared_ptr<series_data_t>>& series_map)
+std::uint64_t hash_data_sources(const std::map<int, std::shared_ptr<const series_data_t>>& series_map)
 {
     std::uint64_t hash = 1469598103934665603ULL;
     for (const auto& [id, series] : series_map) {
@@ -145,7 +145,7 @@ std::uint64_t hash_data_sources(const std::map<int, std::shared_ptr<series_data_
     return hash;
 }
 
-std::uint64_t hash_series_snapshot(const std::map<int, std::shared_ptr<series_data_t>>& series_map)
+std::uint64_t hash_series_snapshot(const std::map<int, std::shared_ptr<const series_data_t>>& series_map)
 {
     std::uint64_t hash = 1469598103934665603ULL;
     for (const auto& [id, series] : series_map) {
@@ -344,7 +344,7 @@ void purge_stale_cache(std::unordered_map<int, series_minmax_cache_t>& cache,
 
 template <typename Resolver>
 std::pair<float, float> compute_global_v_range(
-    const std::map<int, std::shared_ptr<series_data_t>>& series_map,
+    const std::map<int, std::shared_ptr<const series_data_t>>& series_map,
     std::unordered_map<int, series_minmax_cache_t>& cache_map,
     std::unordered_map<int, series_minmax_cache_t>* alt_cache_map,
     Resolver&& resolve,
@@ -438,7 +438,7 @@ std::pair<float, float> compute_global_v_range(
 
 template <typename Resolver>
 std::pair<float, float> compute_visible_v_range(
-    const std::map<int, std::shared_ptr<series_data_t>>& series_map,
+    const std::map<int, std::shared_ptr<const series_data_t>>& series_map,
     std::unordered_map<int, series_minmax_cache_t>& cache_map,
     std::unordered_map<int, series_minmax_cache_t>* alt_cache_map,
     Resolver&& resolve,
@@ -657,7 +657,7 @@ struct Plot_renderer::impl_t
         int last_vertical_seed_index = -1;
         int last_horizontal_seed_index = -1;
 
-        std::map<int, std::shared_ptr<series_data_t>> series_snapshot;
+        std::map<int, std::shared_ptr<const series_data_t>> series_snapshot;
         std::unordered_map<int, series_minmax_cache_t> v_range_cache;
         std::unordered_map<int, series_minmax_cache_t> preview_v_range_cache;
         Layout_cache layout_cache;
@@ -1258,11 +1258,6 @@ void Plot_renderer::render()
                         return false;
                     }
                     const Data_access_policy& access = series.preview_access();
-                    if (access.sample_stride > 0 &&
-                        source->sample_stride() != access.sample_stride)
-                    {
-                        return false;
-                    }
                     view.source = source;
                     view.access = &access;
                     view.cache = series.preview_matches_main()
@@ -1473,47 +1468,22 @@ void Plot_renderer::render()
         m_impl->update_seed_history(v_span, t_span, frame_layout);
     }
 
-    Render_config core_config;
     frame_context_t core_ctx = [&]() -> frame_context_t {
         VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.context_build");
-        if (config) {
-            VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.context_build.config");
-            core_config.dark_mode = config->dark_mode;
-            core_config.show_text = config->show_text;
-            core_config.grid_visibility = config->grid_visibility;
-            core_config.preview_visibility = config->preview_visibility;
-            core_config.snap_lines_to_pixels = config->snap_lines_to_pixels;
-            core_config.line_width_px = config->line_width_px;
-            core_config.area_fill_alpha = config->area_fill_alpha;
-            core_config.format_timestamp = config->format_timestamp
-                ? config->format_timestamp
-                : default_format_timestamp;
-            core_config.log_debug = config->log_debug;
-            core_config.log_error = config->log_error;
-            core_config.profiler = profiler;
-        }
-
         VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.context_build.core_ctx");
-        return frame_context_t{
-            frame_layout,
-            v0,
-            v1,
-            preview_v0,
-            preview_v1,
-            m_impl->snapshot.cfg.t_min,
-            m_impl->snapshot.cfg.t_max,
-            m_impl->snapshot.cfg.t_available_min,
-            m_impl->snapshot.cfg.t_available_max,
-            win_w,
-            win_h,
-            glm::ortho(0.f, float(win_w), float(win_h), 0.f, -1.f, 1.f),
-            m_impl->snapshot.adjusted_font_px,
-            m_impl->snapshot.base_label_height_px,
-            m_impl->snapshot.adjusted_reserved_height,
-            m_impl->snapshot.adjusted_preview_height,
-            m_impl->snapshot.show_info,
-            config ? &core_config : nullptr
-        };
+        Frame_context_builder builder(frame_layout);
+        builder
+            .v_range(v0, v1)
+            .preview_v_range(preview_v0, preview_v1)
+            .t_range(m_impl->snapshot.cfg.t_min, m_impl->snapshot.cfg.t_max)
+            .available_t_range(m_impl->snapshot.cfg.t_available_min, m_impl->snapshot.cfg.t_available_max)
+            .window_size(win_w, win_h)
+            .pmv(glm::ortho(0.f, float(win_w), float(win_h), 0.f, -1.f, 1.f))
+            .font_px(m_impl->snapshot.adjusted_font_px, m_impl->snapshot.base_label_height_px)
+            .reserved_heights(m_impl->snapshot.adjusted_reserved_height, m_impl->snapshot.adjusted_preview_height)
+            .show_info(m_impl->snapshot.show_info)
+            .config(config);
+        return builder.build();
     }();
 
     // Clear to transparent - let QML provide the background color (matches Lumis behavior)
@@ -1521,8 +1491,9 @@ void Plot_renderer::render()
     const bool clear_to_transparent = config ? config->clear_to_transparent : false;
     const Color_palette palette =
         dark_mode ? Color_palette::dark() : Color_palette::light();
+    const bool skip_gl_calls = config && config->skip_gl_calls;
     GLboolean was_multisample = GL_FALSE;
-    {
+    if (!skip_gl_calls) {
         if (clear_to_transparent) {
             glClearColor(0.f, 0.f, 0.f, 0.f);
         }
@@ -1560,10 +1531,12 @@ void Plot_renderer::render()
     if (preview_enabled) {
         m_impl->chrome.render_preview_overlay(core_ctx, m_impl->primitives);
     }
-    m_impl->primitives.flush_rects(core_ctx.pmv);
+    if (!skip_gl_calls) {
+        m_impl->primitives.flush_rects(core_ctx.pmv);
+    }
 
     // Render text labels
-    if (m_impl->text && (!config || config->show_text)) {
+    if (!skip_gl_calls && m_impl->text && (!config || config->show_text)) {
         VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.text_overlay");
         const bool fades_active = m_impl->text->render(core_ctx, fade_v_labels, fade_h_labels);
         if (fades_active && m_impl->owner) {
@@ -1573,9 +1546,11 @@ void Plot_renderer::render()
         }
     }
 
-    glDisable(GL_BLEND);
-    if (!was_multisample) {
-        glDisable(GL_MULTISAMPLE);
+    if (!skip_gl_calls) {
+        glDisable(GL_BLEND);
+        if (!was_multisample) {
+            glDisable(GL_MULTISAMPLE);
+        }
     }
 }
 

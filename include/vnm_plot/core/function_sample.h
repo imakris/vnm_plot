@@ -3,7 +3,9 @@
 // VNM Plot Library - Function Sample Type
 // A simple sample type for plotting mathematical functions y = f(x).
 
+#include <vnm_plot/core/access_policy.h>
 #include <vnm_plot/core/types.h>
+#include <vnm_plot/core/vertex_layout.h>
 
 #include <cmath>
 #include <functional>
@@ -113,30 +115,36 @@ public:
 // -----------------------------------------------------------------------------
 // Create Data_access_policy for function_sample_t
 // -----------------------------------------------------------------------------
+inline const Vertex_layout& function_sample_layout()
+{
+    static const Vertex_layout layout =
+        make_standard_layout<function_sample_t>(
+            &function_sample_t::x,
+            &function_sample_t::y,
+            &function_sample_t::y_min,
+            &function_sample_t::y_max);
+    return layout;
+}
+
+inline uint64_t function_sample_layout_key()
+{
+    static const uint64_t key = layout_key_for(function_sample_layout());
+    return key;
+}
+
+inline Data_access_policy_typed<function_sample_t> make_function_sample_policy_typed()
+{
+    auto policy = make_access_policy<function_sample_t>(
+        &function_sample_t::x,
+        &function_sample_t::y,
+        &function_sample_t::y_min,
+        &function_sample_t::y_max);
+    return policy;
+}
+
 inline Data_access_policy make_function_sample_policy()
 {
-    Data_access_policy policy;
-
-    policy.get_timestamp = [](const void* p) {
-        return static_cast<const function_sample_t*>(p)->x;
-    };
-
-    policy.get_value = [](const void* p) {
-        return static_cast<const function_sample_t*>(p)->y;
-    };
-
-    policy.get_range = [](const void* p) {
-        auto* s = static_cast<const function_sample_t*>(p);
-        return std::make_pair(s->y_min, s->y_max);
-    };
-
-    policy.sample_stride = sizeof(function_sample_t);
-
-    // Vertex attributes will be set up by the renderer based on sample layout
-    // For now, assume simple position-based layout
-    policy.layout_key = 0x1001;  // Unique key for function_sample_t layout
-
-    return policy;
+    return make_function_sample_policy_typed().erase();
 }
 
 } // namespace vnm::plot

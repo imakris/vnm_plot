@@ -7,7 +7,6 @@
 #include <QBuffer>
 #include <QMediaDevices>
 
-#include <glatter/glatter.h>
 #include <glm/vec4.hpp>
 
 #include <mexce.h>
@@ -511,76 +510,14 @@ void Function_entry::set_is_playing(bool playing)
 
 void Function_entry::setup_series()
 {
-    m_series = std::make_shared<vnm::plot::series_data_t>();
-    m_series->id = m_series_id;
-    m_series->enabled = true;
-    m_series->style = vnm::plot::Display_style::LINE;
+    m_series = vnm::plot::Series_builder()
+        .enabled(true)
+        .style(vnm::plot::Display_style::LINE)
+        .data_source_ref(m_data_source)
+        .access(vnm::plot::make_function_sample_policy_typed())
+        .build_shared();
 
     update_series_color();
-
-    // Set up access policy for sample extraction
-    m_series->access.get_timestamp = [](const void* sample) -> double {
-        return static_cast<const vnm::plot::function_sample_t*>(sample)->x;
-    };
-    m_series->access.get_value = [](const void* sample) -> float {
-        return static_cast<const vnm::plot::function_sample_t*>(sample)->y;
-    };
-    m_series->access.get_range = [](const void* sample) -> std::pair<float, float> {
-        const auto* s = static_cast<const vnm::plot::function_sample_t*>(sample);
-        return {s->y_min, s->y_max};
-    };
-
-    // Configure shaders for each display style.
-    // The renderer uses shaders map directly for multi-pass rendering.
-    const char* vert = ":/vnm_plot/shaders/function_sample.vert";
-    m_series->shaders[vnm::plot::Display_style::DOTS] = {
-        vert,
-        ":/vnm_plot/shaders/plot_dot_quad.geom",
-        ":/vnm_plot/shaders/plot_dot_quad.frag"
-    };
-    m_series->shaders[vnm::plot::Display_style::AREA] = {
-        vert,
-        ":/vnm_plot/shaders/plot_area.geom",
-        ":/vnm_plot/shaders/plot_line.frag"
-    };
-    m_series->shaders[vnm::plot::Display_style::LINE] = {
-        vert,
-        ":/vnm_plot/shaders/plot_line_adjacency.geom",
-        ":/vnm_plot/shaders/plot_line.frag"
-    };
-
-    // Layout key for function_sample_t (must be unique for this vertex layout)
-    m_series->access.layout_key = 0x1001;
-
-    // Set up vertex attributes for function_sample_t:
-    // struct { double x; float y; float y_min; float y_max; }
-    m_series->access.setup_vertex_attributes = []() {
-        // Attribute 0: double x (uses 2 slots for dvec1)
-        glVertexAttribLPointer(0, 1, GL_DOUBLE, sizeof(vnm::plot::function_sample_t),
-            reinterpret_cast<void*>(offsetof(vnm::plot::function_sample_t, x)));
-        glEnableVertexAttribArray(0);
-
-        // Attribute 1: float y
-        glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, sizeof(vnm::plot::function_sample_t),
-            reinterpret_cast<void*>(offsetof(vnm::plot::function_sample_t, y)));
-        glEnableVertexAttribArray(1);
-
-        // Attribute 2: float y_min
-        glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, sizeof(vnm::plot::function_sample_t),
-            reinterpret_cast<void*>(offsetof(vnm::plot::function_sample_t, y_min)));
-        glEnableVertexAttribArray(2);
-
-        // Attribute 3: float y_max
-        glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, sizeof(vnm::plot::function_sample_t),
-            reinterpret_cast<void*>(offsetof(vnm::plot::function_sample_t, y_max)));
-        glEnableVertexAttribArray(3);
-    };
-
-    // Use m_data_source directly with no-op deleter
-    m_series->data_source = std::shared_ptr<vnm::plot::Data_source>(
-        &m_data_source,
-        [](vnm::plot::Data_source*) {}  // No-op deleter since we don't own it
-    );
 }
 
 void Function_entry::update_series_color()
@@ -897,9 +834,10 @@ void Function_plotter::update_plot_widget()
         return;
     }
 
-    // Update the time (x) range
-    m_plot_widget->set_t_range(m_x_min, m_x_max);
-    m_plot_widget->set_available_t_range(m_x_min, m_x_max);
+    vnm::plot::Plot_view view;
+    view.t_range = std::make_pair(m_x_min, m_x_max);
+    view.t_available_range = std::make_pair(m_x_min, m_x_max);
+    m_plot_widget->set_view(view);
 }
 
 void Function_plotter::configure_plot_widget()

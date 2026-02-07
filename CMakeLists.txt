@@ -249,6 +249,9 @@ set(VNM_PLOT_CORE_SOURCES
     src/core/utf8_utils.cpp
     src/core/platform_paths.cpp
     src/core/layout_calculator.cpp
+    src/core/vertex_layout.cpp
+    src/core/default_shaders.cpp
+    src/core/plot_core.cpp
 
     # Core renderers
     src/core/primitive_renderer.cpp
@@ -272,7 +275,9 @@ endif()
 set(VNM_PLOT_CORE_HEADERS
     # Core headers
     include/vnm_plot/core/types.h
+    include/vnm_plot/core/access_policy.h
     include/vnm_plot/core/plot_config.h
+    include/vnm_plot/core/default_shaders.h
     include/vnm_plot/core/function_sample.h
     include/vnm_plot/core/layout_calculator.h
     include/vnm_plot/core/constants.h
@@ -284,6 +289,9 @@ set(VNM_PLOT_CORE_HEADERS
     include/vnm_plot/core/font_renderer.h
     include/vnm_plot/core/text_renderer.h
     include/vnm_plot/core/series_renderer.h
+    include/vnm_plot/core/series_builder.h
+    include/vnm_plot/core/plot_core.h
+    include/vnm_plot/core/vertex_layout.h
     include/vnm_plot/core/gl_program.h
     include/vnm_plot/core/asset_loader.h
 )

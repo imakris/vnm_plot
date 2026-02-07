@@ -1,10 +1,7 @@
 #include "top_controller.h"
-#include "example_utils.h"
-
-#include <glm/vec4.hpp>
-
 #include <cmath>
 #include <cstddef>
+#include <utility>
 
 namespace {
 
@@ -12,6 +9,7 @@ constexpr double k_x_min = -20.0;
 constexpr double k_x_max = 20.0;
 constexpr std::size_t k_samples = 1800;
 constexpr float k_signal_scale = 250.0f;
+constexpr int k_series_id = 2;
 
 float sample_signal(double x)
 {
@@ -39,25 +37,29 @@ void Top_controller::set_plot_widget(vnm::plot::Plot_widget* widget)
             m_time_axis_connection = {};
         }
         QObject::disconnect(m_plot_widget, nullptr, this, nullptr);
-        if (m_series) m_plot_widget->remove_series(m_series->id);
+        if (m_series) m_plot_widget->remove_series(k_series_id);
     }
 
     m_plot_widget = widget;
 
     if (m_plot_widget) {
         configure_plot_widget();
-        if (m_series) m_plot_widget->add_series(m_series->id, m_series);
-        m_plot_widget->set_t_range(k_x_min, k_x_max);
-        m_plot_widget->set_available_t_range(k_x_min, k_x_max);
-        m_plot_widget->set_v_auto(false);
-        m_plot_widget->set_v_range(-800.0f, 800.0f);
+        if (m_series) m_plot_widget->add_series(k_series_id, m_series);
+        vnm::plot::Plot_view view;
+        view.t_range = std::make_pair(k_x_min, k_x_max);
+        view.t_available_range = std::make_pair(k_x_min, k_x_max);
+        view.v_auto = false;
+        view.v_range = std::make_pair(-800.0f, 800.0f);
+        m_plot_widget->set_view(view);
         m_plot_widget->update();
         m_time_axis_connection = QObject::connect(
             m_plot_widget, &vnm::plot::Plot_widget::time_axis_changed, this,
             [this]() {
                 if (!m_plot_widget) return;
-                m_plot_widget->set_t_range(k_x_min, k_x_max);
-                m_plot_widget->set_available_t_range(k_x_min, k_x_max);
+                vnm::plot::Plot_view view;
+                view.t_range = std::make_pair(k_x_min, k_x_max);
+                view.t_available_range = std::make_pair(k_x_min, k_x_max);
+                m_plot_widget->set_view(view);
             });
     }
 
@@ -66,19 +68,13 @@ void Top_controller::set_plot_widget(vnm::plot::Plot_widget* widget)
 
 void Top_controller::setup_series()
 {
-    m_series = std::make_shared<vnm::plot::series_data_t>();
-    m_series->id = 2;
-    m_series->enabled = true;
-    m_series->style = vnm::plot::Display_style::AREA;
-    m_series->color = glm::vec4(0.9f, 0.35f, 0.2f, 0.9f);
-
-    m_series->access = vnm::plot::make_function_sample_policy();
-    m_series->access.layout_key = 0x3001;
-    m_series->access.setup_vertex_attributes = setup_function_sample_vertex_attributes;
-
-    m_series->shader_set = line_shader_set();
-    m_series->shaders[vnm::plot::Display_style::AREA] = area_shader_set();
-    m_series->data_source = m_data_source;
+    m_series = vnm::plot::Series_builder()
+        .enabled(true)
+        .style(vnm::plot::Display_style::AREA)
+        .color(vnm::plot::rgba_u8(230, 89, 51, 230))
+        .data_source(m_data_source)
+        .access(vnm::plot::make_function_sample_policy_typed())
+        .build_shared();
 }
 
 void Top_controller::configure_plot_widget()

@@ -19,6 +19,7 @@
 namespace vnm::plot {
 
 class Asset_loader;
+class Profiler;
 
 // -----------------------------------------------------------------------------
 // Series Renderer
@@ -41,7 +42,7 @@ public:
 
     // Render all series in the frame context
     void render(const frame_context_t& ctx,
-                const std::map<int, std::shared_ptr<series_data_t>>& series);
+                const std::map<int, std::shared_ptr<const series_data_t>>& series);
 
 private:
     struct metrics_t
@@ -161,7 +162,7 @@ private:
 
     std::shared_ptr<GL_program> get_or_load_shader(
         const shader_set_t& shader_set,
-        const Render_config* config);
+        const Plot_config* config);
     series_pipe_t& pipe_for(Display_style style);
     GLuint ensure_series_vao(Display_style style, GLuint vbo, const Data_access_policy& access);
     GLuint ensure_colormap_texture(const series_data_t& series, Display_style style);

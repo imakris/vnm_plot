@@ -162,7 +162,7 @@ void Chrome_renderer::render_grid_and_backgrounds(
     const frame_context_t& ctx,
     Primitive_renderer& prims)
 {
-    vnm::plot::Profiler* profiler = ctx.config ? ctx.config->profiler : nullptr;
+    vnm::plot::Profiler* profiler = ctx.config ? ctx.config->profiler.get() : nullptr;
     VNM_PLOT_PROFILE_SCOPE(
         profiler,
         "renderer.frame.chrome.grid_and_backgrounds");
@@ -352,7 +352,7 @@ void Chrome_renderer::render_preview_overlay(
     const frame_context_t& ctx,
     Primitive_renderer& prims)
 {
-    vnm::plot::Profiler* profiler = ctx.config ? ctx.config->profiler : nullptr;
+    vnm::plot::Profiler* profiler = ctx.config ? ctx.config->profiler.get() : nullptr;
     VNM_PLOT_PROFILE_SCOPE(
         profiler,
         "renderer.frame.chrome.preview_overlay");

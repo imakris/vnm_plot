@@ -123,23 +123,19 @@ Data_access_policy make_policy()
     policy.get_aux_metric = [](const void* sample) {
         return static_cast<const Test_sample*>(sample)->aux;
     };
-    policy.sample_stride = sizeof(Test_sample);
     return policy;
 }
 
-std::shared_ptr<series_data_t> make_series(
-    int id,
-    const std::shared_ptr<Data_source>& source)
+std::shared_ptr<series_data_t> make_series(const std::shared_ptr<Data_source>& source)
 {
     auto series = std::make_shared<series_data_t>();
-    series->id = id;
     series->style = Display_style::LINE;
     series->data_source = source;
     series->access = make_policy();
     return series;
 }
 
-frame_context_t make_context(const frame_layout_result_t& layout, Render_config& config)
+frame_context_t make_context(const frame_layout_result_t& layout, Plot_config& config)
 {
     frame_context_t ctx{layout};
     ctx.t0 = 0.0;
@@ -195,8 +191,8 @@ bool test_lod0_sequence_fallback_calls_snapshot()
     auto data_source = std::make_shared<Lod_data_source>();
     fill_lod_data(*data_source);
 
+    const int series_id = 1;
     auto series = std::make_shared<series_data_t>();
-    series->id = 1;
     series->style = Display_style::COLORMAP_AREA;
     series->data_source = data_source;
     series->access = make_policy();
@@ -207,7 +203,7 @@ bool test_lod0_sequence_fallback_calls_snapshot()
     layout.usable_width = 100.0;
     layout.usable_height = 80.0;
 
-    Render_config config;
+    Plot_config config;
     config.skip_gl_calls = true;
 
     frame_context_t ctx = make_context(layout, config);
@@ -216,8 +212,8 @@ bool test_lod0_sequence_fallback_calls_snapshot()
     Asset_loader asset_loader;
     renderer.initialize(asset_loader);
 
-    std::map<int, std::shared_ptr<series_data_t>> series_map;
-    series_map[series->id] = series;
+    std::map<int, std::shared_ptr<const series_data_t>> series_map;
+    series_map[series_id] = series;
 
     renderer.render(ctx, series_map);
 
@@ -239,13 +235,14 @@ bool test_failed_snapshot_invalidates_range_cache()
     data_source->snapshot_sequence_value = 5;
     data_source->fail_snapshot = true;
 
-    auto series = make_series(10, data_source);
+    const int series_id = 10;
+    auto series = make_series(data_source);
 
-    std::map<int, std::shared_ptr<series_data_t>> series_map;
-    series_map[series->id] = series;
+    std::map<int, std::shared_ptr<const series_data_t>> series_map;
+    series_map[series_id] = series;
 
     std::unordered_map<int, series_minmax_cache_t> cache_map;
-    auto& cache = cache_map[series->id];
+    auto& cache = cache_map[series_id];
     cache.identity = data_source->identity();
     cache.lods.assign(data_source->lod_levels(), lod_minmax_cache_t{});
     cache.lods[0].valid = true;
@@ -270,13 +267,14 @@ bool test_sequence_change_invalidates_range_cache()
     data_source->current_sequence_value = 7;
     data_source->snapshot_sequence_value = 7;
 
-    auto series = make_series(11, data_source);
+    const int series_id = 11;
+    auto series = make_series(data_source);
 
-    std::map<int, std::shared_ptr<series_data_t>> series_map;
-    series_map[series->id] = series;
+    std::map<int, std::shared_ptr<const series_data_t>> series_map;
+    series_map[series_id] = series;
 
     std::unordered_map<int, series_minmax_cache_t> cache_map;
-    auto& cache = cache_map[series->id];
+    auto& cache = cache_map[series_id];
     cache.identity = data_source->identity();
     cache.lods.assign(data_source->lod_levels(), lod_minmax_cache_t{});
     cache.lods[0].valid = true;
@@ -300,7 +298,7 @@ bool test_sequence_change_invalidates_range_cache()
 
 bool test_validate_range_cache_with_empty_series()
 {
-    std::map<int, std::shared_ptr<series_data_t>> series_map;
+    std::map<int, std::shared_ptr<const series_data_t>> series_map;
     std::unordered_map<int, series_minmax_cache_t> cache_map;
 
     const bool valid = validate_range_cache_sequences(
@@ -315,7 +313,7 @@ bool test_validate_range_cache_with_empty_series()
 
 bool test_validate_range_cache_skips_null_series()
 {
-    std::map<int, std::shared_ptr<series_data_t>> series_map;
+    std::map<int, std::shared_ptr<const series_data_t>> series_map;
     series_map[1] = nullptr;
 
     std::unordered_map<int, series_minmax_cache_t> cache_map;
@@ -332,13 +330,13 @@ bool test_validate_range_cache_skips_null_series()
 
 bool test_validate_range_cache_skips_null_data_source()
 {
+    const int series_id = 2;
     auto series = std::make_shared<series_data_t>();
-    series->id = 2;
     series->data_source.reset();
     series->access = make_policy();
 
-    std::map<int, std::shared_ptr<series_data_t>> series_map;
-    series_map[series->id] = series;
+    std::map<int, std::shared_ptr<const series_data_t>> series_map;
+    series_map[series_id] = series;
 
     std::unordered_map<int, series_minmax_cache_t> cache_map;
 
@@ -357,14 +355,13 @@ bool test_validate_range_cache_skips_missing_accessors()
     auto data_source = std::make_shared<Range_cache_source>();
     data_source->samples.resize(1);
 
+    const int series_id = 3;
     auto series = std::make_shared<series_data_t>();
-    series->id = 3;
     series->data_source = data_source;
     series->access = Data_access_policy{};
-    series->access.sample_stride = sizeof(Test_sample);
 
-    std::map<int, std::shared_ptr<series_data_t>> series_map;
-    series_map[series->id] = series;
+    std::map<int, std::shared_ptr<const series_data_t>> series_map;
+    series_map[series_id] = series;
 
     std::unordered_map<int, series_minmax_cache_t> cache_map;
 
@@ -383,14 +380,14 @@ bool test_validate_range_cache_skips_disabled_series()
     auto data_source = std::make_shared<Range_cache_source>();
     data_source->samples.resize(1);
 
+    const int series_id = 4;
     auto series = std::make_shared<series_data_t>();
-    series->id = 4;
     series->enabled = false;
     series->data_source = data_source;
     series->access = make_policy();
 
-    std::map<int, std::shared_ptr<series_data_t>> series_map;
-    series_map[series->id] = series;
+    std::map<int, std::shared_ptr<const series_data_t>> series_map;
+    series_map[series_id] = series;
 
     std::unordered_map<int, series_minmax_cache_t> cache_map;
 
@@ -409,7 +406,7 @@ bool test_preview_matches_main_helpers()
     auto data_source = std::make_shared<Range_cache_source>();
     data_source->samples.resize(1);
 
-    auto series = make_series(20, data_source);
+    auto series = make_series(data_source);
     series->preview_config = preview_config_t{};
     series->preview_config->data_source = data_source;
     series->preview_config->access = Data_access_policy{};
@@ -444,17 +441,18 @@ bool test_validate_preview_range_cache_sequences()
     preview_source->current_sequence_value = 3;
     preview_source->snapshot_sequence_value = 3;
 
-    auto series = make_series(30, main_source);
+    const int series_id = 30;
+    auto series = make_series(main_source);
     preview_config_t preview_cfg;
     preview_cfg.data_source = preview_source;
     preview_cfg.access = make_policy();
     series->preview_config = preview_cfg;
 
-    std::map<int, std::shared_ptr<series_data_t>> series_map;
-    series_map[series->id] = series;
+    std::map<int, std::shared_ptr<const series_data_t>> series_map;
+    series_map[series_id] = series;
 
     std::unordered_map<int, series_minmax_cache_t> cache_map;
-    auto& cache = cache_map[series->id];
+    auto& cache = cache_map[series_id];
     cache.identity = preview_source->identity();
     cache.lods.assign(preview_source->lod_levels(), lod_minmax_cache_t{});
     cache.lods[0].valid = true;

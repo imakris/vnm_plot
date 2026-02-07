@@ -55,18 +55,15 @@ auto source = std::make_shared<vnm::plot::Function_data_source>();
 source->generate([](double x) { return std::sin(x); }, 0.0, 10.0, 1000);
 
 // Create series
-auto series = std::make_shared<vnm::plot::series_data_t>();
-series->id = 0;
-series->data_source = source;
-series->style = vnm::plot::Display_style::LINE;
-series->color = glm::vec4(0.2f, 0.6f, 1.0f, 1.0f);
-
-// Set up access policy
-auto policy = vnm::plot::make_function_sample_policy();
-series->access = policy;
+auto series = vnm::plot::Series_builder()
+    .style(vnm::plot::Display_style::LINE)
+    .color(vnm::plot::rgba_u8(51, 153, 255))
+    .data_source(source)
+    .access(vnm::plot::make_function_sample_policy_typed())
+    .build_shared();
 
 // Add to widget
-plot_widget->add_series(series->id, series);
+plot_widget->add_series(0, series);
 ```
 
 **Thread Safety**
@@ -119,26 +116,19 @@ struct my_sample_t {
     float  high;
 };
 
-vnm::plot::Data_access_policy make_my_policy() {
-    vnm::plot::Data_access_policy p;
-    p.get_timestamp = [](const void* s) {
-        return static_cast<const my_sample_t*>(s)->timestamp;
-    };
-    p.get_value = [](const void* s) {
-        return static_cast<const my_sample_t*>(s)->value;
-    };
-    p.get_range = [](const void* s) {
-        auto* sample = static_cast<const my_sample_t*>(s);
-        return std::make_pair(sample->low, sample->high);
-    };
-    p.sample_stride = sizeof(my_sample_t);
-    return p;
-}
+auto policy = vnm::plot::make_access_policy<my_sample_t>(
+    &my_sample_t::timestamp,
+    &my_sample_t::value,
+    &my_sample_t::low,
+    &my_sample_t::high);
 
 // Assign policy to a series
 auto series = std::make_shared<vnm::plot::series_data_t>();
-series->access = make_my_policy();
+series->access = policy.erase();
 ```
+
+If you leave `shader_set` and `shaders` empty, vnm_plot selects defaults based on the
+access policy layout key for built-in layouts (for example `function_sample_t`).
 
 ### Display Styles
 

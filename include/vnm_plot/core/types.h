@@ -16,7 +16,7 @@
 #include <glm/vec4.hpp>
 
 namespace vnm::plot {
-class Profiler;
+struct Plot_config;
 // -----------------------------------------------------------------------------
 // Size2i - Replacement for QSize
 // -----------------------------------------------------------------------------
@@ -165,6 +165,59 @@ public:
 };
 
 // -----------------------------------------------------------------------------
+// Data_source_ref: Explicit owning/non-owning data source handle
+// -----------------------------------------------------------------------------
+struct Data_source_ref
+{
+    std::shared_ptr<Data_source> owner;
+    Data_source* ptr = nullptr;
+
+    Data_source_ref() = default;
+    explicit Data_source_ref(std::shared_ptr<Data_source> source)
+    {
+        set(std::move(source));
+    }
+    explicit Data_source_ref(Data_source& source)
+    {
+        set_ref(source);
+    }
+
+    void set(std::shared_ptr<Data_source> source)
+    {
+        owner = std::move(source);
+        ptr = owner.get();
+    }
+
+    void set_ref(Data_source& source)
+    {
+        owner.reset();
+        ptr = &source;
+    }
+
+    void reset()
+    {
+        owner.reset();
+        ptr = nullptr;
+    }
+
+    Data_source* get() const { return ptr; }
+
+    explicit operator bool() const { return ptr != nullptr; }
+
+    Data_source_ref& operator=(std::shared_ptr<Data_source> source)
+    {
+        set(std::move(source));
+        return *this;
+    }
+
+    Data_source_ref& operator=(Data_source& source)
+    {
+        set_ref(source);
+        return *this;
+    }
+};
+
+// -----------------------------------------------------------------------------
 // Vector_data_source: Simple vector-backed data source
 // -----------------------------------------------------------------------------
 template<typename T>
@@ -219,8 +272,6 @@ struct Data_access_policy
     std::function<float(const void* sample)>                    get_value;      ///< Extract primary value
     std::function<std::pair<float, float>(const void* sample)>  get_range;      ///< Extract min/max range
 
-    size_t sample_stride = 0;  ///< Size of each sample in bytes
-
     std::function<double(const void* sample)> get_aux_metric;  ///< Optional auxiliary metric
     std::function<float(const void* sample)>  get_signal;      ///< Optional [0,1] signal for COLORMAP_LINE
 
@@ -231,7 +282,7 @@ struct Data_access_policy
 
     bool is_valid() const
     {
-        return get_timestamp && (get_value || get_range) && sample_stride > 0;
+        return get_timestamp && (get_value || get_range);
     }
 };
 
@@ -271,7 +322,7 @@ inline bool operator!(Display_style s)
 // -----------------------------------------------------------------------------
 struct preview_config_t
 {
-    std::shared_ptr<Data_source> data_source;   // required when preview_config is set
+    Data_source_ref data_source;              // required when preview_config is set
     Data_access_policy access;                  // optional; if invalid, fall back to main access
     std::optional<Display_style> style;         // nullopt means use main style
 };
@@ -306,6 +357,9 @@ struct shader_set_t
     bool empty() const { return vert.empty() && frag.empty(); }
 };
 
+// Default shader lookup for known layouts (returns empty shader_set_t if unknown).
+const shader_set_t& default_shader_for_layout(uint64_t layout_key, Display_style style);
+
 // -----------------------------------------------------------------------------
 // Colormap Configuration
 // -----------------------------------------------------------------------------
@@ -339,12 +393,11 @@ struct data_config_t
 // -----------------------------------------------------------------------------
 struct series_data_t
 {
-    int id = 0;
     bool enabled = true;
     Display_style style = Display_style::LINE;
     glm::vec4 color = glm::vec4(0.16f, 0.45f, 0.64f, 1.0f);
 
-    std::shared_ptr<Data_source> data_source;
+    Data_source_ref data_source;
     Data_access_policy access;
     // Optional per-series preview configuration. When set, preview rendering can
     // use a distinct data source, access policy, and style.
@@ -359,7 +412,13 @@ struct series_data_t
     const shader_set_t& shader_for(Display_style s) const
     {
         auto it = shaders.find(s);
-        return (it != shaders.end() && !it->second.empty()) ? it->second : shader_set;
+        if (it != shaders.end() && !it->second.empty()) {
+            return it->second;
+        }
+        if (!shader_set.empty()) {
+            return shader_set;
+        }
+        return default_shader_for_layout(access.layout_key, s);
     }
 
     double get_timestamp(const void* sample) const
@@ -375,6 +434,16 @@ struct series_data_t
     std::pair<float, float> get_range(const void* sample) const
     {
         return access.get_range ? access.get_range(sample) : std::make_pair(0.0f, 0.0f);
+    }
+
+    void set_data_source(std::shared_ptr<Data_source> source)
+    {
+        data_source.set(std::move(source));
+    }
+
+    void set_data_source_ref(Data_source& source)
+    {
+        data_source.set_ref(source);
     }
 
     Data_source* main_source() const
@@ -406,6 +475,18 @@ struct series_data_t
         return access;
     }
 
+    void set_preview_source(std::shared_ptr<Data_source> source)
+    {
+        ensure_preview_config();
+        preview_config->data_source.set(std::move(source));
+    }
+
+    void set_preview_source_ref(Data_source& source)
+    {
+        ensure_preview_config();
+        preview_config->data_source.set_ref(source);
+    }
+
     // Preview style (falls back to main when unset).
     Display_style effective_preview_style() const
     {
@@ -432,6 +513,14 @@ struct series_data_t
         if (!data_source || !prev || data_source.get() != prev) return false;
         return preview_access().layout_key == access.layout_key
             && effective_preview_style() == style;
+    }
+
+private:
+    void ensure_preview_config()
+    {
+        if (!preview_config) {
+            preview_config = preview_config_t{};
+        }
     }
 };
 
@@ -551,30 +640,6 @@ private:
     value_type m_value{};
 };
 
-// -----------------------------------------------------------------------------
-// Core Render Types
-// -----------------------------------------------------------------------------
-struct Render_config
-{
-    bool dark_mode = false;
-    bool show_text = true;
-    double grid_visibility = 1.0;     // 0..1 alpha; 0 = hidden (skipped), 1 = fully visible
-    double preview_visibility = 1.0;  // 0..1 alpha; 0 = hidden (skipped), 1 = fully visible
-
-    bool   snap_lines_to_pixels = false;
-    double line_width_px        = 1.0;
-    double area_fill_alpha      = 0.3;
-
-    // When true, skip all GL calls (VBO creation, shader usage, draws, etc.)
-    // Useful for profiling pure CPU overhead without any GL interaction.
-    bool skip_gl_calls = false;
-
-    std::function<std::string(double timestamp, double visible_range)> format_timestamp;
-    std::function<void(const std::string&)> log_debug;
-    std::function<void(const std::string&)> log_error;
-    Profiler* profiler = nullptr;
-};
-
 struct frame_context_t
 {
     const frame_layout_result_t& layout;
@@ -602,7 +667,89 @@ struct frame_context_t
 
     bool show_info = false;
 
-    const Render_config* config = nullptr;
+    const Plot_config* config = nullptr;
+};
+
+// -----------------------------------------------------------------------------
+// Frame_context_builder: Named-parameter helper for frame_context_t
+// -----------------------------------------------------------------------------
+struct Frame_context_builder
+{
+    explicit Frame_context_builder(const frame_layout_result_t& layout)
+        : m_ctx{layout}
+    {}
+
+    Frame_context_builder& v_range(float v_min, float v_max)
+    {
+        m_ctx.v0 = v_min;
+        m_ctx.v1 = v_max;
+        return *this;
+    }
+
+    Frame_context_builder& preview_v_range(float v_min, float v_max)
+    {
+        m_ctx.preview_v0 = v_min;
+        m_ctx.preview_v1 = v_max;
+        return *this;
+    }
+
+    Frame_context_builder& t_range(double t_min, double t_max)
+    {
+        m_ctx.t0 = t_min;
+        m_ctx.t1 = t_max;
+        return *this;
+    }
+
+    Frame_context_builder& available_t_range(double t_min, double t_max)
+    {
+        m_ctx.t_available_min = t_min;
+        m_ctx.t_available_max = t_max;
+        return *this;
+    }
+
+    Frame_context_builder& window_size(int width, int height)
+    {
+        m_ctx.win_w = width;
+        m_ctx.win_h = height;
+        return *this;
+    }
+
+    Frame_context_builder& pmv(const glm::mat4& pmv_matrix)
+    {
+        m_ctx.pmv = pmv_matrix;
+        return *this;
+    }
+
+    Frame_context_builder& font_px(double adjusted_font_px, double base_label_height_px)
+    {
+        m_ctx.adjusted_font_px = adjusted_font_px;
+        m_ctx.base_label_height_px = base_label_height_px;
+        return *this;
+    }
+
+    Frame_context_builder& reserved_heights(double reserved_height, double preview_height)
+    {
+        m_ctx.adjusted_reserved_height = reserved_height;
+        m_ctx.adjusted_preview_height = preview_height;
+        return *this;
+    }
+
+    Frame_context_builder& show_info(bool show)
+    {
+        m_ctx.show_info = show;
+        return *this;
+    }
+
+    Frame_context_builder& config(const Plot_config* config)
+    {
+        m_ctx.config = config;
+        return *this;
+    }
+
+    frame_context_t build() const { return m_ctx; }
+
+private:
+    frame_context_t m_ctx;
 };
 
 } // namespace vnm::plot

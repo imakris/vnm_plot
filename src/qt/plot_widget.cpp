@@ -92,12 +92,33 @@ Plot_widget::~Plot_widget() = default;
 
 void Plot_widget::add_series(int id, std::shared_ptr<series_data_t> series)
 {
-    std::shared_ptr<series_data_t> copy;
-    if (series) {
-        copy = std::make_shared<series_data_t>(*series);
+    apply_series_updates({{id, std::move(series)}});
+}
+
+void Plot_widget::apply_series_updates(const std::vector<std::pair<int, std::shared_ptr<series_data_t>>>& updates)
+{
+    if (updates.empty()) {
+        return;
     }
-    std::unique_lock lock(m_series_mutex);
-    m_series[id] = std::move(copy);
+
+    std::vector<std::pair<int, std::shared_ptr<const series_data_t>>> copies;
+    copies.reserve(updates.size());
+    for (const auto& [id, series] : updates) {
+        if (series) {
+            copies.emplace_back(id, std::make_shared<series_data_t>(*series));
+        }
+        else {
+            copies.emplace_back(id, std::shared_ptr<const series_data_t>{});
+        }
+    }
+
+    {
+        std::unique_lock lock(m_series_mutex);
+        for (auto& [id, series] : copies) {
+            m_series[id] = std::move(series);
+        }
+    }
+
     update();
 }
 
@@ -115,7 +136,7 @@ void Plot_widget::clear()
     update();
 }
 
-std::map<int, std::shared_ptr<series_data_t>> Plot_widget::get_series_snapshot() const
+std::map<int, std::shared_ptr<const series_data_t>> Plot_widget::get_series_snapshot() const
 {
     std::shared_lock lock(m_series_mutex);
     return m_series;
@@ -307,6 +328,86 @@ void Plot_widget::set_available_t_range(double t_min, double t_max)
     }
     emit t_limits_changed();
     update();
+}
+
+void Plot_widget::set_view(const Plot_view& view)
+{
+    bool t_changed = false;
+    bool v_changed = false;
+
+    if (m_time_axis) {
+        if (view.t_range) {
+            m_time_axis->set_t_range(view.t_range->first, view.t_range->second);
+            t_changed = true;
+        }
+        if (view.t_available_range) {
+            m_time_axis->set_available_t_range(view.t_available_range->first, view.t_available_range->second);
+            t_changed = true;
+        }
+    }
+    else
+    if (view.t_range || view.t_available_range) {
+        std::unique_lock lock(m_data_cfg_mutex);
+        if (view.t_range) {
+            m_data_cfg.t_min = view.t_range->first;
+            m_data_cfg.t_max = view.t_range->second;
+            t_changed = true;
+        }
+        if (view.t_available_range) {
+            const double t_min = view.t_available_range->first;
+            const double t_max = view.t_available_range->second;
+            if (t_max > t_min) {
+                const double span = t_max - t_min;
+                const double cur_span = m_data_cfg.t_max - m_data_cfg.t_min;
+                if (cur_span > span) {
+                    m_data_cfg.t_min = t_min;
+                    m_data_cfg.t_max = t_max;
+                }
+                else {
+                    if (m_data_cfg.t_min < t_min) {
+                        m_data_cfg.t_min = t_min;
+                        m_data_cfg.t_max = t_min + cur_span;
+                    }
+                    if (m_data_cfg.t_max > t_max) {
+                        m_data_cfg.t_max = t_max;
+                        m_data_cfg.t_min = t_max - cur_span;
+                    }
+                }
+            }
+            m_data_cfg.t_available_min = t_min;
+            m_data_cfg.t_available_max = t_max;
+            t_changed = true;
+        }
+    }
+
+    if (view.v_range) {
+        std::unique_lock lock(m_data_cfg_mutex);
+        m_data_cfg.v_min = view.v_range->first;
+        m_data_cfg.v_max = view.v_range->second;
+        m_data_cfg.v_manual_min = view.v_range->first;
+        m_data_cfg.v_manual_max = view.v_range->second;
+        v_changed = true;
+    }
+
+    bool v_auto_changed_flag = false;
+    if (view.v_auto) {
+        if (m_v_auto.exchange(*view.v_auto, std::memory_order_acq_rel) != *view.v_auto) {
+            v_auto_changed_flag = true;
+        }
+    }
+
+    if (t_changed) {
+        emit t_limits_changed();
+    }
+    if (v_changed) {
+        emit v_limits_changed();
+    }
+    if (v_auto_changed_flag) {
+        emit v_auto_changed();
+    }
+    if (t_changed || v_changed || v_auto_changed_flag) {
+        update();
+    }
 }
 
 Plot_time_axis* Plot_widget::time_axis() const
@@ -788,7 +889,7 @@ void Plot_widget::auto_adjust_view(bool adjust_t, double extra_v_scale, bool anc
         agg.tmax = std::max(agg.tmax, ts);
     };
 
-    std::vector<std::shared_ptr<series_data_t>> sources;
+    std::vector<std::shared_ptr<const series_data_t>> sources;
     {
         std::shared_lock lock(m_series_mutex);
         sources.reserve(m_series.size());
@@ -800,11 +901,11 @@ void Plot_widget::auto_adjust_view(bool adjust_t, double extra_v_scale, bool anc
     }
 
     for (const auto& series : sources) {
-        if (!series || !series->data_source || !series->access.get_timestamp) {
+        if (!series || !series->main_source() || !series->access.get_timestamp) {
             continue;
         }
 
-        auto snapshot = series->data_source->snapshot(0);
+        auto snapshot = series->main_source()->snapshot(0);
         if (!snapshot) {
             continue;
         }
@@ -953,11 +1054,11 @@ QVariantList Plot_widget::get_indicator_samples(double x, double plot_width, dou
         if (!series || !series->enabled) {
             continue;
         }
-        if (!series->data_source || !series->access.get_timestamp || !series->access.get_value) {
+        if (!series->main_source() || !series->access.get_timestamp || !series->access.get_value) {
             continue;
         }
 
-        auto snap = series->data_source->snapshot(0);
+        auto snap = series->main_source()->snapshot(0);
         if (!snap || snap.count == 0 || snap.stride == 0) {
             continue;
         }

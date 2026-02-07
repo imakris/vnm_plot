@@ -1,10 +1,7 @@
 #include "preview_controller.h"
-#include "example_utils.h"
-
-#include <glm/vec4.hpp>
-
 #include <cmath>
 #include <cstddef>
+#include <utility>
 
 namespace {
 
@@ -13,6 +10,7 @@ constexpr double k_x_max = 20.0;
 constexpr std::size_t k_main_samples = 4000;
 constexpr std::size_t k_preview_samples = 320;
 constexpr double k_auto_v_scale = 0.2;
+constexpr int k_series_id = 1;
 
 float sample_signal(double x)
 {
@@ -40,24 +38,28 @@ void Preview_controller::set_plot_widget(vnm::plot::Plot_widget* widget)
             m_time_axis_connection = {};
         }
         QObject::disconnect(m_plot_widget, nullptr, this, nullptr);
-        if (m_series) m_plot_widget->remove_series(m_series->id);
+        if (m_series) m_plot_widget->remove_series(k_series_id);
     }
 
     m_plot_widget = widget;
 
     if (m_plot_widget) {
         configure_plot_widget();
-        if (m_series) m_plot_widget->add_series(m_series->id, m_series);
-        m_plot_widget->set_t_range(k_x_min, k_x_max);
-        m_plot_widget->set_available_t_range(k_x_min, k_x_max);
-        m_plot_widget->set_v_auto(true);
+        if (m_series) m_plot_widget->add_series(k_series_id, m_series);
+        vnm::plot::Plot_view view;
+        view.t_range = std::make_pair(k_x_min, k_x_max);
+        view.t_available_range = std::make_pair(k_x_min, k_x_max);
+        view.v_auto = true;
+        m_plot_widget->set_view(view);
         m_plot_widget->update();
         m_time_axis_connection = QObject::connect(
             m_plot_widget, &vnm::plot::Plot_widget::time_axis_changed, this,
             [this]() {
                 if (!m_plot_widget) return;
-                m_plot_widget->set_t_range(k_x_min, k_x_max);
-                m_plot_widget->set_available_t_range(k_x_min, k_x_max);
+                vnm::plot::Plot_view view;
+                view.t_range = std::make_pair(k_x_min, k_x_max);
+                view.t_available_range = std::make_pair(k_x_min, k_x_max);
+                m_plot_widget->set_view(view);
             });
     }
 
@@ -66,19 +68,13 @@ void Preview_controller::set_plot_widget(vnm::plot::Plot_widget* widget)
 
 void Preview_controller::setup_series()
 {
-    m_series = std::make_shared<vnm::plot::series_data_t>();
-    m_series->id = 1;
-    m_series->enabled = true;
-    m_series->style = vnm::plot::Display_style::LINE;
-    m_series->color = glm::vec4(0.25f, 0.85f, 0.55f, 1.0f);
-
-    m_series->access = vnm::plot::make_function_sample_policy();
-    m_series->access.layout_key = 0x2001;
-    m_series->access.setup_vertex_attributes = setup_function_sample_vertex_attributes;
-
-    m_series->shader_set = line_shader_set();
-    m_series->shaders[vnm::plot::Display_style::AREA] = area_shader_set();
-    m_series->data_source = m_main_source;
+    m_series = vnm::plot::Series_builder()
+        .enabled(true)
+        .style(vnm::plot::Display_style::LINE)
+        .color(vnm::plot::rgba_u8(64, 217, 140))
+        .data_source(m_main_source)
+        .access(vnm::plot::make_function_sample_policy_typed())
+        .build_shared();
 
     vnm::plot::preview_config_t preview_cfg;
     preview_cfg.data_source = m_preview_source;

@@ -45,7 +45,7 @@ profiling output used by Lumis so reports are directly comparable.
 - UI/render thread:
   - Executes paintGL() via Qt's event loop.
   - Requests snapshots from the Data_source and renders with vnm_plot.
-  - Records profiling scopes through Render_config::profiler.
+  - Records profiling scopes through Plot_config::profiler.
 
 ## Rendering Pipeline
 - vnm_plot Asset_loader loads embedded shaders.

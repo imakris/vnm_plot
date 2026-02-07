@@ -1,5 +1,6 @@
 #include <vnm_plot/core/text_renderer.h>
 #include <vnm_plot/core/constants.h>
+#include <vnm_plot/core/plot_config.h>
 #include <vnm_plot/core/font_renderer.h>
 
 #include <glatter/glatter.h>
@@ -312,18 +313,11 @@ bool Text_renderer::render_info_overlay(const frame_context_t& ctx, bool fade_la
             (std::abs(ctx.t0 - m_last_t0) > 1e-9) || (std::abs(ctx.t1 - m_last_t1) > 1e-9);
 
         if (timestamp_style_changed || timestamp_values_changed || m_cached_from_ts.empty() || m_cached_to_ts.empty()) {
-            // Use format_timestamp callback from config if available
-            if (ctx.config && ctx.config->format_timestamp) {
-                m_cached_from_ts = ctx.config->format_timestamp(ctx.t0, t_span);
-                m_cached_to_ts = ctx.config->format_timestamp(ctx.t1, t_span);
-            }
-            else {
-                // Default simple formatting
-                std::snprintf(buf, sizeof(buf), "%.3f", ctx.t0);
-                m_cached_from_ts = buf;
-                std::snprintf(buf, sizeof(buf), "%.3f", ctx.t1);
-                m_cached_to_ts = buf;
-            }
+            const auto format_ts = (ctx.config && ctx.config->format_timestamp)
+                ? ctx.config->format_timestamp
+                : default_format_timestamp;
+            m_cached_from_ts = format_ts(ctx.t0, t_span);
+            m_cached_to_ts = format_ts(ctx.t1, t_span);
             m_last_t0 = ctx.t0;
             m_last_t1 = ctx.t1;
             m_last_subsecond = pl.h_labels_subsecond;

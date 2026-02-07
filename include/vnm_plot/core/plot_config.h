@@ -132,6 +132,10 @@ struct Plot_config
     // Area fill alpha multiplier (0..1).
     double area_fill_alpha = 0.3;
 
+    // When true, skip all GL calls (VBO creation, shader usage, draws, etc.).
+    // Useful for profiling pure CPU overhead without any GL interaction.
+    bool skip_gl_calls = false;
+
     // --- Auto V-Range ---
     // Default is GLOBAL to preserve Lumis-style behavior.
     Auto_v_range_mode auto_v_range_mode = Auto_v_range_mode::GLOBAL;

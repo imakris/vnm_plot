@@ -611,20 +611,22 @@ int main(int argc, char* argv[])
 
     // Create profiler
     vnm::benchmark::Benchmark_profiler profiler;
+    auto profiler_ptr = std::shared_ptr<vnm::plot::Profiler>(
+        &profiler, [](vnm::plot::Profiler*) {});
 
     // Layout calculator and cache
     vnm::plot::Layout_calculator layout_calc;
     vnm::plot::Layout_cache layout_cache;
 
     // Configure rendering (matching Qt benchmark defaults)
-    vnm::plot::Render_config render_config;
+    vnm::plot::Plot_config render_config;
     render_config.dark_mode = true;
     render_config.show_text = text_enabled;
     render_config.snap_lines_to_pixels = false;
     render_config.line_width_px = 1.5;
     render_config.skip_gl_calls = config.no_gl;
     render_config.format_timestamp = vnm::benchmark::format_benchmark_timestamp;
-    render_config.profiler = &profiler;
+    render_config.profiler = profiler_ptr;
 
     // Create Brownian generator
     vnm::benchmark::Brownian_generator::Config gen_config;
@@ -652,8 +654,8 @@ int main(int argc, char* argv[])
     }
 
     // Set up series
+    const int series_id = 1;
     auto series = std::make_shared<vnm::plot::series_data_t>();
-    series->id = 1;
     series->enabled = true;
     series->color = glm::vec4(0.2f, 0.7f, 0.9f, 1.0f);
 
@@ -664,8 +666,7 @@ int main(int argc, char* argv[])
             "shaders/plot_dot_quad.geom",
             "shaders/plot_dot_quad.frag"
         };
-        series->data_source = std::shared_ptr<vnm::plot::Data_source>(
-            trade_source.get(), [](vnm::plot::Data_source*) {});
+        series->set_data_source_ref(*trade_source);
         series->access = vnm::benchmark::make_trade_access_policy();
     }
     else {
@@ -675,13 +676,12 @@ int main(int argc, char* argv[])
             "shaders/plot_area.geom",
             "shaders/plot_area.frag"
         };
-        series->data_source = std::shared_ptr<vnm::plot::Data_source>(
-            bar_source.get(), [](vnm::plot::Data_source*) {});
+        series->set_data_source_ref(*bar_source);
         series->access = vnm::benchmark::make_bar_access_policy();
     }
 
-    std::map<int, std::shared_ptr<vnm::plot::series_data_t>> series_map;
-    series_map[series->id] = series;
+    std::map<int, std::shared_ptr<const vnm::plot::series_data_t>> series_map;
+    series_map[series_id] = series;
 
     // View range state
     double t_min = 0.0;

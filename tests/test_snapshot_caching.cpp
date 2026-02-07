@@ -107,11 +107,10 @@ Data_access_policy make_policy()
         const float value = static_cast<const Test_sample*>(sample)->v;
         return std::make_pair(value, value);
     };
-    policy.sample_stride = sizeof(Test_sample);
     return policy;
 }
 
-frame_context_t make_context(const frame_layout_result_t& layout, Render_config& config)
+frame_context_t make_context(const frame_layout_result_t& layout, Plot_config& config)
 {
     frame_context_t ctx{layout};
     ctx.t0 = 0.0;
@@ -168,8 +167,8 @@ bool test_frame_scoped_cache_reuse()
         data_source->samples[i].v = 1.0f + static_cast<float>(i);
     }
 
+    const int series_id = 7;
     auto series = std::make_shared<series_data_t>();
-    series->id = 7;
     series->style = Display_style::LINE;
     series->data_source = data_source;
     series->access = make_policy();
@@ -178,7 +177,7 @@ bool test_frame_scoped_cache_reuse()
     layout.usable_width = 200.0;
     layout.usable_height = 80.0;
 
-    Render_config config;
+    Plot_config config;
     config.skip_gl_calls = true;
     config.preview_visibility = 1.0;
 
@@ -189,8 +188,8 @@ bool test_frame_scoped_cache_reuse()
     Asset_loader asset_loader;
     renderer.initialize(asset_loader);
 
-    std::map<int, std::shared_ptr<series_data_t>> series_map;
-    series_map[series->id] = series;
+    std::map<int, std::shared_ptr<const series_data_t>> series_map;
+    series_map[series_id] = series;
 
     renderer.render(ctx, series_map);
 
@@ -214,8 +213,8 @@ bool test_preview_uses_distinct_source_snapshot()
         preview_source->samples[i].v = 2.0f + static_cast<float>(i);
     }
 
+    const int series_id = 14;
     auto series = std::make_shared<series_data_t>();
-    series->id = 14;
     series->style = Display_style::LINE;
     series->data_source = main_source;
     series->access = make_policy();
@@ -229,7 +228,7 @@ bool test_preview_uses_distinct_source_snapshot()
     layout.usable_width = 200.0;
     layout.usable_height = 80.0;
 
-    Render_config config;
+    Plot_config config;
     config.skip_gl_calls = true;
     config.preview_visibility = 1.0;
 
@@ -240,8 +239,8 @@ bool test_preview_uses_distinct_source_snapshot()
     Asset_loader asset_loader;
     renderer.initialize(asset_loader);
 
-    std::map<int, std::shared_ptr<series_data_t>> series_map;
-    series_map[series->id] = series;
+    std::map<int, std::shared_ptr<const series_data_t>> series_map;
+    series_map[series_id] = series;
 
     renderer.render(ctx, series_map);
 
@@ -260,8 +259,8 @@ bool test_preview_disabled_skips_preview_snapshot()
     main_source->samples.resize(8);
     preview_source->samples.resize(8);
 
+    const int series_id = 15;
     auto series = std::make_shared<series_data_t>();
-    series->id = 15;
     series->style = Display_style::LINE;
     series->data_source = main_source;
     series->access = make_policy();
@@ -275,7 +274,7 @@ bool test_preview_disabled_skips_preview_snapshot()
     layout.usable_width = 200.0;
     layout.usable_height = 80.0;
 
-    Render_config config;
+    Plot_config config;
     config.skip_gl_calls = true;
     config.preview_visibility = 1.0;
 
@@ -286,8 +285,8 @@ bool test_preview_disabled_skips_preview_snapshot()
     Asset_loader asset_loader;
     renderer.initialize(asset_loader);
 
-    std::map<int, std::shared_ptr<series_data_t>> series_map;
-    series_map[series->id] = series;
+    std::map<int, std::shared_ptr<const series_data_t>> series_map;
+    series_map[series_id] = series;
 
     renderer.render(ctx, series_map);
 
@@ -308,8 +307,8 @@ bool test_frame_change_invalidates_snapshot_cache()
         data_source->samples[i].v = 0.5f + static_cast<float>(i);
     }
 
+    const int series_id = 8;
     auto series = std::make_shared<series_data_t>();
-    series->id = 8;
     series->style = Display_style::LINE;
     series->data_source = data_source;
     series->access = make_policy();
@@ -318,7 +317,7 @@ bool test_frame_change_invalidates_snapshot_cache()
     layout.usable_width = 140.0;
     layout.usable_height = 80.0;
 
-    Render_config config;
+    Plot_config config;
     config.skip_gl_calls = true;
 
     frame_context_t ctx = make_context(layout, config);
@@ -327,8 +326,8 @@ bool test_frame_change_invalidates_snapshot_cache()
     Asset_loader asset_loader;
     renderer.initialize(asset_loader);
 
-    std::map<int, std::shared_ptr<series_data_t>> series_map;
-    series_map[series->id] = series;
+    std::map<int, std::shared_ptr<const series_data_t>> series_map;
+    series_map[series_id] = series;
 
     renderer.render(ctx, series_map);
     renderer.render(ctx, series_map);
@@ -344,21 +343,21 @@ bool test_lod_level_separation()
     auto data_source = std::make_shared<Two_level_source>();
     fill_lod_samples(*data_source);
 
+    const int series_id = 9;
     auto series = std::make_shared<series_data_t>();
-    series->id = 9;
     series->style = Display_style::LINE;
     series->data_source = data_source;
     series->access = make_policy();
 
-    Render_config config;
+    Plot_config config;
     config.skip_gl_calls = true;
 
     Series_renderer renderer;
     Asset_loader asset_loader;
     renderer.initialize(asset_loader);
 
-    std::map<int, std::shared_ptr<series_data_t>> series_map;
-    series_map[series->id] = series;
+    std::map<int, std::shared_ptr<const series_data_t>> series_map;
+    series_map[series_id] = series;
 
     frame_layout_result_t layout_wide;
     layout_wide.usable_width = 100.0;
@@ -400,8 +399,8 @@ bool test_snapshot_released_on_series_removal()
         data_source->samples[i].v = 2.0f + static_cast<float>(i);
     }
 
+    const int series_id = 3;
     auto series = std::make_shared<series_data_t>();
-    series->id = 3;
     series->style = Display_style::LINE;
     series->data_source = data_source;
     series->access = make_policy();
@@ -410,15 +409,15 @@ bool test_snapshot_released_on_series_removal()
     layout.usable_width = 160.0;
     layout.usable_height = 80.0;
 
-    Render_config config;
+    Plot_config config;
     config.skip_gl_calls = true;
 
     Series_renderer renderer;
     Asset_loader asset_loader;
     renderer.initialize(asset_loader);
 
-    std::map<int, std::shared_ptr<series_data_t>> series_map;
-    series_map[series->id] = series;
+    std::map<int, std::shared_ptr<const series_data_t>> series_map;
+    series_map[series_id] = series;
 
     frame_context_t ctx = make_context(layout, config);
     renderer.render(ctx, series_map);
@@ -426,11 +425,11 @@ bool test_snapshot_released_on_series_removal()
     std::weak_ptr<void> hold = data_source->last_hold;
     TEST_ASSERT(!hold.expired(), "expected snapshot hold to stay alive in cache");
 
-    std::map<int, std::shared_ptr<series_data_t>> replacement_map;
+    std::map<int, std::shared_ptr<const series_data_t>> replacement_map;
+    const int placeholder_id = 99;
     auto placeholder = std::make_shared<series_data_t>();
-    placeholder->id = 99;
     placeholder->enabled = false;
-    replacement_map[placeholder->id] = placeholder;
+    replacement_map[placeholder_id] = placeholder;
     renderer.render(ctx, replacement_map);
 
     TEST_ASSERT(hold.expired(), "expected snapshot hold to release after series removal");
@@ -444,7 +443,7 @@ bool test_render_empty_series_map()
     layout.usable_width = 120.0;
     layout.usable_height = 80.0;
 
-    Render_config config;
+    Plot_config config;
     config.skip_gl_calls = true;
 
     frame_context_t ctx = make_context(layout, config);
@@ -453,7 +452,7 @@ bool test_render_empty_series_map()
     Asset_loader asset_loader;
     renderer.initialize(asset_loader);
 
-    std::map<int, std::shared_ptr<series_data_t>> empty_map;
+    std::map<int, std::shared_ptr<const series_data_t>> empty_map;
     renderer.render(ctx, empty_map);
 
     return true;
@@ -464,15 +463,15 @@ bool test_render_skips_invalid_series()
     auto data_source = std::make_shared<Single_level_source>();
     data_source->samples.resize(4);
 
+    const int disabled_id = 12;
     auto disabled_series = std::make_shared<series_data_t>();
-    disabled_series->id = 12;
     disabled_series->enabled = false;
     disabled_series->style = Display_style::LINE;
     disabled_series->data_source = data_source;
     disabled_series->access = make_policy();
 
+    const int null_source_id = 13;
     auto null_source_series = std::make_shared<series_data_t>();
-    null_source_series->id = 13;
     null_source_series->enabled = true;
     null_source_series->style = Display_style::LINE;
     null_source_series->data_source.reset();
@@ -482,7 +481,7 @@ bool test_render_skips_invalid_series()
     layout.usable_width = 140.0;
     layout.usable_height = 80.0;
 
-    Render_config config;
+    Plot_config config;
     config.skip_gl_calls = true;
 
     frame_context_t ctx = make_context(layout, config);
@@ -491,9 +490,9 @@ bool test_render_skips_invalid_series()
     Asset_loader asset_loader;
     renderer.initialize(asset_loader);
 
-    std::map<int, std::shared_ptr<series_data_t>> series_map;
-    series_map[disabled_series->id] = disabled_series;
-    series_map[null_source_series->id] = null_source_series;
+    std::map<int, std::shared_ptr<const series_data_t>> series_map;
+    series_map[disabled_id] = disabled_series;
+    series_map[null_source_id] = null_source_series;
     series_map[99] = nullptr;
 
     renderer.render(ctx, series_map);

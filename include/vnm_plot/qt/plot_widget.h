@@ -18,13 +18,26 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <shared_mutex>
 #include <utility>
+#include <vector>
 
 namespace vnm::plot {
 
 class Plot_renderer;
 class Plot_time_axis;
+
+// -----------------------------------------------------------------------------
+// Plot_view
+// -----------------------------------------------------------------------------
+struct Plot_view
+{
+    std::optional<std::pair<double, double>> t_range;
+    std::optional<std::pair<double, double>> t_available_range;
+    std::optional<std::pair<float, float>> v_range;
+    std::optional<bool> v_auto;
+};
 
 // -----------------------------------------------------------------------------
 // Plot Widget
@@ -63,6 +76,7 @@ public:
 
     // Add or update a data series
     void add_series(int id, std::shared_ptr<series_data_t> series);
+    void apply_series_updates(const std::vector<std::pair<int, std::shared_ptr<series_data_t>>>& updates);
 
     // Remove a data series
     void remove_series(int id);
@@ -71,7 +85,7 @@ public:
     void clear();
 
     // Get a snapshot of all series data
-    std::map<int, std::shared_ptr<series_data_t>> get_series_snapshot() const;
+    std::map<int, std::shared_ptr<const series_data_t>> get_series_snapshot() const;
 
     // --- Configuration ---
 
@@ -105,6 +119,7 @@ public:
     double t_available_max() const;
     void set_t_range(double t_min, double t_max);
     void set_available_t_range(double t_min, double t_max);
+    void set_view(const Plot_view& view);
     // Optional shared time axis (non-owning). When set, this widget mirrors its values.
     Plot_time_axis* time_axis() const;
     void set_time_axis(Plot_time_axis* axis);
@@ -196,7 +211,7 @@ private:
     mutable std::shared_mutex m_data_cfg_mutex;
 
     // Series data
-    std::map<int, std::shared_ptr<series_data_t>> m_series;
+    std::map<int, std::shared_ptr<const series_data_t>> m_series;
     mutable std::shared_mutex m_series_mutex;
 
     // UI state

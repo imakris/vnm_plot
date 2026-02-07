@@ -32,7 +32,7 @@ struct series_minmax_cache_t
 // or nullptr to skip the series.
 template<typename ResolverFn>
 bool validate_range_cache_impl(
-    const std::map<int, std::shared_ptr<series_data_t>>& series_map,
+    const std::map<int, std::shared_ptr<const series_data_t>>& series_map,
     std::unordered_map<int, series_minmax_cache_t>& cache_map,
     Auto_v_range_mode auto_mode,
     ResolverFn&& resolve)
@@ -79,7 +79,7 @@ bool validate_range_cache_impl(
 }
 
 inline bool validate_range_cache_sequences(
-    const std::map<int, std::shared_ptr<series_data_t>>& series_map,
+    const std::map<int, std::shared_ptr<const series_data_t>>& series_map,
     std::unordered_map<int, series_minmax_cache_t>& cache_map,
     Auto_v_range_mode auto_mode)
 {
@@ -92,7 +92,7 @@ inline bool validate_range_cache_sequences(
 }
 
 inline bool validate_preview_range_cache_sequences(
-    const std::map<int, std::shared_ptr<series_data_t>>& series_map,
+    const std::map<int, std::shared_ptr<const series_data_t>>& series_map,
     std::unordered_map<int, series_minmax_cache_t>& cache_map,
     Auto_v_range_mode auto_mode)
 {

@@ -32,7 +32,7 @@ Add to `include/vnm_plot/core/types.h`:
 ```cpp
 struct preview_config_t
 {
-    std::shared_ptr<Data_source> data_source;   // required when preview_config is set
+    Data_source_ref data_source;   // required when preview_config is set
     Data_access_policy access;                  // optional; if invalid, fall back to main access
     std::optional<Display_style> style;         // nullopt means use main style
 };
@@ -70,7 +70,7 @@ bool preview_matches_main() const;
 `Data_access_policy` already has a `layout_key` member. This key should be computed once at policy construction (not per-frame) and used for VAO/cache identity.
 
 ### Data_access_policy Validity
-`Data_access_policy` validity is determined by `access.is_valid()` (non-null `get_timestamp`/`get_value`/`get_range` and `sample_stride > 0`). A default-constructed policy is considered invalid and will fall back to the main access policy.
+`Data_access_policy` validity is determined by `access.is_valid()` (non-null `get_timestamp` and at least one of `get_value`/`get_range`). A default-constructed policy is considered invalid and will fall back to the main access policy.
 
 ## Renderer and Cache Changes
 

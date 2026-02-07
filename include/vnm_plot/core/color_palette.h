@@ -5,6 +5,8 @@
 
 #include <glm/vec4.hpp>
 
+#include <cstdint>
+
 namespace vnm::plot {
 
 // -----------------------------------------------------------------------------
@@ -28,6 +30,33 @@ constexpr float hex2f(const char* str)
 constexpr glm::vec4 hex_to_vec4(const char* str)
 {
     return glm::vec4(hex2f(str + 2), hex2f(str + 4), hex2f(str + 6), hex2f(str));
+}
+
+inline glm::vec4 rgba_u8(std::uint8_t r, std::uint8_t g, std::uint8_t b, std::uint8_t a = 255)
+{
+    constexpr float k_inv_255 = 1.0f / 255.0f;
+    return glm::vec4(
+        static_cast<float>(r) * k_inv_255,
+        static_cast<float>(g) * k_inv_255,
+        static_cast<float>(b) * k_inv_255,
+        static_cast<float>(a) * k_inv_255);
+}
+
+inline glm::vec4 rgb_hex(std::uint32_t rgb)
+{
+    const std::uint8_t r = static_cast<std::uint8_t>((rgb >> 16) & 0xFFu);
+    const std::uint8_t g = static_cast<std::uint8_t>((rgb >> 8) & 0xFFu);
+    const std::uint8_t b = static_cast<std::uint8_t>(rgb & 0xFFu);
+    return rgba_u8(r, g, b, 255);
+}
+
+inline glm::vec4 rgba_hex(std::uint32_t rgba)
+{
+    const std::uint8_t r = static_cast<std::uint8_t>((rgba >> 24) & 0xFFu);
+    const std::uint8_t g = static_cast<std::uint8_t>((rgba >> 16) & 0xFFu);
+    const std::uint8_t b = static_cast<std::uint8_t>((rgba >> 8) & 0xFFu);
+    const std::uint8_t a = static_cast<std::uint8_t>(rgba & 0xFFu);
+    return rgba_u8(r, g, b, a);
 }
 
 // -----------------------------------------------------------------------------

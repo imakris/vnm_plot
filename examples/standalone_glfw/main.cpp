@@ -1,9 +1,6 @@
 #include <vnm_plot/vnm_plot.h>
 
 #include <glatter/glatter.h>
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-
 #include <GLFW/glfw3.h>
 
 #include <cmath>
@@ -21,42 +18,6 @@ struct Sample
     float y_max;
 };
 
-class Vector_source final : public vnm::plot::Data_source
-{
-public:
-    explicit Vector_source(std::vector<Sample> samples)
-        : m_samples(std::move(samples))
-    {
-    }
-
-    vnm::plot::snapshot_result_t try_snapshot(std::size_t /*lod_level*/ = 0) override
-    {
-        vnm::plot::snapshot_result_t res;
-        res.snapshot.data = m_samples.data();
-        res.snapshot.count = m_samples.size();
-        res.snapshot.stride = sizeof(Sample);
-        res.snapshot.sequence = m_sequence;
-        res.status = m_samples.empty()
-            ? vnm::plot::snapshot_result_t::Snapshot_status::EMPTY
-            : vnm::plot::snapshot_result_t::Snapshot_status::READY;
-        return res;
-    }
-
-    std::size_t sample_stride() const override
-    {
-        return sizeof(Sample);
-    }
-
-    const void* identity() const override
-    {
-        return this;
-    }
-
-private:
-    std::vector<Sample> m_samples;
-    std::uint64_t m_sequence = 1;
-};
-
 static std::vector<Sample> build_samples(double x_min, double x_max, std::size_t count)
 {
     std::vector<Sample> samples;
@@ -71,25 +32,6 @@ static std::vector<Sample> build_samples(double x_min, double x_max, std::size_t
     }
 
     return samples;
-}
-
-static void setup_vertex_attributes()
-{
-    glVertexAttribLPointer(0, 1, GL_DOUBLE, sizeof(Sample),
-        reinterpret_cast<void*>(offsetof(Sample, x)));
-    glEnableVertexAttribArray(0);
-
-    glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, sizeof(Sample),
-        reinterpret_cast<void*>(offsetof(Sample, y)));
-    glEnableVertexAttribArray(1);
-
-    glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, sizeof(Sample),
-        reinterpret_cast<void*>(offsetof(Sample, y_min)));
-    glEnableVertexAttribArray(2);
-
-    glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, sizeof(Sample),
-        reinterpret_cast<void*>(offsetof(Sample, y_max)));
-    glEnableVertexAttribArray(3);
 }
 
 static void glfw_error_callback(int code, const char* desc)
@@ -128,23 +70,18 @@ int main()
         return EXIT_FAILURE;
     }
 
-    vnm::plot::Asset_loader asset_loader;
-    asset_loader.set_log_callback([](const std::string& msg) {
+    vnm::plot::Plot_core plot_core;
+    plot_core.asset_loader().set_log_callback([](const std::string& msg) {
         std::cerr << "asset_loader: " << msg << "\n";
     });
-    vnm::plot::init_embedded_assets(asset_loader);
-
-    vnm::plot::Primitive_renderer primitives;
-    vnm::plot::Series_renderer series_renderer;
-    vnm::plot::Chrome_renderer chrome_renderer;
-
-    if (!primitives.initialize(asset_loader)) {
-        std::cerr << "Failed to initialize primitives\n";
+    vnm::plot::Plot_core::init_params_t init_params;
+    init_params.enable_text = false;
+    if (!plot_core.initialize(init_params)) {
+        std::cerr << "Failed to initialize plot core\n";
         glfwDestroyWindow(window);
         glfwTerminate();
         return EXIT_FAILURE;
     }
-    series_renderer.initialize(asset_loader);
 
     const double t_min = -10.0;
     const double t_max = 10.0;
@@ -152,38 +89,26 @@ int main()
     const float v_max = 1.3f;
 
     auto samples = build_samples(t_min, t_max, 2000);
-    auto source = std::make_shared<Vector_source>(std::move(samples));
+    auto source = std::make_shared<vnm::plot::Vector_data_source<Sample>>(std::move(samples));
 
-    auto series = std::make_shared<vnm::plot::series_data_t>();
-    series->id = 1;
-    series->enabled = true;
-    series->style = vnm::plot::Display_style::LINE;
-    series->color = glm::vec4(0.2f, 0.7f, 0.9f, 1.0f);
-    series->data_source = source;
-    series->shader_set = {
-        "shaders/function_sample.vert",
-        "shaders/plot_line_adjacency.geom",
-        "shaders/plot_line.frag"
-    };
+    auto policy = vnm::plot::make_access_policy<Sample>(
+        &Sample::x,
+        &Sample::y,
+        &Sample::y_min,
+        &Sample::y_max);
 
-    series->access.get_timestamp = [](const void* sample) -> double {
-        return static_cast<const Sample*>(sample)->x;
-    };
-    series->access.get_value = [](const void* sample) -> float {
-        return static_cast<const Sample*>(sample)->y;
-    };
-    series->access.get_range = [](const void* sample) -> std::pair<float, float> {
-        const auto* s = static_cast<const Sample*>(sample);
-        return {s->y_min, s->y_max};
-    };
-    series->access.sample_stride = sizeof(Sample);
-    series->access.layout_key = 0x1001;
-    series->access.setup_vertex_attributes = setup_vertex_attributes;
+    auto series = vnm::plot::Series_builder()
+        .enabled(true)
+        .style(vnm::plot::Display_style::LINE)
+        .color(vnm::plot::rgba_u8(51, 179, 230))
+        .data_source(source)
+        .access(policy)
+        .build_shared();
 
-    std::map<int, std::shared_ptr<vnm::plot::series_data_t>> series_map;
-    series_map[series->id] = series;
+    std::map<int, std::shared_ptr<const vnm::plot::series_data_t>> series_map;
+    series_map[1] = series;
 
-    vnm::plot::Render_config config;
+    vnm::plot::Plot_config config;
     config.dark_mode = true;
     config.show_text = false;
     config.snap_lines_to_pixels = false;
@@ -209,44 +134,29 @@ int main()
         glClearColor(palette.background.r, palette.background.g, palette.background.b, palette.background.a);
         glClear(GL_COLOR_BUFFER_BIT);
 
-        vnm::plot::frame_layout_result_t layout;
-        layout.usable_width = fb_w;
-        layout.usable_height = fb_h;
-        layout.v_bar_width = 0.0;
-        layout.h_bar_height = 0.0;
+        vnm::plot::Plot_core::render_params_t params;
+        params.width = fb_w;
+        params.height = fb_h;
+        params.v_min = v_min;
+        params.v_max = v_max;
+        params.preview_v_min = v_min;
+        params.preview_v_max = v_max;
+        params.t_min = t_min;
+        params.t_max = t_max;
+        params.t_available_min = t_min;
+        params.t_available_max = t_max;
+        params.adjusted_font_px = 12.0;
+        params.base_label_height_px = 0.0;
+        params.adjusted_reserved_height = 0.0;
+        params.adjusted_preview_height = 0.0;
 
-        vnm::plot::frame_context_t ctx{
-            layout,
-            v_min,
-            v_max,
-            v_min,
-            v_max,
-            t_min,
-            t_max,
-            t_min,
-            t_max,
-            fb_w,
-            fb_h,
-            glm::ortho(0.f, float(fb_w), float(fb_h), 0.f, -1.f, 1.f),
-            12.0,
-            0.0,
-            0.0,
-            0.0,
-            false,
-            &config
-        };
-
-        chrome_renderer.render_grid_and_backgrounds(ctx, primitives);
-        series_renderer.render(ctx, series_map);
-        chrome_renderer.render_preview_overlay(ctx, primitives);
-        primitives.flush_rects(ctx.pmv);
+        plot_core.render(params, series_map, &config);
 
         glfwSwapBuffers(window);
     }
 
     glfwMakeContextCurrent(window);
-    series_renderer.cleanup_gl_resources();
-    primitives.cleanup_gl_resources();
+    plot_core.cleanup_gl_resources();
 
     glfwDestroyWindow(window);
     glfwTerminate();
