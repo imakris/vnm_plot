@@ -57,6 +57,9 @@ Item {
         property bool indicatorOwned: false
         property real lastSharedT: 0.0
         property bool inMainPlotAtMove: false
+        property var lastSamples: []
+        property real lastSamplesTimeMs: 0.0
+        property real lastTargetT: 0.0
     }
 
     Connections {
@@ -157,9 +160,27 @@ Item {
             return
         }
 
-        internal.indicatorSamples = plotWidget.get_indicator_samples(
+        var nowMs = Date.now()
+        var nextSamples = plotWidget.get_indicator_samples(
             targetT, usableWidth, usableHeight)
-        internal.indicatorActive = internal.indicatorSamples.length > 0
+        if (nextSamples.length > 0) {
+            internal.indicatorSamples = nextSamples
+            internal.indicatorActive = true
+            internal.lastSamples = nextSamples
+            internal.lastSamplesTimeMs = nowMs
+            internal.lastTargetT = targetT
+        } else {
+            var graceMs = 120
+            var canReuse = internal.lastSamples.length > 0
+                && (nowMs - internal.lastSamplesTimeMs) <= graceMs
+            if (canReuse) {
+                internal.indicatorSamples = internal.lastSamples
+                internal.indicatorActive = true
+            } else {
+                internal.indicatorSamples = []
+                internal.indicatorActive = false
+            }
+        }
         canvas.requestPaint()
     }
 
