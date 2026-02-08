@@ -14,6 +14,9 @@ std::atomic<bool> s_disk_cache_enabled{true};
 
 } // namespace
 
+// Provide an empty definition so std::unique_ptr<impl_t> is complete in this TU.
+struct Font_renderer::impl_t {};
+
 // -----------------------------------------------------------------------------
 // Font Cache Configuration
 // -----------------------------------------------------------------------------
