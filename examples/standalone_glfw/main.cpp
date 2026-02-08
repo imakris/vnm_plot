@@ -1,4 +1,5 @@
 #include <vnm_plot/vnm_plot.h>
+#include <vnm_plot/core/gl_program.h>
 
 #include <glatter/glatter.h>
 #include <GLFW/glfw3.h>
