@@ -86,18 +86,24 @@ void Plot_core::render(
         -1.f,
         1.f);
 
-    frame_context_t ctx = Frame_context_builder(layout)
-        .v_range(params.v_min, params.v_max)
-        .preview_v_range(params.preview_v_min, params.preview_v_max)
-        .t_range(params.t_min, params.t_max)
-        .available_t_range(params.t_available_min, params.t_available_max)
-        .window_size(params.width, params.height)
-        .pmv(pmv)
-        .font_px(params.adjusted_font_px, params.base_label_height_px)
-        .reserved_heights(params.adjusted_reserved_height, params.adjusted_preview_height)
-        .show_info(params.show_info)
-        .config(config)
-        .build();
+    frame_context_t ctx{layout};
+    ctx.v0 = params.v_min;
+    ctx.v1 = params.v_max;
+    ctx.preview_v0 = params.preview_v_min;
+    ctx.preview_v1 = params.preview_v_max;
+    ctx.t0 = params.t_min;
+    ctx.t1 = params.t_max;
+    ctx.t_available_min = params.t_available_min;
+    ctx.t_available_max = params.t_available_max;
+    ctx.win_w = params.width;
+    ctx.win_h = params.height;
+    ctx.pmv = pmv;
+    ctx.adjusted_font_px = params.adjusted_font_px;
+    ctx.base_label_height_px = params.base_label_height_px;
+    ctx.adjusted_reserved_height = params.adjusted_reserved_height;
+    ctx.adjusted_preview_height = params.adjusted_preview_height;
+    ctx.show_info = params.show_info;
+    ctx.config = config;
 
 #if defined(VNM_PLOT_ENABLE_TEXT)
     if (!skip_gl && m_fonts && m_text && config && config->show_text) {

@@ -1471,19 +1471,25 @@ void Plot_renderer::render()
     frame_context_t core_ctx = [&]() -> frame_context_t {
         VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.context_build");
         VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.context_build.core_ctx");
-        Frame_context_builder builder(frame_layout);
-        builder
-            .v_range(v0, v1)
-            .preview_v_range(preview_v0, preview_v1)
-            .t_range(m_impl->snapshot.cfg.t_min, m_impl->snapshot.cfg.t_max)
-            .available_t_range(m_impl->snapshot.cfg.t_available_min, m_impl->snapshot.cfg.t_available_max)
-            .window_size(win_w, win_h)
-            .pmv(glm::ortho(0.f, float(win_w), float(win_h), 0.f, -1.f, 1.f))
-            .font_px(m_impl->snapshot.adjusted_font_px, m_impl->snapshot.base_label_height_px)
-            .reserved_heights(m_impl->snapshot.adjusted_reserved_height, m_impl->snapshot.adjusted_preview_height)
-            .show_info(m_impl->snapshot.show_info)
-            .config(config);
-        return builder.build();
+        frame_context_t ctx{frame_layout};
+        ctx.v0 = v0;
+        ctx.v1 = v1;
+        ctx.preview_v0 = preview_v0;
+        ctx.preview_v1 = preview_v1;
+        ctx.t0 = m_impl->snapshot.cfg.t_min;
+        ctx.t1 = m_impl->snapshot.cfg.t_max;
+        ctx.t_available_min = m_impl->snapshot.cfg.t_available_min;
+        ctx.t_available_max = m_impl->snapshot.cfg.t_available_max;
+        ctx.win_w = win_w;
+        ctx.win_h = win_h;
+        ctx.pmv = glm::ortho(0.f, float(win_w), float(win_h), 0.f, -1.f, 1.f);
+        ctx.adjusted_font_px = m_impl->snapshot.adjusted_font_px;
+        ctx.base_label_height_px = m_impl->snapshot.base_label_height_px;
+        ctx.adjusted_reserved_height = m_impl->snapshot.adjusted_reserved_height;
+        ctx.adjusted_preview_height = m_impl->snapshot.adjusted_preview_height;
+        ctx.show_info = m_impl->snapshot.show_info;
+        ctx.config = config;
+        return ctx;
     }();
 
     // Clear to transparent - let QML provide the background color (matches Lumis behavior)

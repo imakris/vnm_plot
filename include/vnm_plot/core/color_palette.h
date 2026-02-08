@@ -42,23 +42,6 @@ inline glm::vec4 rgba_u8(std::uint8_t r, std::uint8_t g, std::uint8_t b, std::ui
         static_cast<float>(a) * k_inv_255);
 }
 
-inline glm::vec4 rgb_hex(std::uint32_t rgb)
-{
-    const std::uint8_t r = static_cast<std::uint8_t>((rgb >> 16) & 0xFFu);
-    const std::uint8_t g = static_cast<std::uint8_t>((rgb >> 8) & 0xFFu);
-    const std::uint8_t b = static_cast<std::uint8_t>(rgb & 0xFFu);
-    return rgba_u8(r, g, b, 255);
-}
-
-inline glm::vec4 rgba_hex(std::uint32_t rgba)
-{
-    const std::uint8_t r = static_cast<std::uint8_t>((rgba >> 24) & 0xFFu);
-    const std::uint8_t g = static_cast<std::uint8_t>((rgba >> 16) & 0xFFu);
-    const std::uint8_t b = static_cast<std::uint8_t>((rgba >> 8) & 0xFFu);
-    const std::uint8_t a = static_cast<std::uint8_t>(rgba & 0xFFu);
-    return rgba_u8(r, g, b, a);
-}
-
 // -----------------------------------------------------------------------------
 // Color Palette
 // -----------------------------------------------------------------------------
