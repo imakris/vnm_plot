@@ -9,6 +9,14 @@
 // or use Mesa software rendering:
 //   LIBGL_ALWAYS_SOFTWARE=1 ./vnm_plot_benchmark_headless
 
+#include <vnm_plot/core/asset_loader.h>
+#include <vnm_plot/core/chrome_renderer.h>
+#include <vnm_plot/core/primitive_renderer.h>
+#include <vnm_plot/core/series_renderer.h>
+#if defined(VNM_PLOT_ENABLE_TEXT)
+#include <vnm_plot/core/font_renderer.h>
+#include <vnm_plot/core/text_renderer.h>
+#endif
 #include <vnm_plot/vnm_plot.h>
 
 #include <glatter/glatter.h>

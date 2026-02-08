@@ -18,31 +18,11 @@
 //   auto source = std::make_shared<vnm::plot::Function_data_source>();
 //   source->generate([](double x) { return std::sin(x); }, 0, 10, 1000);
 //
-// This is the only public header; other headers are internal.
-#include <vnm_plot/core/types.h>
-#include <vnm_plot/core/access_policy.h>
-#include <vnm_plot/core/vertex_layout.h>
-#include <vnm_plot/core/default_shaders.h>
-#include <vnm_plot/core/plot_config.h>
-#include <vnm_plot/core/function_sample.h>
-#include <vnm_plot/core/algo.h>
-#include <vnm_plot/core/constants.h>
-#include <vnm_plot/core/color_palette.h>
-#include <vnm_plot/core/layout_calculator.h>
-#include <vnm_plot/core/asset_loader.h>
-#include <vnm_plot/core/gl_program.h>
-#include <vnm_plot/core/primitive_renderer.h>
-#include <vnm_plot/core/chrome_renderer.h>
-#include <vnm_plot/core/series_renderer.h>
-#include <vnm_plot/core/series_builder.h>
-#include <vnm_plot/core/plot_core.h>
-#include <vnm_plot/core/font_renderer.h>
-#include <vnm_plot/core/text_renderer.h>
+// Use core.h or qt.h directly when you only need one side.
+#include <vnm_plot/core.h>
 
 #if defined(VNM_PLOT_WITH_QT)
-#include <vnm_plot/qt/plot_widget.h>
-#include <vnm_plot/qt/plot_interaction_item.h>
-#include <vnm_plot/qt/plot_time_axis.h>
+#include <vnm_plot/qt.h>
 #endif
 
 namespace vnm::plot {

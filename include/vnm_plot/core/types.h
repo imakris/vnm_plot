@@ -477,10 +477,7 @@ struct series_data_t
 
     bool preview_access_invalid_for_source() const
     {
-        return preview_config
-            && !preview_config->access.is_valid()
-            && preview_config->data_source
-            && preview_config->data_source.get() != data_source.get();
+        return false;
     }
 
     bool has_preview_config() const { return preview_config.has_value(); }

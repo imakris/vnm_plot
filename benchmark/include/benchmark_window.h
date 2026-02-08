@@ -11,7 +11,11 @@
 #include "ring_buffer.h"
 #include "sample_types.h"
 
+#include <vnm_plot/core/asset_loader.h>
+#include <vnm_plot/core/chrome_renderer.h>
 #include <vnm_plot/core/layout_calculator.h>
+#include <vnm_plot/core/primitive_renderer.h>
+#include <vnm_plot/core/series_renderer.h>
 #include <vnm_plot/vnm_plot.h>
 #if defined(VNM_PLOT_ENABLE_TEXT)
 #include <vnm_plot/core/font_renderer.h>

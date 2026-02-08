@@ -111,6 +111,7 @@ int main()
     vnm::plot::Plot_config config;
     config.dark_mode = true;
     config.show_text = false;
+    config.base_label_height_px = 0.0;
     config.snap_lines_to_pixels = false;
     config.line_width_px = 1.5;
 
@@ -139,16 +140,8 @@ int main()
         params.height = fb_h;
         params.v_min = v_min;
         params.v_max = v_max;
-        params.preview_v_min = v_min;
-        params.preview_v_max = v_max;
         params.t_min = t_min;
         params.t_max = t_max;
-        params.t_available_min = t_min;
-        params.t_available_max = t_max;
-        params.adjusted_font_px = 12.0;
-        params.base_label_height_px = 0.0;
-        params.adjusted_reserved_height = 0.0;
-        params.adjusted_preview_height = 0.0;
 
         plot_core.render(params, series_map, &config);
 
