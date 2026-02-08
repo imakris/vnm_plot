@@ -99,7 +99,6 @@ inline bool validate_preview_range_cache_sequences(
     return validate_range_cache_impl(series_map, cache_map, auto_mode,
         [](const series_data_t& s)
             -> std::pair<Data_source*, const Data_access_policy*> {
-            if (s.preview_access_invalid_for_source()) return {nullptr, nullptr};
             if (s.preview_matches_main()) return {nullptr, nullptr};
             Data_source* src = s.preview_source();
             if (!src) return {nullptr, nullptr};

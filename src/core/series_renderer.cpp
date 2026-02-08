@@ -767,7 +767,7 @@ void Series_renderer::render(
 
       enum class Error_cat : uint32_t {
           MISSING_SIGNAL, MISSING_SIGNAL_PREVIEW,
-          PREVIEW_MISSING_SOURCE, PREVIEW_INVALID_ACCESS,
+          PREVIEW_MISSING_SOURCE,
           MISSING_SHADER
       };
     const auto log_error_once = [&](Error_cat cat, int series_id,
@@ -806,9 +806,6 @@ void Series_renderer::render(
         }
 
         const bool has_preview_config = s->has_preview_config();
-        const bool preview_access_invalid =
-            has_preview_config && !s->preview_config->access.is_valid();
-        const bool preview_skip_invalid = s->preview_access_invalid_for_source();
         Data_source* preview_source = nullptr;
         const Data_access_policy* preview_access = nullptr;
         Display_style preview_style = static_cast<Display_style>(0);
@@ -826,21 +823,6 @@ void Series_renderer::render(
                     "Preview config set but preview data_source is null (series "
                         + std::to_string(id) + ")");
                 preview_style = static_cast<Display_style>(0);
-            }
-
-            if (preview_access_invalid && preview_source) {
-                if (preview_skip_invalid) {
-                    log_error_once(Error_cat::PREVIEW_INVALID_ACCESS, id,
-                        "Preview access policy invalid; skipping preview for mismatched source (series "
-                            + std::to_string(id) + ")");
-                    preview_source = nullptr;
-                    preview_style = static_cast<Display_style>(0);
-                }
-                else {
-                    log_error_once(Error_cat::PREVIEW_INVALID_ACCESS, id,
-                        "Preview access policy invalid; using main access (series "
-                            + std::to_string(id) + ")");
-                }
             }
 
             if (!!(preview_style & Display_style::COLORMAP_LINE) &&

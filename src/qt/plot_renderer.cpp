@@ -1254,9 +1254,6 @@ void Plot_renderer::render()
                     if (!source) {
                         return false;
                     }
-                    if (series.preview_access_invalid_for_source()) {
-                        return false;
-                    }
                     const Data_access_policy& access = series.preview_access();
                     view.source = source;
                     view.access = &access;

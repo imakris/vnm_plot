@@ -475,18 +475,17 @@ struct series_data_t
         return style;
     }
 
-    bool preview_access_invalid_for_source() const
-    {
-        return false;
-    }
-
     bool has_preview_config() const { return preview_config.has_value(); }
 
     bool preview_matches_main() const
     {
-        if (!preview_config) return true;
+        if (!preview_config) {
+            return true;
+        }
         Data_source* prev = preview_source();
-        if (!data_source || !prev || data_source.get() != prev) return false;
+        if (!data_source || !prev || data_source.get() != prev) {
+            return false;
+        }
         return preview_access().layout_key == access.layout_key
             && effective_preview_style() == style;
     }
