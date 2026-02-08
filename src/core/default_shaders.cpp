@@ -32,11 +32,6 @@ const shader_set_t k_function_colormap_line{
 
 } // anonymous namespace
 
-bool has_default_shaders(uint64_t layout_key)
-{
-    return layout_key == function_sample_layout_key();
-}
-
 const shader_set_t& default_shader_for_layout(uint64_t layout_key, Display_style style)
 {
     if (layout_key != function_sample_layout_key()) {

@@ -209,12 +209,6 @@ struct Data_source_ref
         set(std::move(source));
         return *this;
     }
-
-    Data_source_ref& operator=(Data_source& source)
-    {
-        set_ref(source);
-        return *this;
-    }
 };
 
 // -----------------------------------------------------------------------------
@@ -357,9 +351,6 @@ struct shader_set_t
     bool empty() const { return vert.empty() && frag.empty(); }
 };
 
-// Default shader lookup for known layouts (returns empty shader_set_t if unknown).
-const shader_set_t& default_shader_for_layout(uint64_t layout_key, Display_style style);
-
 // -----------------------------------------------------------------------------
 // Colormap Configuration
 // -----------------------------------------------------------------------------
@@ -408,18 +399,6 @@ struct series_data_t
 
     shader_set_t shader_set;
     std::map<Display_style, shader_set_t> shaders;
-
-    const shader_set_t& shader_for(Display_style s) const
-    {
-        auto it = shaders.find(s);
-        if (it != shaders.end() && !it->second.empty()) {
-            return it->second;
-        }
-        if (!shader_set.empty()) {
-            return shader_set;
-        }
-        return default_shader_for_layout(access.layout_key, s);
-    }
 
     double get_timestamp(const void* sample) const
     {

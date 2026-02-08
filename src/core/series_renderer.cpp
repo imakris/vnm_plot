@@ -4,6 +4,7 @@
 #include <vnm_plot/core/color_palette.h>
 #include <vnm_plot/core/gl_program.h>
 #include <vnm_plot/core/constants.h>
+#include <vnm_plot/core/default_shaders.h>
 #include <vnm_plot/core/plot_config.h>
 
 #include <glatter/glatter.h>
@@ -47,6 +48,18 @@ shader_set_t normalize_shader_set(const shader_set_t& shader)
     res.geom = normalize_asset_name(shader.geom);
     res.frag = normalize_asset_name(shader.frag);
     return res;
+}
+
+const shader_set_t& select_series_shader(const series_data_t& series, Display_style style)
+{
+    auto it = series.shaders.find(style);
+    if (it != series.shaders.end() && !it->second.empty()) {
+        return it->second;
+    }
+    if (!series.shader_set.empty()) {
+        return series.shader_set;
+    }
+    return default_shader_for_layout(series.access.layout_key, style);
 }
 
 bool is_default_series_color(const glm::vec4& color)
@@ -1131,7 +1144,7 @@ void Series_renderer::render(
             return;
         }
 
-        const shader_set_t& shader_set = series.shader_for(primitive_style);
+        const shader_set_t& shader_set = select_series_shader(series, primitive_style);
         if (shader_set.empty()) {
             log_error_once(Error_cat::MISSING_SHADER, draw_state.id,
                 "Missing shader set for series " + std::to_string(draw_state.id)
