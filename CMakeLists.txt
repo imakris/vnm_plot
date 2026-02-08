@@ -268,6 +268,7 @@ if(VNM_PLOT_ENABLE_TEXT)
 else()
     # Stub implementations for text-off builds
     list(APPEND VNM_PLOT_CORE_SOURCES
+        src/core/font_renderer_stub.cpp
         src/core/text_renderer_stub.cpp
     )
 endif()
