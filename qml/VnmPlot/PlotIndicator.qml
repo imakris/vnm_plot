@@ -149,20 +149,25 @@ Item {
         var nowMs = Date.now()
         var nextSamples = plotWidget.get_indicator_samples(
             targetT, usableWidth, usableHeight, inMainPlot ? localPx : sharedPx)
+
+        if (inMainPlot && root.linkIndicator && root.timeAxis) {
+            var publishT = localT
+            if (nextSamples.length > 0) {
+                var resolvedT = nextSamples[0].x
+                if (resolvedT !== undefined && resolvedT !== null && isFinite(resolvedT)) {
+                    publishT = resolvedT
+                }
+            }
+            if (publishT !== undefined && publishT !== null && isFinite(publishT)) {
+                root.timeAxis.set_indicator_state(plotWidget, true, publishT, localXNorm)
+            }
+        }
+
         if (nextSamples.length > 0) {
             internal.indicatorSamples = nextSamples
             internal.indicatorActive = true
             internal.lastSamples = nextSamples
             internal.lastSamplesTimeMs = nowMs
-
-            // Publish linked indicator time from the resolved sample time so all
-            // linked plots use the same render-consistent t value.
-            if (inMainPlot && root.linkIndicator && root.timeAxis) {
-                var resolvedT = nextSamples[0].x
-                if (resolvedT !== undefined && resolvedT !== null && isFinite(resolvedT)) {
-                    root.timeAxis.set_indicator_state(plotWidget, true, resolvedT, localXNorm)
-                }
-            }
         } else {
             var graceMs = 120
             var canReuse = internal.lastSamples.length > 0

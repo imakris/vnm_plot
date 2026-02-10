@@ -1281,6 +1281,7 @@ void Plot_widget::set_rendered_v_range(float v_min, float v_max) const
 
 void Plot_widget::set_rendered_t_range(double t_min, double t_max) const
 {
+    // Time span must be strictly positive to keep time<->pixel conversions safe.
     if (!std::isfinite(t_min) || !std::isfinite(t_max) || t_max <= t_min) {
         m_rendered_t_range_valid.store(false, std::memory_order_release);
         return;
