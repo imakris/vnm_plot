@@ -171,7 +171,7 @@ public:
     Q_INVOKABLE void set_show_if_calculated_preview_height_below_min(bool v);
     Q_INVOKABLE void set_preview_height_steps(int steps);
 
-    Q_INVOKABLE QVariantList get_indicator_samples(double x, double plot_width, double plot_height) const;
+    Q_INVOKABLE QVariantList get_indicator_samples(double x, double plot_width, double plot_height, double mouse_px = -1.0) const;
 
     // --- Qt Quick FBO Interface ---
 
@@ -197,6 +197,7 @@ protected:
     void adjust_t_to_target(double target_tmin, double target_tmax);
     std::pair<float, float> manual_v_range() const;
     bool rendered_v_range(float& out_min, float& out_max) const;
+    bool rendered_t_range(double& out_min, double& out_max) const;
 
 private:
     friend class Plot_renderer;
@@ -224,6 +225,9 @@ private:
     mutable std::atomic<float> m_rendered_v_min{0.0f};
     mutable std::atomic<float> m_rendered_v_max{1.0f};
     mutable std::atomic<bool> m_rendered_v_range_valid{false};
+    mutable std::atomic<double> m_rendered_t_min{0.0};
+    mutable std::atomic<double> m_rendered_t_max{1.0};
+    mutable std::atomic<bool> m_rendered_t_range_valid{false};
     std::atomic<double> m_vbar_width_px{0.0};
     QBasicTimer m_vbar_width_timer;
     QElapsedTimer m_vbar_width_anim_elapsed;
@@ -251,6 +255,7 @@ private:
 
     bool consume_view_state_reset_request();
     void set_rendered_v_range(float v_min, float v_max) const;
+    void set_rendered_t_range(double t_min, double t_max) const;
     void sync_time_axis_state();
     void clear_time_axis();
     void apply_vbar_width_target(double px);

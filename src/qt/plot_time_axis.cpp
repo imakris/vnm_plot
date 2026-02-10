@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace vnm::plot {
 
@@ -253,14 +254,21 @@ void Plot_time_axis::adjust_t_to_target(double target_min, double target_max)
 
 void Plot_time_axis::set_indicator_state(QObject* owner, bool active, double t)
 {
+    set_indicator_state(owner, active, t, std::numeric_limits<double>::quiet_NaN());
+}
+
+void Plot_time_axis::set_indicator_state(QObject* owner, bool active, double t, double x_norm)
+{
     if (!owner) {
         return;
     }
 
     bool changed = false;
     if (active) {
+        bool owner_changed = false;
         if (m_indicator_owner != owner) {
             m_indicator_owner = owner;
+            owner_changed = true;
             changed = true;
         }
         if (!m_indicator_active) {
@@ -271,11 +279,28 @@ void Plot_time_axis::set_indicator_state(QObject* owner, bool active, double t)
             m_indicator_t = t;
             changed = true;
         }
+        if (std::isfinite(x_norm)) {
+            const double clamped_x_norm = std::clamp(x_norm, 0.0, 1.0);
+            if (!m_indicator_x_norm_valid || std::abs(m_indicator_x_norm - clamped_x_norm) > k_axis_eps) {
+                m_indicator_x_norm = clamped_x_norm;
+                changed = true;
+            }
+            if (!m_indicator_x_norm_valid) {
+                m_indicator_x_norm_valid = true;
+                changed = true;
+            }
+        }
+        else
+        if (owner_changed && m_indicator_x_norm_valid) {
+            m_indicator_x_norm_valid = false;
+            changed = true;
+        }
     }
     else {
-        if (m_indicator_owner == owner && m_indicator_active) {
+        if (m_indicator_owner == owner && (m_indicator_active || m_indicator_x_norm_valid)) {
             m_indicator_owner = nullptr;
             m_indicator_active = false;
+            m_indicator_x_norm_valid = false;
             changed = true;
         }
     }
@@ -293,6 +318,16 @@ bool Plot_time_axis::indicator_active() const
 double Plot_time_axis::indicator_t() const
 {
     return m_indicator_t;
+}
+
+bool Plot_time_axis::indicator_x_norm_valid() const
+{
+    return m_indicator_x_norm_valid;
+}
+
+double Plot_time_axis::indicator_x_norm() const
+{
+    return m_indicator_x_norm;
 }
 
 bool Plot_time_axis::indicator_owned_by(QObject* owner) const

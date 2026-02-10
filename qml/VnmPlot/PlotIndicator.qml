@@ -39,10 +39,7 @@ Item {
             internal.inMainPlotAtMove = false
         }
         if (wasInPlot && !inPlot && root.linkIndicator && root.timeAxis) {
-            root.timeAxis.set_indicator_state(plotWidget, false, 0.0)
-        }
-        if (!inPlot) {
-            internal.indicatorOwned = false
+            root.timeAxis.set_indicator_state(plotWidget, false, 0.0, 0.0)
         }
         canvas.requestPaint()
     }
@@ -54,12 +51,9 @@ Item {
         property real mouseX: -1
         property real mouseY: -1
         property bool indicatorActive: false
-        property bool indicatorOwned: false
-        property real lastSharedT: 0.0
         property bool inMainPlotAtMove: false
         property var lastSamples: []
         property real lastSamplesTimeMs: 0.0
-        property real lastTargetT: 0.0
     }
 
     Connections {
@@ -118,41 +112,33 @@ Item {
         }
 
         var localT = 0.0
+        var localPx = -1.0
+        var localXNorm = 0.0
         if (inMainPlot) {
-            var xClamped = Math.max(0.0, Math.min(internal.mouseX, usableWidth))
-            localT = tmin + (xClamped / usableWidth) * tspan
-            if (root.linkIndicator && root.timeAxis) {
-                var canUpdate = true
-                if (root.timeAxis.indicator_active &&
-                    root.timeAxis.indicator_owned_by(plotWidget) &&
-                    Math.abs(root.timeAxis.indicator_t - localT) <= 1e-12) {
-                    canUpdate = false
-                }
-                if (Math.abs(internal.lastSharedT - localT) <= 1e-12) {
-                    canUpdate = false
-                }
-                if (canUpdate) {
-                    internal.lastSharedT = localT
-                    root.timeAxis.set_indicator_state(plotWidget, true, localT)
-                }
-            }
+            localPx = Math.max(0.0, Math.min(internal.mouseX, usableWidth))
+            localXNorm = localPx / usableWidth
+            localT = tmin + localXNorm * tspan
         }
 
         if (!inMainPlot && internal.hasMouseInPlot && root.linkIndicator && root.timeAxis) {
             if (root.timeAxis.indicator_active &&
                 root.timeAxis.indicator_owned_by(plotWidget)) {
-                internal.indicatorOwned = false
-                root.timeAxis.set_indicator_state(plotWidget, false, 0.0)
+                root.timeAxis.set_indicator_state(plotWidget, false, 0.0, 0.0)
             }
         }
 
-        if (root.linkIndicator && root.timeAxis) {
-            internal.indicatorOwned = root.timeAxis.indicator_owned_by(plotWidget)
-        }
-
         var allowShared = !(internal.hasMouseInPlot && !inMainPlot)
-        var useShared = root.linkIndicator && root.timeAxis && root.timeAxis.indicator_active && allowShared
-        var targetT = useShared ? root.timeAxis.indicator_t : (inMainPlot ? localT : null)
+        var useShared = root.linkIndicator &&
+            root.timeAxis &&
+            root.timeAxis.indicator_active &&
+            root.timeAxis.indicator_x_norm_valid &&
+            allowShared
+        var targetT = inMainPlot ? localT : (useShared ? root.timeAxis.indicator_t : null)
+        var sharedPx = -1.0
+        if (!inMainPlot && useShared) {
+            var sharedNorm = Math.max(0.0, Math.min(root.timeAxis.indicator_x_norm, 1.0))
+            sharedPx = sharedNorm * usableWidth
+        }
         if (targetT === null || targetT === undefined) {
             internal.indicatorSamples = []
             internal.indicatorActive = false
@@ -162,13 +148,21 @@ Item {
 
         var nowMs = Date.now()
         var nextSamples = plotWidget.get_indicator_samples(
-            targetT, usableWidth, usableHeight)
+            targetT, usableWidth, usableHeight, inMainPlot ? localPx : sharedPx)
         if (nextSamples.length > 0) {
             internal.indicatorSamples = nextSamples
             internal.indicatorActive = true
             internal.lastSamples = nextSamples
             internal.lastSamplesTimeMs = nowMs
-            internal.lastTargetT = targetT
+
+            // Publish linked indicator time from the resolved sample time so all
+            // linked plots use the same render-consistent t value.
+            if (inMainPlot && root.linkIndicator && root.timeAxis) {
+                var resolvedT = nextSamples[0].x
+                if (resolvedT !== undefined && resolvedT !== null && isFinite(resolvedT)) {
+                    root.timeAxis.set_indicator_state(plotWidget, true, resolvedT, localXNorm)
+                }
+            }
         } else {
             var graceMs = 120
             var canReuse = internal.lastSamples.length > 0

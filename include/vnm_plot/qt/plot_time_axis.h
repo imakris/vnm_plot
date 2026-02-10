@@ -21,6 +21,8 @@ class Plot_time_axis : public QObject
     Q_PROPERTY(bool sync_vbar_width READ sync_vbar_width WRITE set_sync_vbar_width NOTIFY sync_vbar_width_changed)
     Q_PROPERTY(bool indicator_active READ indicator_active NOTIFY indicator_state_changed)
     Q_PROPERTY(double indicator_t READ indicator_t NOTIFY indicator_state_changed)
+    Q_PROPERTY(bool indicator_x_norm_valid READ indicator_x_norm_valid NOTIFY indicator_state_changed)
+    Q_PROPERTY(double indicator_x_norm READ indicator_x_norm NOTIFY indicator_state_changed)
 
 public:
     explicit Plot_time_axis(QObject* parent = nullptr);
@@ -49,10 +51,13 @@ public:
     Q_INVOKABLE void adjust_t_from_pivot_and_scale(double pivot, double scale);
     Q_INVOKABLE void adjust_t_to_target(double target_min, double target_max);
     Q_INVOKABLE void set_indicator_state(QObject* owner, bool active, double t);
+    Q_INVOKABLE void set_indicator_state(QObject* owner, bool active, double t, double x_norm);
     Q_INVOKABLE bool indicator_owned_by(QObject* owner) const;
 
     bool indicator_active() const;
     double indicator_t() const;
+    bool indicator_x_norm_valid() const;
+    double indicator_x_norm() const;
 
 signals:
     void t_limits_changed();
@@ -79,6 +84,8 @@ private:
     QObject* m_indicator_owner = nullptr;
     bool m_indicator_active = false;
     double m_indicator_t = 0.0;
+    bool m_indicator_x_norm_valid = false;
+    double m_indicator_x_norm = 0.0;
 };
 
 } // namespace vnm::plot

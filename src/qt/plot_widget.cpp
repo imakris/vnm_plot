@@ -175,6 +175,7 @@ void Plot_widget::reset_view_state()
 {
     m_view_state_reset_requested.store(true, std::memory_order_release);
     m_rendered_v_range_valid.store(false, std::memory_order_release);
+    m_rendered_t_range_valid.store(false, std::memory_order_release);
     update();
 }
 
@@ -1019,7 +1020,11 @@ bool Plot_widget::can_zoom_in() const
     return (cfg.t_max - cfg.t_min) > 0.1;
 }
 
-QVariantList Plot_widget::get_indicator_samples(double x, double plot_width, double plot_height) const
+QVariantList Plot_widget::get_indicator_samples(
+    double x,
+    double plot_width,
+    double plot_height,
+    double mouse_px) const
 {
     QVariantList result;
 
@@ -1028,13 +1033,19 @@ QVariantList Plot_widget::get_indicator_samples(double x, double plot_width, dou
     }
 
     const auto cfg = data_cfg_snapshot();
-    const double tmin = cfg.t_min;
-    const double tmax = cfg.t_max;
+    double tmin = 0.0;
+    double tmax = 0.0;
+    if (!rendered_t_range(tmin, tmax)) {
+        tmin = cfg.t_min;
+        tmax = cfg.t_max;
+    }
     float vmin = 0.0f;
     float vmax = 0.0f;
     if (m_v_auto.load(std::memory_order_acquire)) {
-        vmin = cfg.v_min;
-        vmax = cfg.v_max;
+        if (!rendered_v_range(vmin, vmax)) {
+            vmin = cfg.v_min;
+            vmax = cfg.v_max;
+        }
     }
     else {
         vmin = cfg.v_manual_min;
@@ -1046,6 +1057,13 @@ QVariantList Plot_widget::get_indicator_samples(double x, double plot_width, dou
 
     if (t_span <= 0.0 || v_span <= 0.0f) {
         return result;
+    }
+
+    // Recompute target time from rendered range when the caller supplies pixel x.
+    // This keeps pixel->time and time->pixel conversions on the same range and
+    // avoids horizontal indicator jitter during high-rate loading.
+    if (mouse_px >= 0.0) {
+        x = tmin + (mouse_px / plot_width) * t_span;
     }
 
     auto series_map = get_series_snapshot();
@@ -1235,6 +1253,16 @@ bool Plot_widget::rendered_v_range(float& out_min, float& out_max) const
     return true;
 }
 
+bool Plot_widget::rendered_t_range(double& out_min, double& out_max) const
+{
+    if (!m_rendered_t_range_valid.load(std::memory_order_acquire)) {
+        return false;
+    }
+    out_min = m_rendered_t_min.load(std::memory_order_acquire);
+    out_max = m_rendered_t_max.load(std::memory_order_acquire);
+    return true;
+}
+
 bool Plot_widget::consume_view_state_reset_request()
 {
     return m_view_state_reset_requested.exchange(false, std::memory_order_acq_rel);
@@ -1249,6 +1277,17 @@ void Plot_widget::set_rendered_v_range(float v_min, float v_max) const
     m_rendered_v_min.store(v_min, std::memory_order_release);
     m_rendered_v_max.store(v_max, std::memory_order_release);
     m_rendered_v_range_valid.store(true, std::memory_order_release);
+}
+
+void Plot_widget::set_rendered_t_range(double t_min, double t_max) const
+{
+    if (!std::isfinite(t_min) || !std::isfinite(t_max) || t_max <= t_min) {
+        m_rendered_t_range_valid.store(false, std::memory_order_release);
+        return;
+    }
+    m_rendered_t_min.store(t_min, std::memory_order_release);
+    m_rendered_t_max.store(t_max, std::memory_order_release);
+    m_rendered_t_range_valid.store(true, std::memory_order_release);
 }
 
 void Plot_widget::adjust_t_to_target(double target_tmin, double target_tmax)
