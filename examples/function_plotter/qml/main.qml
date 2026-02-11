@@ -77,7 +77,7 @@ ApplicationWindow {
                     }
 
                     Text {
-                        text: "f(x) ="
+                        text: "f(x" + (functionDelegate.index + 1) + ") ="
                         font.pixelSize: fontSize
                         font.family: "Consolas"
                         color: dimTextColor

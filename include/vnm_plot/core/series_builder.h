@@ -31,6 +31,12 @@ public:
         return *this;
     }
 
+    Series_builder& series_label(std::string label)
+    {
+        m_series.series_label = std::move(label);
+        return *this;
+    }
+
     Series_builder& data_source(std::shared_ptr<Data_source> source)
     {
         m_series.set_data_source(std::move(source));

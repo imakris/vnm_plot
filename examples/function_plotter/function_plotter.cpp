@@ -695,10 +695,14 @@ void Function_plotter::add_function()
     const int new_id = m_next_series_id++;
     const QColor color = get_next_color();
     const QString expression = get_unique_expression();
+    const QString function_label = QStringLiteral("f(x%1)").arg(static_cast<int>(m_entries.size()) + 1);
 
     beginInsertRows(QModelIndex(), static_cast<int>(m_entries.size()), static_cast<int>(m_entries.size()));
 
     auto entry = std::make_unique<Function_entry>(new_id, color, expression, this);
+    if (auto series = entry->series()) {
+        series->series_label = function_label.toStdString();
+    }
 
     // Connect signals for model updates
     connect(entry.get(), &Function_entry::expression_changed, this, [this, ptr = entry.get()]() {
@@ -747,8 +751,8 @@ void Function_plotter::add_function()
     entry->generate_samples(m_x_min, m_x_max);
 
     m_entries.push_back(std::move(entry));
-
     endInsertRows();
+    refresh_series_labels();
     emit function_count_changed();
 }
 
@@ -768,6 +772,7 @@ void Function_plotter::remove_function(int idx)
     m_entries.erase(m_entries.begin() + idx);
 
     endRemoveRows();
+    refresh_series_labels();
     emit function_count_changed();
 }
 
@@ -874,6 +879,31 @@ void Function_plotter::configure_plot_widget()
     };
 
     m_plot_widget->set_config(config);
+}
+
+void Function_plotter::refresh_series_labels()
+{
+    for (std::size_t i = 0; i < m_entries.size(); ++i) {
+        auto& entry = m_entries[i];
+        if (!entry) {
+            continue;
+        }
+
+        auto series = entry->series();
+        if (!series) {
+            continue;
+        }
+
+        const std::string new_label = QStringLiteral("f(x%1)").arg(static_cast<int>(i) + 1).toStdString();
+        if (series->series_label == new_label) {
+            continue;
+        }
+
+        series->series_label = new_label;
+        if (m_plot_widget) {
+            m_plot_widget->add_series(entry->series_id(), series);
+        }
+    }
 }
 
 QColor Function_plotter::get_next_color()

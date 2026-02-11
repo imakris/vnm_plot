@@ -1253,10 +1253,27 @@ QVariantList Plot_widget::get_indicator_samples(
         entry["px"] = px;
         entry["py"] = py;
         entry["color"] = color;
+        entry["series_label"] = QString::fromStdString(series->series_label);
         result.append(entry);
     }
 
     return result;
+}
+
+QString Plot_widget::format_timestamp_like_axis(double timestamp) const
+{
+    double tmin = 0.0;
+    double tmax = 0.0;
+    if (!rendered_t_range(tmin, tmax)) {
+        const auto cfg = data_cfg_snapshot();
+        tmin = cfg.t_min;
+        tmax = cfg.t_max;
+    }
+
+    const double visible_range = std::max(0.0, tmax - tmin);
+    const auto cfg = config();
+    const auto formatter = cfg.format_timestamp ? cfg.format_timestamp : default_format_timestamp;
+    return QString::fromStdString(formatter(timestamp, visible_range));
 }
 
 std::pair<float, float> Plot_widget::manual_v_range() const

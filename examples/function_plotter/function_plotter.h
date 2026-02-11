@@ -191,6 +191,7 @@ private:
     void regenerate_all_samples();
     void update_plot_widget();
     void configure_plot_widget();
+    void refresh_series_labels();
     QColor get_next_color();
     QString get_unique_expression() const;
     int index_of_entry(Function_entry* entry) const;

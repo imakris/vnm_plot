@@ -387,6 +387,7 @@ struct series_data_t
     bool enabled = true;
     Display_style style = Display_style::LINE;
     glm::vec4 color = glm::vec4(0.16f, 0.45f, 0.64f, 1.0f);
+    std::string series_label;
 
     Data_source_ref data_source;
     Data_access_policy access;

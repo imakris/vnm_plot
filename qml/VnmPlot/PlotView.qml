@@ -10,6 +10,8 @@ Item {
     property bool interactionEnabled: true
     property bool linkIndicator: false
     property PlotTimeAxis timeAxis: null
+    property string indicatorXLabel: "x"
+    property string indicatorYLabel: "y"
 
     PlotWidget {
         id: plot
@@ -22,6 +24,8 @@ Item {
         anchors.fill: parent
         plotWidget: plot
         linkIndicator: root.linkIndicator
+        xValueLabel: root.indicatorXLabel
+        yValueLabel: root.indicatorYLabel
     }
 
     PlotInteractionItem {

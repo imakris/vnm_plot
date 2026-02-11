@@ -12,6 +12,8 @@ Item {
     property bool showVerticalLine: true
     property bool showHorizontalLine: false
     property bool linkIndicator: false
+    property string xValueLabel: "x"
+    property string yValueLabel: "y"
 
     readonly property var timeAxis: plotWidget ? plotWidget.timeAxis : null
 
@@ -94,6 +96,31 @@ Item {
         } catch (e) {}
         var drx = Math.max(3, root.decimalsForSpan(tspan, 3))
         return xVal.toFixed(drx)
+    }
+
+    function labelPrefix(label, fallback) {
+        var txt = (label === undefined || label === null) ? "" : ("" + label).trim()
+        if (txt.length === 0) {
+            txt = fallback
+        }
+        txt = txt.replace(/\s*:\s*$/, "")
+        return txt + ": "
+    }
+
+    function labeledXValue(valueText) {
+        return root.labelPrefix(root.xValueLabel, "x") + valueText
+    }
+
+    function labeledYValue(valueText) {
+        return root.labelPrefix(root.yValueLabel, "y") + valueText
+    }
+
+    function labeledSeriesValue(seriesLabel, valueText) {
+        var txt = (seriesLabel === undefined || seriesLabel === null) ? "" : ("" + seriesLabel).trim()
+        if (txt.length > 0) {
+            return root.labelPrefix(txt, "y") + valueText
+        }
+        return root.labeledYValue(valueText)
     }
 
     function refreshIndicator() {
@@ -226,17 +253,19 @@ Item {
                 }
 
                 var x_txt = root.formatTimestamp(xVal, tspan)
+                var x_axis_txt = root.labeledXValue(x_txt)
                 var lines = []
-                var maxValueWidth = ctx.measureText(x_txt).width
+                var maxValueWidth = ctx.measureText(x_axis_txt).width
 
                 for (var i = 0; i < samples.length; ++i) {
                     var s = samples[i]
                     var vtxt = s.y.toFixed(dry)
-                    var w = ctx.measureText(vtxt).width
+                    var value_label = root.labeledSeriesValue(s.series_label, vtxt)
+                    var w = ctx.measureText(value_label).width
                     if (w > maxValueWidth) maxValueWidth = w
 
                     lines.push({
-                        value: vtxt,
+                        value: value_label,
                         color: s.color,
                         px: s.px,
                         py: s.py
@@ -248,7 +277,7 @@ Item {
                 var boxPaddingX = 8
                 var boxPaddingY = 6
                 var bulletWidth = showBullet ? ctx.measureText(bulletChar).width + 4 : 0
-                var textWidth = Math.max(ctx.measureText(x_txt).width, bulletWidth + maxValueWidth)
+                var textWidth = Math.max(ctx.measureText(x_axis_txt).width, bulletWidth + maxValueWidth)
                 var boxWidth = textWidth + boxPaddingX * 2
 
                 var x0 = (xLine > width / 2) ? xLine - 10 - boxWidth : xLine + 10
@@ -269,7 +298,7 @@ Item {
 
                 ctx.fillStyle = "#000000"
                 ctx.beginPath()
-                ctx.fillText(x_txt, x0 + boxPaddingX, y0 + boxPaddingY + lineHeight)
+                ctx.fillText(x_axis_txt, x0 + boxPaddingX, y0 + boxPaddingY + lineHeight)
                 ctx.fill()
                 ctx.closePath()
 
@@ -330,15 +359,16 @@ Item {
 
                     var x_txt_sel = root.formatTimestamp(tsSel, tspan)
                     var y_txt_sel = vSel.toFixed(dry)
+                    var y_labeled_sel = root.labeledSeriesValue(root.selectedSample.series_label, y_txt_sel)
 
                     var txtSel = ""
                     var dirtySel = false
                     if (root.showSelectedX) {
-                        txtSel = x_txt_sel
+                        txtSel = root.labeledXValue(x_txt_sel)
                         dirtySel = true
                     }
                     if (root.showSelectedY) {
-                        txtSel += (dirtySel ? ", " : "") + y_txt_sel
+                        txtSel += (dirtySel ? ", " : "") + y_labeled_sel
                     }
 
                     var text_width_sel = ctx.measureText(txtSel).width
