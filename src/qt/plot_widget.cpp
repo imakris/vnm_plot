@@ -17,6 +17,7 @@
 #include <cmath>
 #include <limits>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -64,6 +65,63 @@ double dpi_scaling_for_window([[maybe_unused]] void* native_handle)
     }
     return screen->logicalDotsPerInch() / 96.0;
 #endif
+}
+
+template <typename Signature>
+bool function_targets_equivalent(
+    const std::function<Signature>& lhs,
+    const std::function<Signature>& rhs)
+{
+    if (static_cast<bool>(lhs) != static_cast<bool>(rhs)) {
+        return false;
+    }
+    if (!lhs) {
+        return true;
+    }
+    if (lhs.target_type() != rhs.target_type()) {
+        return false;
+    }
+
+    using function_ptr_t = std::add_pointer_t<Signature>;
+    const auto* lhs_fn = lhs.template target<function_ptr_t>();
+    const auto* rhs_fn = rhs.template target<function_ptr_t>();
+    if (lhs_fn || rhs_fn) {
+        return lhs_fn && rhs_fn && (*lhs_fn == *rhs_fn);
+    }
+
+    // For stateful callables (lambdas/functors), there is no portable way to
+    // compare captured state inside std::function. Treat same target type as
+    // equivalent and rely on explicit revision fields where needed.
+    return true;
+}
+
+bool plot_config_equivalent(
+    const vnm::plot::Plot_config& lhs,
+    const vnm::plot::Plot_config& rhs)
+{
+    return
+        lhs.dark_mode == rhs.dark_mode &&
+        lhs.show_text == rhs.show_text &&
+        lhs.grid_visibility == rhs.grid_visibility &&
+        lhs.preview_visibility == rhs.preview_visibility &&
+        function_targets_equivalent(lhs.format_timestamp, rhs.format_timestamp) &&
+        lhs.format_timestamp_revision == rhs.format_timestamp_revision &&
+        lhs.profiler.get() == rhs.profiler.get() &&
+        lhs.font_size_px == rhs.font_size_px &&
+        lhs.base_label_height_px == rhs.base_label_height_px &&
+        function_targets_equivalent(lhs.log_debug, rhs.log_debug) &&
+        function_targets_equivalent(lhs.log_error, rhs.log_error) &&
+        function_targets_equivalent(lhs.register_assets, rhs.register_assets) &&
+        lhs.assets_revision == rhs.assets_revision &&
+        lhs.preview_height_px == rhs.preview_height_px &&
+        lhs.clear_to_transparent == rhs.clear_to_transparent &&
+        lhs.snap_lines_to_pixels == rhs.snap_lines_to_pixels &&
+        lhs.line_width_px == rhs.line_width_px &&
+        lhs.area_fill_alpha == rhs.area_fill_alpha &&
+        lhs.skip_gl_calls == rhs.skip_gl_calls &&
+        lhs.allow_renderer_self_scheduling == rhs.allow_renderer_self_scheduling &&
+        lhs.auto_v_range_mode == rhs.auto_v_range_mode &&
+        lhs.auto_v_range_extra_scale == rhs.auto_v_range_extra_scale;
 }
 
 } // anonymous namespace
@@ -144,8 +202,11 @@ std::map<int, std::shared_ptr<const series_data_t>> Plot_widget::get_series_snap
 
 void Plot_widget::set_config(const Plot_config& config)
 {
+    Plot_config effective_config;
+
     {
         std::unique_lock lock(m_config_mutex);
+        const Plot_config prev_config = m_config;
         const double prev_grid_visibility = m_config.grid_visibility;
         const double prev_preview_visibility = m_config.preview_visibility;
         const double prev_line_width_px = m_config.line_width_px;
@@ -153,11 +214,15 @@ void Plot_widget::set_config(const Plot_config& config)
         m_config.grid_visibility = prev_grid_visibility;      // Preserve QML-controlled setting
         m_config.preview_visibility = prev_preview_visibility; // Preserve QML-controlled setting
         m_config.line_width_px = prev_line_width_px;          // Preserve QML-controlled setting
+        if (!plot_config_equivalent(prev_config, m_config)) {
+            m_config_revision.fetch_add(1, std::memory_order_relaxed);
+        }
+        effective_config = m_config;
     }
-    m_adjusted_font_size = m_config.font_size_px * m_scaling_factor;
-    m_base_label_height = m_config.base_label_height_px * m_scaling_factor;
-    if (m_config.preview_height_px > 0.0) {
-        set_preview_height(m_config.preview_height_px);
+    m_adjusted_font_size = effective_config.font_size_px * m_scaling_factor;
+    m_base_label_height = effective_config.base_label_height_px * m_scaling_factor;
+    if (effective_config.preview_height_px > 0.0) {
+        set_preview_height(effective_config.preview_height_px);
     }
     else {
         recalculate_preview_height();

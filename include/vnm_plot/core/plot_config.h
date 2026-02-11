@@ -96,6 +96,10 @@ struct Plot_config
     // Returns: formatted string for display
     // If null, a default formatter is used.
     std::function<std::string(double timestamp, double visible_range)> format_timestamp;
+    // Revision for formatter behavior. Caller contract: increment when the
+    // effective output of format_timestamp changes without replacing the
+    // callback identity (e.g. captured/stateful data updates).
+    std::uint64_t format_timestamp_revision = 0;
 
     // --- Profiling (optional) ---
     // If provided, profiling scopes will be recorded.
@@ -135,6 +139,10 @@ struct Plot_config
     // When true, skip all GL calls (VBO creation, shader usage, draws, etc.).
     // Useful for profiling pure CPU overhead without any GL interaction.
     bool skip_gl_calls = false;
+    // When true, renderer may request additional frames for smooth animations.
+    // When false, renderer suppresses self-posted updates and may skip unchanged
+    // frames based on a render signature to minimize idle CPU usage.
+    bool allow_renderer_self_scheduling = false;
 
     // --- Auto V-Range ---
     // Default is GLOBAL to preserve Lumis-style behavior.

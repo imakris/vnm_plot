@@ -161,6 +161,48 @@ std::uint64_t hash_series_snapshot(const std::map<int, std::shared_ptr<const ser
     return hash;
 }
 
+void hash_mix_u64(std::uint64_t& hash, std::uint64_t value)
+{
+    hash ^= value + 0x9e3779b97f4a7c15ULL + (hash << 6) + (hash >> 2);
+}
+
+std::uint64_t hash_series_sequences(const std::map<int, std::shared_ptr<const series_data_t>>& series_map)
+{
+    std::uint64_t hash = 1469598103934665603ULL;
+
+    auto hash_source_sequences = [](std::uint64_t& seed, const Data_source* source) {
+        if (!source) {
+            hash_mix_u64(seed, 0ULL);
+            return;
+        }
+
+        const std::size_t levels = std::max<std::size_t>(std::size_t(1), source->lod_levels());
+        hash_mix_u64(seed, static_cast<std::uint64_t>(levels));
+        for (std::size_t level = 0; level < levels; ++level) {
+            hash_mix_u64(seed, source->current_sequence(level));
+        }
+    };
+
+    for (const auto& [id, series] : series_map) {
+        if (!series) {
+            continue;
+        }
+
+        std::uint64_t value = static_cast<std::uint64_t>(id);
+        const Data_source* main_source = series->main_source();
+        const Data_source* preview_source = series->preview_source();
+        const bool has_preview = series->has_preview_config();
+
+        hash_source_sequences(value, main_source);
+        hash_mix_u64(value, static_cast<std::uint64_t>(has_preview ? 1 : 0));
+        if (has_preview) {
+            hash_source_sequences(value, preview_source);
+        }
+        hash_mix_u64(hash, value);
+    }
+    return hash;
+}
+
 constexpr float k_auto_v_padding_factor = 0.125f;
 constexpr float k_auto_v_padding_min = 0.5f;
 constexpr float k_auto_v_sync_eps = static_cast<float>(k_eps);
@@ -612,6 +654,7 @@ struct Plot_renderer::impl_t
         bool show_info = false;
         bool v_auto = true;
         bool reset_view_state = false;
+        std::uint64_t config_revision = 0ULL;
 
         Plot_config config;
 
@@ -714,6 +757,7 @@ struct Plot_renderer::impl_t
     int last_opengl_status = std::numeric_limits<int>::min();
     int last_hlabels_subsecond = -1;
     std::uint32_t assets_revision = 0;
+    std::uint64_t last_full_render_signature = 0ULL;
 
     Chrome_renderer chrome;
     bool assets_initialized = false;
@@ -723,6 +767,7 @@ struct Plot_renderer::impl_t
     bool methods_checked = false;
     bool has_opengl_status_method = false;
     bool has_hlabels_subsecond_method = false;
+    bool has_last_full_render_signature = false;
 
     const frame_layout_result_t& calculate_frame_layout(
         float v0,
@@ -961,6 +1006,7 @@ void Plot_renderer::synchronize(QQuickFramebufferObject* fbo_item)
     {
         std::shared_lock lock(widget->m_config_mutex);
         m_impl->snapshot.config = widget->m_config;
+        m_impl->snapshot.config_revision = widget->m_config_revision.load(std::memory_order_relaxed);
     }
 
     // Copy data config
@@ -1025,6 +1071,8 @@ void Plot_renderer::render()
     vnm::plot::Profiler* profiler = (config && config->profiler)
         ? config->profiler.get()
         : nullptr;
+    const bool allow_renderer_self_scheduling =
+        config && config->allow_renderer_self_scheduling;
 
     if (!m_impl->snapshot.visible) {
         return;
@@ -1141,6 +1189,72 @@ void Plot_renderer::render()
         m_impl->view.series_snapshot_signature = series_signature;
     }
     const auto& series_snapshot = m_impl->view.series_snapshot;
+    const Auto_v_range_mode auto_mode =
+        config ? config->auto_v_range_mode : Auto_v_range_mode::GLOBAL;
+    const double auto_v_extra_scale = config ? config->auto_v_range_extra_scale : 0.0;
+    if (!allow_renderer_self_scheduling && !m_impl->snapshot.reset_view_state) {
+        std::uint64_t render_signature = 1469598103934665603ULL;
+        const auto& cfg = m_impl->snapshot.cfg;
+
+        hash_mix_u64(render_signature, static_cast<std::uint64_t>(win_w));
+        hash_mix_u64(render_signature, static_cast<std::uint64_t>(win_h));
+        hash_mix_u64(render_signature, m_impl->snapshot.data_signature);
+        hash_mix_u64(render_signature, m_impl->snapshot.series_snapshot_signature);
+        hash_mix_u64(render_signature, hash_series_sequences(series_snapshot));
+        hash_mix_u64(render_signature, m_impl->snapshot.config_revision);
+        hash_mix_u64(render_signature, static_cast<std::uint64_t>(m_impl->snapshot.show_info ? 1 : 0));
+        hash_mix_u64(render_signature, static_cast<std::uint64_t>(m_impl->snapshot.v_auto ? 1 : 0));
+        hash_mix_u64(render_signature, static_cast<std::uint64_t>(m_impl->snapshot.visible ? 1 : 0));
+        hash_mix_u64(render_signature, std::hash<double>{}(cfg.t_min));
+        hash_mix_u64(render_signature, std::hash<double>{}(cfg.t_max));
+        hash_mix_u64(render_signature, std::hash<double>{}(cfg.t_available_min));
+        hash_mix_u64(render_signature, std::hash<double>{}(cfg.t_available_max));
+        hash_mix_u64(render_signature, std::hash<float>{}(cfg.v_min));
+        hash_mix_u64(render_signature, std::hash<float>{}(cfg.v_max));
+        hash_mix_u64(render_signature, std::hash<float>{}(cfg.v_manual_min));
+        hash_mix_u64(render_signature, std::hash<float>{}(cfg.v_manual_max));
+        hash_mix_u64(render_signature, std::hash<double>{}(cfg.vbar_width));
+        hash_mix_u64(render_signature, std::hash<double>{}(m_impl->snapshot.vbar_width_pixels));
+        hash_mix_u64(render_signature, std::hash<double>{}(m_impl->snapshot.adjusted_font_px));
+        hash_mix_u64(render_signature, std::hash<double>{}(m_impl->snapshot.base_label_height_px));
+        hash_mix_u64(render_signature, std::hash<double>{}(m_impl->snapshot.adjusted_reserved_height));
+        hash_mix_u64(render_signature, std::hash<double>{}(m_impl->snapshot.adjusted_preview_height));
+        hash_mix_u64(render_signature, static_cast<std::uint64_t>(config && config->dark_mode ? 1 : 0));
+        hash_mix_u64(render_signature, static_cast<std::uint64_t>(config && config->show_text ? 1 : 0));
+        hash_mix_u64(render_signature, static_cast<std::uint64_t>(config && config->clear_to_transparent ? 1 : 0));
+        hash_mix_u64(render_signature, static_cast<std::uint64_t>(config && config->snap_lines_to_pixels ? 1 : 0));
+        hash_mix_u64(render_signature, static_cast<std::uint64_t>(config && config->skip_gl_calls ? 1 : 0));
+        hash_mix_u64(render_signature, static_cast<std::uint64_t>(config ? config->assets_revision : 0));
+        hash_mix_u64(render_signature, std::hash<double>{}(config ? config->line_width_px : 1.0));
+        hash_mix_u64(render_signature, std::hash<double>{}(config ? config->area_fill_alpha : 0.3));
+        hash_mix_u64(render_signature, std::hash<double>{}(config ? config->grid_visibility : 1.0));
+        hash_mix_u64(render_signature, std::hash<double>{}(config ? config->preview_visibility : 1.0));
+        hash_mix_u64(render_signature, static_cast<std::uint64_t>(auto_mode));
+        hash_mix_u64(render_signature, std::hash<double>{}(auto_v_extra_scale));
+        std::uint64_t format_timestamp_hash = 0ULL;
+        if (config && config->format_timestamp) {
+            hash_mix_u64(
+                format_timestamp_hash,
+                static_cast<std::uint64_t>(config->format_timestamp.target_type().hash_code()));
+            if (const auto* fn = config->format_timestamp.target<std::string(*)(double, double)>()) {
+                hash_mix_u64(
+                    format_timestamp_hash,
+                    static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(*fn)));
+            }
+        }
+        hash_mix_u64(render_signature, format_timestamp_hash);
+        hash_mix_u64(
+            render_signature,
+            static_cast<std::uint64_t>(config ? config->format_timestamp_revision : 0ULL));
+
+        if (m_impl->has_last_full_render_signature &&
+            m_impl->last_full_render_signature == render_signature)
+        {
+            return;
+        }
+        m_impl->last_full_render_signature = render_signature;
+        m_impl->has_last_full_render_signature = true;
+    }
 
     const bool prev_v_auto = (data_changed || view_reset)
         ? m_impl->snapshot.v_auto
@@ -1160,9 +1274,6 @@ void Plot_renderer::render()
         const double usable_width = win_w - m_impl->snapshot.vbar_width_pixels;
 
         // Determine v-range mode and config.
-        const Auto_v_range_mode auto_mode =
-            config ? config->auto_v_range_mode : Auto_v_range_mode::GLOBAL;
-        const double auto_v_extra_scale = config ? config->auto_v_range_extra_scale : 0.0;
         const bool v_auto = m_impl->snapshot.v_auto;
         const bool can_use_series = (m_impl->owner != nullptr) && !series_snapshot.empty();
 
@@ -1417,7 +1528,7 @@ void Plot_renderer::render()
                 (std::abs(preview_v0 - target_preview_v0) > preview_span * k_anim_target_frac ||
                  std::abs(preview_v1 - target_preview_v1) > preview_span * k_anim_target_frac);
             const bool still_animating = main_animating || preview_animating;
-            if (still_animating && m_impl->owner) {
+            if (still_animating && allow_renderer_self_scheduling && m_impl->owner) {
                 vnm::post_invoke(
                     const_cast<Plot_widget*>(m_impl->owner),
                     &Plot_widget::update);
@@ -1545,7 +1656,7 @@ void Plot_renderer::render()
     if (!skip_gl_calls && m_impl->text && (!config || config->show_text)) {
         VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.text_overlay");
         const bool fades_active = m_impl->text->render(core_ctx, fade_v_labels, fade_h_labels);
-        if (fades_active && m_impl->owner) {
+        if (fades_active && allow_renderer_self_scheduling && m_impl->owner) {
             vnm::post_invoke(
                 const_cast<Plot_widget*>(m_impl->owner),
                 &Plot_widget::update);

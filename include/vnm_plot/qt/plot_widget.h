@@ -207,6 +207,7 @@ private:
 
     // Configuration
     Plot_config m_config;
+    std::atomic<std::uint64_t> m_config_revision{0};
     mutable std::shared_mutex m_config_mutex;
 
     // Data configuration
