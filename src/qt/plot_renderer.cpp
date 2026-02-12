@@ -1068,11 +1068,8 @@ void Plot_renderer::render()
     };
 
     const Plot_config* config = &m_impl->snapshot.config;
-    vnm::plot::Profiler* profiler = (config && config->profiler)
-        ? config->profiler.get()
-        : nullptr;
-    const bool allow_renderer_self_scheduling =
-        config && config->allow_renderer_self_scheduling;
+    vnm::plot::Profiler* profiler = config->profiler.get();
+    const bool allow_renderer_self_scheduling = config->allow_renderer_self_scheduling;
 
     if (!m_impl->snapshot.visible) {
         return;
@@ -1086,7 +1083,7 @@ void Plot_renderer::render()
     }
 
     auto register_assets_if_needed = [&]() {
-        if (!config || !config->register_assets) {
+        if (!config->register_assets) {
             return;
         }
         const std::uint32_t desired_revision = config->assets_revision;
@@ -1149,12 +1146,12 @@ void Plot_renderer::render()
         }
 
         // Get configuration
-        m_impl->asset_loader.set_log_callback(config ? config->log_error : nullptr);
-        m_impl->primitives.set_log_callback(config ? config->log_error : nullptr);
+        m_impl->asset_loader.set_log_callback(config->log_error);
+        m_impl->primitives.set_log_callback(config->log_error);
         m_impl->primitives.set_profiler(profiler);
         m_impl->fonts.set_log_callbacks(
-            config ? config->log_error : nullptr,
-            config ? config->log_debug : nullptr);
+            config->log_error,
+            config->log_debug);
     }
 
     // Get viewport size
@@ -1165,7 +1162,7 @@ void Plot_renderer::render()
         return;
     }
 
-    const double preview_visibility = config ? config->preview_visibility : 1.0;
+    const double preview_visibility = config->preview_visibility;
     const bool preview_enabled =
         (m_impl->snapshot.adjusted_preview_height > 0.0) && (preview_visibility > 0.0);
 
@@ -1189,9 +1186,8 @@ void Plot_renderer::render()
         m_impl->view.series_snapshot_signature = series_signature;
     }
     const auto& series_snapshot = m_impl->view.series_snapshot;
-    const Auto_v_range_mode auto_mode =
-        config ? config->auto_v_range_mode : Auto_v_range_mode::GLOBAL;
-    const double auto_v_extra_scale = config ? config->auto_v_range_extra_scale : 0.0;
+    const Auto_v_range_mode auto_mode = config->auto_v_range_mode;
+    const double auto_v_extra_scale = config->auto_v_range_extra_scale;
     if (!allow_renderer_self_scheduling && !m_impl->snapshot.reset_view_state) {
         std::uint64_t render_signature = 1469598103934665603ULL;
         const auto& cfg = m_impl->snapshot.cfg;
@@ -1219,33 +1215,20 @@ void Plot_renderer::render()
         hash_mix_u64(render_signature, std::hash<double>{}(m_impl->snapshot.base_label_height_px));
         hash_mix_u64(render_signature, std::hash<double>{}(m_impl->snapshot.adjusted_reserved_height));
         hash_mix_u64(render_signature, std::hash<double>{}(m_impl->snapshot.adjusted_preview_height));
-        hash_mix_u64(render_signature, static_cast<std::uint64_t>(config && config->dark_mode ? 1 : 0));
-        hash_mix_u64(render_signature, static_cast<std::uint64_t>(config && config->show_text ? 1 : 0));
-        hash_mix_u64(render_signature, static_cast<std::uint64_t>(config && config->clear_to_transparent ? 1 : 0));
-        hash_mix_u64(render_signature, static_cast<std::uint64_t>(config && config->snap_lines_to_pixels ? 1 : 0));
-        hash_mix_u64(render_signature, static_cast<std::uint64_t>(config && config->skip_gl_calls ? 1 : 0));
-        hash_mix_u64(render_signature, static_cast<std::uint64_t>(config ? config->assets_revision : 0));
-        hash_mix_u64(render_signature, std::hash<double>{}(config ? config->line_width_px : 1.0));
-        hash_mix_u64(render_signature, std::hash<double>{}(config ? config->area_fill_alpha : 0.3));
-        hash_mix_u64(render_signature, std::hash<double>{}(config ? config->grid_visibility : 1.0));
-        hash_mix_u64(render_signature, std::hash<double>{}(config ? config->preview_visibility : 1.0));
+        hash_mix_u64(render_signature, static_cast<std::uint64_t>(config->dark_mode ? 1 : 0));
+        hash_mix_u64(render_signature, static_cast<std::uint64_t>(config->show_text ? 1 : 0));
+        hash_mix_u64(render_signature, static_cast<std::uint64_t>(config->clear_to_transparent ? 1 : 0));
+        hash_mix_u64(render_signature, static_cast<std::uint64_t>(config->snap_lines_to_pixels ? 1 : 0));
+        hash_mix_u64(render_signature, static_cast<std::uint64_t>(config->skip_gl_calls ? 1 : 0));
+        hash_mix_u64(render_signature, static_cast<std::uint64_t>(config->assets_revision));
+        hash_mix_u64(render_signature, std::hash<double>{}(config->line_width_px));
+        hash_mix_u64(render_signature, std::hash<double>{}(config->area_fill_alpha));
+        hash_mix_u64(render_signature, std::hash<double>{}(config->grid_visibility));
+        hash_mix_u64(render_signature, std::hash<double>{}(config->preview_visibility));
         hash_mix_u64(render_signature, static_cast<std::uint64_t>(auto_mode));
         hash_mix_u64(render_signature, std::hash<double>{}(auto_v_extra_scale));
-        std::uint64_t format_timestamp_hash = 0ULL;
-        if (config && config->format_timestamp) {
-            hash_mix_u64(
-                format_timestamp_hash,
-                static_cast<std::uint64_t>(config->format_timestamp.target_type().hash_code()));
-            if (const auto* fn = config->format_timestamp.target<std::string(*)(double, double)>()) {
-                hash_mix_u64(
-                    format_timestamp_hash,
-                    static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(*fn)));
-            }
-        }
-        hash_mix_u64(render_signature, format_timestamp_hash);
-        hash_mix_u64(
-            render_signature,
-            static_cast<std::uint64_t>(config ? config->format_timestamp_revision : 0ULL));
+        // Stateful formatter changes are tracked via explicit revision.
+        hash_mix_u64(render_signature, static_cast<std::uint64_t>(config->format_timestamp_revision));
 
         if (m_impl->has_last_full_render_signature &&
             m_impl->last_full_render_signature == render_signature)

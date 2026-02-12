@@ -506,41 +506,48 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
         double last_ts = 0.0;
         bool have_last_ts = false;
         if (get_timestamp) {
-            const void* first_sample = snapshot.at(0);
             const void* last_sample = snapshot.at(snapshot.count - 1);
-            if (first_sample && last_sample) {
+            if (last_sample) {
                 last_ts = get_timestamp(last_sample);
                 have_last_ts = std::isfinite(last_ts);
             }
-            VNM_PLOT_PROFILE_SCOPE(profiler, "process_view.binary_search");
-            first_idx = lower_bound_timestamp(snapshot, get_timestamp, t_min);
-            if (first_idx > 0) {
-                --first_idx;
+            if (!timestamps_monotonic) {
+                // Non-monotonic timestamps invalidate binary-search assumptions.
+                // Fall back to a linear scan for correctness.
+                VNM_PLOT_PROFILE_SCOPE(profiler, "process_view.linear_fallback");
+                std::size_t match_first = snapshot.count;
+                std::size_t match_last = 0;
+                for (std::size_t i = 0; i < snapshot.count; ++i) {
+                    const void* sample = snapshot.at(i);
+                    if (!sample) {
+                        continue;
+                    }
+                    const double ts = get_timestamp(sample);
+                    if (!std::isfinite(ts) || ts < t_min || ts > t_max) {
+                        continue;
+                    }
+                    if (match_first == snapshot.count) {
+                        match_first = i;
+                    }
+                    match_last = i + 1;
+                }
+                if (match_first < match_last) {
+                    first_idx = (match_first > 0) ? (match_first - 1) : 0;
+                    last_idx = std::min(match_last + 2, snapshot.count);
+                }
+                else {
+                    first_idx = snapshot.count;
+                    last_idx = snapshot.count;
+                }
             }
-            last_idx = upper_bound_timestamp(snapshot, get_timestamp, t_max);
-            last_idx = std::min(last_idx + 2, snapshot.count);
-        }
-        if (get_timestamp && !timestamps_monotonic) {
-            VNM_PLOT_PROFILE_SCOPE(profiler, "process_view.linear_fallback");
-            std::size_t match_first = snapshot.count;
-            std::size_t match_last = 0;
-            for (std::size_t i = 0; i < snapshot.count; ++i) {
-                const void* sample = snapshot.at(i);
-                if (!sample) {
-                    continue;
+            else {
+                VNM_PLOT_PROFILE_SCOPE(profiler, "process_view.binary_search");
+                first_idx = lower_bound_timestamp(snapshot, get_timestamp, t_min);
+                if (first_idx > 0) {
+                    --first_idx;
                 }
-                const double ts = get_timestamp(sample);
-                if (!std::isfinite(ts) || ts < t_min || ts > t_max) {
-                    continue;
-                }
-                if (match_first == snapshot.count) {
-                    match_first = i;
-                }
-                match_last = i + 1;
-            }
-            if (match_first < match_last) {
-                first_idx = (match_first > 0) ? (match_first - 1) : 0;
-                last_idx = std::min(match_last + 2, snapshot.count);
+                last_idx = upper_bound_timestamp(snapshot, get_timestamp, t_max);
+                last_idx = std::min(last_idx + 2, snapshot.count);
             }
         }
 
@@ -549,15 +556,12 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
             access.clone_with_timestamp &&
             have_last_ts &&
             last_ts < t_max;
-        const auto enable_hold_last_forward = [&]() {
-            hold_last_forward = true;
-        };
 
         if (first_idx >= last_idx) {
             if (can_hold_last_forward) {
                 first_idx = snapshot.count - 1;
                 last_idx = snapshot.count;
-                enable_hold_last_forward();
+                hold_last_forward = true;
             }
             else
             if (applied_level > 0 && !was_tried(applied_level - 1)) {
@@ -570,7 +574,7 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
         }
         else
         if (can_hold_last_forward && last_idx == snapshot.count) {
-            enable_hold_last_forward();
+            hold_last_forward = true;
         }
 
         GLsizei count = static_cast<GLsizei>(last_idx - first_idx);
