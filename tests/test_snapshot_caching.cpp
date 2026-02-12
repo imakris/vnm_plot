@@ -410,7 +410,7 @@ bool test_empty_window_behavior_invalidates_fast_path_cache()
     return true;
 }
 
-bool test_preview_does_not_hold_last_forward()
+bool test_preview_honors_hold_last_forward()
 {
     auto data_source = std::make_shared<Single_level_source>();
     data_source->samples.resize(16);
@@ -449,8 +449,8 @@ bool test_preview_does_not_hold_last_forward()
     auto state_it = renderer.m_vbo_states.find(series_id);
     TEST_ASSERT(state_it != renderer.m_vbo_states.end(),
                 "expected vbo state for preview hold-forward test");
-    TEST_ASSERT(!state_it->second.preview_view.last_hold_last_forward,
-                "preview should ignore HOLD_LAST_FORWARD and keep DRAW_NOTHING behavior");
+    TEST_ASSERT(state_it->second.preview_view.last_hold_last_forward,
+                "preview should honor HOLD_LAST_FORWARD behavior");
 
     return true;
 }
@@ -634,7 +634,7 @@ int main()
     RUN_TEST(test_preview_disabled_skips_preview_snapshot);
     RUN_TEST(test_frame_change_invalidates_snapshot_cache);
     RUN_TEST(test_empty_window_behavior_invalidates_fast_path_cache);
-    RUN_TEST(test_preview_does_not_hold_last_forward);
+    RUN_TEST(test_preview_honors_hold_last_forward);
     RUN_TEST(test_lod_level_separation);
     RUN_TEST(test_snapshot_released_on_series_removal);
     RUN_TEST(test_render_empty_series_map);

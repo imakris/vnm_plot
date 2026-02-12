@@ -980,7 +980,7 @@ void Series_renderer::render(
                 vbo_state.preview_view, vbo_state, m_frame_id, *preview_source,
                 *preview_access, preview_scales,
                 ctx.t_available_min, ctx.t_available_max, ctx.win_w,
-                Empty_window_behavior::DRAW_NOTHING, profiler, skip_gl);
+                s->empty_window_behavior, profiler, skip_gl);
         }
 
         Series_draw_state draw_state;
