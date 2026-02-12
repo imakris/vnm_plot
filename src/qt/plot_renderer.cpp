@@ -660,7 +660,6 @@ struct Plot_renderer::impl_t
 
         std::uint64_t data_signature = 0;
         std::uint64_t series_snapshot_signature = 0;
-        std::uint64_t series_sequences_signature = 0;
 
         double adjusted_font_px = 12.0;
         double base_label_height_px = 14.0;
@@ -1022,7 +1021,6 @@ void Plot_renderer::synchronize(QQuickFramebufferObject* fbo_item)
         std::shared_lock lock(widget->m_series_mutex);
         m_impl->snapshot.data_signature = hash_data_sources(widget->m_series);
         m_impl->snapshot.series_snapshot_signature = hash_series_snapshot(widget->m_series);
-        m_impl->snapshot.series_sequences_signature = hash_series_sequences(widget->m_series);
     }
 
     // Copy UI state
@@ -1203,10 +1201,10 @@ void Plot_renderer::render()
         hash_mix_u64(render_signature, std::hash<double>{}(m_impl->snapshot.adjusted_reserved_height));
         hash_mix_u64(render_signature, std::hash<double>{}(m_impl->snapshot.adjusted_preview_height));
 
-        // Data & series identity
+        // Data & series identity (sequences hashed from the lock-free snapshot)
         hash_mix_u64(render_signature, m_impl->snapshot.data_signature);
         hash_mix_u64(render_signature, m_impl->snapshot.series_snapshot_signature);
-        hash_mix_u64(render_signature, m_impl->snapshot.series_sequences_signature);
+        hash_mix_u64(render_signature, hash_series_sequences(series_snapshot));
 
         // Config changes (all Plot_config fields tracked via revision)
         hash_mix_u64(render_signature, m_impl->snapshot.config_revision);

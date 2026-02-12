@@ -99,9 +99,9 @@ bool plot_config_equivalent(
     const vnm::plot::Plot_config& lhs,
     const vnm::plot::Plot_config& rhs)
 {
-    // If a field is added to Plot_config, update this comparator and the size below.
-    static_assert(sizeof(vnm::plot::Plot_config) == 248,
-        "Plot_config size changed — update plot_config_equivalent to cover new fields");
+    // If a field is added to Plot_config, update this comparator and bump field_count.
+    static_assert(vnm::plot::Plot_config::field_count == 20,
+        "Plot_config field_count changed — update plot_config_equivalent to cover new fields");
     return
         lhs.dark_mode == rhs.dark_mode &&
         lhs.show_text == rhs.show_text &&
