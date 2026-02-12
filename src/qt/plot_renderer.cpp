@@ -660,6 +660,7 @@ struct Plot_renderer::impl_t
 
         std::uint64_t data_signature = 0;
         std::uint64_t series_snapshot_signature = 0;
+        std::uint64_t series_sequences_signature = 0;
 
         double adjusted_font_px = 12.0;
         double base_label_height_px = 14.0;
@@ -1021,6 +1022,7 @@ void Plot_renderer::synchronize(QQuickFramebufferObject* fbo_item)
         std::shared_lock lock(widget->m_series_mutex);
         m_impl->snapshot.data_signature = hash_data_sources(widget->m_series);
         m_impl->snapshot.series_snapshot_signature = hash_series_snapshot(widget->m_series);
+        m_impl->snapshot.series_sequences_signature = hash_series_sequences(widget->m_series);
     }
 
     // Copy UI state
@@ -1192,15 +1194,28 @@ void Plot_renderer::render()
         std::uint64_t render_signature = 1469598103934665603ULL;
         const auto& cfg = m_impl->snapshot.cfg;
 
+        // Viewport & layout
         hash_mix_u64(render_signature, static_cast<std::uint64_t>(win_w));
         hash_mix_u64(render_signature, static_cast<std::uint64_t>(win_h));
+        hash_mix_u64(render_signature, std::hash<double>{}(m_impl->snapshot.vbar_width_pixels));
+        hash_mix_u64(render_signature, std::hash<double>{}(m_impl->snapshot.adjusted_font_px));
+        hash_mix_u64(render_signature, std::hash<double>{}(m_impl->snapshot.base_label_height_px));
+        hash_mix_u64(render_signature, std::hash<double>{}(m_impl->snapshot.adjusted_reserved_height));
+        hash_mix_u64(render_signature, std::hash<double>{}(m_impl->snapshot.adjusted_preview_height));
+
+        // Data & series identity
         hash_mix_u64(render_signature, m_impl->snapshot.data_signature);
         hash_mix_u64(render_signature, m_impl->snapshot.series_snapshot_signature);
-        hash_mix_u64(render_signature, hash_series_sequences(series_snapshot));
+        hash_mix_u64(render_signature, m_impl->snapshot.series_sequences_signature);
+
+        // Config changes (all Plot_config fields tracked via revision)
         hash_mix_u64(render_signature, m_impl->snapshot.config_revision);
+
+        // UI state not covered by config or data signatures
         hash_mix_u64(render_signature, static_cast<std::uint64_t>(m_impl->snapshot.show_info ? 1 : 0));
         hash_mix_u64(render_signature, static_cast<std::uint64_t>(m_impl->snapshot.v_auto ? 1 : 0));
-        hash_mix_u64(render_signature, static_cast<std::uint64_t>(m_impl->snapshot.visible ? 1 : 0));
+
+        // Data config (changes independently of Plot_config)
         hash_mix_u64(render_signature, std::hash<double>{}(cfg.t_min));
         hash_mix_u64(render_signature, std::hash<double>{}(cfg.t_max));
         hash_mix_u64(render_signature, std::hash<double>{}(cfg.t_available_min));
@@ -1210,25 +1225,6 @@ void Plot_renderer::render()
         hash_mix_u64(render_signature, std::hash<float>{}(cfg.v_manual_min));
         hash_mix_u64(render_signature, std::hash<float>{}(cfg.v_manual_max));
         hash_mix_u64(render_signature, std::hash<double>{}(cfg.vbar_width));
-        hash_mix_u64(render_signature, std::hash<double>{}(m_impl->snapshot.vbar_width_pixels));
-        hash_mix_u64(render_signature, std::hash<double>{}(m_impl->snapshot.adjusted_font_px));
-        hash_mix_u64(render_signature, std::hash<double>{}(m_impl->snapshot.base_label_height_px));
-        hash_mix_u64(render_signature, std::hash<double>{}(m_impl->snapshot.adjusted_reserved_height));
-        hash_mix_u64(render_signature, std::hash<double>{}(m_impl->snapshot.adjusted_preview_height));
-        hash_mix_u64(render_signature, static_cast<std::uint64_t>(config->dark_mode ? 1 : 0));
-        hash_mix_u64(render_signature, static_cast<std::uint64_t>(config->show_text ? 1 : 0));
-        hash_mix_u64(render_signature, static_cast<std::uint64_t>(config->clear_to_transparent ? 1 : 0));
-        hash_mix_u64(render_signature, static_cast<std::uint64_t>(config->snap_lines_to_pixels ? 1 : 0));
-        hash_mix_u64(render_signature, static_cast<std::uint64_t>(config->skip_gl_calls ? 1 : 0));
-        hash_mix_u64(render_signature, static_cast<std::uint64_t>(config->assets_revision));
-        hash_mix_u64(render_signature, std::hash<double>{}(config->line_width_px));
-        hash_mix_u64(render_signature, std::hash<double>{}(config->area_fill_alpha));
-        hash_mix_u64(render_signature, std::hash<double>{}(config->grid_visibility));
-        hash_mix_u64(render_signature, std::hash<double>{}(config->preview_visibility));
-        hash_mix_u64(render_signature, static_cast<std::uint64_t>(auto_mode));
-        hash_mix_u64(render_signature, std::hash<double>{}(auto_v_extra_scale));
-        // Stateful formatter changes are tracked via explicit revision.
-        hash_mix_u64(render_signature, static_cast<std::uint64_t>(config->format_timestamp_revision));
 
         if (m_impl->has_last_full_render_signature &&
             m_impl->last_full_render_signature == render_signature)

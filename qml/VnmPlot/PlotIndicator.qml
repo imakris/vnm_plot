@@ -111,16 +111,10 @@ Item {
         return root.labelPrefix(root.xValueLabel, "x") + valueText
     }
 
-    function labeledYValue(valueText) {
-        return root.labelPrefix(root.yValueLabel, "y") + valueText
-    }
-
     function labeledSeriesValue(seriesLabel, valueText) {
         var txt = (seriesLabel === undefined || seriesLabel === null) ? "" : ("" + seriesLabel).trim()
-        if (txt.length > 0) {
-            return root.labelPrefix(txt, "y") + valueText
-        }
-        return root.labeledYValue(valueText)
+        var label = (txt.length > 0) ? txt : root.yValueLabel
+        return root.labelPrefix(label, "y") + valueText
     }
 
     function refreshIndicator() {
