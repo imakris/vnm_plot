@@ -453,7 +453,6 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
         }
 
         if (!snapshot_result || !snapshot_result.snapshot || snapshot_result.snapshot.count == 0) {
-            ++m_metrics.snapshot_failures;
             if (try_stale_fallback(result)) break;
             if (applied_level > 0) { target_level = applied_level - 1; continue; }
             break;
@@ -586,7 +585,7 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
         const double base_pps = (base_samples > 0)
             ? width_px / static_cast<double>(base_samples) : 0.0;
 
-        const std::size_t desired_level = choose_lod_level(scales, applied_level, base_pps);
+        const std::size_t desired_level = choose_lod_level(scales, base_pps);
         if (desired_level != applied_level) {
             if (!was_tried(desired_level)) {
                 target_level = desired_level;
@@ -619,8 +618,6 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
                     const std::size_t alloc_size = needed_bytes + needed_bytes / 4;
                     glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(alloc_size), nullptr, GL_DYNAMIC_DRAW);
                     view_state.last_ring_size = alloc_size;
-                    ++m_metrics.vbo_reallocations;
-                    m_metrics.bytes_allocated += alloc_size;
                 }
                 if (!snapshot.is_segmented()) {
                     glBufferSubData(GL_ARRAY_BUFFER, 0,
@@ -639,7 +636,6 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
                             static_cast<GLsizeiptr>(bytes2), snapshot.data2);
                     }
                 }
-                m_metrics.bytes_uploaded += snapshot.count * snapshot.stride;
             }
             if (needs_hold_upload && !skip_gl) {
                 const void* source_sample = snapshot.at(snapshot.count - 1);
@@ -655,7 +651,6 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
                         static_cast<GLintptr>(snapshot.count * snapshot.stride),
                         static_cast<GLsizeiptr>(snapshot.stride),
                         hold_sample.data());
-                    m_metrics.bytes_uploaded += snapshot.stride;
                 }
             }
             if (must_upload) {
@@ -713,7 +708,7 @@ void Series_renderer::set_common_uniforms(
     glUniform1i(program.uniform_location("snap_to_pixels"), snap ? 1 : 0);
 
     // Zero-axis color (same as grid lines)
-    const bool dark_mode = ctx.config ? ctx.config->dark_mode : false;
+    const bool dark_mode = ctx.dark_mode;
     const Color_palette palette = dark_mode ? Color_palette::dark() : Color_palette::light();
     glUniform4fv(program.uniform_location("zero_axis_color"), 1, glm::value_ptr(palette.grid_line));
 }
@@ -757,9 +752,9 @@ void Series_renderer::render(
     VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.execute_passes.render_data_series");
 
     // Skip all GL calls if configured (for pure CPU profiling)
-    const bool skip_gl = ctx.config && ctx.config->skip_gl_calls;
+    const bool skip_gl = ctx.skip_gl;
 
-    const bool dark_mode = ctx.config ? ctx.config->dark_mode : false;
+    const bool dark_mode = ctx.dark_mode;
     const float line_width = ctx.config ? static_cast<float>(ctx.config->line_width_px) : 1.0f;
     const float area_fill_alpha = ctx.config ? static_cast<float>(ctx.config->area_fill_alpha) : 0.3f;
     const auto to_gl_scissor_y = [&](double top, double height) -> GLint {

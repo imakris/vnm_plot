@@ -564,7 +564,7 @@ std::pair<float, float> compute_visible_v_range(
         const double base_pps = (base_samples > 0 && width_px > 0.0)
             ? width_px / static_cast<double>(base_samples)
             : 0.0;
-        const std::size_t desired_level = choose_lod_level(scales, 0, base_pps);
+        const std::size_t desired_level = choose_lod_level(scales, base_pps);
 
         std::size_t applied_level = desired_level;
         data_snapshot_t snapshot = view.source->snapshot(applied_level);
@@ -1276,10 +1276,10 @@ void Plot_renderer::render()
                 m_impl->view.v_range_cache,
                 auto_mode);
             if (!cache_invalid && preview_enabled) {
-                cache_invalid = !validate_preview_range_cache_sequences(
+                cache_invalid = !validate_range_cache_sequences(
                     series_snapshot,
                     m_impl->view.preview_v_range_cache,
-                    auto_mode);
+                    auto_mode, /*preview=*/true);
             }
         }
 
@@ -1576,12 +1576,14 @@ void Plot_renderer::render()
         ctx.adjusted_reserved_height = m_impl->snapshot.adjusted_reserved_height;
         ctx.adjusted_preview_height = m_impl->snapshot.adjusted_preview_height;
         ctx.show_info = m_impl->snapshot.show_info;
+        ctx.skip_gl = config && config->skip_gl_calls;
+        ctx.dark_mode = config ? config->dark_mode : false;
         ctx.config = config;
         return ctx;
     }();
 
     // Clear to transparent - let QML provide the background color (matches Lumis behavior)
-    const bool dark_mode = config ? config->dark_mode : false;
+    const bool dark_mode = core_ctx.dark_mode;
     const bool clear_to_transparent = config ? config->clear_to_transparent : false;
     const Color_palette palette =
         dark_mode ? Color_palette::dark() : Color_palette::light();

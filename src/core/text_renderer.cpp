@@ -118,7 +118,7 @@ bool Text_renderer::render(const frame_context_t& ctx, bool fade_v_labels, bool 
     }
 
     // Skip GL calls if configured (for pure CPU profiling)
-    const bool skip_gl = ctx.config && ctx.config->skip_gl_calls;
+    const bool skip_gl = ctx.skip_gl;
 
     if (!skip_gl) {
         glEnable(GL_BLEND);
@@ -138,11 +138,11 @@ bool Text_renderer::render(const frame_context_t& ctx, bool fade_v_labels, bool 
 bool Text_renderer::render_axis_labels(const frame_context_t& ctx, bool fade_labels)
 {
     const auto& pl = ctx.layout;
-    const bool dark_mode = ctx.config ? ctx.config->dark_mode : false;
+    const bool dark_mode = ctx.dark_mode;
     const glm::vec4 font_color = dark_mode ? glm::vec4(1.f, 1.f, 1.f, 1.f) : glm::vec4(0.f, 0.f, 0.f, 1.f);
 
     // Skip GL calls if configured (for pure CPU profiling)
-    const bool skip_gl = ctx.config && ctx.config->skip_gl_calls;
+    const bool skip_gl = ctx.skip_gl;
 
     const float right_edge_x = static_cast<float>(pl.usable_width + pl.v_bar_width - k_v_label_horizontal_padding_px);
     const float min_x = static_cast<float>(pl.usable_width + k_text_margin_px);
@@ -232,12 +232,12 @@ bool Text_renderer::render_axis_labels(const frame_context_t& ctx, bool fade_lab
 bool Text_renderer::render_info_overlay(const frame_context_t& ctx, bool fade_labels)
 {
     const auto& pl = ctx.layout;
-    const bool dark_mode = ctx.config ? ctx.config->dark_mode : false;
+    const bool dark_mode = ctx.dark_mode;
     const glm::vec4 font_color = dark_mode ? glm::vec4(1.f, 1.f, 1.f, 1.f) : glm::vec4(0.f, 0.f, 0.f, 1.f);
     const double t_span = ctx.t1 - ctx.t0;
 
     // Skip GL calls if configured (for pure CPU profiling)
-    const bool skip_gl = ctx.config && ctx.config->skip_gl_calls;
+    const bool skip_gl = ctx.skip_gl;
 
     const auto draw_label = [&](double t, const label_fade_state_t& state) {
         if (!(t_span > 0.0) || !(pl.usable_width > 0.0)) {

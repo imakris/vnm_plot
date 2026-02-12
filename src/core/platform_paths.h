@@ -32,10 +32,4 @@ namespace vnm::plot {
 // - Linux: $XDG_DATA_HOME/vnm_plot or ~/.local/share/vnm_plot
 [[nodiscard]] std::filesystem::path get_data_directory();
 
-// Set the application name used in directory paths (default: "vnm_plot")
-void set_app_name(const std::string& name);
-
-// Get the current application name
-[[nodiscard]] const std::string& get_app_name();
-
 } // namespace vnm::plot

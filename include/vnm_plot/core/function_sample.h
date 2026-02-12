@@ -34,8 +34,6 @@ struct function_sample_t
         y_min(y_min_),
         y_max(y_max_)
     {}
-
-    double timestamp() const { return x; }
 };
 #pragma pack(pop)
 
@@ -76,40 +74,6 @@ public:
         set_data(std::move(samples));
     }
 
-    // Generate with range (for band/envelope display)
-    void generate_with_range(
-        Function fn_value,
-        Function fn_min,
-        Function fn_max,
-        double x_min,
-        double x_max,
-        size_t num_samples)
-    {
-        if (num_samples < 2) {
-            num_samples = 2;
-        }
-
-        std::vector<function_sample_t> samples;
-        samples.reserve(num_samples);
-
-        const double step = (x_max - x_min) / static_cast<double>(num_samples - 1);
-
-        for (size_t i = 0; i < num_samples; ++i) {
-            double x = x_min + i * step;
-            float y = fn_value(x);
-            float y_lo = fn_min(x);
-            float y_hi = fn_max(x);
-
-            // Handle NaN/Inf
-            if (!std::isfinite(y))    { y    = 0.0f; }
-            if (!std::isfinite(y_lo)) { y_lo = y;    }
-            if (!std::isfinite(y_hi)) { y_hi = y;    }
-
-            samples.emplace_back(x, y, y_lo, y_hi);
-        }
-
-        set_data(std::move(samples));
-    }
 };
 
 // -----------------------------------------------------------------------------
@@ -140,11 +104,6 @@ inline Data_access_policy_typed<function_sample_t> make_function_sample_policy_t
         &function_sample_t::y_min,
         &function_sample_t::y_max);
     return policy;
-}
-
-inline Data_access_policy make_function_sample_policy()
-{
-    return make_function_sample_policy_typed().erase();
 }
 
 } // namespace vnm::plot

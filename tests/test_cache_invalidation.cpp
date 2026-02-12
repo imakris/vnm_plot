@@ -431,7 +431,7 @@ bool test_preview_matches_main_helpers()
     return true;
 }
 
-bool test_validate_preview_range_cache_sequences()
+bool test_validate_range_cache_sequences()
 {
     auto main_source = std::make_shared<Range_cache_source>();
     main_source->samples.resize(1);
@@ -458,17 +458,17 @@ bool test_validate_preview_range_cache_sequences()
     cache.lods[0].valid = true;
     cache.lods[0].sequence = preview_source->current_sequence(0);
 
-    const bool valid = validate_preview_range_cache_sequences(
+    const bool valid = validate_range_cache_sequences(
         series_map,
         cache_map,
-        Auto_v_range_mode::GLOBAL);
+        Auto_v_range_mode::GLOBAL, /*preview=*/true);
     TEST_ASSERT(valid, "expected preview cache to be valid when sequences match");
 
     preview_source->current_sequence_value = cache.lods[0].sequence + 1;
-    const bool valid_after = validate_preview_range_cache_sequences(
+    const bool valid_after = validate_range_cache_sequences(
         series_map,
         cache_map,
-        Auto_v_range_mode::GLOBAL);
+        Auto_v_range_mode::GLOBAL, /*preview=*/true);
     TEST_ASSERT(!valid_after, "expected preview cache invalidation on sequence change");
 
     return true;
@@ -492,7 +492,7 @@ int main()
     RUN_TEST(test_validate_range_cache_skips_missing_accessors);
     RUN_TEST(test_validate_range_cache_skips_disabled_series);
     RUN_TEST(test_preview_matches_main_helpers);
-    RUN_TEST(test_validate_preview_range_cache_sequences);
+    RUN_TEST(test_validate_range_cache_sequences);
 
     std::cout << "Results: " << passed << " passed, " << failed << " failed" << std::endl;
 

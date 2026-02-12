@@ -11,7 +11,7 @@ namespace vnm::plot {
 
 namespace {
 
-std::string s_app_name = "vnm_plot";
+constexpr const char* s_app_name = "vnm_plot";
 
 #ifdef _WIN32
 
@@ -28,7 +28,7 @@ std::filesystem::path get_known_folder(int folder_id)
     return {};
 }
 
-#elif defined(__APPLE__)
+#else // macOS / Linux / Unix
 
 std::filesystem::path get_home_directory()
 {
@@ -36,14 +36,7 @@ std::filesystem::path get_home_directory()
     return home ? std::filesystem::path(home) : std::filesystem::path();
 }
 
-#else // Linux/Unix
-
-std::filesystem::path get_home_directory()
-{
-    const char* home = std::getenv("HOME");
-    return home ? std::filesystem::path(home) : std::filesystem::path();
-}
-
+#if !defined(__APPLE__)
 std::filesystem::path get_xdg_path(const char* env_var, const char* default_subpath)
 {
     const char* xdg_path = std::getenv(env_var);
@@ -53,8 +46,9 @@ std::filesystem::path get_xdg_path(const char* env_var, const char* default_subp
     auto home = get_home_directory();
     return home.empty() ? std::filesystem::path() : home / default_subpath;
 }
-
 #endif
+
+#endif // _WIN32
 
 std::filesystem::path ensure_directory(const std::filesystem::path& dir)
 {
@@ -122,16 +116,6 @@ std::filesystem::path get_data_directory()
     }
     return ensure_directory(base / s_app_name);
 #endif
-}
-
-void set_app_name(const std::string& name)
-{
-    s_app_name = name;
-}
-
-const std::string& get_app_name()
-{
-    return s_app_name;
 }
 
 } // namespace vnm::plot

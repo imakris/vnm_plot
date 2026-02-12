@@ -1084,7 +1084,6 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
                 "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis.finalize");
             if (any_level) {
                 res.h_labels_subsecond = any_subsec;
-                res.horizontal_finest_step = finest_step;
             }
 
             res.horizontal_seed_index = start_si;

@@ -27,11 +27,6 @@ void Asset_loader::set_override_directory(std::string_view path)
     m_override_dir = std::string(path);
 }
 
-std::string_view Asset_loader::override_directory() const noexcept
-{
-    return m_override_dir;
-}
-
 void Asset_loader::register_embedded(std::string_view name, std::string_view data)
 {
     m_embedded[std::string(name)] = data;

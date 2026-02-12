@@ -32,6 +32,23 @@ bool is_integer_multiple(double parent, double child)
     return std::abs(ratio - rounded) <= tol;
 }
 
+float compute_grid_alpha(float spacing_px, double cell_span_min, double fade_den)
+{
+    const double fade = (double(spacing_px) - cell_span_min) / fade_den;
+    return static_cast<float>(std::clamp(fade, 0.0, 1.0) * k_grid_line_alpha_base);
+}
+
+void append_grid_level(grid_layer_params_t& levels, float spacing_px, float start_px,
+                       double cell_span_min, double fade_den)
+{
+    levels.spacing_px[levels.count] = spacing_px;
+    levels.start_px[levels.count] = start_px;
+    const float a = compute_grid_alpha(spacing_px, cell_span_min, fade_den);
+    levels.alpha[levels.count] = a;
+    levels.thickness_px[levels.count] = 0.6f + 0.6f * (a / k_grid_line_alpha_base);
+    ++levels.count;
+}
+
 grid_layer_params_t build_time_grid(
     double t_min,
     double t_max,
@@ -47,10 +64,6 @@ grid_layer_params_t build_time_grid(
 
     const double cell_span_min = font_px * k_cell_span_min_factor;
     const double fade_den = std::max<double>(1e-6, font_px * (k_cell_span_max_factor - k_cell_span_min_factor));
-    const auto compute_alpha = [&](float spacing_px) -> float {
-        const double fade = (double(spacing_px) - cell_span_min) / fade_den;
-        return static_cast<float>(std::clamp(fade, 0.0, 1.0) * k_grid_line_alpha_base);
-    };
 
     const double px_per_unit = width_px / range;
     const auto steps = build_time_steps_covering(range);
@@ -77,12 +90,8 @@ grid_layer_params_t build_time_grid(
             continue;
         }
         const double shift_units = get_shift(step, t_min);
-        levels.spacing_px[levels.count] = spacing_px;
-        levels.start_px[levels.count] = static_cast<float>(shift_units * px_per_unit);
-        const float a = compute_alpha(spacing_px);
-        levels.alpha[levels.count] = a;
-        levels.thickness_px[levels.count] = 0.6f + 0.6f * (a / k_grid_line_alpha_base);
-        ++levels.count;
+        append_grid_level(levels, spacing_px,
+            static_cast<float>(shift_units * px_per_unit), cell_span_min, fade_den);
         last_step = step;
     }
 
@@ -133,24 +142,14 @@ grid_layer_params_t Chrome_renderer::calculate_grid_params(
     }
 
     const double cell_span_min = font_px * k_cell_span_min_factor;
-    const double cell_span_max = font_px * k_cell_span_max_factor;
-    const double fade_den = std::max<double>(1e-6, cell_span_max - cell_span_min);
+    const double fade_den = std::max<double>(1e-6, font_px * (k_cell_span_max_factor - k_cell_span_min_factor));
     const double px_per_unit = pixel_span / range;
-
-    const auto compute_alpha = [&](float spacing_px) -> float {
-        const double fade = (double(spacing_px) - cell_span_min) / fade_den;
-        return static_cast<float>(std::clamp(fade, 0.0, 1.0) * k_grid_line_alpha_base);
-    };
 
     while (levels.count < grid_layer_params_t::k_max_levels && step * px_per_unit >= cell_span_min) {
         const float spacing_px = static_cast<float>(step * px_per_unit);
         const double shift_units = get_shift(step, min);
-        levels.spacing_px[levels.count] = spacing_px;
-        levels.start_px[levels.count] = static_cast<float>(pixel_span - shift_units * px_per_unit);
-        const float a = compute_alpha(spacing_px);
-        levels.alpha[levels.count] = a;
-        levels.thickness_px[levels.count] = 0.6f + 0.6f * (a / k_grid_line_alpha_base);
-        ++levels.count;
+        append_grid_level(levels, spacing_px,
+            static_cast<float>(pixel_span - shift_units * px_per_unit), cell_span_min, fade_den);
 
         step /= om_div[circular_index(om_div, --idx)];
     }
@@ -168,10 +167,10 @@ void Chrome_renderer::render_grid_and_backgrounds(
         "renderer.frame.chrome.grid_and_backgrounds");
 
     // Skip GL calls if configured (for pure CPU profiling)
-    const bool skip_gl = ctx.config && ctx.config->skip_gl_calls;
+    const bool skip_gl = ctx.skip_gl;
 
     const auto& pl = ctx.layout;
-    const bool dark_mode = ctx.config ? ctx.config->dark_mode : false;
+    const bool dark_mode = ctx.dark_mode;
     const Color_palette palette = dark_mode ? Color_palette::dark() : Color_palette::light();
 
     const glm::vec4 h_label_color = palette.h_label_background;
@@ -252,30 +251,13 @@ void Chrome_renderer::render_grid_and_backgrounds(
         return {alpha, thick};
     };
 
-    const auto build_vertical_tick_levels = [&](const std::vector<v_label_t>& labels, const grid_layer_params_t& main_levels) {
+    const auto build_tick_levels = [&](auto&& get_pos, const auto& labels, const grid_layer_params_t& main_levels) {
         grid_layer_params_t ticks;
         for (const auto& label : labels) {
             if (ticks.count >= grid_layer_params_t::k_max_levels) {
                 break;
             }
-            const float pos = label.y;
-            const auto props = match_level_properties(pos, main_levels);
-            ticks.spacing_px[ticks.count] = 1e6f;
-            ticks.start_px[ticks.count] = pos;
-            ticks.alpha[ticks.count] = props.first;
-            ticks.thickness_px[ticks.count] = props.second;
-            ++ticks.count;
-        }
-        return ticks;
-    };
-
-    const auto build_horizontal_tick_levels = [&](const std::vector<h_label_t>& labels, const grid_layer_params_t& main_levels) {
-        grid_layer_params_t ticks;
-        for (const auto& label : labels) {
-            if (ticks.count >= grid_layer_params_t::k_max_levels) {
-                break;
-            }
-            const float pos = label.position.x;
+            const float pos = get_pos(label);
             const auto props = match_level_properties(pos, main_levels);
             ticks.spacing_px[ticks.count] = 1e6f;
             ticks.start_px[ticks.count] = pos;
@@ -287,8 +269,10 @@ void Chrome_renderer::render_grid_and_backgrounds(
     };
 
     grid_layer_params_t empty_levels;
-    const grid_layer_params_t vertical_tick_levels = build_vertical_tick_levels(pl.v_labels, vertical_levels);
-    const grid_layer_params_t horizontal_tick_levels = build_horizontal_tick_levels(pl.h_labels, horizontal_levels);
+    const grid_layer_params_t vertical_tick_levels = build_tick_levels(
+        [](const v_label_t& l) { return l.y; }, pl.v_labels, vertical_levels);
+    const grid_layer_params_t horizontal_tick_levels = build_tick_levels(
+        [](const h_label_t& l) { return l.position.x; }, pl.h_labels, horizontal_levels);
     const grid_layer_params_t vertical_tick_levels_gl = flip_grid_levels_y(vertical_tick_levels, main_size.y);
 
     if (!skip_gl && pl.v_bar_width > 0.5 && vertical_tick_levels_gl.count > 0) {
@@ -310,7 +294,7 @@ void Chrome_renderer::render_zero_line(
     const frame_context_t& ctx,
     Primitive_renderer& prims)
 {
-    const bool skip_gl = ctx.config && ctx.config->skip_gl_calls;
+    const bool skip_gl = ctx.skip_gl;
     if (skip_gl) {
         return;
     }
@@ -328,7 +312,7 @@ void Chrome_renderer::render_zero_line(
         return;
     }
 
-    const bool dark_mode = ctx.config ? ctx.config->dark_mode : false;
+    const bool dark_mode = ctx.dark_mode;
     const Color_palette palette = dark_mode ? Color_palette::dark() : Color_palette::light();
     const glm::vec4 color = palette.grid_line;
 
@@ -358,7 +342,7 @@ void Chrome_renderer::render_preview_overlay(
         "renderer.frame.chrome.preview_overlay");
 
     // Skip GL calls if configured (for pure CPU profiling)
-    const bool skip_gl = ctx.config && ctx.config->skip_gl_calls;
+    const bool skip_gl = ctx.skip_gl;
 
     if (ctx.adjusted_preview_height <= 0.) {
         return;
@@ -369,7 +353,7 @@ void Chrome_renderer::render_preview_overlay(
         return;
     }
 
-    const bool dark_mode = ctx.config ? ctx.config->dark_mode : false;
+    const bool dark_mode = ctx.dark_mode;
     const Color_palette palette = dark_mode ? Color_palette::dark() : Color_palette::light();
     const glm::vec4 cover_color = palette.preview_cover;
     const glm::vec4 cover_color2 = palette.preview_cover_secondary;

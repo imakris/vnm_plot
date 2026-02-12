@@ -374,13 +374,11 @@ std::size_t upper_bound_timestamp(
 
 inline std::size_t choose_lod_level(
     const std::vector<std::size_t>& scales,
-    std::size_t current_level,
     double base_pps)
 {
     if (scales.empty() || !(base_pps > 0.0)) {
         return 0;
     }
-    (void)current_level;
 
     constexpr double target_pps = 1.0;
     std::size_t best_level = 0;

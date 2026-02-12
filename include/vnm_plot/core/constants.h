@@ -15,7 +15,6 @@ namespace detail {
 constexpr float  k_v_label_horizontal_padding_px  = 6.0f;
 
 // Grid & preview metrics
-constexpr float  k_grid_line_half_px              = 0.7f;
 constexpr float  k_cell_span_min_factor           = 0.1f;
 constexpr float  k_cell_span_max_factor           = 6.0f;
 
@@ -28,7 +27,6 @@ constexpr float  k_hit_test_px                    = 1.0f;
 
 // Grid appearance
 constexpr float  k_grid_line_alpha_base           = 0.75f;
-constexpr int    k_max_grid_levels                = 32;
 
 // Value formatting
 constexpr int    k_value_decimals                 = 3;
@@ -50,8 +48,6 @@ constexpr double k_default_font_px                = 10.0;
 constexpr double k_default_base_label_height_px   = 14.0;
 
 // Internal constants
-constexpr int    k_drawn_x_reserve                = 512;
-constexpr int    k_index_growth_step              = 2;
 constexpr double k_vbar_width_change_threshold_d  = 0.5;
 constexpr double k_vbar_min_width_px_d            = 1.0;
 constexpr int    k_rect_initial_quads             = 256;

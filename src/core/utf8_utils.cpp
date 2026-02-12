@@ -1,7 +1,5 @@
 #include "utf8_utils.h"
 
-#include <algorithm>
-
 namespace vnm::plot {
 
 namespace {
@@ -14,8 +12,9 @@ constexpr bool is_continuation(unsigned char c) noexcept
     return (c & 0xC0) == 0x80;
 }
 
-} // anonymous namespace
-
+// Decode a single UTF-8 code point from a string.
+// Returns the code point and advances the iterator.
+// Returns 0xFFFD (replacement character) on invalid sequences.
 char32_t utf8_decode_one(const char*& it, const char* end) noexcept
 {
     if (it >= end) {
@@ -86,21 +85,9 @@ char32_t utf8_decode_one(const char*& it, const char* end) noexcept
     return cp;
 }
 
-std::vector<char32_t> utf8_to_codepoints(std::string_view utf8)
-{
-    std::vector<char32_t> result;
-    result.reserve(utf8.size()); // Upper bound estimate
-
-    const char* it = utf8.data();
-    const char* end = it + utf8.size();
-
-    while (it < end) {
-        result.push_back(utf8_decode_one(it, end));
-    }
-
-    return result;
-}
-
+// Convert a single Unicode code point to UTF-8.
+// Returns the number of bytes written (1-4), or 0 on invalid code point.
+// Output buffer must have at least 4 bytes.
 size_t codepoint_to_utf8(char32_t cp, char* out) noexcept
 {
     auto* p = reinterpret_cast<unsigned char*>(out);
@@ -135,6 +122,23 @@ size_t codepoint_to_utf8(char32_t cp, char* out) noexcept
     return 0; // Invalid code point
 }
 
+} // anonymous namespace
+
+std::vector<char32_t> utf8_to_codepoints(std::string_view utf8)
+{
+    std::vector<char32_t> result;
+    result.reserve(utf8.size()); // Upper bound estimate
+
+    const char* it = utf8.data();
+    const char* end = it + utf8.size();
+
+    while (it < end) {
+        result.push_back(utf8_decode_one(it, end));
+    }
+
+    return result;
+}
+
 std::string codepoints_to_utf8(const std::vector<char32_t>& codepoints)
 {
     std::string result;
@@ -148,105 +152,6 @@ std::string codepoints_to_utf8(const std::vector<char32_t>& codepoints)
         }
     }
 
-    return result;
-}
-
-size_t utf8_length(std::string_view utf8) noexcept
-{
-    size_t count = 0;
-    const char* it = utf8.data();
-    const char* end = it + utf8.size();
-
-    while (it < end) {
-        (void)utf8_decode_one(it, end);
-        ++count;
-    }
-
-    return count;
-}
-
-bool is_printable(char32_t cp) noexcept
-{
-    // Basic printable check (covers ASCII and common Unicode)
-    if (cp < 0x20) {
-        return false;  // Control characters
-    }
-    if (cp == 0x7F) {
-        return false;  // DEL
-    }
-    if (cp >= 0x80 && cp < 0xA0) {
-        return false;  // C1 control characters
-    }
-    if (cp > 0x10FFFF) {
-        return false;  // Beyond Unicode
-    }
-    return true;
-}
-
-bool is_whitespace(char32_t cp) noexcept
-{
-    switch (cp) {
-        case 0x0009: // Tab
-        case 0x000A: // Line feed
-        case 0x000B: // Vertical tab
-        case 0x000C: // Form feed
-        case 0x000D: // Carriage return
-        case 0x0020: // Space
-        case 0x0085: // Next line
-        case 0x00A0: // Non-breaking space
-        case 0x1680: // Ogham space mark
-        case 0x2000: case 0x2001: case 0x2002: case 0x2003:
-        case 0x2004: case 0x2005: case 0x2006: case 0x2007:
-        case 0x2008: case 0x2009: case 0x200A: // Various spaces
-        case 0x2028: // Line separator
-        case 0x2029: // Paragraph separator
-        case 0x202F: // Narrow no-break space
-        case 0x205F: // Medium mathematical space
-        case 0x3000: // Ideographic space
-            return true;
-        default:
-            return false;
-    }
-}
-
-bool is_digit(char32_t cp) noexcept
-{
-    return cp >= '0' && cp <= '9';
-}
-
-std::string_view trim(std::string_view str) noexcept
-{
-    // Trim ASCII whitespace from both ends
-    const char* begin = str.data();
-    const char* end = begin + str.size();
-
-    while (begin < end && (*begin == ' ' || *begin == '\t' ||
-                            *begin == '\n' || *begin == '\r')) {
-        ++begin;
-    }
-
-    while (end > begin && (*(end - 1) == ' ' || *(end - 1) == '\t' ||
-                            *(end - 1) == '\n' || *(end - 1) == '\r')) {
-        --end;
-    }
-
-    return std::string_view(begin, static_cast<size_t>(end - begin));
-}
-
-std::vector<std::string_view> split(std::string_view str, char delim)
-{
-    std::vector<std::string_view> result;
-
-    size_t start = 0;
-    size_t end = str.find(delim);
-
-    while (end != std::string_view::npos) {
-        result.push_back(str.substr(start, end - start));
-        start = end + 1;
-        end = str.find(delim, start);
-    }
-
-    result.push_back(str.substr(start));
     return result;
 }
 

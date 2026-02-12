@@ -257,6 +257,8 @@ void render_benchmark_frame(
             adjusted_reserved_height,
             params.adjusted_preview_height,
             false,  // show_info
+            ctx.render_config.skip_gl_calls,  // skip_gl
+            ctx.render_config.dark_mode,      // dark_mode
             &ctx.render_config
         };
     }();

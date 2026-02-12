@@ -37,11 +37,6 @@ struct Size_2i
     {
         return width == other.width && height == other.height;
     }
-
-    [[nodiscard]] constexpr bool operator!=(const Size_2i& other) const noexcept
-    {
-        return !(*this == other);
-    }
 };
 
 // -----------------------------------------------------------------------------
@@ -466,18 +461,6 @@ struct series_data_t
         return access;
     }
 
-    void set_preview_source(std::shared_ptr<Data_source> source)
-    {
-        ensure_preview_config();
-        preview_config->data_source.set(std::move(source));
-    }
-
-    void set_preview_source_ref(Data_source& source)
-    {
-        ensure_preview_config();
-        preview_config->data_source.set_ref(source);
-    }
-
     // Preview style (falls back to main when unset).
     Display_style effective_preview_style() const
     {
@@ -502,13 +485,6 @@ struct series_data_t
             && effective_preview_style() == style;
     }
 
-private:
-    void ensure_preview_config()
-    {
-        if (!preview_config) {
-            preview_config = preview_config_t{};
-        }
-    }
 };
 
 // -----------------------------------------------------------------------------
@@ -591,10 +567,6 @@ struct layout_cache_key_t
                font_metrics_key == other.font_metrics_key;
     }
 
-    [[nodiscard]] bool operator!=(const layout_cache_key_t& other) const noexcept
-    {
-        return !(*this == other);
-    }
 };
 
 class Layout_cache
@@ -653,6 +625,8 @@ struct frame_context_t
     double adjusted_preview_height  = 0.0;
 
     bool show_info = false;
+    bool skip_gl   = false;
+    bool dark_mode = false;
 
     const Plot_config* config = nullptr;
 };

@@ -81,28 +81,20 @@ bool validate_range_cache_impl(
 inline bool validate_range_cache_sequences(
     const std::map<int, std::shared_ptr<const series_data_t>>& series_map,
     std::unordered_map<int, series_minmax_cache_t>& cache_map,
-    Auto_v_range_mode auto_mode)
+    Auto_v_range_mode auto_mode,
+    bool preview = false)
 {
     return validate_range_cache_impl(series_map, cache_map, auto_mode,
-        [](const series_data_t& s)
+        [preview](const series_data_t& s)
             -> std::pair<Data_source*, const Data_access_policy*> {
+            if (preview) {
+                if (s.preview_matches_main()) return {nullptr, nullptr};
+                Data_source* src = s.preview_source();
+                if (!src) return {nullptr, nullptr};
+                return {src, &s.preview_access()};
+            }
             if (!s.data_source) return {nullptr, nullptr};
             return {s.data_source.get(), &s.access};
-        });
-}
-
-inline bool validate_preview_range_cache_sequences(
-    const std::map<int, std::shared_ptr<const series_data_t>>& series_map,
-    std::unordered_map<int, series_minmax_cache_t>& cache_map,
-    Auto_v_range_mode auto_mode)
-{
-    return validate_range_cache_impl(series_map, cache_map, auto_mode,
-        [](const series_data_t& s)
-            -> std::pair<Data_source*, const Data_access_policy*> {
-            if (s.preview_matches_main()) return {nullptr, nullptr};
-            Data_source* src = s.preview_source();
-            if (!src) return {nullptr, nullptr};
-            return {src, &s.preview_access()};
         });
 }
 

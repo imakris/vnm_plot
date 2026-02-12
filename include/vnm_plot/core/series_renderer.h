@@ -6,7 +6,6 @@
 #include "gl_program.h"
 #include "types.h"
 
-#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -45,14 +44,6 @@ public:
                 const std::map<int, std::shared_ptr<const series_data_t>>& series);
 
 private:
-    struct metrics_t
-    {
-        std::atomic<uint64_t> bytes_uploaded{0};
-        std::atomic<uint64_t> bytes_allocated{0};
-        std::atomic<uint64_t> vbo_reallocations{0};
-        std::atomic<uint64_t> snapshot_failures{0};
-    };
-
     struct vbo_view_state_t
     {
         GLuint id = UINT_MAX;
@@ -157,7 +148,6 @@ private:
     std::unique_ptr<series_pipe_t> m_pipe_area;
     std::unique_ptr<series_pipe_t> m_pipe_colormap;
 
-    metrics_t m_metrics;
     uint64_t m_frame_id = 0;  // Monotonic frame counter for snapshot caching
 
     std::shared_ptr<GL_program> get_or_load_shader(

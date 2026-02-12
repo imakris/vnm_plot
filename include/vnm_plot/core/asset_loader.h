@@ -36,9 +36,6 @@ public:
     // If set, assets will first be searched in this directory.
     void set_override_directory(std::string_view path);
 
-    // Get the override directory (empty if not set)
-    [[nodiscard]] std::string_view override_directory() const noexcept;
-
     // Register an embedded asset
     // The data must remain valid for the lifetime of the Asset_loader.
     void register_embedded(std::string_view name, std::string_view data);

@@ -271,6 +271,8 @@ void Plot_core::render(
     ctx.adjusted_reserved_height = reserved_height;
     ctx.adjusted_preview_height = preview_height;
     ctx.show_info = params.show_info;
+    ctx.skip_gl = config && config->skip_gl_calls;
+    ctx.dark_mode = config ? config->dark_mode : false;
     ctx.config = config;
 
     m_impl->chrome.render_grid_and_backgrounds(ctx, m_impl->primitives);
