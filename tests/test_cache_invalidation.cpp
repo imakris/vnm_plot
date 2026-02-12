@@ -144,6 +144,8 @@ frame_context_t make_context(const frame_layout_result_t& layout, Plot_config& c
     ctx.t_available_max = 399.0;
     ctx.win_w = 100;
     ctx.win_h = 100;
+    ctx.skip_gl = config.skip_gl_calls;
+    ctx.dark_mode = config.dark_mode;
     ctx.config = &config;
     return ctx;
 }
