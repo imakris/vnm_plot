@@ -99,6 +99,9 @@ bool plot_config_equivalent(
     const vnm::plot::Plot_config& lhs,
     const vnm::plot::Plot_config& rhs)
 {
+    // If a field is added to Plot_config, update this comparator and bump field_count.
+    static_assert(vnm::plot::Plot_config::field_count == 20,
+        "Plot_config field_count changed — update plot_config_equivalent to cover new fields");
     return
         lhs.dark_mode == rhs.dark_mode &&
         lhs.show_text == rhs.show_text &&
@@ -258,6 +261,7 @@ void Plot_widget::set_dark_mode(bool dark)
             return;
         }
         m_config.dark_mode = dark;
+        m_config_revision.fetch_add(1, std::memory_order_relaxed);
     }
     emit dark_mode_changed();
     update();
@@ -279,6 +283,7 @@ void Plot_widget::set_grid_visibility(double visibility)
             return;
         }
         m_config.grid_visibility = visibility;
+        m_config_revision.fetch_add(1, std::memory_order_relaxed);
     }
     emit grid_visibility_changed();
     update();
@@ -300,6 +305,7 @@ void Plot_widget::set_preview_visibility(double visibility)
             return;
         }
         m_config.preview_visibility = visibility;
+        m_config_revision.fetch_add(1, std::memory_order_relaxed);
     }
     emit preview_visibility_changed();
     update();
@@ -319,6 +325,7 @@ void Plot_widget::set_line_width_px(double width)
             return;
         }
         m_config.line_width_px = width;
+        m_config_revision.fetch_add(1, std::memory_order_relaxed);
     }
     emit line_width_px_changed();
     update();

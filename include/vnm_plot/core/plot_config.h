@@ -150,6 +150,9 @@ struct Plot_config
     // Extra scale applied to auto v-range (0 = no padding).
     double auto_v_range_extra_scale = 0.0;
 
+    // Maintenance aid: bump when adding a field so that comparators (e.g.
+    // plot_config_equivalent) fail to compile until they are updated.
+    static constexpr int field_count = 20;
 };
 
 // -----------------------------------------------------------------------------
