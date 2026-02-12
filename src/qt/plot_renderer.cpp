@@ -804,7 +804,7 @@ const frame_layout_result_t& Plot_renderer::impl_t::calculate_frame_layout(
     cache_key.v1 = v1;
     cache_key.t0 = t0;
     cache_key.t1 = t1;
-    cache_key.viewport_size = Size2i{win_w, win_h};
+    cache_key.viewport_size = Size_2i{win_w, win_h};
     cache_key.adjusted_reserved_height = snapshot.adjusted_reserved_height;
     cache_key.adjusted_preview_height = snapshot.adjusted_preview_height;
     cache_key.adjusted_font_size_in_pixels = snapshot.adjusted_font_px;

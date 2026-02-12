@@ -129,7 +129,7 @@ class Function_plotter : public QAbstractListModel
 
     Q_PROPERTY(double xMin READ x_min WRITE set_x_min NOTIFY range_changed)
     Q_PROPERTY(double xMax READ x_max WRITE set_x_max NOTIFY range_changed)
-    Q_PROPERTY(vnm::plot::Plot_widget* plotWidget READ plot_widget WRITE set_plot_widget NOTIFY plot_widget_changed)
+    Q_PROPERTY(vnm::plot::Plot_widget* plot_widget READ plot_widget WRITE set_plot_widget NOTIFY plot_widget_changed)
     Q_PROPERTY(int functionCount READ function_count NOTIFY function_count_changed)
 
 public:

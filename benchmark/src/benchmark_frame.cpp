@@ -198,7 +198,7 @@ void render_benchmark_frame(
         cache_key.v1 = params.v_max;
         cache_key.t0 = params.t_min;
         cache_key.t1 = params.t_max;
-        cache_key.viewport_size = vnm::plot::Size2i{fb_w, fb_h};
+        cache_key.viewport_size = vnm::plot::Size_2i{fb_w, fb_h};
         cache_key.adjusted_reserved_height = adjusted_reserved_height;
         cache_key.adjusted_preview_height = params.adjusted_preview_height;
         cache_key.adjusted_font_size_in_pixels = params.adjusted_font_px;

@@ -10,24 +10,24 @@ namespace vnm::plot {
 class Plot_interaction_item : public QQuickItem
 {
     Q_OBJECT
-    Q_PROPERTY(Plot_widget* plotWidget READ plotWidget WRITE setPlotWidget NOTIFY plotWidgetChanged REQUIRED)
-    Q_PROPERTY(bool interactionEnabled READ isInteractionEnabled WRITE setInteractionEnabled NOTIFY interactionEnabledChanged)
+    Q_PROPERTY(Plot_widget* plot_widget READ plot_widget WRITE set_plot_widget NOTIFY plot_widget_changed REQUIRED)
+    Q_PROPERTY(bool interaction_enabled READ is_interaction_enabled WRITE set_interaction_enabled NOTIFY interaction_enabled_changed)
 
 public:
     explicit Plot_interaction_item(QQuickItem* parent = nullptr);
     ~Plot_interaction_item() override;
 
-    Plot_widget* plotWidget() const;
-    void setPlotWidget(Plot_widget* widget);
+    Plot_widget* plot_widget() const;
+    void set_plot_widget(Plot_widget* widget);
 
-    bool isInteractionEnabled() const;
-    void setInteractionEnabled(bool enabled);
+    bool is_interaction_enabled() const;
+    void set_interaction_enabled(bool enabled);
 
 signals:
-    void plotWidgetChanged();
-    void interactionEnabledChanged();
-    void mousePositionChanged(qreal x, qreal y);
-    void mouseExited();
+    void plot_widget_changed();
+    void interaction_enabled_changed();
+    void mouse_position_changed(qreal x, qreal y);
+    void mouse_exited();
 
 protected:
     void mousePressEvent(QMouseEvent* event) override;
@@ -40,13 +40,13 @@ protected:
     void timerEvent(QTimerEvent* event) override;
 
 private:
-    qreal usableWidth() const;
-    qreal usableHeight() const;
-    qreal previewHeight() const;
-    qreal tStopMin() const;
-    qreal tStopMax() const;
-    void applyZoomStep();
-    qreal baseK() const;
+    qreal usable_width() const;
+    qreal usable_height() const;
+    qreal preview_height() const;
+    qreal t_stop_min() const;
+    qreal t_stop_max() const;
+    void apply_zoom_step();
+    qreal base_k() const;
 
     Plot_widget* m_plot_widget = nullptr;
     bool m_interaction_enabled = true;

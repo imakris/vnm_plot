@@ -18,27 +18,27 @@
 namespace vnm::plot {
 struct Plot_config;
 // -----------------------------------------------------------------------------
-// Size2i - Replacement for QSize
+// Size_2i - Replacement for QSize
 // -----------------------------------------------------------------------------
-struct Size2i
+struct Size_2i
 {
     int width  = 0;
     int height = 0;
 
-    constexpr Size2i() = default;
-    constexpr Size2i(int w, int h) : width(w), height(h) {}
+    constexpr Size_2i() = default;
+    constexpr Size_2i(int w, int h) : width(w), height(h) {}
 
     [[nodiscard]] constexpr bool is_valid() const noexcept
     {
         return width > 0 && height > 0;
     }
 
-    [[nodiscard]] constexpr bool operator==(const Size2i& other) const noexcept
+    [[nodiscard]] constexpr bool operator==(const Size_2i& other) const noexcept
     {
         return width == other.width && height == other.height;
     }
 
-    [[nodiscard]] constexpr bool operator!=(const Size2i& other) const noexcept
+    [[nodiscard]] constexpr bool operator!=(const Size_2i& other) const noexcept
     {
         return !(*this == other);
     }
@@ -50,8 +50,8 @@ struct Size2i
 // Using std::string as byte buffer: has SSO, move semantics, and works well
 // with file I/O. std::vector<char> is an alternative but std::string is more
 // convenient for text-based asset formats (shaders, JSON).
-using ByteBuffer = std::string;
-using ByteView = std::string_view;
+using Byte_buffer = std::string;
+using Byte_view = std::string_view;
 
 // -----------------------------------------------------------------------------
 // data_snapshot_t: A view of sample data (optionally split into two segments)
@@ -570,7 +570,7 @@ struct layout_cache_key_t
     float     v1                           = 0.0f;
     double    t0                           = 0.0;
     double    t1                           = 0.0;
-    Size2i    viewport_size;
+    Size_2i    viewport_size;
     double    adjusted_reserved_height     = 0.0;
     double    adjusted_preview_height      = 0.0;
     double    adjusted_font_size_in_pixels = 0.0;

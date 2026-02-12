@@ -10,7 +10,7 @@ namespace vnm::plot {
 Asset_loader::Asset_loader() = default;
 Asset_loader::~Asset_loader() = default;
 
-void Asset_loader::set_log_callback(LogCallback callback)
+void Asset_loader::set_log_callback(Log_callback callback)
 {
     m_log_callback = std::move(callback);
 }
@@ -37,7 +37,7 @@ void Asset_loader::register_embedded(std::string_view name, std::string_view dat
     m_embedded[std::string(name)] = data;
 }
 
-bool Asset_loader::load_file(std::string_view path, ByteBuffer& out) const
+bool Asset_loader::load_file(std::string_view path, Byte_buffer& out) const
 {
     std::ifstream file(std::string(path), std::ios::binary | std::ios::ate);
     if (!file.is_open()) {
@@ -61,7 +61,7 @@ bool Asset_loader::load_file(std::string_view path, ByteBuffer& out) const
     return true;
 }
 
-std::optional<ByteBuffer> Asset_loader::load(std::string_view name) const
+std::optional<Byte_buffer> Asset_loader::load(std::string_view name) const
 {
     // First, try override directory
     if (!m_override_dir.empty()) {
@@ -69,7 +69,7 @@ std::optional<ByteBuffer> Asset_loader::load(std::string_view name) const
         override_path /= name;
 
         if (std::filesystem::exists(override_path)) {
-            ByteBuffer buffer;
+            Byte_buffer buffer;
             if (load_file(override_path.string(), buffer)) {
                 return buffer;
             }
@@ -80,16 +80,16 @@ std::optional<ByteBuffer> Asset_loader::load(std::string_view name) const
     // Fall back to embedded assets
     auto it = m_embedded.find(std::string(name));
     if (it != m_embedded.end()) {
-        return ByteBuffer(it->second);
+        return Byte_buffer(it->second);
     }
 
     log_error("Asset not found: " + std::string(name));
     return std::nullopt;
 }
 
-std::optional<Asset_loader::ShaderSources> Asset_loader::load_shader(std::string_view base_name) const
+std::optional<Asset_loader::Shader_sources> Asset_loader::load_shader(std::string_view base_name) const
 {
-    ShaderSources sources;
+    Shader_sources sources;
 
     const std::string base(base_name);
 

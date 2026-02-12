@@ -43,7 +43,7 @@ class GL_program
 {
 public:
     // Log callback for errors and warnings
-    using LogCallback = std::function<void(const std::string&)>;
+    using Log_callback = std::function<void(const std::string&)>;
 
     GL_program();
     ~GL_program();
@@ -55,7 +55,7 @@ public:
     GL_program& operator=(GL_program&& other) noexcept;
 
     // Set log callback for shader compilation errors
-    void set_log_callback(LogCallback callback);
+    void set_log_callback(Log_callback callback);
 
     // Compile and attach shaders from source strings
     // Returns true on success.
@@ -93,7 +93,7 @@ private:
     GLuint m_fragment_shader = 0;
     bool m_linked = false;
 
-    LogCallback m_log_callback;
+    Log_callback m_log_callback;
     mutable std::unordered_map<std::string, GLint> m_uniform_cache;
 };
 
@@ -107,6 +107,6 @@ std::unique_ptr<GL_program> create_gl_program(
     std::string_view vert_source,
     std::string_view geom_source,
     std::string_view frag_source,
-    const GL_program::LogCallback& log_error = nullptr);
+    const GL_program::Log_callback& log_error = nullptr);
 
 } // namespace vnm::plot

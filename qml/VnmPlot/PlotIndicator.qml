@@ -3,101 +3,101 @@ import QtQuick
 Item {
     id: root
 
-    required property var plotWidget
+    required property var plot_widget
 
-    property var selectedSample: null
-    property bool showSelectedX: true
-    property bool showSelectedY: true
-    property color selectedColor: "#638ceb"
-    property bool showVerticalLine: true
-    property bool showHorizontalLine: false
-    property bool linkIndicator: false
-    property string xValueLabel: "x"
-    property string yValueLabel: "y"
+    property var selected_sample: null
+    property bool show_selected_x: true
+    property bool show_selected_y: true
+    property color selected_color: "#638ceb"
+    property bool show_vertical_line: true
+    property bool show_horizontal_line: false
+    property bool link_indicator: false
+    property string x_value_label: "x"
+    property string y_value_label: "y"
 
-    readonly property var timeAxis: plotWidget ? plotWidget.timeAxis : null
+    readonly property var time_axis: plot_widget ? plot_widget.timeAxis : null
 
-    readonly property real usableWidth: width - plotWidget.vbar_width_qml
-    readonly property real usableHeight: height - plotWidget.reserved_height
+    readonly property real usable_width: width - plot_widget.vbar_width_qml
+    readonly property real usable_height: height - plot_widget.reserved_height
 
-    readonly property var samples: internal.indicatorSamples
+    readonly property var samples: internal.indicator_samples
 
-    function updateMousePosition(x, y) {
-        internal.hasMouseInPlot = true
-        internal.mouseX = x
-        internal.mouseY = y
-        internal.inMainPlotAtMove =
-            x >= 0 && x <= usableWidth &&
-            y >= 0 && y < usableHeight
-        refreshIndicator()
+    function update_mouse_position(x, y) {
+        internal.has_mouse_in_plot = true
+        internal.mouse_x = x
+        internal.mouse_y = y
+        internal.in_main_plot_at_move =
+            x >= 0 && x <= usable_width &&
+            y >= 0 && y < usable_height
+        refresh_indicator()
     }
 
-    function setMouseInPlot(inPlot) {
-        var wasInPlot = internal.hasMouseInPlot
-        internal.hasMouseInPlot = inPlot
-        if (!inPlot) {
-            internal.mouseX = -1
-            internal.mouseY = -1
-            internal.inMainPlotAtMove = false
+    function set_mouse_in_plot(in_plot) {
+        var was_in_plot = internal.has_mouse_in_plot
+        internal.has_mouse_in_plot = in_plot
+        if (!in_plot) {
+            internal.mouse_x = -1
+            internal.mouse_y = -1
+            internal.in_main_plot_at_move = false
         }
-        if (wasInPlot && !inPlot && root.linkIndicator && root.timeAxis) {
-            root.timeAxis.set_indicator_state(plotWidget, false, 0.0, 0.0)
+        if (was_in_plot && !in_plot && root.link_indicator && root.time_axis) {
+            root.time_axis.set_indicator_state(plot_widget, false, 0.0, 0.0)
         }
         canvas.requestPaint()
     }
 
     QtObject {
         id: internal
-        property bool hasMouseInPlot: false
-        property var indicatorSamples: []
-        property real mouseX: -1
-        property real mouseY: -1
-        property bool indicatorActive: false
-        property bool inMainPlotAtMove: false
-        property var lastSamples: []
-        property real lastSamplesTimeMs: 0.0
+        property bool has_mouse_in_plot: false
+        property var indicator_samples: []
+        property real mouse_x: -1
+        property real mouse_y: -1
+        property bool indicator_active: false
+        property bool in_main_plot_at_move: false
+        property var last_samples: []
+        property real last_samples_time_ms: 0.0
     }
 
     Connections {
-        target: plotWidget
-        function onV_limits_changed() { refreshIndicator() }
-        function onT_limits_changed() { refreshIndicator() }
+        target: plot_widget
+        function onV_limits_changed() { refresh_indicator() }
+        function onT_limits_changed() { refresh_indicator() }
     }
 
     Connections {
-        target: root.linkIndicator ? root.timeAxis : null
-        function onIndicator_state_changed() { refreshIndicator() }
+        target: root.link_indicator ? root.time_axis : null
+        function onIndicator_state_changed() { refresh_indicator() }
     }
 
-    onSelectedSampleChanged: canvas.requestPaint()
-    onShowSelectedXChanged: canvas.requestPaint()
-    onShowSelectedYChanged: canvas.requestPaint()
-    onSelectedColorChanged: canvas.requestPaint()
-    onShowVerticalLineChanged: canvas.requestPaint()
-    onShowHorizontalLineChanged: canvas.requestPaint()
+    onSelected_sampleChanged: canvas.requestPaint()
+    onShow_selected_xChanged: canvas.requestPaint()
+    onShow_selected_yChanged: canvas.requestPaint()
+    onSelected_colorChanged: canvas.requestPaint()
+    onShow_vertical_lineChanged: canvas.requestPaint()
+    onShow_horizontal_lineChanged: canvas.requestPaint()
 
-    function decimalsForSpan(span, n) {
+    function decimals_for_span(span, n) {
         if (!isFinite(span) || span === 0) {
             return n
         }
-        var absSpan = Math.abs(span)
-        var raw = -Math.log10(absSpan)
+        var abs_span = Math.abs(span)
+        var raw = -Math.log10(abs_span)
         var i = Math.max(0, Math.ceil(raw))
         if (!isFinite(i) || i > 20) i = 20
         return i + n - 1
     }
 
-    function formatTimestamp(xVal, tspan) {
+    function format_timestamp(x_val, tspan) {
         try {
-            var formatted = plotWidget.format_timestamp_precise(xVal)
+            var formatted = plot_widget.format_timestamp_precise(x_val)
             if (formatted)
                 return formatted
         } catch (e) {}
-        var drx = Math.max(3, root.decimalsForSpan(tspan, 3))
-        return xVal.toFixed(drx)
+        var drx = Math.max(3, root.decimals_for_span(tspan, 3))
+        return x_val.toFixed(drx)
     }
 
-    function labelPrefix(label, fallback) {
+    function label_prefix(label, fallback) {
         var txt = (label === undefined || label === null) ? "" : ("" + label).trim()
         if (txt.length === 0) {
             txt = fallback
@@ -106,98 +106,98 @@ Item {
         return txt + ": "
     }
 
-    function labeledXValue(valueText) {
-        return root.labelPrefix(root.xValueLabel, "x") + valueText
+    function labeled_x_value(value_text) {
+        return root.label_prefix(root.x_value_label, "x") + value_text
     }
 
-    function labeledSeriesValue(seriesLabel, valueText) {
-        var txt = (seriesLabel === undefined || seriesLabel === null) ? "" : ("" + seriesLabel).trim()
-        var label = (txt.length > 0) ? txt : root.yValueLabel
-        return root.labelPrefix(label, "y") + valueText
+    function labeled_series_value(series_label, value_text) {
+        var txt = (series_label === undefined || series_label === null) ? "" : ("" + series_label).trim()
+        var label = (txt.length > 0) ? txt : root.y_value_label
+        return root.label_prefix(label, "y") + value_text
     }
 
-    function refreshIndicator() {
-        var inMainPlot = internal.hasMouseInPlot
-            && internal.inMainPlotAtMove
-            && internal.mouseY >= 0 && internal.mouseY < usableHeight
+    function refresh_indicator() {
+        var in_main_plot = internal.has_mouse_in_plot
+            && internal.in_main_plot_at_move
+            && internal.mouse_y >= 0 && internal.mouse_y < usable_height
 
-        var tmin = plotWidget.t_min
-        var tmax = plotWidget.t_max
+        var tmin = plot_widget.t_min
+        var tmax = plot_widget.t_max
         var tspan = tmax - tmin
-        if (tspan <= 0 || usableWidth <= 0 || usableHeight <= 0) {
-            internal.indicatorSamples = []
-            internal.indicatorActive = false
+        if (tspan <= 0 || usable_width <= 0 || usable_height <= 0) {
+            internal.indicator_samples = []
+            internal.indicator_active = false
             canvas.requestPaint()
             return
         }
 
-        var localT = 0.0
-        var localPx = -1.0
-        var localXNorm = 0.0
-        if (inMainPlot) {
-            localPx = Math.max(0.0, Math.min(internal.mouseX, usableWidth))
-            localXNorm = localPx / usableWidth
-            localT = tmin + localXNorm * tspan
+        var local_t = 0.0
+        var local_px = -1.0
+        var local_x_norm = 0.0
+        if (in_main_plot) {
+            local_px = Math.max(0.0, Math.min(internal.mouse_x, usable_width))
+            local_x_norm = local_px / usable_width
+            local_t = tmin + local_x_norm * tspan
         }
 
-        if (!inMainPlot && internal.hasMouseInPlot && root.linkIndicator && root.timeAxis) {
-            if (root.timeAxis.indicator_active &&
-                root.timeAxis.indicator_owned_by(plotWidget)) {
-                root.timeAxis.set_indicator_state(plotWidget, false, 0.0, 0.0)
+        if (!in_main_plot && internal.has_mouse_in_plot && root.link_indicator && root.time_axis) {
+            if (root.time_axis.indicator_active &&
+                root.time_axis.indicator_owned_by(plot_widget)) {
+                root.time_axis.set_indicator_state(plot_widget, false, 0.0, 0.0)
             }
         }
 
-        var allowShared = !(internal.hasMouseInPlot && !inMainPlot)
-        var useShared = root.linkIndicator &&
-            root.timeAxis &&
-            root.timeAxis.indicator_active &&
-            root.timeAxis.indicator_x_norm_valid &&
-            allowShared
-        var targetT = inMainPlot ? localT : (useShared ? root.timeAxis.indicator_t : null)
-        var sharedPx = -1.0
-        if (!inMainPlot && useShared) {
-            var sharedNorm = Math.max(0.0, Math.min(root.timeAxis.indicator_x_norm, 1.0))
-            sharedPx = sharedNorm * usableWidth
+        var allow_shared = !(internal.has_mouse_in_plot && !in_main_plot)
+        var use_shared = root.link_indicator &&
+            root.time_axis &&
+            root.time_axis.indicator_active &&
+            root.time_axis.indicator_x_norm_valid &&
+            allow_shared
+        var target_t = in_main_plot ? local_t : (use_shared ? root.time_axis.indicator_t : null)
+        var shared_px = -1.0
+        if (!in_main_plot && use_shared) {
+            var shared_norm = Math.max(0.0, Math.min(root.time_axis.indicator_x_norm, 1.0))
+            shared_px = shared_norm * usable_width
         }
-        if (targetT === null || targetT === undefined) {
-            internal.indicatorSamples = []
-            internal.indicatorActive = false
+        if (target_t === null || target_t === undefined) {
+            internal.indicator_samples = []
+            internal.indicator_active = false
             canvas.requestPaint()
             return
         }
 
-        var nowMs = Date.now()
-        var nextSamples = plotWidget.get_indicator_samples(
-            targetT, usableWidth, usableHeight, inMainPlot ? localPx : sharedPx)
+        var now_ms = Date.now()
+        var next_samples = plot_widget.get_indicator_samples(
+            target_t, usable_width, usable_height, in_main_plot ? local_px : shared_px)
 
-        if (inMainPlot && root.linkIndicator && root.timeAxis) {
-            var publishT = localT
-            if (nextSamples.length > 0) {
-                var resolvedT = nextSamples[0].x
-                if (resolvedT !== undefined && resolvedT !== null && isFinite(resolvedT)) {
-                    publishT = resolvedT
+        if (in_main_plot && root.link_indicator && root.time_axis) {
+            var publish_t = local_t
+            if (next_samples.length > 0) {
+                var resolved_t = next_samples[0].x
+                if (resolved_t !== undefined && resolved_t !== null && isFinite(resolved_t)) {
+                    publish_t = resolved_t
                 }
             }
-            if (publishT !== undefined && publishT !== null && isFinite(publishT)) {
-                root.timeAxis.set_indicator_state(plotWidget, true, publishT, localXNorm)
+            if (publish_t !== undefined && publish_t !== null && isFinite(publish_t)) {
+                root.time_axis.set_indicator_state(plot_widget, true, publish_t, local_x_norm)
             }
         }
 
-        if (nextSamples.length > 0) {
-            internal.indicatorSamples = nextSamples
-            internal.indicatorActive = true
-            internal.lastSamples = nextSamples
-            internal.lastSamplesTimeMs = nowMs
+        if (next_samples.length > 0) {
+            internal.indicator_samples = next_samples
+            internal.indicator_active = true
+            internal.last_samples = next_samples
+            internal.last_samples_time_ms = now_ms
         } else {
-            var graceMs = 120
-            var canReuse = internal.lastSamples.length > 0
-                && (nowMs - internal.lastSamplesTimeMs) <= graceMs
-            if (canReuse) {
-                internal.indicatorSamples = internal.lastSamples
-                internal.indicatorActive = true
+            var grace_ms = 120
+            var can_reuse = internal.last_samples.length > 0
+                && (now_ms - internal.last_samples_time_ms) <= grace_ms
+            if (can_reuse) {
+                internal.indicator_samples = internal.last_samples
+                internal.indicator_active = true
             } else {
-                internal.indicatorSamples = []
-                internal.indicatorActive = false
+                internal.indicator_samples = []
+                internal.indicator_active = false
             }
         }
         canvas.requestPaint()
@@ -206,8 +206,8 @@ Item {
     Canvas {
         id: canvas
         anchors.fill: parent
-        anchors.bottomMargin: plotWidget.reserved_height
-        anchors.rightMargin: plotWidget.vbar_width_qml
+        anchors.bottomMargin: plot_widget.reserved_height
+        anchors.rightMargin: plot_widget.vbar_width_qml
         renderTarget: Canvas.FramebufferObject
         renderStrategy: Canvas.Threaded
         z: 100
@@ -217,45 +217,45 @@ Item {
             ctx.clearRect(0, 0, width, height)
             ctx.lineWidth = 1
 
-            var tspan = plotWidget.t_max - plotWidget.t_min
-            var vspan = plotWidget.v_max - plotWidget.v_min
-            var dry = Math.max(3, root.decimalsForSpan(vspan, 3))
-            var PI = Math.PI
-            var bulletChar = "\u2022"
+            var tspan = plot_widget.t_max - plot_widget.t_min
+            var vspan = plot_widget.v_max - plot_widget.v_min
+            var dry = Math.max(3, root.decimals_for_span(vspan, 3))
+            var pi = Math.PI
+            var bullet_char = "\u2022"
 
-            if (internal.indicatorActive && internal.indicatorSamples.length > 0) {
-                var samples = internal.indicatorSamples
-                var xLine = samples[0].px
-                var xVal = samples[0].x
-                var yLine = samples[0].py
+            if (internal.indicator_active && internal.indicator_samples.length > 0) {
+                var samples = internal.indicator_samples
+                var x_line = samples[0].px
+                var x_val = samples[0].x
+                var y_line = samples[0].py
 
                 ctx.strokeStyle = "#ffffff"
-                if (root.showVerticalLine) {
+                if (root.show_vertical_line) {
                     ctx.beginPath()
-                    ctx.moveTo(xLine, 0)
-                    ctx.lineTo(xLine, height)
+                    ctx.moveTo(x_line, 0)
+                    ctx.lineTo(x_line, height)
                     ctx.stroke()
                     ctx.closePath()
                 }
-                if (root.showHorizontalLine && samples.length === 1) {
+                if (root.show_horizontal_line && samples.length === 1) {
                     ctx.beginPath()
-                    ctx.moveTo(0, yLine)
-                    ctx.lineTo(width, yLine)
+                    ctx.moveTo(0, y_line)
+                    ctx.lineTo(width, y_line)
                     ctx.stroke()
                     ctx.closePath()
                 }
 
-                var x_txt = root.formatTimestamp(xVal, tspan)
-                var x_axis_txt = root.labeledXValue(x_txt)
+                var x_txt = root.format_timestamp(x_val, tspan)
+                var x_axis_txt = root.labeled_x_value(x_txt)
                 var lines = []
-                var maxValueWidth = ctx.measureText(x_axis_txt).width
+                var max_value_width = ctx.measureText(x_axis_txt).width
 
                 for (var i = 0; i < samples.length; ++i) {
                     var s = samples[i]
                     var vtxt = s.y.toFixed(dry)
-                    var value_label = root.labeledSeriesValue(s.series_label, vtxt)
+                    var value_label = root.labeled_series_value(s.series_label, vtxt)
                     var w = ctx.measureText(value_label).width
-                    if (w > maxValueWidth) maxValueWidth = w
+                    if (w > max_value_width) max_value_width = w
 
                     lines.push({
                         value: value_label,
@@ -265,18 +265,18 @@ Item {
                     })
                 }
 
-                var showBullet = (lines.length > 1)
-                var lineHeight = 18
-                var boxPaddingX = 8
-                var boxPaddingY = 6
-                var bulletWidth = showBullet ? ctx.measureText(bulletChar).width + 4 : 0
-                var textWidth = Math.max(ctx.measureText(x_axis_txt).width, bulletWidth + maxValueWidth)
-                var boxWidth = textWidth + boxPaddingX * 2
+                var show_bullet = (lines.length > 1)
+                var line_height = 18
+                var box_padding_x = 8
+                var box_padding_y = 6
+                var bullet_width = show_bullet ? ctx.measureText(bullet_char).width + 4 : 0
+                var text_width = Math.max(ctx.measureText(x_axis_txt).width, bullet_width + max_value_width)
+                var box_width = text_width + box_padding_x * 2
 
-                var x0 = (xLine > width / 2) ? xLine - 10 - boxWidth : xLine + 10
-                var x1 = x0 + boxWidth
+                var x0 = (x_line > width / 2) ? x_line - 10 - box_width : x_line + 10
+                var x1 = x0 + box_width
                 var y0 = 10
-                var y1 = y0 + boxPaddingY * 2 + lineHeight * (lines.length + 1)
+                var y1 = y0 + box_padding_y * 2 + line_height * (lines.length + 1)
 
                 ctx.strokeStyle = "#ffffff"
                 ctx.fillStyle = "#ccdadada"
@@ -291,25 +291,25 @@ Item {
 
                 ctx.fillStyle = "#000000"
                 ctx.beginPath()
-                ctx.fillText(x_axis_txt, x0 + boxPaddingX, y0 + boxPaddingY + lineHeight)
+                ctx.fillText(x_axis_txt, x0 + box_padding_x, y0 + box_padding_y + line_height)
                 ctx.fill()
                 ctx.closePath()
 
                 for (var li = 0; li < lines.length; ++li) {
-                    var ly = y0 + boxPaddingY + lineHeight * (li + 2)
+                    var ly = y0 + box_padding_y + line_height * (li + 2)
                     var line = lines[li]
 
-                    if (showBullet) {
+                    if (show_bullet) {
                         ctx.fillStyle = line.color
                         ctx.beginPath()
-                        ctx.fillText(bulletChar, x0 + boxPaddingX, ly)
+                        ctx.fillText(bullet_char, x0 + box_padding_x, ly)
                         ctx.fill()
                         ctx.closePath()
                     }
 
                     ctx.fillStyle = "#000000"
                     ctx.beginPath()
-                    ctx.fillText(line.value, x0 + boxPaddingX + bulletWidth, ly)
+                    ctx.fillText(line.value, x0 + box_padding_x + bullet_width, ly)
                     ctx.fill()
                     ctx.closePath()
                 }
@@ -320,59 +320,59 @@ Item {
                     ctx.strokeStyle = "#ffffffff"
                     ctx.fillStyle = lines[di].color
                     ctx.beginPath()
-                    ctx.arc(sx, sy, 4, 0, 2 * PI, false)
+                    ctx.arc(sx, sy, 4, 0, 2 * pi, false)
                     ctx.fill()
                     ctx.stroke()
                     ctx.closePath()
                 }
             }
 
-            if (!internal.indicatorActive && root.selectedSample) {
-                var tsSel = root.selectedSample.x
-                var vSel = root.selectedSample.y
+            if (!internal.indicator_active && root.selected_sample) {
+                var ts_sel = root.selected_sample.x
+                var v_sel = root.selected_sample.y
 
-                if (tsSel !== undefined && vSel !== undefined) {
-                    var xSel = 0
-                    var ySel = 0
+                if (ts_sel !== undefined && v_sel !== undefined) {
+                    var x_sel = 0
+                    var y_sel = 0
                     if (tspan > 0 && vspan > 0) {
-                        xSel = (tsSel - plotWidget.t_min) / tspan * width
-                        ySel = (1.0 - (vSel - plotWidget.v_min) / vspan) * height
+                        x_sel = (ts_sel - plot_widget.t_min) / tspan * width
+                        y_sel = (1.0 - (v_sel - plot_widget.v_min) / vspan) * height
                     }
                     else {
-                        xSel = root.selectedSample.px
-                        ySel = root.selectedSample.py
+                        x_sel = root.selected_sample.px
+                        y_sel = root.selected_sample.py
                     }
 
-                    if (xSel === undefined || ySel === undefined) {
+                    if (x_sel === undefined || y_sel === undefined) {
                         return
                     }
 
-                    xSel = Math.max(0, Math.min(xSel, width - 1))
-                    ySel = Math.max(0, Math.min(ySel, height - 1))
+                    x_sel = Math.max(0, Math.min(x_sel, width - 1))
+                    y_sel = Math.max(0, Math.min(y_sel, height - 1))
 
-                    var x_txt_sel = root.formatTimestamp(tsSel, tspan)
-                    var y_txt_sel = vSel.toFixed(dry)
-                    var y_labeled_sel = root.labeledSeriesValue(root.selectedSample.series_label, y_txt_sel)
+                    var x_txt_sel = root.format_timestamp(ts_sel, tspan)
+                    var y_txt_sel = v_sel.toFixed(dry)
+                    var y_labeled_sel = root.labeled_series_value(root.selected_sample.series_label, y_txt_sel)
 
-                    var txtSel = ""
-                    var dirtySel = false
-                    if (root.showSelectedX) {
-                        txtSel = root.labeledXValue(x_txt_sel)
-                        dirtySel = true
+                    var txt_sel = ""
+                    var dirty_sel = false
+                    if (root.show_selected_x) {
+                        txt_sel = root.labeled_x_value(x_txt_sel)
+                        dirty_sel = true
                     }
-                    if (root.showSelectedY) {
-                        txtSel += (dirtySel ? ", " : "") + y_labeled_sel
+                    if (root.show_selected_y) {
+                        txt_sel += (dirty_sel ? ", " : "") + y_labeled_sel
                     }
 
-                    var text_width_sel = ctx.measureText(txtSel).width
+                    var text_width_sel = ctx.measureText(txt_sel).width
                     ctx.strokeStyle = "#ffffff"
                     ctx.fillStyle = "#ccdadada"
                     ctx.beginPath()
 
-                    var boxPadSelX = 5
-                    var boxWidthSel = text_width_sel + boxPadSelX * 2
-                    var x0s = (xSel > width / 2) ? xSel - 10 - boxWidthSel : xSel + 10
-                    var x1s = x0s + boxWidthSel
+                    var box_pad_sel_x = 5
+                    var box_width_sel = text_width_sel + box_pad_sel_x * 2
+                    var x0s = (x_sel > width / 2) ? x_sel - 10 - box_width_sel : x_sel + 10
+                    var x1s = x0s + box_width_sel
                     var y0s = 10
                     var y1s = 30
 
@@ -385,12 +385,12 @@ Item {
                     ctx.closePath()
 
                     ctx.fillStyle = "#000000"
-                    ctx.fillText(txtSel, x0s + boxPadSelX, y0s + 15)
+                    ctx.fillText(txt_sel, x0s + box_pad_sel_x, y0s + 15)
 
                     ctx.strokeStyle = "#ffffffff"
-                    ctx.fillStyle = root.selectedColor
+                    ctx.fillStyle = root.selected_color
                     ctx.beginPath()
-                    ctx.arc(xSel, ySel, 4, 0, 2 * PI, false)
+                    ctx.arc(x_sel, y_sel, 4, 0, 2 * pi, false)
                     ctx.fill()
                     ctx.stroke()
                     ctx.closePath()

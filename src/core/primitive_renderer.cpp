@@ -12,7 +12,7 @@ using namespace detail;
 Primitive_renderer::Primitive_renderer() = default;
 Primitive_renderer::~Primitive_renderer() = default;
 
-void Primitive_renderer::set_log_callback(GL_program::LogCallback callback)
+void Primitive_renderer::set_log_callback(GL_program::Log_callback callback)
 {
     m_log_error = std::move(callback);
 }

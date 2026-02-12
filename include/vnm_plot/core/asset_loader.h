@@ -24,13 +24,13 @@ class Asset_loader
 {
 public:
     // Log callback for errors
-    using LogCallback = std::function<void(const std::string&)>;
+    using Log_callback = std::function<void(const std::string&)>;
 
     Asset_loader();
     ~Asset_loader();
 
     // Set log callback
-    void set_log_callback(LogCallback callback);
+    void set_log_callback(Log_callback callback);
 
     // Configure file system override directory (empty to disable)
     // If set, assets will first be searched in this directory.
@@ -46,27 +46,27 @@ public:
     // Load an asset by name
     // Returns the asset data, or nullopt on failure.
     // First checks override directory, then embedded assets.
-    [[nodiscard]] std::optional<ByteBuffer> load(std::string_view name) const;
+    [[nodiscard]] std::optional<Byte_buffer> load(std::string_view name) const;
 
     // --- Convenience methods for shader loading ---
 
     // Load a shader program's sources (vertex, optional geometry, fragment)
-    struct ShaderSources
+    struct Shader_sources
     {
-        ByteBuffer vertex;
-        ByteBuffer geometry;  // May be empty
-        ByteBuffer fragment;
+        Byte_buffer vertex;
+        Byte_buffer geometry;  // May be empty
+        Byte_buffer fragment;
     };
 
     // Load shader sources by base name (appends .vert, .geom, .frag)
     // geom is optional (may return empty string)
-    [[nodiscard]] std::optional<ShaderSources> load_shader(std::string_view base_name) const;
+    [[nodiscard]] std::optional<Shader_sources> load_shader(std::string_view base_name) const;
 
 private:
-    bool load_file(std::string_view path, ByteBuffer& out) const;
+    bool load_file(std::string_view path, Byte_buffer& out) const;
     void log_error(const std::string& message) const;
 
-    LogCallback m_log_callback;
+    Log_callback m_log_callback;
     std::string m_override_dir;
 
     // Map from asset name to embedded data view

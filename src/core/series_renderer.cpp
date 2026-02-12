@@ -297,7 +297,7 @@ std::shared_ptr<GL_program> Series_renderer::get_or_load_shader(
 
     auto vert_src = m_asset_loader->load(normalized.vert);
     auto frag_src = m_asset_loader->load(normalized.frag);
-    std::optional<ByteBuffer> geom_src;
+    std::optional<Byte_buffer> geom_src;
     if (!normalized.geom.empty()) {
         geom_src = m_asset_loader->load(normalized.geom);
     }

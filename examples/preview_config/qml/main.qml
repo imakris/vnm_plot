@@ -33,28 +33,28 @@ Window {
             id: plotViewTop
             width: parent.width
             height: parent.contentHeight * 0.5
-            darkMode: true
-            linkIndicator: true
-            timeAxis: sharedAxis
-            Component.onCompleted: plotWidget.update_dpi_scaling_factor()
+            dark_mode: true
+            link_indicator: true
+            time_axis: sharedAxis
+            Component.onCompleted: plot_widget.update_dpi_scaling_factor()
         }
 
         PlotView {
             id: plotViewBottom
             width: parent.width
             height: parent.contentHeight * 0.5
-            darkMode: true
-            linkIndicator: true
-            timeAxis: sharedAxis
-            Component.onCompleted: plotWidget.update_dpi_scaling_factor()
+            dark_mode: true
+            link_indicator: true
+            time_axis: sharedAxis
+            Component.onCompleted: plot_widget.update_dpi_scaling_factor()
         }
     }
 
     TopController {
-        plot_widget: plotViewTop.plotWidget
+        plot_widget: plotViewTop.plot_widget
     }
 
     PreviewController {
-        plot_widget: plotViewBottom.plotWidget
+        plot_widget: plotViewBottom.plot_widget
     }
 }

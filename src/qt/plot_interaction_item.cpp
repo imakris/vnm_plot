@@ -11,7 +11,8 @@
 namespace vnm::plot {
 
 Plot_interaction_item::Plot_interaction_item(QQuickItem* parent)
-    : QQuickItem(parent)
+:
+    QQuickItem(parent)
 {
     setAcceptedMouseButtons(Qt::LeftButton);
     setAcceptHoverEvents(true);
@@ -22,35 +23,35 @@ Plot_interaction_item::~Plot_interaction_item()
     m_zoom_timer.stop();
 }
 
-Plot_widget* Plot_interaction_item::plotWidget() const
+Plot_widget* Plot_interaction_item::plot_widget() const
 {
     return m_plot_widget;
 }
 
-void Plot_interaction_item::setPlotWidget(Plot_widget* widget)
+void Plot_interaction_item::set_plot_widget(Plot_widget* widget)
 {
     if (m_plot_widget == widget) {
         return;
     }
     m_plot_widget = widget;
-    emit plotWidgetChanged();
+    emit plot_widget_changed();
 }
 
-bool Plot_interaction_item::isInteractionEnabled() const
+bool Plot_interaction_item::is_interaction_enabled() const
 {
     return m_interaction_enabled;
 }
 
-void Plot_interaction_item::setInteractionEnabled(bool enabled)
+void Plot_interaction_item::set_interaction_enabled(bool enabled)
 {
     if (m_interaction_enabled == enabled) {
         return;
     }
     m_interaction_enabled = enabled;
-    emit interactionEnabledChanged();
+    emit interaction_enabled_changed();
 }
 
-qreal Plot_interaction_item::usableWidth() const
+qreal Plot_interaction_item::usable_width() const
 {
     if (!m_plot_widget) {
         return width();
@@ -58,7 +59,7 @@ qreal Plot_interaction_item::usableWidth() const
     return width() - m_plot_widget->vbar_width_qml();
 }
 
-qreal Plot_interaction_item::usableHeight() const
+qreal Plot_interaction_item::usable_height() const
 {
     if (!m_plot_widget) {
         return height();
@@ -66,7 +67,7 @@ qreal Plot_interaction_item::usableHeight() const
     return height() - m_plot_widget->reserved_height();
 }
 
-qreal Plot_interaction_item::previewHeight() const
+qreal Plot_interaction_item::preview_height() const
 {
     if (!m_plot_widget) {
         return 0.0;
@@ -74,7 +75,7 @@ qreal Plot_interaction_item::previewHeight() const
     return m_plot_widget->preview_height();
 }
 
-qreal Plot_interaction_item::tStopMin() const
+qreal Plot_interaction_item::t_stop_min() const
 {
     if (!m_plot_widget) {
         return 0.0;
@@ -84,7 +85,7 @@ qreal Plot_interaction_item::tStopMin() const
     return (m_plot_widget->t_min() - m_plot_widget->t_available_min()) / t_available_span;
 }
 
-qreal Plot_interaction_item::tStopMax() const
+qreal Plot_interaction_item::t_stop_max() const
 {
     if (!m_plot_widget) {
         return 1.0;
@@ -94,12 +95,12 @@ qreal Plot_interaction_item::tStopMax() const
     return 1.0 - (m_plot_widget->t_available_max() - m_plot_widget->t_max()) / t_available_span;
 }
 
-qreal Plot_interaction_item::baseK() const
+qreal Plot_interaction_item::base_k() const
 {
     return std::pow(k_zoom_per_notch, (1.0 - k_zoom_friction) / k_zoom_impulse_per_step);
 }
 
-void Plot_interaction_item::applyZoomStep()
+void Plot_interaction_item::apply_zoom_step()
 {
     if (!m_plot_widget) {
         m_zoom_timer.stop();
@@ -110,7 +111,7 @@ void Plot_interaction_item::applyZoomStep()
     bool active = false;
 
     if (std::abs(m_zoom_vel_t) > eps) {
-        const qreal factor_t = std::pow(baseK(), m_zoom_vel_t);
+        const qreal factor_t = std::pow(base_k(), m_zoom_vel_t);
         if (factor_t < 1.0 && !m_plot_widget->can_zoom_in()) {
             m_zoom_vel_t = 0.0;
         }
@@ -122,7 +123,7 @@ void Plot_interaction_item::applyZoomStep()
     }
 
     if (std::abs(m_zoom_vel_v) > eps) {
-        const qreal factor_v = std::pow(baseK(), m_zoom_vel_v);
+        const qreal factor_v = std::pow(base_k(), m_zoom_vel_v);
         m_plot_widget->adjust_v_from_pivot_and_scale(m_last_pivot_y, factor_v);
         m_zoom_vel_v *= k_zoom_friction;
         active = true;
@@ -147,8 +148,8 @@ void Plot_interaction_item::mousePressEvent(QMouseEvent* event)
 
     const qreal y = event->position().y();
     const qreal x = event->position().x();
-    const qreal uh = usableHeight();
-    const qreal ph = previewHeight();
+    const qreal uh = usable_height();
+    const qreal ph = preview_height();
 
     if (y < uh) {
         m_dragging = true;
@@ -156,9 +157,10 @@ void Plot_interaction_item::mousePressEvent(QMouseEvent* event)
         m_drag_last_y = y;
         event->accept();
     }
-    else if (ph > 0 && y > height() - ph) {
-        const qreal stop_min = tStopMin();
-        const qreal stop_max = tStopMax();
+    else
+    if (ph > 0 && y > height() - ph) {
+        const qreal stop_min = t_stop_min();
+        const qreal stop_max = t_stop_max();
         if (x < width() * stop_min || x > width() * stop_max) {
             m_plot_widget->adjust_t_from_mouse_pos_on_preview(width(), x);
         }
@@ -180,7 +182,7 @@ void Plot_interaction_item::mouseMoveEvent(QMouseEvent* event)
     const qreal x = event->position().x();
     const qreal y = event->position().y();
 
-    emit mousePositionChanged(x, y);
+    emit mouse_position_changed(x, y);
 
     if (!m_plot_widget) {
         return;
@@ -194,15 +196,16 @@ void Plot_interaction_item::mouseMoveEvent(QMouseEvent* event)
         if (ctrl_held || alt_held) {
             const qreal dy = y - m_drag_last_y;
             m_drag_last_y = y;
-            m_plot_widget->adjust_v_from_mouse_diff(usableHeight(), dy);
+            m_plot_widget->adjust_v_from_mouse_diff(usable_height(), dy);
         }
 
         if (!alt_held) {
-            m_plot_widget->adjust_t_from_mouse_diff(usableWidth(), x - m_drag_start_x);
+            m_plot_widget->adjust_t_from_mouse_diff(usable_width(), x - m_drag_start_x);
             m_drag_start_x = x;
         }
     }
-    else if (m_dragging_preview) {
+    else
+    if (m_dragging_preview) {
         m_plot_widget->adjust_t_from_mouse_diff_on_preview(width(), x - m_drag_preview_start);
         m_drag_preview_start = x;
     }
@@ -224,7 +227,7 @@ void Plot_interaction_item::wheelEvent(QWheelEvent* event)
         return;
     }
 
-    const qreal ph = previewHeight();
+    const qreal ph = preview_height();
     const qreal y = event->position().y();
 
     if (ph > 0 && y > height() - (ph - 1)) {
@@ -257,8 +260,8 @@ void Plot_interaction_item::wheelEvent(QWheelEvent* event)
         return;
     }
 
-    const qreal uw = usableWidth();
-    const qreal uh = usableHeight();
+    const qreal uw = usable_width();
+    const qreal uh = usable_height();
     const qreal wx = std::min(event->position().x(), uw);
     const qreal px = uw > 0 ? (wx / uw) : 0.5;
     const qreal py = uh > 0 ? (y / uh) : 0.5;
@@ -270,7 +273,8 @@ void Plot_interaction_item::wheelEvent(QWheelEvent* event)
         m_zoom_vel_t += impulse;
         m_zoom_vel_v += impulse;
     }
-    else if (mods & Qt::AltModifier) {
+    else
+    if (mods & Qt::AltModifier) {
         m_zoom_vel_v += impulse;
     }
     else {
@@ -280,7 +284,7 @@ void Plot_interaction_item::wheelEvent(QWheelEvent* event)
     m_zoom_vel_t = std::clamp(m_zoom_vel_t, -k_zoom_max_vel, k_zoom_max_vel);
     m_zoom_vel_v = std::clamp(m_zoom_vel_v, -k_zoom_max_vel, k_zoom_max_vel);
 
-    applyZoomStep();
+    apply_zoom_step();
 
     if (!m_zoom_timer.isActive()) {
         m_zoom_timer.start(k_zoom_timer_interval_ms, this);
@@ -291,28 +295,28 @@ void Plot_interaction_item::wheelEvent(QWheelEvent* event)
 
 void Plot_interaction_item::hoverEnterEvent(QHoverEvent* event)
 {
-    // Always emit hover signals regardless of interactionEnabled.
+    // Always emit hover signals regardless of interaction_enabled.
     // The indicator (value display) should work even when pan/zoom is disabled.
-    emit mousePositionChanged(event->position().x(), event->position().y());
+    emit mouse_position_changed(event->position().x(), event->position().y());
 }
 
 void Plot_interaction_item::hoverLeaveEvent(QHoverEvent* event)
 {
     Q_UNUSED(event)
-    // Always emit mouseExited regardless of interactionEnabled.
-    emit mouseExited();
+    // Always emit mouse_exited regardless of interaction_enabled.
+    emit mouse_exited();
 }
 
 void Plot_interaction_item::hoverMoveEvent(QHoverEvent* event)
 {
-    // Always emit hover signals regardless of interactionEnabled.
-    emit mousePositionChanged(event->position().x(), event->position().y());
+    // Always emit hover signals regardless of interaction_enabled.
+    emit mouse_position_changed(event->position().x(), event->position().y());
 }
 
 void Plot_interaction_item::timerEvent(QTimerEvent* event)
 {
     if (event->timerId() == m_zoom_timer.timerId()) {
-        applyZoomStep();
+        apply_zoom_step();
     }
     else {
         QQuickItem::timerEvent(event);

@@ -6,8 +6,8 @@ import VnmPlot 1.0 as VnmPlotLib
 Item {
     id: control
 
-    property alias plot_widget: libPlotView.plotWidget
-    property var timeAxis: null
+    property alias plot_widget: libPlotView.plot_widget
+    property var time_axis: null
 
     property real preview_height: 0
     property real preview_height_target: 0
@@ -16,7 +16,7 @@ Item {
 
     property real screen_scaling_trigger: Screen.pixelDensity
     onScreen_scaling_triggerChanged: {
-        libPlotView.plotWidget.update_dpi_scaling_factor()
+        libPlotView.plot_widget.update_dpi_scaling_factor()
     }
 
     NumberAnimation {
@@ -28,7 +28,7 @@ Item {
     }
 
     Connections {
-        target: libPlotView.plotWidget
+        target: libPlotView.plot_widget
 
         function onPreview_height_target_changed(target) {
             if (preview_height_min === 0 && preview_height_max === 0 && preview_height === 0) {
@@ -36,7 +36,7 @@ Item {
                 preview_height_target = target
                 preview_height_min = target
                 preview_height_max = target
-                libPlotView.plotWidget.preview_height = preview_height
+                libPlotView.plot_widget.preview_height = preview_height
                 return
             }
 
@@ -54,7 +54,7 @@ Item {
 
             if (dur <= 0.5) {
                 preview_height = target
-                libPlotView.plotWidget.preview_height = preview_height
+                libPlotView.plot_widget.preview_height = preview_height
                 preview_height_anim.stop()
                 return
             }
@@ -68,19 +68,19 @@ Item {
     }
 
     onPreview_heightChanged: {
-        libPlotView.plotWidget.preview_height = preview_height
+        libPlotView.plot_widget.preview_height = preview_height
     }
 
     VnmPlotLib.PlotView {
         id: libPlotView
         anchors.fill: parent
-        darkMode: true
-        timeAxis: control.timeAxis
+        dark_mode: true
+        time_axis: control.time_axis
     }
 
     Component.onCompleted: {
-        preview_height = libPlotView.plotWidget.preview_height
-        preview_height_target = libPlotView.plotWidget.preview_height_target
+        preview_height = libPlotView.plot_widget.preview_height
+        preview_height_target = libPlotView.plot_widget.preview_height_target
         if (preview_height_target > 0) {
             preview_height_min = preview_height_target
             preview_height_max = preview_height_target

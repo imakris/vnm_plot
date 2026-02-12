@@ -629,7 +629,7 @@ ApplicationWindow {
                 anchors.margins: 8
 
                 Component.onCompleted: {
-                    functionPlotter.plotWidget = plotView.plot_widget
+                    functionPlotter.plot_widget = plotView.plot_widget
                 }
             }
 

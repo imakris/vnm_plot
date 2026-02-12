@@ -67,7 +67,7 @@ GL_program& GL_program::operator=(GL_program&& other) noexcept
     return *this;
 }
 
-void GL_program::set_log_callback(LogCallback callback)
+void GL_program::set_log_callback(Log_callback callback)
 {
     m_log_callback = std::move(callback);
 }
@@ -264,7 +264,7 @@ std::unique_ptr<GL_program> create_gl_program(
     std::string_view vert_source,
     std::string_view geom_source,
     std::string_view frag_source,
-    const GL_program::LogCallback& log_error)
+    const GL_program::Log_callback& log_error)
 {
     auto program = std::make_unique<GL_program>();
     program->set_log_callback(log_error);

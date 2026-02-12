@@ -23,24 +23,24 @@ Window {
             id: plotViewTop
             height: parent.height * 0.5 - spacing * 0.5
             width: parent.width
-            timeAxis: sharedAxis
-            Component.onCompleted: plotWidget.update_dpi_scaling_factor()
+            time_axis: sharedAxis
+            Component.onCompleted: plot_widget.update_dpi_scaling_factor()
         }
 
         PlotView {
             id: plotViewBottom
             height: parent.height * 0.5 - spacing * 0.5
             width: parent.width
-            timeAxis: sharedAxis
-            Component.onCompleted: plotWidget.update_dpi_scaling_factor()
+            time_axis: sharedAxis
+            Component.onCompleted: plot_widget.update_dpi_scaling_factor()
         }
     }
 
     PlotController {
-        plot_widget: plotViewTop.plotWidget
+        plot_widget: plotViewTop.plot_widget
     }
 
     PlotController {
-        plot_widget: plotViewBottom.plotWidget
+        plot_widget: plotViewBottom.plot_widget
     }
 }

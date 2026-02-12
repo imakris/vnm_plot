@@ -43,7 +43,7 @@ public:
 
     // Set profiler for performance tracking
     void set_profiler(vnm::plot::Profiler* profiler) { m_profiler = profiler; }
-    void set_log_callback(GL_program::LogCallback callback);
+    void set_log_callback(GL_program::Log_callback callback);
 
     // --- Rect Pipeline ---
     // Batch a rectangle for drawing
@@ -87,7 +87,7 @@ private:
     std::vector<rect_vertex_t> m_cpu_buffer;
     bool                       m_initialized = false;
     vnm::plot::Profiler*       m_profiler    = nullptr;
-    GL_program::LogCallback    m_log_error;
+    GL_program::Log_callback    m_log_error;
 
     static constexpr int k_rect_initial_quads = 256;
 };
