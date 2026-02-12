@@ -78,6 +78,7 @@ public:
         int    vertical_seed_index    = -1;
         double vertical_seed_step     = 0.0;
         double vertical_finest_step   = 0.0;
+        double horizontal_finest_step = 0.0;
         int    horizontal_seed_index  = -1;
         double horizontal_seed_step   = 0.0;
     };

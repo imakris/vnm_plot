@@ -173,7 +173,7 @@ public:
     Q_INVOKABLE void set_preview_height_steps(int steps);
 
     Q_INVOKABLE QVariantList get_indicator_samples(double x, double plot_width, double plot_height, double mouse_px = -1.0) const;
-    Q_INVOKABLE QString format_timestamp_like_axis(double timestamp) const;
+    Q_INVOKABLE QString format_timestamp_precise(double timestamp) const;
 
     // --- Qt Quick FBO Interface ---
 

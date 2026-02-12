@@ -74,7 +74,7 @@ struct Benchmark_frame_context {
 };
 
 /// Shared format_benchmark_timestamp function
-std::string format_benchmark_timestamp(double ts, double range);
+std::string format_benchmark_timestamp(double ts, double step);
 
 /// Update view range from data source (t_min, t_max, v_min, v_max)
 /// Uses a 10-second sliding window

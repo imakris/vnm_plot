@@ -92,10 +92,10 @@ struct Plot_config
 
     // --- Timestamp Formatting ---
     // Callback to format timestamps for axis labels.
-    // Parameters: timestamp (unix seconds), visible_range (seconds shown)
+    // Parameters: timestamp (unix seconds), step (tick interval in seconds)
     // Returns: formatted string for display
     // If null, a default formatter is used.
-    std::function<std::string(double timestamp, double visible_range)> format_timestamp;
+    std::function<std::string(double timestamp, double step)> format_timestamp;
     // Revision for formatter behavior. Caller contract: increment when the
     // effective output of format_timestamp changes without replacing the
     // callback identity (e.g. captured/stateful data updates).
@@ -161,10 +161,10 @@ struct Plot_config
 // Simple formatter when no custom one is provided.
 // For full formatting with timezone support, applications should provide
 // their own formatter via Plot_config::format_timestamp.
-inline std::string default_format_timestamp(double timestamp, double /*visible_range*/)
+inline std::string default_format_timestamp(double timestamp, double step)
 {
-    // Simple ISO-style formatting
-    // Applications should override for timezone-aware formatting
+    // Simple formatting with step-appropriate precision.
+    // Applications should override for timezone-aware formatting.
     time_t t = static_cast<time_t>(timestamp);
     struct tm tm_buf;
 
@@ -175,7 +175,12 @@ inline std::string default_format_timestamp(double timestamp, double /*visible_r
 #endif
 
     char buf[32];
-    std::strftime(buf, sizeof(buf), "%H:%M:%S", &tm_buf);
+    if (step >= 60.0) {
+        std::strftime(buf, sizeof(buf), "%H:%M", &tm_buf);
+    }
+    else {
+        std::strftime(buf, sizeof(buf), "%H:%M:%S", &tm_buf);
+    }
     return buf;
 }
 

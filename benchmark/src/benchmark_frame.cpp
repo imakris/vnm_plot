@@ -12,7 +12,7 @@
 
 namespace vnm::benchmark {
 
-std::string format_benchmark_timestamp(double ts, double /*range*/)
+std::string format_benchmark_timestamp(double ts, double /*step*/)
 {
     // Format timestamp as seconds with 1 decimal.
     char buf[32];

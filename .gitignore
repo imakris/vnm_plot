@@ -6,6 +6,8 @@
 /build_benchmark_headless/
 /build_benchmark_qt/
 /build-benchmark-*/
+/build_review/
+/build_review_qt/
 /benchmark_headless/build/
 
 # Test binaries

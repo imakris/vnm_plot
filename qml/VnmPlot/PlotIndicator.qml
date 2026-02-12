@@ -88,9 +88,8 @@ Item {
     }
 
     function formatTimestamp(xVal, tspan) {
-        // Try to use the date formatting from the plot widget (matches axis labels)
         try {
-            var formatted = plotWidget.format_timestamp_like_axis(xVal)
+            var formatted = plotWidget.format_timestamp_precise(xVal)
             if (formatted)
                 return formatted
         } catch (e) {}

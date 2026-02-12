@@ -212,7 +212,7 @@ public:
 
         bool first = true;
         for (double sample : k_samples) {
-            std::string text = params.format_timestamp_func(sample, range);
+            std::string text = params.format_timestamp_func(sample, step);
             for (char& ch : text) {
                 if (ch >= '0' && ch <= '9') {
                     ch = '0';
@@ -721,11 +721,11 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
             return float((tt - params.t_min) * px_per_t);
         };
 
-        const auto label_text = [&](double t) -> std::string {
+        const auto label_text = [&](double t, double step) -> std::string {
             if (!params.format_timestamp_func) {
                 return {};
             }
-            return params.format_timestamp_func(t, t_range);
+            return params.format_timestamp_func(t, step);
         };
 
         std::vector<std::pair<float, float>> accepted;
@@ -757,6 +757,7 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
 
         bool any_level  = false;
         bool any_subsec = false;
+        double finest_step = 0.0;
 
         for (; si >= 0; --si) {
             const double step = steps[si];
@@ -916,7 +917,7 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
                             VNM_PLOT_PROFILE_SCOPE(
                                 profiler,
                                 "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis.format_labels.format_timestamp");
-                            label = label_text(t);
+                            label = label_text(t, step);
                         }
 
                         if (use_monospace) {
@@ -1041,6 +1042,7 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
                     profiler,
                     "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis.emit_labels");
                 any_level = true;
+                finest_step = step;
                 if (step < 1.0) {
                     any_subsec = true;
                 }
@@ -1052,7 +1054,7 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
                         label_bytes = cached_label->bytes;
                     }
                     else {
-                        std::string label = label_text(candidate.t);
+                        std::string label = label_text(candidate.t, step);
                         label_bytes = label;
                         timestamp_label_cache().store(candidate.t, std::move(label), candidate.x1 - candidate.x0);
                     }
@@ -1082,10 +1084,53 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
                 "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis.finalize");
             if (any_level) {
                 res.h_labels_subsecond = any_subsec;
+                res.horizontal_finest_step = finest_step;
             }
 
             res.horizontal_seed_index = start_si;
             res.horizontal_seed_step  = start_step;
+        }
+
+        // Ensure uniform label format using the finest accepted step.
+        // After the multi-level loop, labels from coarser steps may have
+        // narrower formats. Re-format all with finest_step, then remove
+        // any labels that now overlap due to wider text.
+        if (any_level && finest_step > 0.0 && params.format_timestamp_func &&
+            res.h_labels.size() > 1)
+        {
+            for (auto& label : res.h_labels) {
+                label.text = params.format_timestamp_func(label.value, finest_step);
+            }
+
+            std::sort(res.h_labels.begin(), res.h_labels.end(),
+                [](const h_label_t& a, const h_label_t& b) {
+                    return a.position.x < b.position.x;
+                });
+
+            float prev_right = -std::numeric_limits<float>::max();
+            auto write = res.h_labels.begin();
+            for (auto it = res.h_labels.begin(); it != res.h_labels.end(); ++it) {
+                float w = 0.f;
+                if (use_monospace && advance > 0.f) {
+                    w = advance * float(it->text.size());
+                }
+                else
+                if (params.measure_text_func) {
+                    w = params.measure_text_func(it->text.c_str());
+                }
+                else
+                if (advance > 0.f) {
+                    w = advance * float(it->text.size());
+                }
+                if (it->position.x >= prev_right + min_gap) {
+                    prev_right = it->position.x + w;
+                    if (write != it) {
+                        *write = std::move(*it);
+                    }
+                    ++write;
+                }
+            }
+            res.h_labels.erase(write, res.h_labels.end());
         }
     }
 

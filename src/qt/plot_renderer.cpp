@@ -864,9 +864,9 @@ const frame_layout_result_t& Plot_renderer::impl_t::calculate_frame_layout(
 
         if (config) {
             layout_params.get_required_fixed_digits_func = [](double) { return 2; };
-            layout_params.format_timestamp_func = [config](double ts, double range) -> std::string {
+            layout_params.format_timestamp_func = [config](double ts, double step) -> std::string {
                 if (config->format_timestamp) {
-                    return config->format_timestamp(ts, range);
+                    return config->format_timestamp(ts, step);
                 }
                 return format_axis_fixed_or_int(ts, 3);
             };

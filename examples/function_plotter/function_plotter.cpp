@@ -862,15 +862,14 @@ void Function_plotter::configure_plot_widget()
     config.auto_v_range_extra_scale = 0.5;
 
     // Custom x-axis formatter (just show the value, not time)
-    config.format_timestamp = [](double x, double range) -> std::string {
+    config.format_timestamp = [](double x, double step) -> std::string {
         int digits = 0;
-        if (range > 0.0) {
-            const double step = range / 5.0;
+        if (step > 0.0) {
             digits = std::max(0, static_cast<int>(std::ceil(-std::log10(step))) + 1);
             digits = std::min(digits, 6);
         }
 
-        const bool use_scientific = use_scientific_for_range(range, digits);
+        const bool use_scientific = use_scientific_for_range(step * 10.0, digits);
         if (use_scientific) {
             return format_axis_scientific(x, digits);
         }
