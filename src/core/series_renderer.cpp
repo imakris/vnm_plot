@@ -332,16 +332,17 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
     vbo_state_t& shared_state,
     uint64_t frame_id,
     Data_source& data_source,
-    const std::function<double(const void*)>& get_timestamp,
+    const Data_access_policy& access,
     const std::vector<std::size_t>& scales,
     double t_min,
     double t_max,
     double width_px,
-    bool allow_stale_on_empty,
+    Empty_window_behavior empty_window_behavior,
     vnm::plot::Profiler* profiler,
     bool skip_gl)
 {
     view_render_result_t result;
+    const auto& get_timestamp = access.get_timestamp;
 
     if (scales.empty() || t_max <= t_min || width_px <= 0.0) {
         return result;
@@ -381,22 +382,23 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
     };
 
     // Populate result from cached stale values when a fresh snapshot is unavailable.
+    const auto load_cached_result = [&](view_render_result_t& r, std::size_t level) {
+        r.can_draw = true;
+        r.first = view_state.last_first;
+        r.count = view_state.last_count;
+        r.applied_level = level;
+        r.applied_pps = view_state.last_applied_pps;
+    };
     const auto try_stale_fallback = [&](view_render_result_t& r) -> bool {
         const void* current_identity = data_source.identity();
         const bool identity_ok =
             (view_state.cached_data_identity != nullptr) &&
             (view_state.cached_data_identity == current_identity) &&
             (view_state.active_vbo != UINT_MAX) &&
-            (view_state.last_count > 0);
+            (view_state.last_count > 0) &&
+            (view_state.last_empty_window_behavior == empty_window_behavior);
         if (!identity_ok) return false;
-        r.can_draw = true;
-        r.first = view_state.last_first;
-        r.count = view_state.last_count;
-        r.applied_level = view_state.last_lod_level;
-        r.applied_pps = view_state.last_applied_pps;
-        r.use_t_override = view_state.last_use_t_override;
-        r.t_min_override = view_state.last_t_min_override;
-        r.t_max_override = view_state.last_t_max_override;
+        load_cached_result(r, view_state.last_lod_level);
         return true;
     };
 
@@ -409,6 +411,7 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
         }
         mark_tried(applied_level);
         const std::size_t applied_scale = scales[applied_level];
+        bool hold_last_forward = false;
 
         const uint64_t current_seq = data_source.current_sequence(applied_level);
         if (current_seq != 0 &&
@@ -419,16 +422,10 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
             view_state.cached_data_identity == data_source.identity() &&
             view_state.last_t_min == t_min &&
             view_state.last_t_max == t_max &&
-            view_state.last_width_px == width_px)
+            view_state.last_width_px == width_px &&
+            view_state.last_empty_window_behavior == empty_window_behavior)
         {
-            result.can_draw = true;
-            result.first = view_state.last_first;
-            result.count = view_state.last_count;
-            result.applied_level = applied_level;
-            result.applied_pps = view_state.last_applied_pps;
-            result.use_t_override = view_state.last_use_t_override;
-            result.t_min_override = view_state.last_t_min_override;
-            result.t_max_override = view_state.last_t_max_override;
+            load_cached_result(result, applied_level);
             return result;
         }
 
@@ -463,22 +460,59 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
         }
 
         const auto& snapshot = snapshot_result.snapshot;
+        bool timestamps_monotonic = true;
+        if (get_timestamp) {
+            const void* current_identity = data_source.identity();
+            const bool need_monotonicity_scan =
+                view_state.last_timestamp_order_sequence != snapshot.sequence ||
+                view_state.last_timestamp_order_identity != current_identity;
+            if (need_monotonicity_scan) {
+                bool is_monotonic = true;
+                const void* first_sample = snapshot.at(0);
+                if (!first_sample) {
+                    is_monotonic = false;
+                }
+                else {
+                    double prev_ts = get_timestamp(first_sample);
+                    if (!std::isfinite(prev_ts)) {
+                        is_monotonic = false;
+                    }
+                    else {
+                        for (std::size_t i = 1; i < snapshot.count; ++i) {
+                            const void* sample = snapshot.at(i);
+                            if (!sample) {
+                                is_monotonic = false;
+                                break;
+                            }
+                            const double ts = get_timestamp(sample);
+                            if (!std::isfinite(ts) || ts < prev_ts) {
+                                is_monotonic = false;
+                                break;
+                            }
+                            prev_ts = ts;
+                        }
+                    }
+                }
+                view_state.last_timestamp_order_sequence = snapshot.sequence;
+                view_state.last_timestamp_order_identity = current_identity;
+                view_state.last_timestamps_monotonic = is_monotonic;
+            }
+            timestamps_monotonic = view_state.last_timestamps_monotonic;
+        }
 
         // Find visible range using binary search
         std::size_t first_idx = 0;
         std::size_t last_idx = snapshot.count;
-        double first_ts = 0.0;
         double last_ts = 0.0;
-        bool have_ts_bounds = false;
+        bool have_last_ts = false;
         if (get_timestamp) {
-            VNM_PLOT_PROFILE_SCOPE(profiler, "process_view.binary_search");
             const void* first_sample = snapshot.at(0);
             const void* last_sample = snapshot.at(snapshot.count - 1);
             if (first_sample && last_sample) {
-                first_ts = get_timestamp(first_sample);
                 last_ts = get_timestamp(last_sample);
-                have_ts_bounds = std::isfinite(first_ts) && std::isfinite(last_ts);
+                have_last_ts = std::isfinite(last_ts);
             }
+            VNM_PLOT_PROFILE_SCOPE(profiler, "process_view.binary_search");
             first_idx = lower_bound_timestamp(snapshot, get_timestamp, t_min);
             if (first_idx > 0) {
                 --first_idx;
@@ -486,35 +520,47 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
             last_idx = upper_bound_timestamp(snapshot, get_timestamp, t_max);
             last_idx = std::min(last_idx + 2, snapshot.count);
         }
-
-        if (allow_stale_on_empty && have_ts_bounds && last_ts > first_ts &&
-            !result.use_t_override)
-        {
-            const bool covers_window = (first_ts <= t_min) && (last_ts >= t_max);
-            if (!covers_window) {
-                first_idx = 0;
-                last_idx = snapshot.count;
-                result.use_t_override = true;
-                result.t_min_override = first_ts;
-                result.t_max_override = last_ts;
+        if (get_timestamp && !timestamps_monotonic) {
+            VNM_PLOT_PROFILE_SCOPE(profiler, "process_view.linear_fallback");
+            std::size_t match_first = snapshot.count;
+            std::size_t match_last = 0;
+            for (std::size_t i = 0; i < snapshot.count; ++i) {
+                const void* sample = snapshot.at(i);
+                if (!sample) {
+                    continue;
+                }
+                const double ts = get_timestamp(sample);
+                if (!std::isfinite(ts) || ts < t_min || ts > t_max) {
+                    continue;
+                }
+                if (match_first == snapshot.count) {
+                    match_first = i;
+                }
+                match_last = i + 1;
+            }
+            if (match_first < match_last) {
+                first_idx = (match_first > 0) ? (match_first - 1) : 0;
+                last_idx = std::min(match_last + 2, snapshot.count);
             }
         }
 
+        const bool can_hold_last_forward =
+            empty_window_behavior == Empty_window_behavior::HOLD_LAST_FORWARD &&
+            access.clone_with_timestamp &&
+            have_last_ts &&
+            last_ts < t_max;
+        const auto enable_hold_last_forward = [&]() {
+            hold_last_forward = true;
+        };
+
         if (first_idx >= last_idx) {
-            const bool can_override =
-                allow_stale_on_empty && have_ts_bounds && last_ts > first_ts &&
-                !result.use_t_override;
-            if (can_override) {
-                first_idx = 0;
+            if (can_hold_last_forward) {
+                first_idx = snapshot.count - 1;
                 last_idx = snapshot.count;
-                result.use_t_override = true;
-                result.t_min_override = first_ts;
-                result.t_max_override = last_ts;
+                enable_hold_last_forward();
             }
-            else if (allow_stale_on_empty && try_stale_fallback(result)) {
-                break;
-            }
-            else if (applied_level > 0 && !was_tried(applied_level - 1)) {
+            else
+            if (applied_level > 0 && !was_tried(applied_level - 1)) {
                 target_level = applied_level - 1;
                 continue;
             }
@@ -522,8 +568,15 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
                 break;
             }
         }
+        else
+        if (can_hold_last_forward && last_idx == snapshot.count) {
+            enable_hold_last_forward();
+        }
 
-        const GLsizei count = static_cast<GLsizei>(last_idx - first_idx);
+        GLsizei count = static_cast<GLsizei>(last_idx - first_idx);
+        if (hold_last_forward) {
+            ++count;
+        }
         const std::size_t base_samples = (count > 0)
             ? static_cast<std::size_t>(count) * applied_scale : 0;
         const double base_pps = (base_samples > 0)
@@ -543,13 +596,18 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
                 glGenBuffers(1, &view_state.id);
             }
 
-            const std::size_t needed_bytes = snapshot.count * snapshot.stride;
+            const std::size_t needed_elements = snapshot.count + (hold_last_forward ? 1 : 0);
+            const std::size_t needed_bytes = needed_elements * snapshot.stride;
             const void* current_identity = data_source.identity();
             const bool region_changed = (view_state.last_ring_size < needed_bytes);
+            const bool hold_changed =
+                (view_state.last_hold_last_forward != hold_last_forward) ||
+                (hold_last_forward && view_state.last_t_max != t_max);
             const bool must_upload = region_changed
                 || (snapshot.sequence != view_state.last_sequence)
                 || (applied_level != view_state.last_lod_level)
                 || (current_identity != view_state.cached_data_identity);
+            const bool needs_hold_upload = hold_last_forward && (must_upload || hold_changed);
 
             if (must_upload && !skip_gl) {
                 glBindBuffer(GL_ARRAY_BUFFER, view_state.id);
@@ -579,6 +637,23 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
                 }
                 m_metrics.bytes_uploaded += snapshot.count * snapshot.stride;
             }
+            if (needs_hold_upload && !skip_gl) {
+                const void* source_sample = snapshot.at(snapshot.count - 1);
+                if (source_sample) {
+                    auto& hold_sample = view_state.hold_sample_buffer;
+                    hold_sample.resize(snapshot.stride);
+                    access.clone_with_timestamp(hold_sample.data(), source_sample, t_max);
+                    if (!must_upload) {
+                        glBindBuffer(GL_ARRAY_BUFFER, view_state.id);
+                    }
+                    glBufferSubData(
+                        GL_ARRAY_BUFFER,
+                        static_cast<GLintptr>(snapshot.count * snapshot.stride),
+                        static_cast<GLsizeiptr>(snapshot.stride),
+                        hold_sample.data());
+                    m_metrics.bytes_uploaded += snapshot.stride;
+                }
+            }
             if (must_upload) {
                 view_state.last_sequence = snapshot.sequence;
                 view_state.cached_data_identity = current_identity;
@@ -594,6 +669,7 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
         view_state.last_t_min = t_min;
         view_state.last_t_max = t_max;
         view_state.last_width_px = width_px;
+        view_state.last_empty_window_behavior = empty_window_behavior;
 
         result.can_draw = true;
         result.first = view_state.last_first;
@@ -601,9 +677,7 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
         result.applied_level = applied_level;
         result.applied_pps = base_pps * static_cast<double>(applied_scale);
         view_state.last_applied_pps = result.applied_pps;
-        view_state.last_use_t_override = result.use_t_override;
-        view_state.last_t_min_override = result.t_min_override;
-        view_state.last_t_max_override = result.t_max_override;
+        view_state.last_hold_last_forward = hold_last_forward;
         // Cache snapshot for reuse in draw_pass (eliminates redundant snapshot call)
         result.cached_snapshot = snapshot;
         result.cached_snapshot_hold = snapshot.hold;
@@ -884,8 +958,8 @@ void Series_renderer::render(
         const std::size_t prev_lod_level = vbo_state.main_view.last_lod_level;
         auto main_result = process_view(
             vbo_state.main_view, vbo_state, m_frame_id, *main_source,
-            main_access.get_timestamp, main_scales,
-            ctx.t0, ctx.t1, layout.usable_width, false, profiler, skip_gl);
+            main_access, main_scales,
+            ctx.t0, ctx.t1, layout.usable_width, s->empty_window_behavior, profiler, skip_gl);
         if (ctx.config && ctx.config->log_debug &&
             main_result.can_draw &&
             main_result.applied_level != prev_lod_level)
@@ -900,9 +974,9 @@ void Series_renderer::render(
         if (preview_visible && preview_valid) {
             preview_result = process_view(
                 vbo_state.preview_view, vbo_state, m_frame_id, *preview_source,
-                preview_access->get_timestamp, preview_scales,
+                *preview_access, preview_scales,
                 ctx.t_available_min, ctx.t_available_max, ctx.win_w,
-                true, profiler, skip_gl);
+                Empty_window_behavior::DRAW_NOTHING, profiler, skip_gl);
         }
 
         Series_draw_state draw_state;
@@ -1142,10 +1216,6 @@ void Series_renderer::render(
         set_common_uniforms(*pass_shader, ctx.pmv, ctx);
         if (is_preview) {
             modify_uniforms_for_preview(*pass_shader, ctx);
-            if (view_result.use_t_override) {
-                glUniform1d(pass_shader->uniform_location("t_min"), view_result.t_min_override);
-                glUniform1d(pass_shader->uniform_location("t_max"), view_result.t_max_override);
-            }
         }
 
         glUniform4fv(pass_shader->uniform_location("color"), 1, glm::value_ptr(draw_color));

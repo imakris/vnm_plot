@@ -6,6 +6,7 @@
 #include <vnm_plot/core/types.h>
 #include <vnm_plot/core/vertex_layout.h>
 
+#include <cstring>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -56,6 +57,16 @@ std::size_t member_offset(Member Sample::* member)
     return static_cast<std::size_t>(field - base);
 }
 
+template<typename Sample, typename Timestamp_member>
+auto make_clone_with_timestamp(Timestamp_member Sample::* timestamp_member)
+{
+    return [timestamp_member](Sample& dst_sample, const Sample& src_sample, double timestamp) {
+        dst_sample = src_sample;
+        using timestamp_t = std::decay_t<decltype(dst_sample.*timestamp_member)>;
+        dst_sample.*timestamp_member = static_cast<timestamp_t>(timestamp);
+    };
+}
+
 } // namespace detail
 
 template<typename Sample>
@@ -67,6 +78,7 @@ struct Data_access_policy_typed
 
     std::function<double(const Sample&)> get_aux_metric;
     std::function<float(const Sample&)> get_signal;
+    std::function<void(Sample& dst_sample, const Sample& src_sample, double timestamp)> clone_with_timestamp;
 
     std::function<void()> setup_vertex_attributes;
     std::function<void(unsigned int)> bind_uniforms;
@@ -103,6 +115,21 @@ struct Data_access_policy_typed
         if (get_signal) {
             policy.get_signal = [fn = get_signal](const void* sample) {
                 return fn(*static_cast<const Sample*>(sample));
+            };
+        }
+        if (clone_with_timestamp) {
+            policy.clone_with_timestamp = [fn = clone_with_timestamp](void* dst_sample, const void* src_sample, double timestamp) {
+                if (!dst_sample || !src_sample) {
+                    return;
+                }
+                // Write through a properly aligned local sample, then copy bytes
+                // into caller-provided storage to avoid alignment UB.
+                Sample tmp_sample{};
+                fn(
+                    tmp_sample,
+                    *static_cast<const Sample*>(src_sample),
+                    timestamp);
+                std::memcpy(dst_sample, &tmp_sample, sizeof(Sample));
             };
         }
         policy.setup_vertex_attributes = setup_vertex_attributes;
@@ -193,17 +220,27 @@ inline void apply_layout(
 }
 
 template<typename Sample, typename Timestamp_member, typename Value_member>
-inline Data_access_policy_typed<Sample> make_access_policy(
+inline void assign_standard_accessors(
+    Data_access_policy_typed<Sample>& policy,
     Timestamp_member Sample::* timestamp_member,
     Value_member Sample::* value_member)
 {
-    Data_access_policy_typed<Sample> policy;
     policy.get_timestamp = [timestamp_member](const Sample& sample) {
         return static_cast<double>(sample.*timestamp_member);
     };
     policy.get_value = [value_member](const Sample& sample) {
         return static_cast<float>(sample.*value_member);
     };
+    policy.clone_with_timestamp = detail::make_clone_with_timestamp(timestamp_member);
+}
+
+template<typename Sample, typename Timestamp_member, typename Value_member>
+inline Data_access_policy_typed<Sample> make_access_policy(
+    Timestamp_member Sample::* timestamp_member,
+    Value_member Sample::* value_member)
+{
+    Data_access_policy_typed<Sample> policy;
+    assign_standard_accessors(policy, timestamp_member, value_member);
 
     const Vertex_layout layout =
         make_standard_layout<Sample>(timestamp_member, value_member);
@@ -220,12 +257,7 @@ inline Data_access_policy_typed<Sample> make_access_policy(
     Range_max_member Sample::* range_max_member)
 {
     Data_access_policy_typed<Sample> policy;
-    policy.get_timestamp = [timestamp_member](const Sample& sample) {
-        return static_cast<double>(sample.*timestamp_member);
-    };
-    policy.get_value = [value_member](const Sample& sample) {
-        return static_cast<float>(sample.*value_member);
-    };
+    assign_standard_accessors(policy, timestamp_member, value_member);
     policy.get_range = [range_min_member, range_max_member](const Sample& sample) {
         const float low = static_cast<float>(sample.*range_min_member);
         const float high = static_cast<float>(sample.*range_max_member);

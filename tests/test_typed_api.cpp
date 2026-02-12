@@ -126,6 +126,52 @@ bool test_make_access_policy_and_erase()
     const auto erased_range = erased.get_range(&s);
     TEST_ASSERT(erased_range.first == 1.0f && erased_range.second == 6.0f,
         "erased range accessor mismatch");
+    TEST_ASSERT(static_cast<bool>(policy.clone_with_timestamp), "typed clone_with_timestamp should be set");
+    TEST_ASSERT(static_cast<bool>(erased.clone_with_timestamp), "erased clone_with_timestamp should be set");
+
+    return true;
+}
+
+bool test_clone_with_timestamp_for_both_overloads()
+{
+    sample_t src{};
+    src.t = 100.25;
+    src.v = 7.0f;
+    src.v_min = 6.5f;
+    src.v_max = 7.5f;
+    src.pad = 17;
+
+    {
+        auto value_only = plot::make_access_policy<sample_t>(&sample_t::t, &sample_t::v);
+        TEST_ASSERT(static_cast<bool>(value_only.clone_with_timestamp),
+            "value-only overload should set clone_with_timestamp");
+
+        sample_t dst{};
+        value_only.clone_with_timestamp(dst, src, 130.5);
+        TEST_ASSERT(dst.t == 130.5, "value-only clone should overwrite timestamp");
+        TEST_ASSERT(dst.v == src.v, "value-only clone should copy value");
+        TEST_ASSERT(dst.pad == src.pad, "value-only clone should copy pad");
+        TEST_ASSERT(dst.v_min == src.v_min && dst.v_max == src.v_max,
+            "value-only clone should copy remaining fields");
+    }
+
+    {
+        auto with_range = plot::make_access_policy<sample_t>(
+            &sample_t::t,
+            &sample_t::v,
+            &sample_t::v_min,
+            &sample_t::v_max);
+        TEST_ASSERT(static_cast<bool>(with_range.clone_with_timestamp),
+            "range overload should set clone_with_timestamp");
+
+        sample_t dst{};
+        with_range.clone_with_timestamp(dst, src, 222.0);
+        TEST_ASSERT(dst.t == 222.0, "range clone should overwrite timestamp");
+        TEST_ASSERT(dst.v == src.v, "range clone should copy value");
+        TEST_ASSERT(dst.pad == src.pad, "range clone should copy pad");
+        TEST_ASSERT(dst.v_min == src.v_min && dst.v_max == src.v_max,
+            "range clone should copy range fields");
+    }
 
     return true;
 }
@@ -144,6 +190,7 @@ bool test_series_builder_preview_config()
     auto series = plot::Series_builder()
         .enabled(false)
         .style(plot::Display_style::LINE)
+        .empty_window_behavior(plot::Empty_window_behavior::HOLD_LAST_FORWARD)
         .data_source(main_source)
         .access(policy)
         .preview(preview_cfg)
@@ -154,6 +201,8 @@ bool test_series_builder_preview_config()
         "preview data_source mismatch");
     TEST_ASSERT(series.preview_config->style && *series.preview_config->style == plot::Display_style::AREA,
         "preview style mismatch");
+    TEST_ASSERT(series.empty_window_behavior == plot::Empty_window_behavior::HOLD_LAST_FORWARD,
+        "empty_window_behavior mismatch");
 
     return true;
 }
@@ -171,6 +220,7 @@ int main()
     RUN_TEST(test_member_offset_matches_offsetof);
     RUN_TEST(test_layout_key_for_variations);
     RUN_TEST(test_make_access_policy_and_erase);
+    RUN_TEST(test_clone_with_timestamp_for_both_overloads);
     RUN_TEST(test_series_builder_preview_config);
 
     std::cout << "Results: " << passed << " passed, " << failed << " failed" << std::endl;

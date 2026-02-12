@@ -25,6 +25,12 @@ public:
         return *this;
     }
 
+    Series_builder& empty_window_behavior(Empty_window_behavior behavior)
+    {
+        m_series.empty_window_behavior = behavior;
+        return *this;
+    }
+
     Series_builder& color(const glm::vec4& c)
     {
         m_series.color = c;

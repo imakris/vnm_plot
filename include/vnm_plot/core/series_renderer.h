@@ -61,6 +61,9 @@ private:
         std::size_t last_snapshot_elements = 0;
         uint64_t last_sequence = 0;
         const void* cached_data_identity = nullptr;
+        uint64_t last_timestamp_order_sequence = 0;
+        const void* last_timestamp_order_identity = nullptr;
+        bool last_timestamps_monotonic = true;
 
         GLuint adjacency_ebo = UINT_MAX;
         std::size_t adjacency_ebo_capacity = 0;
@@ -73,10 +76,10 @@ private:
         double last_t_min = std::numeric_limits<double>::quiet_NaN();
         double last_t_max = std::numeric_limits<double>::quiet_NaN();
         double last_width_px = std::numeric_limits<double>::quiet_NaN();
+        Empty_window_behavior last_empty_window_behavior = Empty_window_behavior::DRAW_NOTHING;
         double last_applied_pps = 0.0;
-        bool last_use_t_override = false;
-        double last_t_min_override = 0.0;
-        double last_t_max_override = 0.0;
+        bool last_hold_last_forward = false;
+        std::vector<unsigned char> hold_sample_buffer;
 
         void reset() { *this = vbo_view_state_t{}; }
     };
@@ -114,9 +117,6 @@ private:
         GLsizei count = 0;
         std::size_t applied_level = 0;
         double applied_pps = 0.0;
-        bool use_t_override = false;
-        double t_min_override = 0.0;
-        double t_max_override = 0.0;
         data_snapshot_t cached_snapshot;              // Reused in draw_pass for aux metric
         std::shared_ptr<void> cached_snapshot_hold;   // Keep snapshot alive
     };
@@ -172,12 +172,12 @@ private:
         vbo_state_t& shared_state,
         uint64_t frame_id,
         Data_source& data_source,
-        const std::function<double(const void*)>& get_timestamp,
+        const Data_access_policy& access,
         const std::vector<std::size_t>& scales,
         double t_min,
         double t_max,
         double width_px,
-        bool allow_stale_on_empty,
+        Empty_window_behavior empty_window_behavior,
         vnm::plot::Profiler* profiler,
         bool skip_gl);
 

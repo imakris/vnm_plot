@@ -1,11 +1,14 @@
 // vnm_plot core snapshot cache tests
 
 #include <vnm_plot/core/asset_loader.h>
+#define private public
 #include <vnm_plot/core/series_renderer.h>
+#undef private
 #include <vnm_plot/core/plot_config.h>
 
 #include <array>
 #include <cassert>
+#include <cstring>
 #include <cstdint>
 #include <iostream>
 #include <map>
@@ -106,6 +109,21 @@ Data_access_policy make_policy()
     policy.get_range = [](const void* sample) {
         const float value = static_cast<const Test_sample*>(sample)->v;
         return std::make_pair(value, value);
+    };
+    return policy;
+}
+
+Data_access_policy make_policy_with_clone()
+{
+    Data_access_policy policy = make_policy();
+    policy.clone_with_timestamp = [](void* dst_sample, const void* src_sample, double timestamp) {
+        if (!dst_sample || !src_sample) {
+            return;
+        }
+        Test_sample tmp_sample{};
+        std::memcpy(&tmp_sample, src_sample, sizeof(Test_sample));
+        tmp_sample.t = timestamp;
+        std::memcpy(dst_sample, &tmp_sample, sizeof(Test_sample));
     };
     return policy;
 }
@@ -338,6 +356,105 @@ bool test_frame_change_invalidates_snapshot_cache()
     return true;
 }
 
+bool test_empty_window_behavior_invalidates_fast_path_cache()
+{
+    auto data_source = std::make_shared<Single_level_source>();
+    data_source->samples.resize(32);
+    for (size_t i = 0; i < data_source->samples.size(); ++i) {
+        data_source->samples[i].t = static_cast<double>(i);
+        data_source->samples[i].v = 10.0f + static_cast<float>(i);
+    }
+
+    const int series_id = 18;
+    auto series = std::make_shared<series_data_t>();
+    series->style = Display_style::LINE;
+    series->data_source = data_source;
+    series->access = make_policy();
+    series->empty_window_behavior = Empty_window_behavior::DRAW_NOTHING;
+
+    frame_layout_result_t layout;
+    layout.usable_width = 180.0;
+    layout.usable_height = 80.0;
+
+    Plot_config config;
+    config.skip_gl_calls = true;
+
+    frame_context_t ctx = make_context(layout, config);
+
+    Series_renderer renderer;
+    Asset_loader asset_loader;
+    renderer.initialize(asset_loader);
+
+    std::map<int, std::shared_ptr<const series_data_t>> series_map;
+    series_map[series_id] = series;
+
+    renderer.render(ctx, series_map);
+    TEST_ASSERT(data_source->snapshot_calls == 1,
+                "expected first render to take one snapshot");
+    auto state_it = renderer.m_vbo_states.find(series_id);
+    TEST_ASSERT(state_it != renderer.m_vbo_states.end(),
+                "expected vbo state for test series");
+    // skip_gl mode does not allocate GL buffers, so seed active_vbo to
+    // exercise the CPU fast-path conditions in process_view().
+    state_it->second.main_view.active_vbo = 1u;
+
+    renderer.render(ctx, series_map);
+    TEST_ASSERT(data_source->snapshot_calls == 1,
+                "expected fast-path cache hit to skip snapshot");
+
+    series->empty_window_behavior = Empty_window_behavior::HOLD_LAST_FORWARD;
+    renderer.render(ctx, series_map);
+    TEST_ASSERT(data_source->snapshot_calls == 2,
+                "expected empty_window_behavior change to invalidate fast-path cache");
+
+    return true;
+}
+
+bool test_preview_does_not_hold_last_forward()
+{
+    auto data_source = std::make_shared<Single_level_source>();
+    data_source->samples.resize(16);
+    for (size_t i = 0; i < data_source->samples.size(); ++i) {
+        data_source->samples[i].t = static_cast<double>(i);
+        data_source->samples[i].v = 20.0f + static_cast<float>(i);
+    }
+
+    const int series_id = 19;
+    auto series = std::make_shared<series_data_t>();
+    series->style = Display_style::LINE;
+    series->data_source = data_source;
+    series->access = make_policy_with_clone();
+    series->empty_window_behavior = Empty_window_behavior::HOLD_LAST_FORWARD;
+
+    frame_layout_result_t layout;
+    layout.usable_width = 160.0;
+    layout.usable_height = 80.0;
+
+    Plot_config config;
+    config.skip_gl_calls = true;
+    config.preview_visibility = 1.0;
+
+    frame_context_t ctx = make_context(layout, config);
+    ctx.adjusted_preview_height = 24.0;
+    ctx.t_available_max = 40.0;
+
+    Series_renderer renderer;
+    Asset_loader asset_loader;
+    renderer.initialize(asset_loader);
+
+    std::map<int, std::shared_ptr<const series_data_t>> series_map;
+    series_map[series_id] = series;
+
+    renderer.render(ctx, series_map);
+    auto state_it = renderer.m_vbo_states.find(series_id);
+    TEST_ASSERT(state_it != renderer.m_vbo_states.end(),
+                "expected vbo state for preview hold-forward test");
+    TEST_ASSERT(!state_it->second.preview_view.last_hold_last_forward,
+                "preview should ignore HOLD_LAST_FORWARD and keep DRAW_NOTHING behavior");
+
+    return true;
+}
+
 bool test_lod_level_separation()
 {
     auto data_source = std::make_shared<Two_level_source>();
@@ -516,6 +633,8 @@ int main()
     RUN_TEST(test_preview_uses_distinct_source_snapshot);
     RUN_TEST(test_preview_disabled_skips_preview_snapshot);
     RUN_TEST(test_frame_change_invalidates_snapshot_cache);
+    RUN_TEST(test_empty_window_behavior_invalidates_fast_path_cache);
+    RUN_TEST(test_preview_does_not_hold_last_forward);
     RUN_TEST(test_lod_level_separation);
     RUN_TEST(test_snapshot_released_on_series_removal);
     RUN_TEST(test_render_empty_series_map);

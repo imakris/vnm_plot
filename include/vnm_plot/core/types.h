@@ -269,6 +269,10 @@ struct Data_access_policy
     std::function<double(const void* sample)> get_aux_metric;  ///< Optional auxiliary metric
     std::function<float(const void* sample)>  get_signal;      ///< Optional [0,1] signal for COLORMAP_LINE
 
+    // Optional sample cloning with timestamp rewrite, used for render-only hold-forward paths.
+    // Caller owns dst_sample storage; implementation writes one full sample there.
+    std::function<void(void* dst_sample, const void* src_sample, double timestamp)> clone_with_timestamp;
+
     // --- GPU rendering configuration ---
     std::function<void()> setup_vertex_attributes;              ///< Configures VAO for custom shaders
     std::function<void(unsigned int program_id)> bind_uniforms; ///< Binds custom uniforms
@@ -310,6 +314,12 @@ inline bool operator!(Display_style s)
 {
     return static_cast<int>(s) == 0;
 }
+
+enum class Empty_window_behavior
+{
+    DRAW_NOTHING,
+    HOLD_LAST_FORWARD
+};
 
 // -----------------------------------------------------------------------------
 // Preview Configuration
@@ -386,6 +396,7 @@ struct series_data_t
 {
     bool enabled = true;
     Display_style style = Display_style::LINE;
+    Empty_window_behavior empty_window_behavior = Empty_window_behavior::DRAW_NOTHING;
     glm::vec4 color = glm::vec4(0.16f, 0.45f, 0.64f, 1.0f);
     std::string series_label;
 
