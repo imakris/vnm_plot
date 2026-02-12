@@ -750,12 +750,9 @@ struct Plot_renderer::impl_t
     Series_renderer series;
     view_state_t view;
 
-    int init_failed_status = 0;
     int last_font_px = 0;
     int viewport_width = 0;
     int viewport_height = 0;
-    int last_opengl_status = std::numeric_limits<int>::min();
-    int last_hlabels_subsecond = -1;
     std::uint32_t assets_revision = 0;
     std::uint64_t last_full_render_signature = 0ULL;
 
@@ -764,9 +761,6 @@ struct Plot_renderer::impl_t
     bool assets_registered = false;
     bool initialized = false;
     bool init_failed = false;
-    bool methods_checked = false;
-    bool has_opengl_status_method = false;
-    bool has_hlabels_subsecond_method = false;
     bool has_last_full_render_signature = false;
 
     const frame_layout_result_t& calculate_frame_layout(
@@ -993,15 +987,6 @@ void Plot_renderer::synchronize(QQuickFramebufferObject* fbo_item)
         return;
     }
 
-    if (!m_impl->methods_checked) {
-        const QMetaObject* meta = widget->metaObject();
-        m_impl->has_opengl_status_method =
-            meta && meta->indexOfMethod("set_opengl_status_from_renderer(int)") >= 0;
-        m_impl->has_hlabels_subsecond_method =
-            meta && meta->indexOfMethod("set_hlabels_subsecond_from_renderer(bool)") >= 0;
-        m_impl->methods_checked = true;
-    }
-
     // Copy configuration
     {
         std::shared_lock lock(widget->m_config_mutex);
@@ -1036,37 +1021,6 @@ void Plot_renderer::synchronize(QQuickFramebufferObject* fbo_item)
 
 void Plot_renderer::render()
 {
-    auto notify_opengl_status = [&](int status) {
-        if (!m_impl->owner || !m_impl->has_opengl_status_method) {
-            return;
-        }
-        if (m_impl->last_opengl_status == status) {
-            return;
-        }
-        m_impl->last_opengl_status = status;
-        QMetaObject::invokeMethod(
-            const_cast<Plot_widget*>(m_impl->owner),
-            "set_opengl_status_from_renderer",
-            Qt::QueuedConnection,
-            Q_ARG(int, status));
-    };
-
-    auto notify_hlabels_subsecond = [&](bool subsecond) {
-        if (!m_impl->owner || !m_impl->has_hlabels_subsecond_method) {
-            return;
-        }
-        const int state = subsecond ? 1 : 0;
-        if (m_impl->last_hlabels_subsecond == state) {
-            return;
-        }
-        m_impl->last_hlabels_subsecond = state;
-        QMetaObject::invokeMethod(
-            const_cast<Plot_widget*>(m_impl->owner),
-            "set_hlabels_subsecond_from_renderer",
-            Qt::QueuedConnection,
-            Q_ARG(bool, subsecond));
-    };
-
     const Plot_config* config = &m_impl->snapshot.config;
     vnm::plot::Profiler* profiler = config->profiler.get();
     const bool allow_renderer_self_scheduling = config->allow_renderer_self_scheduling;
@@ -1076,9 +1030,6 @@ void Plot_renderer::render()
     }
 
     if (m_impl->init_failed) {
-        if (m_impl->init_failed_status != 0) {
-            notify_opengl_status(m_impl->init_failed_status);
-        }
         return;
     }
 
@@ -1102,8 +1053,6 @@ void Plot_renderer::render()
         if (!has_required_opengl()) {
             m_impl->init_failed = true;
             m_impl->initialized = true;
-            m_impl->init_failed_status = -2;
-            notify_opengl_status(-2);
             return;
         }
 
@@ -1114,7 +1063,6 @@ void Plot_renderer::render()
         register_assets_if_needed();
 
         if (!m_impl->primitives.initialize(m_impl->asset_loader)) {
-            notify_opengl_status(-3);
             return;
         }
         m_impl->series.initialize(m_impl->asset_loader);
@@ -1126,7 +1074,6 @@ void Plot_renderer::render()
         m_impl->text = std::make_unique<Text_renderer>(&m_impl->fonts);
 
         m_impl->initialized = true;
-        notify_opengl_status(1);
     }
 
     VNM_PLOT_PROFILE_SCOPE(profiler, "renderer");
@@ -1552,7 +1499,6 @@ void Plot_renderer::render()
     }();
     {
         VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.layout_finalize");
-        notify_hlabels_subsecond(frame_layout.h_labels_subsecond);
         m_impl->update_seed_history(v_span, t_span, frame_layout);
     }
 
