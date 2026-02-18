@@ -39,7 +39,7 @@ void print_usage(const char* program_name)
               << "Options:\n"
               << "  --duration <seconds>    Benchmark duration (default: 30, min: 1)\n"
               << "  --session <name>        Session name for report header (default: benchmark_run)\n"
-              << "  --symbol <name>         Symbol name for report (default: SIM)\n"
+              << "  --stream <name>         Stream name for report (default: SIM)\n"
               << "  --data-type <type>      bars|trades (default: bars)\n"
               << "  --output-dir <path>     Output directory for reports (default: current dir)\n"
               << "  --seed <number>         RNG seed for reproducibility (default: time-based)\n"
@@ -81,8 +81,8 @@ Parse_result parse_args(int argc, char* argv[])
                 config.session = argv[++i];
             }
             else
-            if (arg == "--symbol" && i + 1 < argc) {
-                config.symbol = argv[++i];
+            if (arg == "--stream" && i + 1 < argc) {
+                config.stream = argv[++i];
             }
             else
             if (arg == "--data-type" && i + 1 < argc) {
@@ -194,8 +194,8 @@ std::string validate_config(const vnm::benchmark::Benchmark_config& config)
     if (config.session.empty()) {
         return "Session name cannot be empty";
     }
-    if (config.symbol.empty()) {
-        return "Symbol name cannot be empty";
+    if (config.stream.empty()) {
+        return "Stream name cannot be empty";
     }
     return "";  // Valid
 }
@@ -211,7 +211,7 @@ void print_config_summary(const vnm::benchmark::Benchmark_config& config, std::o
        << "  Seed:         " << config.seed << "\n"
        << "  Output dir:   " << config.output_directory << "\n"
        << "  Session:      " << config.session << "\n"
-       << "  Symbol:       " << config.symbol << "\n"
+       << "  Stream:       " << config.stream << "\n"
        << "  Show text:    " << (config.show_text ? "yes" : "no") << "\n";
 }
 
@@ -289,7 +289,7 @@ int main(int argc, char* argv[])
         // Build report metadata
         vnm::benchmark::Report_metadata meta;
         meta.session = config.session;
-        meta.symbol = config.symbol;
+        meta.stream = config.stream;
         meta.data_type = config.data_type;
         meta.target_duration = config.duration_seconds;
         meta.output_directory = config.output_directory;

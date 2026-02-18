@@ -1528,7 +1528,7 @@ void Plot_renderer::render()
         return ctx;
     }();
 
-    // Clear to transparent - let QML provide the background color (matches Lumis behavior)
+    // Clear to transparent so QML provides the background color.
     const bool dark_mode = core_ctx.dark_mode;
     const bool clear_to_transparent = config ? config->clear_to_transparent : false;
     const Color_palette palette =

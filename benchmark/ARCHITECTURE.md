@@ -2,8 +2,8 @@
 
 ## Purpose
 This benchmark is a standalone Qt + OpenGL application that generates synthetic
-time-series data and measures vnm_plot rendering performance. It mirrors the
-profiling output used by Lumis so reports are directly comparable.
+time-series data and measures vnm_plot rendering performance. It emits a stable
+profiling report format for reproducible comparisons.
 
 ## High-Level Flow
 1. A generator thread produces Bar or Trade samples using a Brownian motion
@@ -11,7 +11,7 @@ profiling output used by Lumis so reports are directly comparable.
 2. The render thread (Qt UI) snapshots the ring buffer through a vnm_plot
    Data_source and renders the series using vnm_plot core renderers.
 3. A custom profiler collects nested vnm_plot scope timings and writes a
-   Lumis-compatible report at the end of the run.
+   benchmark report at the end of the run.
 
 ## Major Components
 - Ring_buffer<T>
@@ -29,7 +29,7 @@ profiling output used by Lumis so reports are directly comparable.
 
 - Benchmark_profiler
   - Implements vnm::plot::Profiler.
-  - Aggregates scopes by name to match Lumis output.
+  - Aggregates scopes by name for deterministic output.
   - Writes a fixed-width, hierarchical report with UTC timestamps.
 
 - Benchmark_window (Qt OpenGL widget)
@@ -65,19 +65,19 @@ Bar_sample and Trade_sample are packed structs. Each Data_access_policy defines:
 - A stable layout_key for VAO caching
 
 ## Profiling and Report Output
-Benchmark_profiler produces a Lumis-compatible report:
+Benchmark_profiler produces a stable benchmark report:
 - Fixed header fields (session, UTC timestamps, compiler)
 - Sorted metadata keys
 - Fixed-width table and tree glyphs
 - Optional extended metadata behind --extended-metadata
 
 The report is written at the end of the benchmark run to the configured output
-folder with the inspector_benchmark_YYYYMMDD_HHMMSS_<SYMBOL>_<DataType>.txt
+folder with the inspector_benchmark_YYYYMMDD_HHMMSS_<STREAM>_<DataType>.txt
 naming convention.
 
 ## Configuration and CLI
 The executable accepts CLI options for duration, data type, seed, rate, ring
-capacity, volatility, output directory, and report session/symbol. The seed is
+capacity, volatility, output directory, and report session/stream. The seed is
 resolved once at startup to keep runs reproducible.
 
 ## Key Files

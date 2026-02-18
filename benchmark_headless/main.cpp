@@ -72,7 +72,7 @@ struct Headless_config {
     std::size_t frame_limit = 0;
     bool frame_limit_set = false;
     std::string session = "headless_benchmark";
-    std::string symbol = "SIM";
+    std::string stream = "SIM";
     std::string data_type = "Bars";  // "Bars" or "Trades"
     std::filesystem::path output_directory = ".";
     uint64_t seed = 0;  // 0 = time-based
@@ -107,7 +107,7 @@ void print_usage(const char* program_name)
               << "  --duration <seconds>    Benchmark duration in seconds (min: 1)\n"
               << "  --frames <count>        Frame limit (min: 1)\n"
               << "  --session <name>        Session name for report (default: headless_benchmark)\n"
-              << "  --symbol <name>         Symbol name for report (default: SIM)\n"
+              << "  --stream <name>         Stream name for report (default: SIM)\n"
               << "  --data-type <type>      bars|trades (default: bars)\n"
               << "  --output-dir <path>     Output directory for reports (default: current dir)\n"
               << "  --seed <number>         RNG seed for reproducibility (default: time-based)\n"
@@ -166,8 +166,8 @@ Parse_result parse_args(int argc, char* argv[])
             else if (arg == "--session" && i + 1 < argc) {
                 config.session = argv[++i];
             }
-            else if (arg == "--symbol" && i + 1 < argc) {
-                config.symbol = argv[++i];
+            else if (arg == "--stream" && i + 1 < argc) {
+                config.stream = argv[++i];
             }
             else if (arg == "--data-type" && i + 1 < argc) {
                 std::string type = argv[++i];
@@ -313,7 +313,7 @@ void print_config_summary(const Headless_config& config, std::ostream& os)
        << "  Resolution:   " << config.width << "x" << config.height << "\n"
        << "  Output dir:   " << config.output_directory.string() << "\n"
        << "  Session:      " << config.session << "\n"
-       << "  Symbol:       " << config.symbol << "\n"
+       << "  Stream:       " << config.stream << "\n"
        << "  Show text:    " << (config.show_text ? "yes" : "no") << "\n"
        << "  No GL:        " << (config.no_gl ? "yes" : "no") << "\n";
 
@@ -855,7 +855,7 @@ int main(int argc, char* argv[])
     // Generate report
     vnm::benchmark::Report_metadata meta;
     meta.session = config.session;
-    meta.symbol = config.symbol;
+    meta.stream = config.stream;
     meta.data_type = config.data_type;
     meta.target_duration = config.duration_seconds;
     meta.output_directory = config.output_directory;

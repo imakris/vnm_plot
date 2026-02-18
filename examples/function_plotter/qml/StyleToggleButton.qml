@@ -4,23 +4,23 @@ import QtQuick.Controls.Basic
 Button {
     id: root
 
-    property string symbol: ""
+    property string glyph: ""
     property string tooltip: ""
     property bool active: false
-    property int symbolSize: 14
+    property int glyphSize: 14
 
     signal activated()  // Avoid collision with AbstractButton::toggled(bool)
 
     implicitWidth: 24
     implicitHeight: 30
-    font.pixelSize: symbolSize
+    font.pixelSize: glyphSize
 
     ToolTip.visible: hovered
     ToolTip.delay: 500
     ToolTip.text: tooltip
 
     contentItem: Text {
-        text: root.symbol
+        text: root.glyph
         font: root.font
         color: root.active ? "#8094b0" : "#858585"
         horizontalAlignment: Text.AlignHCenter

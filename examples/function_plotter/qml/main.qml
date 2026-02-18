@@ -12,7 +12,7 @@ ApplicationWindow {
     title: "Function Plotter - vnm_plot + mexce"
     color: "#181818"
 
-    // Styling constants (matching Lumis Globals)
+    // Styling constants
     readonly property int controlHeight: 30
     readonly property int fontSize: 14
     readonly property color textColor: "#e6e6e6"
@@ -341,28 +341,28 @@ ApplicationWindow {
                         spacing: 2
 
                         StyleToggleButton {
-                            symbol: "\u2022"  // Bullet for dots
+                            glyph: "\u2022"  // Bullet for dots
                             tooltip: "Show as dots"
                             active: functionDelegate.showDots
-                            symbolSize: fontSize
+                            glyphSize: fontSize
                             Layout.preferredHeight: controlHeight
                             onActivated: if (functionDelegate.entry) functionDelegate.entry.showDots = !functionDelegate.showDots
                         }
 
                         StyleToggleButton {
-                            symbol: "\u2014"  // Em dash for line
+                            glyph: "\u2014"  // Em dash for line
                             tooltip: "Show as line"
                             active: functionDelegate.showLine
-                            symbolSize: fontSize
+                            glyphSize: fontSize
                             Layout.preferredHeight: controlHeight
                             onActivated: if (functionDelegate.entry) functionDelegate.entry.showLine = !functionDelegate.showLine
                         }
 
                         StyleToggleButton {
-                            symbol: "\u25a0"  // Filled square for area
+                            glyph: "\u25a0"  // Filled square for area
                             tooltip: "Show as filled area"
                             active: functionDelegate.showArea
-                            symbolSize: fontSize - 2
+                            glyphSize: fontSize - 2
                             Layout.preferredHeight: controlHeight
                             onActivated: if (functionDelegate.entry) functionDelegate.entry.showArea = !functionDelegate.showArea
                         }

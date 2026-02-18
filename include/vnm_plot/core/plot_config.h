@@ -2,7 +2,7 @@
 
 // VNM Plot Library - Configuration
 // Injectable configuration for application-specific behavior.
-// This allows vnm_plot to work without Lumis dependencies while
+// This allows vnm_plot to work without downstream dependencies while
 // still being customizable by the host application.
 
 #include <cstdint>
@@ -21,7 +21,7 @@ class Asset_loader;
 // Controls how the auto v-range is computed when v_auto is enabled.
 enum class Auto_v_range_mode
 {
-    // Default: match Lumis behavior (global full-resolution range).
+    // Default: global full-resolution range.
     GLOBAL,
     // Global range using per-LOD min/max caches (fast, may use coarse LOD).
     GLOBAL_LOD,
@@ -145,7 +145,7 @@ struct Plot_config
     bool allow_renderer_self_scheduling = false;
 
     // --- Auto V-Range ---
-    // Default is GLOBAL to preserve Lumis-style behavior.
+    // Default is GLOBAL.
     Auto_v_range_mode auto_v_range_mode = Auto_v_range_mode::GLOBAL;
     // Extra scale applied to auto v-range (0 = no padding).
     double auto_v_range_extra_scale = 0.0;

@@ -1,7 +1,7 @@
-# vnm_plot API Review (2026-02-07)
+ï»¿# vnm_plot API Review (2026-02-07)
 
 ## Scope
-Reviewed public headers in `include/vnm_plot/core` and `include/vnm_plot/qt`, plus the examples in `examples/hello_plot`, `examples/preview_config`, `examples/function_plotter`, and `examples/standalone_glfw`. I also looked at Lumis usage in `src/Lumis/cpp/plot` and `src/Lumis/cpp/lumis_plot_policy_factory.cpp` to gauge real-world friction.
+Reviewed public headers in `include/vnm_plot/core` and `include/vnm_plot/qt`, plus the examples in `examples/hello_plot`, `examples/preview_config`, `examples/function_plotter`, and `examples/standalone_glfw`. I also looked at a downstream integration codebase to gauge real-world friction.
 
 ## Current State Summary
 To plot a series, a user typically:
@@ -11,16 +11,16 @@ To plot a series, a user typically:
 - Populates a `series_data_t` and calls `Plot_widget::add_series(id, series)`.
 - Configures view/ranges via multiple calls (`set_t_range`, `set_available_t_range`, `set_v_auto`, `set_v_range`) and preview settings.
 
-This pattern is visible across the Qt examples and the core-only GLFW example, and Lumis adds wrappers to reduce the repeated setup.
+This pattern is visible across the Qt examples and the core-only GLFW example, and downstream code often adds wrappers to reduce the repeated setup.
 
 ## API Improvement Opportunities
 1. **Auto-generate `Data_access_policy` from a sample type**
-Current: every example and the Lumis policy factory repeats the same `void*` casts and offset math for timestamps, values, ranges, and vertex attributes. `make_function_sample_policy()` exists but still leaves `setup_vertex_attributes` and shader selection to the user.
+Current: every example and downstream policy factory repeats the same `void*` casts and offset math for timestamps, values, ranges, and vertex attributes. `make_function_sample_policy()` exists but still leaves `setup_vertex_attributes` and shader selection to the user.
 What could change: provide a template helper such as `make_access_policy<Sample>(member pointers...)` or a traits specialization that auto-fills `get_timestamp/get_value/get_range`, `sample_stride`, `layout_key`, and `setup_vertex_attributes` for the default shader layout. This removes most boilerplate and eliminates per-project copies of the same code.
 
 2. **Hide `void*` casts from user code**
-Current: the public API requires users to cast `const void*` to their sample type in each lambda; this is repeated across all examples and Lumis policies.
-What could change: wrap the type-erased layer inside a typed `Data_access_policy_t<Sample>` and provide `.erase()` to produce the library’s `Data_access_policy`. This keeps the renderer interface while removing casts from user code.
+Current: the public API requires users to cast `const void*` to their sample type in each lambda; this is repeated across all examples and downstream policies.
+What could change: wrap the type-erased layer inside a typed `Data_access_policy_t<Sample>` and provide `.erase()` to produce the libraryâ€™s `Data_access_policy`. This keeps the renderer interface while removing casts from user code.
 
 3. **Provide default shader sets and vertex layout for built-in sample types**
 Current: users must specify shader asset paths even for standard plotting. The Qt examples and `function_plotter` manually set `shader_set` or `shaders` for each series, and the GLFW example must specify file paths directly.
@@ -43,7 +43,7 @@ Current: constructing a series requires many assignments (style, color, data sou
 What could change: a small builder or `make_series()` helper that enforces required fields and provides fluent optional configuration would shorten sample code and reduce missing-field errors.
 
 8. **Simplify color specification**
-Current: colors are always `glm::vec4` with 0–1 components; every example repeats literal RGBA values.
+Current: colors are always `glm::vec4` with 0â€“1 components; every example repeats literal RGBA values.
 What could change: allow common inputs such as `rgb(40, 118, 178)`, hex `0x2876B2`, or named palette values, with conversion to `glm::vec4` internally.
 
 9. **Make `frame_context_t` construction robust**
@@ -70,13 +70,13 @@ What could change: return `shared_ptr<const series_data_t>` or a read-only snaps
 Current: examples manually assign hex layout keys (for example, `0x1001`, `0x2001`, `0x3001`) without validation.
 What could change: compute `layout_key` from a `Layout_descriptor` that lists attribute types and offsets, or allow a user-provided string that is hashed once. This makes uniqueness and intent explicit.
 
-## Lumis Viewpoint
-Lumis already wraps vnm_plot with `Lumis_plot_widget` and uses a separate policy factory to centralize shader selection and vertex layouts. That code shows the cost of the current API: a large amount of boilerplate and application-specific duplication that could live in vnm_plot itself.
-The highest-value changes for Lumis are the ones that eliminate policy boilerplate, shader-path plumbing, and non-owning `shared_ptr` patterns. A typed policy builder and default shader or layout registry would immediately reduce the size and fragility of Lumis plot setup, while also simplifying the public examples for other users.
+## Downstream Viewpoint
+Downstream wrappers often centralize shader selection and vertex layouts in separate policy factories. That pattern highlights the cost of the current API: repeated boilerplate and duplicated setup that could be handled directly by vnm_plot.
+The highest-value changes are the ones that eliminate policy boilerplate, shader-path plumbing, and non-owning `shared_ptr` patterns. A typed policy builder and default shader or layout registry would immediately reduce setup size and fragility while also simplifying the public examples.
 
 ## Suggested Priority
 1. Typed policy builder with generated vertex layout and `layout_key`.
 2. Default shader sets for standard layouts and styles.
 3. Remove duplicated IDs and clarify data source ownership.
-4. Unify config types and add view or range batching.
+4. Unify config types and add view/range batching.
 5. High-level core facade.

@@ -154,7 +154,7 @@ bool test_report_generation() {
 
     Report_metadata meta;
     meta.session = "test_session";
-    meta.symbol = "TEST";
+    meta.stream = "TEST";
     meta.data_type = "Bars";
     meta.target_duration = 10.0;
     meta.started_at = std::chrono::system_clock::now();
@@ -163,9 +163,9 @@ bool test_report_generation() {
     std::string report = profiler.generate_report(meta);
 
     // Check header elements
-    TEST_ASSERT(report.find("Lumis profiling report") != std::string::npos, "should have header");
+    TEST_ASSERT(report.find("vnm_plot profiling report") != std::string::npos, "should have header");
     TEST_ASSERT(report.find("Session: test_session") != std::string::npos, "should have session");
-    TEST_ASSERT(report.find("symbol: TEST") != std::string::npos, "should have symbol");
+    TEST_ASSERT(report.find("stream: TEST") != std::string::npos, "should have stream");
 
     // Check table structure
     TEST_ASSERT(report.find("Section") != std::string::npos, "should have Section column");
@@ -277,7 +277,7 @@ bool test_format_compliance() {
         }
     }
 
-    // Both lines should be 108 characters per Lumis format spec
+    // Both lines should be 108 characters per benchmark format spec
     TEST_ASSERT(!header_line.empty(), "header line should exist");
     TEST_ASSERT(!separator_line.empty(), "separator line should exist");
     TEST_ASSERT(header_line.length() == 108, "header line should be 108 chars");

@@ -1,5 +1,5 @@
 // vnm_plot Benchmark - Profiler
-// Hierarchical scope timing with Lumis-compatible report generation
+// Hierarchical scope timing with stable benchmark report generation
 
 #ifndef VNM_PLOT_BENCHMARK_PROFILER_H
 #define VNM_PLOT_BENCHMARK_PROFILER_H
@@ -26,7 +26,7 @@ namespace vnm::benchmark {
 /// Report metadata for output file
 struct Report_metadata {
     std::string session = "benchmark_run";
-    std::string symbol = "SIM";
+    std::string stream = "SIM";
     std::string data_type = "Bars";      // "Bars" or "Trades"
     double target_duration = 30.0;
     std::string filename_prefix = "inspector_benchmark";
@@ -99,14 +99,14 @@ public:
         }
     }
 
-    /// Generate report string in Lumis format
+    /// Generate benchmark report string
     std::string generate_report(const Report_metadata& meta) const
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         std::ostringstream oss;
 
         // Header
-        oss << "Lumis profiling report\n";
+        oss << "vnm_plot profiling report\n";
         oss << "Session: " << meta.session << "\n";
         oss << "Started at (UTC): " << format_utc_time(meta.started_at) << "\n";
         oss << "Target duration (s): " << std::fixed << std::setprecision(3) << meta.target_duration << "\n";
@@ -160,7 +160,7 @@ public:
     /// Write report to file in output directory
     std::filesystem::path write_report(const Report_metadata& meta) const
     {
-        // Generate filename: <prefix>_YYYYMMDD_HHMMSS_<SYMBOL>_<DataType>.txt
+        // Generate filename: <prefix>_YYYYMMDD_HHMMSS_<STREAM>_<DataType>.txt
         std::string filename = generate_filename(meta);
         std::filesystem::path output_path = meta.output_directory / filename;
 
@@ -264,7 +264,7 @@ private:
     // Write metadata section (alphabetically sorted)
     static void write_metadata(std::ostream& os, const Report_metadata& meta)
     {
-        // Standard metadata (Lumis-compatible)
+        // Standard metadata
         os << "  - data_type: " << meta.data_type << "\n";
         os << "  - duration_seconds: " << static_cast<int>(meta.target_duration) << "\n";
         os << "  - output_directory: " << meta.output_directory.generic_string() << "\n";
@@ -278,7 +278,7 @@ private:
         }
 
         os << "  - started_at_utc: " << format_utc_time(meta.started_at) << "\n";
-        os << "  - symbol: " << meta.symbol << "\n";
+        os << "  - stream: " << meta.stream << "\n";
 
         if (meta.include_extended) {
             os << "  - volatility: " << std::fixed << std::setprecision(4) << meta.volatility << "\n";
@@ -293,7 +293,7 @@ private:
             : meta.filename_prefix;
         std::ostringstream oss;
         oss << prefix << "_" << format_filename_time(meta.started_at)
-            << "_" << meta.symbol << "_" << meta.data_type << ".txt";
+            << "_" << meta.stream << "_" << meta.data_type << ".txt";
         return oss.str();
     }
 

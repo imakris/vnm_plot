@@ -38,7 +38,7 @@ namespace vnm::benchmark {
 struct Benchmark_config {
     double duration_seconds = 30.0;
     std::string session = "benchmark_run";
-    std::string symbol = "SIM";
+    std::string stream = "SIM";
     std::string data_type = "Bars";  // "Bars" or "Trades"
     std::string output_directory = ".";
     uint64_t seed = 0;

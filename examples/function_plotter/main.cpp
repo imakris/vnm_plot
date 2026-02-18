@@ -2,7 +2,7 @@
 // Demonstrates vnm_plot library with mexce for plotting mathematical functions.
 //
 // This is a proof-of-concept showing that vnm_plot can work independently
-// of Lumis, with any data source that implements Data_source.
+// with any data source that implements Data_source.
 
 #include "function_plotter.h"
 
