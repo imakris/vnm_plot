@@ -26,7 +26,19 @@ GL_program::GL_program() = default;
 
 GL_program::~GL_program()
 {
-    destroy();
+    // Do not call destroy() here — it issues GL calls that require a current
+    // context.  When the destructor runs during application shutdown the
+    // context is typically already torn down, producing infinite
+    // GL_INVALID_OPERATION errors via glatter.  Callers that hold a GL context
+    // must call destroy() explicitly (e.g. via cleanup_gl_resources()) before
+    // the program is destroyed.  If destroy() was already called, all IDs are
+    // zero and this block is a no-op.
+    m_vertex_shader = 0;
+    m_geometry_shader = 0;
+    m_fragment_shader = 0;
+    m_program_id = 0;
+    m_linked = false;
+    m_uniform_cache.clear();
 }
 
 GL_program::GL_program(GL_program&& other) noexcept
@@ -237,19 +249,27 @@ GLint GL_program::uniform_location(const char* name) const
 void GL_program::destroy()
 {
     if (m_vertex_shader != 0) {
-        glDeleteShader(m_vertex_shader);
+        if (glIsShader(m_vertex_shader) == GL_TRUE) {
+            glDeleteShader(m_vertex_shader);
+        }
         m_vertex_shader = 0;
     }
     if (m_geometry_shader != 0) {
-        glDeleteShader(m_geometry_shader);
+        if (glIsShader(m_geometry_shader) == GL_TRUE) {
+            glDeleteShader(m_geometry_shader);
+        }
         m_geometry_shader = 0;
     }
     if (m_fragment_shader != 0) {
-        glDeleteShader(m_fragment_shader);
+        if (glIsShader(m_fragment_shader) == GL_TRUE) {
+            glDeleteShader(m_fragment_shader);
+        }
         m_fragment_shader = 0;
     }
     if (m_program_id != 0) {
-        glDeleteProgram(m_program_id);
+        if (glIsProgram(m_program_id) == GL_TRUE) {
+            glDeleteProgram(m_program_id);
+        }
         m_program_id = 0;
     }
     m_linked = false;

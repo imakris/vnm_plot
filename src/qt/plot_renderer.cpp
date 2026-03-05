@@ -17,6 +17,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <QDebug>
+#include <QOpenGLContext>
 #include <QOpenGLFramebufferObject>
 #include <QMetaObject>
 #include <QQuickWindow>
@@ -30,7 +31,6 @@
 #include <limits>
 #include <map>
 #include <memory>
-#include <mutex>
 #include <shared_mutex>
 #include <string>
 #include <string_view>
@@ -973,10 +973,12 @@ Plot_renderer::Plot_renderer(const Plot_widget* owner)
 
 Plot_renderer::~Plot_renderer()
 {
-    if (m_impl->initialized) {
+    // Font GPU resources are thread-shared; only detach this renderer's handle.
+    m_impl->fonts.deinitialize();
+
+    if (m_impl->initialized && QOpenGLContext::currentContext() != nullptr) {
         m_impl->primitives.cleanup_gl_resources();
         m_impl->series.cleanup_gl_resources();
-        Font_renderer::cleanup_thread_resources();
     }
 }
 
@@ -1009,7 +1011,11 @@ void Plot_renderer::synchronize(QQuickFramebufferObject* fbo_item)
     }
 
     // Copy UI state
-    m_impl->snapshot.visible = (widget->width() > 0.0 && widget->height() > 0.0);
+    const QQuickWindow* const window = widget->window();
+    const bool has_area = (widget->width() > 0.0 && widget->height() > 0.0);
+    const bool item_visible = widget->isVisible();
+    const bool window_visible = (window != nullptr) && window->isVisible();
+    m_impl->snapshot.visible = has_area && item_visible && window_visible;
     m_impl->snapshot.show_info = widget->m_show_info.load(std::memory_order_acquire);
     m_impl->snapshot.v_auto = widget->m_v_auto.load(std::memory_order_acquire);
     m_impl->snapshot.reset_view_state = widget->consume_view_state_reset_request();
@@ -1021,6 +1027,10 @@ void Plot_renderer::synchronize(QQuickFramebufferObject* fbo_item)
 
 void Plot_renderer::render()
 {
+    if (QOpenGLContext::currentContext() == nullptr) {
+        return;
+    }
+
     const Plot_config* config = &m_impl->snapshot.config;
     vnm::plot::Profiler* profiler = config->profiler.get();
     const bool allow_renderer_self_scheduling = config->allow_renderer_self_scheduling;
@@ -1087,8 +1097,9 @@ void Plot_renderer::render()
         }
 
         const int desired_font_px = static_cast<int>(std::round(m_impl->snapshot.adjusted_font_px));
-        if (desired_font_px > 0 && desired_font_px != m_impl->last_font_px) {
-            m_impl->fonts.initialize(m_impl->asset_loader, desired_font_px, true);
+        if (desired_font_px > 0) {
+            const bool force_rebuild = (desired_font_px != m_impl->last_font_px);
+            m_impl->fonts.initialize(m_impl->asset_loader, desired_font_px, force_rebuild);
             m_impl->last_font_px = desired_font_px;
         }
 
@@ -1485,6 +1496,11 @@ void Plot_renderer::render()
 
         fade_v_labels = (prev_v_span > 0.0) && !spans_approx_equal(v_span, prev_v_span);
         fade_h_labels = (prev_t_span > 0.0) && !spans_approx_equal(t_span, prev_t_span);
+        if (!allow_renderer_self_scheduling) {
+            // Without renderer-driven follow-up frames, fade animation can stall at alpha 0.
+            fade_v_labels = false;
+            fade_h_labels = false;
+        }
     }
 
     const frame_layout_result_t& frame_layout = [&]() -> const frame_layout_result_t& {
@@ -1578,6 +1594,9 @@ void Plot_renderer::render()
     }
 
     // Render text labels
+    if (!skip_gl_calls) {
+        glDisable(GL_SCISSOR_TEST);
+    }
     if (!skip_gl_calls && m_impl->text && (!config || config->show_text)) {
         VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.text_overlay");
         const bool fades_active = m_impl->text->render(core_ctx, fade_v_labels, fade_h_labels);

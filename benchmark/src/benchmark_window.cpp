@@ -59,7 +59,7 @@ Benchmark_window::~Benchmark_window()
         m_series_renderer->cleanup_gl_resources();
     }
 #if defined(VNM_PLOT_ENABLE_TEXT)
-    vnm::plot::Font_renderer::cleanup_thread_resources();
+    m_font_renderer.deinitialize();
 #endif
     doneCurrent();
 }

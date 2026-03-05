@@ -964,20 +964,9 @@ void Font_renderer::initialize(Asset_loader& asset_loader, int pixel_height, boo
 
 void Font_renderer::deinitialize()
 {
+    // Detach this instance from the thread-local GPU resources.
+    // We do not force global TLS teardown here; resources are reclaimed on normal process exit.
     m_impl->m_resources = nullptr;
-}
-
-void Font_renderer::cleanup_thread_resources()
-{
-    auto& resources = thread_local_resources();
-    resources.destroy_gl();
-}
-
-void Font_renderer::shutdown_all_thread_resources()
-{
-    font_registry().shutdown([](thread_local_font_resources_t& entry) {
-        entry.destroy_gl();
-    });
 }
 
 float Font_renderer::measure_text_px(const char* text) const

@@ -87,17 +87,6 @@ public:
     // Clears the batch buffer without rendering (for skip_gl mode).
     void clear_buffer();
 
-    // --- Resource Management ---
-
-    // Static method to be called by the main renderer during its cleanup phase
-    // to ensure thread-local GL resources are freed on the correct thread
-    // with an active context.
-    static void cleanup_thread_resources();
-
-    // Call once during application shutdown (after all render threads are joined)
-    // to release any remaining thread-local font resources for leak-free shutdown.
-    static void shutdown_all_thread_resources();
-
 private:
     struct impl_t;
     std::unique_ptr<impl_t> m_impl;

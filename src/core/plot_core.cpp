@@ -145,7 +145,6 @@ void Plot_core::cleanup_gl_resources()
 #if defined(VNM_PLOT_ENABLE_TEXT)
     if (m_impl->fonts) {
         m_impl->fonts->deinitialize();
-        Font_renderer::cleanup_thread_resources();
     }
 #endif
 }

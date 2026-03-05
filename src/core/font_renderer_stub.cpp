@@ -100,14 +100,4 @@ void Font_renderer::clear_buffer()
     // No-op in stub.
 }
 
-void Font_renderer::cleanup_thread_resources()
-{
-    // No-op in stub.
-}
-
-void Font_renderer::shutdown_all_thread_resources()
-{
-    // No-op in stub.
-}
-
 } // namespace vnm::plot

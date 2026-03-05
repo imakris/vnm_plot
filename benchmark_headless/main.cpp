@@ -899,7 +899,7 @@ int main(int argc, char* argv[])
     series_renderer.cleanup_gl_resources();
 #if defined(VNM_PLOT_ENABLE_TEXT)
     if (text_enabled) {
-        vnm::plot::Font_renderer::cleanup_thread_resources();
+        font_renderer.deinitialize();
     }
 #endif
     fbo.cleanup();

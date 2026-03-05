@@ -149,7 +149,24 @@ Plot_widget::Plot_widget()
     setFlag(ItemHasContents, true);
 }
 
-Plot_widget::~Plot_widget() = default;
+Plot_widget::~Plot_widget()
+{
+    m_vbar_width_timer.stop();
+
+    if (m_time_axis) {
+        if (m_time_axis->sync_vbar_width()) {
+            m_time_axis->clear_shared_vbar_width(this);
+        }
+        if (m_time_axis->indicator_owned_by(this)) {
+            m_time_axis->set_indicator_state(this, false, 0.0);
+        }
+        QObject::disconnect(m_time_axis, nullptr, this, nullptr);
+        m_time_axis_connection = {};
+        m_time_axis_destroyed_connection = {};
+        m_time_axis_vbar_connection = {};
+        m_time_axis = nullptr;
+    }
+}
 
 void Plot_widget::add_series(int id, std::shared_ptr<series_data_t> series)
 {
@@ -672,6 +689,16 @@ void Plot_widget::set_vbar_width(double vbar_width)
 
 void Plot_widget::apply_vbar_width_target(double target)
 {
+    if (!std::isfinite(target) || target <= 0.0) {
+        return;
+    }
+
+    const double width_px = width() * m_scaling_factor;
+    if (std::isfinite(width_px) && width_px > 0.0) {
+        const double max_target = std::max(1.0, width_px * 0.5);
+        target = std::clamp(target, 1.0, max_target);
+    }
+
     const double current = m_vbar_width_px.load(std::memory_order_acquire);
 
     if (!std::isfinite(current) || current <= 0.0) {
@@ -704,7 +731,18 @@ void Plot_widget::apply_vbar_width_target(double target)
 
 void Plot_widget::set_vbar_width_from_renderer(double px)
 {
+    if (!std::isfinite(px) || px <= 0.0) {
+        return;
+    }
+
+    const double width_px = width() * m_scaling_factor;
+    if (std::isfinite(width_px) && width_px > 0.0) {
+        const double max_target = std::max(1.0, width_px * 0.5);
+        px = std::clamp(px, 1.0, max_target);
+    }
+
     if (m_time_axis && m_time_axis->sync_vbar_width()) {
+        apply_vbar_width_target(px);
         m_time_axis->update_shared_vbar_width(this, px);
         return;
     }
