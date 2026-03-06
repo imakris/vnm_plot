@@ -7,7 +7,9 @@
 #include <iostream>
 #include <thread>
 
-using namespace vnm::benchmark;
+using vnm::benchmark::Benchmark_profiler;
+using vnm::benchmark::Profile_scope;
+using vnm::benchmark::Report_metadata;
 
 #define TEST_ASSERT(cond, msg) \
     do { \
@@ -23,7 +25,8 @@ using namespace vnm::benchmark;
         if (test_fn()) { \
             std::cout << "PASS" << std::endl; \
             ++passed; \
-        } else { \
+        } \
+        else { \
             std::cout << "FAIL" << std::endl; \
             ++failed; \
         } \
@@ -272,7 +275,9 @@ bool test_format_compliance() {
     while (std::getline(iss, line)) {
         if (line.find("Section") == 0 && line.find("Calls") != std::string::npos) {
             header_line = line;
-        } else if (line.find("---") == 0 && line.length() > 50) {
+        }
+        else
+        if (line.find("---") == 0 && line.length() > 50) {
             separator_line = line;
         }
     }

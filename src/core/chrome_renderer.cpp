@@ -12,7 +12,15 @@
 #include <cmath>
 
 namespace vnm::plot {
-using namespace detail;
+using detail::build_time_steps_covering;
+using detail::circular_index;
+using detail::find_time_step_start_index;
+using detail::get_shift;
+using detail::k_cell_span_max_factor;
+using detail::k_cell_span_min_factor;
+using detail::k_grid_line_alpha_base;
+using detail::k_preview_band_max_px;
+using detail::k_preview_min_window_px;
 
 namespace {
 

@@ -39,7 +39,14 @@
 #include <vector>
 
 namespace vnm::plot {
-using namespace detail;
+using detail::choose_lod_level;
+using detail::compute_lod_scales;
+using detail::k_eps;
+using detail::k_h_label_vertical_nudge_px;
+using detail::k_scissor_pad_px;
+using detail::k_v_label_horizontal_padding_px;
+using detail::k_vbar_min_width_px_d;
+using detail::k_vbar_width_change_threshold_d;
 
 namespace {
 
@@ -379,8 +386,12 @@ void purge_stale_cache(std::unordered_map<int, series_minmax_cache_t>& cache,
                        const std::unordered_set<int>& active)
 {
     for (auto it = cache.begin(); it != cache.end();) {
-        if (active.find(it->first) == active.end()) it = cache.erase(it);
-        else ++it;
+        if (active.find(it->first) == active.end()) {
+            it = cache.erase(it);
+        }
+        else {
+            ++it;
+        }
     }
 }
 
@@ -469,7 +480,9 @@ std::pair<float, float> compute_global_v_range(
     }
 
     purge_stale_cache(cache_map, active_ids);
-    if (alt_cache_map) purge_stale_cache(*alt_cache_map, active_alt_ids);
+    if (alt_cache_map) {
+        purge_stale_cache(*alt_cache_map, active_alt_ids);
+    }
 
     if (!have_any) {
         return {fallback_min, fallback_max};
@@ -605,7 +618,9 @@ std::pair<float, float> compute_visible_v_range(
     }
 
     purge_stale_cache(cache_map, active_ids);
-    if (alt_cache_map) purge_stale_cache(*alt_cache_map, active_alt_ids);
+    if (alt_cache_map) {
+        purge_stale_cache(*alt_cache_map, active_alt_ids);
+    }
 
     if (!have_any) {
         return {fallback_min, fallback_max};

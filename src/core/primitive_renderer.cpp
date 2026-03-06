@@ -7,7 +7,7 @@
 #include <glm/gtc/type_ptr.hpp>
 
 namespace vnm::plot {
-using namespace detail;
+using detail::k_rect_initial_quads;
 
 Primitive_renderer::Primitive_renderer() = default;
 Primitive_renderer::~Primitive_renderer() = default;

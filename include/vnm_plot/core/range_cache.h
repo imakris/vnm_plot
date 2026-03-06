@@ -88,12 +88,18 @@ inline bool validate_range_cache_sequences(
         [preview](const series_data_t& s)
             -> std::pair<Data_source*, const Data_access_policy*> {
             if (preview) {
-                if (s.preview_matches_main()) return {nullptr, nullptr};
+                if (s.preview_matches_main()) {
+                    return {nullptr, nullptr};
+                }
                 Data_source* src = s.preview_source();
-                if (!src) return {nullptr, nullptr};
+                if (!src) {
+                    return {nullptr, nullptr};
+                }
                 return {src, &s.preview_access()};
             }
-            if (!s.data_source) return {nullptr, nullptr};
+            if (!s.data_source) {
+                return {nullptr, nullptr};
+            }
             return {s.data_source.get(), &s.access};
         });
 }

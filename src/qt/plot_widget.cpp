@@ -130,7 +130,8 @@ bool plot_config_equivalent(
 } // anonymous namespace
 
 namespace vnm::plot {
-using namespace detail;
+using detail::k_vbar_width_change_threshold_d;
+using detail::min_v_span_for;
 
 Plot_widget::Plot_widget()
     : QQuickFramebufferObject()
@@ -878,8 +879,13 @@ void Plot_widget::set_preview_height_steps(int steps)
 
 void Plot_widget::adjust_t_from_mouse_diff(double ref_width, double diff)
 {
-    if (m_time_axis) { m_time_axis->adjust_t_from_mouse_diff(ref_width, diff); return; }
-    if (ref_width <= 0.0) return;
+    if (m_time_axis) {
+        m_time_axis->adjust_t_from_mouse_diff(ref_width, diff);
+        return;
+    }
+    if (ref_width <= 0.0) {
+        return;
+    }
     const auto cfg = data_cfg_snapshot();
     const double delta = diff * (cfg.t_max - cfg.t_min) / ref_width;
     adjust_t_to_target(cfg.t_min - delta, cfg.t_max - delta);
@@ -887,8 +893,13 @@ void Plot_widget::adjust_t_from_mouse_diff(double ref_width, double diff)
 
 void Plot_widget::adjust_t_from_mouse_diff_on_preview(double ref_width, double diff)
 {
-    if (m_time_axis) { m_time_axis->adjust_t_from_mouse_diff_on_preview(ref_width, diff); return; }
-    if (ref_width <= 0.0) return;
+    if (m_time_axis) {
+        m_time_axis->adjust_t_from_mouse_diff_on_preview(ref_width, diff);
+        return;
+    }
+    if (ref_width <= 0.0) {
+        return;
+    }
     const auto cfg = data_cfg_snapshot();
     const double delta = diff * (cfg.t_available_max - cfg.t_available_min) / ref_width;
     adjust_t_to_target(cfg.t_min + delta, cfg.t_max + delta);
@@ -896,8 +907,13 @@ void Plot_widget::adjust_t_from_mouse_diff_on_preview(double ref_width, double d
 
 void Plot_widget::adjust_t_from_mouse_pos_on_preview(double ref_width, double x_pos)
 {
-    if (m_time_axis) { m_time_axis->adjust_t_from_mouse_pos_on_preview(ref_width, x_pos); return; }
-    if (ref_width <= 0.0) return;
+    if (m_time_axis) {
+        m_time_axis->adjust_t_from_mouse_pos_on_preview(ref_width, x_pos);
+        return;
+    }
+    if (ref_width <= 0.0) {
+        return;
+    }
     const auto cfg = data_cfg_snapshot();
     const double span = cfg.t_max - cfg.t_min;
     const double center = cfg.t_available_min
@@ -907,8 +923,13 @@ void Plot_widget::adjust_t_from_mouse_pos_on_preview(double ref_width, double x_
 
 void Plot_widget::adjust_t_from_pivot_and_scale(double pivot, double scale)
 {
-    if (m_time_axis) { m_time_axis->adjust_t_from_pivot_and_scale(pivot, scale); return; }
-    if (scale <= 0.0) return;
+    if (m_time_axis) {
+        m_time_axis->adjust_t_from_pivot_and_scale(pivot, scale);
+        return;
+    }
+    if (scale <= 0.0) {
+        return;
+    }
     const auto cfg = data_cfg_snapshot();
     const double t_pivot = cfg.t_min + (cfg.t_max - cfg.t_min) * pivot;
     adjust_t_to_target(t_pivot - (t_pivot - cfg.t_min) * scale,

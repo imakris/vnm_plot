@@ -7,7 +7,9 @@
 #include <iostream>
 #include <vector>
 
-using namespace vnm::benchmark;
+using vnm::benchmark::Bar_sample;
+using vnm::benchmark::Brownian_generator;
+using vnm::benchmark::Trade_sample;
 
 // Tolerance for floating-point comparisons (handles cross-platform differences)
 constexpr float FLOAT_TOLERANCE = 1e-6f;
@@ -35,7 +37,8 @@ bool double_eq(double a, double b, double tol = DOUBLE_TOLERANCE) {
         if (test_fn()) { \
             std::cout << "PASS" << std::endl; \
             ++passed; \
-        } else { \
+        } \
+        else { \
             std::cout << "FAIL" << std::endl; \
             ++failed; \
         } \

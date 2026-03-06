@@ -90,7 +90,9 @@ public:
 
     /// Push multiple samples. Overwrites oldest as needed.
     void push_batch(const T* samples, std::size_t count) {
-        if (count == 0 || samples == nullptr) return;
+        if (count == 0 || samples == nullptr) {
+            return;
+        }
 
         std::unique_lock lock(mutex_);
 
@@ -191,7 +193,9 @@ public:
             count = h - t;
             dest.resize(count);
             std::copy(buffer_.begin() + t, buffer_.begin() + h, dest.begin());
-        } else if (h < t) {
+        }
+        else
+        if (h < t) {
             // Wrapped: [tail, cap) + [0, head)
             const std::size_t part1 = cap - t;
             const std::size_t part2 = h;
@@ -199,7 +203,8 @@ public:
             dest.resize(count);
             std::copy(buffer_.begin() + t, buffer_.end(), dest.begin());
             std::copy(buffer_.begin(), buffer_.begin() + h, dest.begin() + part1);
-        } else {
+        }
+        else {
             // h == t && seq > 0: buffer is full (all N elements valid)
             count = cap;
             dest.resize(count);

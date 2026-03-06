@@ -12,7 +12,15 @@
 #include <unordered_set>
 
 namespace vnm::plot {
-using namespace detail;
+using detail::k_h_label_vertical_nudge_px;
+using detail::k_line_spacing;
+using detail::k_overlay_left_px;
+using detail::k_pixel_snap;
+using detail::k_scissor_pad_px;
+using detail::k_text_margin_px;
+using detail::k_v_label_horizontal_padding_px;
+using detail::k_v_label_vertical_nudge_px;
+using detail::k_value_decimals;
 
 namespace {
 
@@ -184,7 +192,8 @@ bool Text_renderer::render_axis_labels(const frame_context_t& ctx, bool fade_lab
         if (fade_labels) {
             if (skip_gl) {
                 m_fonts->clear_buffer();
-            } else {
+            }
+            else {
                 glm::vec4 color = font_color;
                 color.a *= state.alpha;
                 m_fonts->draw_and_flush(ctx.pmv, color);
@@ -218,7 +227,8 @@ bool Text_renderer::render_axis_labels(const frame_context_t& ctx, bool fade_lab
     if (!fade_labels) {
         if (skip_gl) {
             m_fonts->clear_buffer();
-        } else {
+        }
+        else {
             m_fonts->draw_and_flush(ctx.pmv, font_color);
         }
     }
@@ -253,7 +263,8 @@ bool Text_renderer::render_info_overlay(const frame_context_t& ctx, bool fade_la
         if (fade_labels) {
             if (skip_gl) {
                 m_fonts->clear_buffer();
-            } else {
+            }
+            else {
                 glm::vec4 color = font_color;
                 color.a *= state.alpha;
                 m_fonts->draw_and_flush(ctx.pmv, color);
@@ -335,7 +346,8 @@ bool Text_renderer::render_info_overlay(const frame_context_t& ctx, bool fade_la
     if (!fade_labels || ctx.show_info) {
         if (skip_gl) {
             m_fonts->clear_buffer();
-        } else {
+        }
+        else {
             m_fonts->draw_and_flush(ctx.pmv, font_color);
         }
     }

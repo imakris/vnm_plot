@@ -16,7 +16,20 @@
 #include <string>
 #include <vector>
 
-using namespace vnm::plot;
+namespace plot = vnm::plot;
+using plot::Asset_loader;
+using plot::Data_access_policy;
+using plot::Data_source;
+using plot::Display_style;
+using plot::Empty_window_behavior;
+using plot::Plot_config;
+using plot::Series_renderer;
+using plot::data_snapshot_t;
+using plot::frame_context_t;
+using plot::frame_layout_result_t;
+using plot::preview_config_t;
+using plot::series_data_t;
+using plot::snapshot_result_t;
 
 namespace {
 
@@ -172,7 +185,8 @@ void fill_lod_samples(Two_level_source& source)
         if (test_fn()) { \
             std::cout << "OK" << std::endl; \
             ++passed; \
-        } else { \
+        } \
+        else { \
             std::cout << "FAIL" << std::endl; \
             ++failed; \
         } \

@@ -37,7 +37,8 @@ struct sample_t
         if (test_fn()) { \
             std::cout << "OK" << std::endl; \
             ++passed; \
-        } else { \
+        } \
+        else { \
             std::cout << "FAIL" << std::endl; \
             ++failed; \
         } \

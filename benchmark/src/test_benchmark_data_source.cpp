@@ -7,7 +7,15 @@
 #include <thread>
 #include <chrono>
 
-using namespace vnm::benchmark;
+using vnm::benchmark::Bar_sample;
+using vnm::benchmark::Benchmark_data_source;
+using vnm::benchmark::Brownian_generator;
+using vnm::benchmark::Ring_buffer;
+using vnm::benchmark::Trade_sample;
+using vnm::benchmark::k_bar_sample_layout_key;
+using vnm::benchmark::k_trade_sample_layout_key;
+using vnm::benchmark::make_bar_access_policy;
+using vnm::benchmark::make_trade_access_policy;
 
 #define TEST_ASSERT(cond, msg) \
     do { \
@@ -23,7 +31,8 @@ using namespace vnm::benchmark;
         if (test_fn()) { \
             std::cout << "PASS" << std::endl; \
             ++passed; \
-        } else { \
+        } \
+        else { \
             std::cout << "FAIL" << std::endl; \
             ++failed; \
         } \

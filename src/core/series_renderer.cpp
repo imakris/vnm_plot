@@ -18,7 +18,11 @@
 #include <unordered_set>
 
 namespace vnm::plot {
-using namespace detail;
+using detail::choose_lod_level;
+using detail::compute_lod_scales;
+using detail::k_scissor_pad_px;
+using detail::lower_bound_timestamp;
+using detail::upper_bound_timestamp;
 
 namespace {
 
@@ -397,7 +401,9 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
             (view_state.active_vbo != UINT_MAX) &&
             (view_state.last_count > 0) &&
             (view_state.last_empty_window_behavior == empty_window_behavior);
-        if (!identity_ok) return false;
+        if (!identity_ok) {
+            return false;
+        }
         load_cached_result(r, view_state.last_lod_level);
         return true;
     };
@@ -453,8 +459,13 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
         }
 
         if (!snapshot_result || !snapshot_result.snapshot || snapshot_result.snapshot.count == 0) {
-            if (try_stale_fallback(result)) break;
-            if (applied_level > 0) { target_level = applied_level - 1; continue; }
+            if (try_stale_fallback(result)) {
+                break;
+            }
+            if (applied_level > 0) {
+                target_level = applied_level - 1;
+                continue;
+            }
             break;
         }
 
@@ -845,7 +856,9 @@ void Series_renderer::render(
       };
     const auto log_error_once = [&](Error_cat cat, int series_id,
                                     const std::string& message) {
-        if (!ctx.config || !ctx.config->log_error) return;
+        if (!ctx.config || !ctx.config->log_error) {
+            return;
+        }
         const uint64_t key = (static_cast<uint64_t>(cat) << 32)
             | static_cast<uint64_t>(static_cast<uint32_t>(series_id));
         if (m_logged_errors.insert(key).second) {
@@ -1129,13 +1142,15 @@ void Series_renderer::render(
                                 if (view_result.applied_level == 0) {
                                     // We're already at LOD 0, so snapshot sequence is correct.
                                     cache_sequence = snapshot.sequence;
-                                } else {
+                                }
+                                else {
                                     // We need LOD 0 sequence but have a different LOD snapshot.
                                     // Try to get LOD 0 snapshot for correct sequence tracking.
                                     auto lod0_snapshot = data_source->try_snapshot(0);
                                     if (lod0_snapshot) {
                                         cache_sequence = lod0_snapshot.snapshot.sequence;
-                                    } else {
+                                    }
+                                    else {
                                         // Can't get reliable LOD 0 sequence - use applied level
                                         // sequence and don't cache at LOD 0 to avoid staleness.
                                         cache_level = view_result.applied_level;

@@ -8,7 +8,7 @@
 #include <thread>
 #include <chrono>
 
-using namespace vnm::benchmark;
+using vnm::benchmark::Ring_buffer;
 
 // Test helper macros
 #define TEST_ASSERT(cond, msg) \
@@ -25,7 +25,8 @@ using namespace vnm::benchmark;
         if (test_fn()) { \
             std::cout << "PASS" << std::endl; \
             ++passed; \
-        } else { \
+        } \
+        else { \
             std::cout << "FAIL" << std::endl; \
             ++failed; \
         } \
