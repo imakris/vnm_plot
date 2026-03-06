@@ -22,7 +22,6 @@ namespace vnm::plot {
 using detail::any_fractional_at_precision;
 using detail::build_time_steps_covering;
 using detail::find_time_step_start_index;
-using detail::format_axis_fixed_or_int;
 using detail::get_shift;
 using detail::k_text_margin_px;
 using detail::trim_trailing_zero_decimals;
