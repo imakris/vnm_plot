@@ -1,6 +1,5 @@
 #include <vnm_plot/qt/plot_renderer.h>
 #include <vnm_plot/qt/plot_widget.h>
-#include <vnm_plot/qt/vnm_qt_safe_dispatch.h>
 #include <vnm_plot/core/color_palette.h>
 #include <vnm_plot/core/constants.h>
 #include <vnm_plot/core/layout_calculator.h>
@@ -20,6 +19,7 @@
 #include <QOpenGLContext>
 #include <QOpenGLFramebufferObject>
 #include <QMetaObject>
+#include <QPointer>
 #include <QQuickWindow>
 #include <QSize>
 
@@ -34,8 +34,12 @@
 #include <shared_mutex>
 #include <string>
 #include <string_view>
+#include <functional>
+#include <tuple>
+#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace vnm::plot {
@@ -49,6 +53,62 @@ using detail::k_vbar_min_width_px_d;
 using detail::k_vbar_width_change_threshold_d;
 
 namespace {
+
+template<class T>
+constexpr std::decay_t<T> decay_copy(T&& value) noexcept(
+    std::is_nothrow_constructible_v<std::decay_t<T>, T&&>)
+{
+    return std::forward<T>(value);
+}
+
+template<class Method, class... Args>
+bool post_to_plot_widget(Plot_widget* widget, Method method, Args&&... args) noexcept
+{
+    static_assert(std::is_member_function_pointer_v<Method>,
+        "Method must be a Plot_widget member function pointer.");
+    static_assert(std::is_invocable_v<Method, Plot_widget*, Args...>,
+        "Method cannot be invoked on Plot_widget with the provided arguments.");
+    static_assert(((std::is_copy_constructible_v<std::decay_t<Args>>
+                    || std::is_rvalue_reference_v<Args&&>) && ...),
+        "Each lvalue argument must be copy-constructible; pass rvalues for move-only types.");
+
+    if (!widget) {
+        return false;
+    }
+
+    try {
+        QPointer<Plot_widget> guard{widget};
+        return QMetaObject::invokeMethod(
+            widget,
+            [guard,
+             method,
+             tup = std::make_tuple(decay_copy(std::forward<Args>(args))...)]() mutable
+            {
+                auto* guarded_widget = guard.data();
+                if (!guarded_widget) {
+                    return;
+                }
+
+                try {
+                    std::apply(
+                        [&](auto&&... unpacked) {
+                            std::invoke(
+                                method,
+                                guarded_widget,
+                                std::forward<decltype(unpacked)>(unpacked)...);
+                        },
+                        std::move(tup));
+                }
+                catch (...) {
+                    qWarning("vnm_plot: Exception swallowed in queued Plot_widget call.");
+                }
+            },
+            Qt::QueuedConnection);
+    }
+    catch (...) {
+        return false;
+    }
+}
 
 bool parse_gl_version_from_string(int& major, int& minor)
 {
@@ -906,7 +966,7 @@ const frame_layout_result_t& Plot_renderer::impl_t::calculate_frame_layout(
     {
         // Notify widget to animate to new width
         if (owner) {
-            vnm::post_invoke(
+            post_to_plot_widget(
                 const_cast<Plot_widget*>(owner),
                 &Plot_widget::set_vbar_width_from_renderer,
                 measured_vbar_width);
@@ -1459,7 +1519,7 @@ void Plot_renderer::render()
                 if (std::abs(v0 - m_impl->snapshot.cfg.v_min) > k_auto_v_sync_eps ||
                     std::abs(v1 - m_impl->snapshot.cfg.v_max) > k_auto_v_sync_eps)
                 {
-                    vnm::post_invoke(
+                    post_to_plot_widget(
                         const_cast<Plot_widget*>(m_impl->owner),
                         &Plot_widget::set_auto_v_range_from_renderer,
                         v0, v1);
@@ -1479,7 +1539,7 @@ void Plot_renderer::render()
                  std::abs(preview_v1 - target_preview_v1) > preview_span * k_anim_target_frac);
             const bool still_animating = main_animating || preview_animating;
             if (still_animating && allow_renderer_self_scheduling && m_impl->owner) {
-                vnm::post_invoke(
+                post_to_plot_widget(
                     const_cast<Plot_widget*>(m_impl->owner),
                     &Plot_widget::update);
             }
@@ -1616,7 +1676,7 @@ void Plot_renderer::render()
         VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.text_overlay");
         const bool fades_active = m_impl->text->render(core_ctx, fade_v_labels, fade_h_labels);
         if (fades_active && allow_renderer_self_scheduling && m_impl->owner) {
-            vnm::post_invoke(
+            post_to_plot_widget(
                 const_cast<Plot_widget*>(m_impl->owner),
                 &Plot_widget::update);
         }
