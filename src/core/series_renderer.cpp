@@ -30,6 +30,31 @@ constexpr glm::vec4 k_default_series_color(0.16f, 0.45f, 0.64f, 1.0f);
 constexpr glm::vec4 k_default_series_color_dark(0.30f, 0.63f, 0.88f, 1.0f);
 constexpr float k_default_color_epsilon = 0.01f;
 
+bool to_glint_rounded(double value, GLint& out)
+{
+    if (!std::isfinite(value)) {
+        return false;
+    }
+
+    out = static_cast<GLint>(lround(value));
+    return true;
+}
+
+bool to_positive_glsizei(double value, GLsizei& out)
+{
+    if (!std::isfinite(value)) {
+        return false;
+    }
+
+    const long rounded = lround(value);
+    if (rounded <= 0) {
+        return false;
+    }
+
+    out = static_cast<GLsizei>(rounded);
+    return true;
+}
+
 std::string normalize_asset_name(std::string_view name)
 {
     std::string_view out = name;
@@ -1354,26 +1379,31 @@ void Series_renderer::render(
             else {
                 const double preview_top =
                     layout.usable_height + std::max(0.0, layout.h_bar_height - double(k_scissor_pad_px));
-                const GLint scissor_y = to_gl_scissor_y(preview_top, preview_height);
-                const GLsizei scissor_h = static_cast<GLsizei>(lround(preview_height));
-                if (scissor_h <= 0) {
+                GLint scissor_y = 0;
+                GLsizei scissor_w = 0;
+                GLsizei scissor_h = 0;
+                if (!to_glint_rounded(double(to_gl_scissor_y(preview_top, preview_height)), scissor_y) ||
+                    !to_positive_glsizei(double(ctx.win_w), scissor_w) ||
+                    !to_positive_glsizei(preview_height, scissor_h)) {
                     do_draw = false;
                 }
                 else {
-                    glScissor(
-                        0,
-                        scissor_y,
-                        static_cast<GLsizei>(lround(ctx.win_w)),
-                        scissor_h);
+                    glScissor(0, scissor_y, scissor_w, scissor_h);
                 }
             }
         }
         else {
-            glScissor(
-                0,
-                to_gl_scissor_y(0.0, layout.usable_height),
-                static_cast<GLsizei>(lround(layout.usable_width)),
-                static_cast<GLsizei>(lround(layout.usable_height)));
+            GLint scissor_y = 0;
+            GLsizei scissor_w = 0;
+            GLsizei scissor_h = 0;
+            if (!to_glint_rounded(double(to_gl_scissor_y(0.0, layout.usable_height)), scissor_y) ||
+                !to_positive_glsizei(layout.usable_width, scissor_w) ||
+                !to_positive_glsizei(layout.usable_height, scissor_h)) {
+                do_draw = false;
+            }
+            else {
+                glScissor(0, scissor_y, scissor_w, scissor_h);
+            }
         }
 
         if (do_draw) {

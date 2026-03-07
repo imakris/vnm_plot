@@ -24,6 +24,31 @@ using detail::k_value_decimals;
 
 namespace {
 
+bool to_glint_rounded(double value, GLint& out)
+{
+    if (!std::isfinite(value)) {
+        return false;
+    }
+
+    out = static_cast<GLint>(lround(value));
+    return true;
+}
+
+bool to_positive_glsizei(double value, GLsizei& out)
+{
+    if (!std::isfinite(value)) {
+        return false;
+    }
+
+    const long rounded = lround(value);
+    if (rounded <= 0) {
+        return false;
+    }
+
+    out = static_cast<GLsizei>(rounded);
+    return true;
+}
+
 template <typename Labels, typename DrawFunc>
 bool update_and_draw_faded_labels(
     const Labels& labels,
@@ -158,12 +183,19 @@ bool Text_renderer::render_axis_labels(const frame_context_t& ctx, bool fade_lab
     const double v_span = double(ctx.v1) - double(ctx.v0);
 
     if (!skip_gl) {
+        GLint scissor_x = 0;
+        GLint scissor_y = 0;
+        GLsizei scissor_w = 0;
+        GLsizei scissor_h = 0;
+        if (!to_glint_rounded(pl.usable_width, scissor_x) ||
+            !to_glint_rounded(double(ctx.win_h) - double(pl.usable_height), scissor_y) ||
+            !to_positive_glsizei(pl.v_bar_width, scissor_w) ||
+            !to_positive_glsizei(pl.usable_height, scissor_h)) {
+            return true;
+        }
+
         glEnable(GL_SCISSOR_TEST);
-        const GLint scissor_y = static_cast<GLint>(lround(double(ctx.win_h) - double(pl.usable_height)));
-        glScissor(
-            static_cast<GLint>(lround(pl.usable_width)), scissor_y,
-            static_cast<GLsizei>(lround(pl.v_bar_width)), static_cast<GLsizei>(lround(pl.usable_height))
-        );
+        glScissor(scissor_x, scissor_y, scissor_w, scissor_h);
     }
 
     const auto draw_label = [&](double value, const label_fade_state_t& state) {

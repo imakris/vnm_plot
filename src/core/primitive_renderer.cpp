@@ -6,8 +6,39 @@
 #include <glatter/glatter.h>
 #include <glm/gtc/type_ptr.hpp>
 
+#include <cmath>
+
 namespace vnm::plot {
 using detail::k_rect_initial_quads;
+
+namespace {
+
+bool to_glint_rounded(double value, GLint& out)
+{
+    if (!std::isfinite(value)) {
+        return false;
+    }
+
+    out = static_cast<GLint>(lround(value));
+    return true;
+}
+
+bool to_positive_glsizei(double value, GLsizei& out)
+{
+    if (!std::isfinite(value)) {
+        return false;
+    }
+
+    const long rounded = lround(value);
+    if (rounded <= 0) {
+        return false;
+    }
+
+    out = static_cast<GLsizei>(rounded);
+    return true;
+}
+
+} // namespace
 
 Primitive_renderer::Primitive_renderer() = default;
 Primitive_renderer::~Primitive_renderer() = default;
@@ -198,6 +229,17 @@ void Primitive_renderer::draw_grid_shader(
         return;
     }
 
+    GLint scissor_x = 0;
+    GLint scissor_y = 0;
+    GLsizei scissor_w = 0;
+    GLsizei scissor_h = 0;
+    if (!to_glint_rounded(origin.x, scissor_x) ||
+        !to_glint_rounded(origin.y, scissor_y) ||
+        !to_positive_glsizei(size.x, scissor_w) ||
+        !to_positive_glsizei(size.y, scissor_h)) {
+        return;
+    }
+
     m_sp_grid->bind();
 
     glUniform2f(m_sp_grid->uniform_location("plot_size_px"), size.x, size.y);
@@ -219,11 +261,7 @@ void Primitive_renderer::draw_grid_shader(
     glUniform1fv(m_sp_grid->uniform_location("t_thickness_px"), max_levels, horizontal_levels.thickness_px);
 
     glEnable(GL_SCISSOR_TEST);
-    glScissor(
-        static_cast<GLint>(lround(origin.x)),
-        static_cast<GLint>(lround(origin.y)),
-        static_cast<GLsizei>(lround(size.x)),
-        static_cast<GLsizei>(lround(size.y)));
+    glScissor(scissor_x, scissor_y, scissor_w, scissor_h);
 
     glBindVertexArray(m_grid_quad_pipe.vao);
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
