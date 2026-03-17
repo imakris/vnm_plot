@@ -190,21 +190,6 @@ else()
     endif()
 endif()
 
-# Silence warnings when compiling FreeType
-if(TARGET Freetype::Freetype)
-    get_target_property(_ft_real Freetype::Freetype ALIASED_TARGET)
-    if(NOT _ft_real)
-        set(_ft_real Freetype::Freetype)
-    endif()
-    if(TARGET ${_ft_real})
-        if(MSVC)
-            target_compile_options(${_ft_real} PRIVATE /w)
-        else()
-            target_compile_options(${_ft_real} PRIVATE -w)
-        endif()
-    endif()
-endif()
-
 # --- msdfgen (needed for MSDF text rendering in core) ---
 if(TARGET msdfgen::msdfgen-core AND TARGET msdfgen::msdfgen-ext)
     message(STATUS "vnm_plot: Using existing msdfgen targets")
