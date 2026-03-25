@@ -95,9 +95,29 @@ qreal Plot_interaction_item::t_stop_max() const
     return 1.0 - (m_plot_widget->t_available_max() - m_plot_widget->t_max()) / t_available_span;
 }
 
-qreal Plot_interaction_item::base_k() const
+qreal Plot_interaction_item::zoom_animation_scale_factor(qreal velocity, qreal elapsed_timer_steps)
 {
-    return std::pow(k_zoom_per_notch, (1.0 - k_zoom_friction) / k_zoom_impulse_per_step);
+    if (elapsed_timer_steps <= 0.0) {
+        return 1.0;
+    }
+
+    const qreal velocity_decay = std::pow(k_zoom_friction, elapsed_timer_steps);
+    const qreal integrated_velocity = std::abs(1.0 - k_zoom_friction) > 1e-12
+        ? velocity * (1.0 - velocity_decay) / (1.0 - k_zoom_friction)
+        : velocity * elapsed_timer_steps;
+    static const qreal s_base_k =
+        std::pow(k_zoom_per_notch, (1.0 - k_zoom_friction) / k_zoom_impulse_per_step);
+
+    return std::pow(s_base_k, integrated_velocity);
+}
+
+qreal Plot_interaction_item::zoom_animation_velocity_after(qreal velocity, qreal elapsed_timer_steps)
+{
+    if (elapsed_timer_steps <= 0.0) {
+        return velocity;
+    }
+
+    return velocity * std::pow(k_zoom_friction, elapsed_timer_steps);
 }
 
 void Plot_interaction_item::apply_zoom_step()
@@ -109,23 +129,32 @@ void Plot_interaction_item::apply_zoom_step()
 
     constexpr qreal eps = 1e-3;
     bool active = false;
+    const auto now = std::chrono::steady_clock::now();
+    qreal elapsed_ms = std::chrono::duration<qreal, std::milli>(now - m_last_zoom_step_time).count();
+    m_last_zoom_step_time = now;
+
+    if (elapsed_ms <= 0.0) {
+        elapsed_ms = k_zoom_timer_interval_ms;
+    }
+
+    const qreal dt = elapsed_ms / k_zoom_timer_interval_ms;
 
     if (std::abs(m_zoom_vel_t) > eps) {
-        const qreal factor_t = std::pow(base_k(), m_zoom_vel_t);
+        const qreal factor_t = zoom_animation_scale_factor(m_zoom_vel_t, dt);
         if (factor_t < 1.0 && !m_plot_widget->can_zoom_in()) {
             m_zoom_vel_t = 0.0;
         }
         else {
             m_plot_widget->adjust_t_from_pivot_and_scale(m_last_pivot_x, factor_t);
-            m_zoom_vel_t *= k_zoom_friction;
+            m_zoom_vel_t = zoom_animation_velocity_after(m_zoom_vel_t, dt);
             active = true;
         }
     }
 
     if (std::abs(m_zoom_vel_v) > eps) {
-        const qreal factor_v = std::pow(base_k(), m_zoom_vel_v);
+        const qreal factor_v = zoom_animation_scale_factor(m_zoom_vel_v, dt);
         m_plot_widget->adjust_v_from_pivot_and_scale(m_last_pivot_y, factor_v);
-        m_zoom_vel_v *= k_zoom_friction;
+        m_zoom_vel_v = zoom_animation_velocity_after(m_zoom_vel_v, dt);
         active = true;
     }
 
@@ -283,6 +312,11 @@ void Plot_interaction_item::wheelEvent(QWheelEvent* event)
 
     m_zoom_vel_t = std::clamp(m_zoom_vel_t, -k_zoom_max_vel, k_zoom_max_vel);
     m_zoom_vel_v = std::clamp(m_zoom_vel_v, -k_zoom_max_vel, k_zoom_max_vel);
+
+    if (!m_zoom_timer.isActive()) {
+        m_last_zoom_step_time = std::chrono::steady_clock::now()
+                              - std::chrono::milliseconds(k_zoom_timer_interval_ms);
+    }
 
     apply_zoom_step();
 

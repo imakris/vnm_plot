@@ -5,6 +5,8 @@
 #include <QBasicTimer>
 #include <QQuickItem>
 
+#include <chrono>
+
 namespace vnm::plot {
 
 class Plot_interaction_item : public QQuickItem
@@ -16,6 +18,9 @@ class Plot_interaction_item : public QQuickItem
 public:
     explicit Plot_interaction_item(QQuickItem* parent = nullptr);
     ~Plot_interaction_item() override;
+
+    static qreal zoom_animation_scale_factor(qreal velocity, qreal elapsed_timer_steps);
+    static qreal zoom_animation_velocity_after(qreal velocity, qreal elapsed_timer_steps);
 
     Plot_widget* plot_widget() const;
     void set_plot_widget(Plot_widget* widget);
@@ -46,7 +51,6 @@ private:
     qreal t_stop_min() const;
     qreal t_stop_max() const;
     void apply_zoom_step();
-    qreal base_k() const;
 
     Plot_widget* m_plot_widget = nullptr;
     bool m_interaction_enabled = true;
@@ -62,6 +66,7 @@ private:
     qreal m_last_pivot_x = 0.5;
     qreal m_last_pivot_y = 0.5;
     QBasicTimer m_zoom_timer;
+    std::chrono::steady_clock::time_point m_last_zoom_step_time;
 
     static constexpr qreal k_zoom_friction = 0.75;
     static constexpr qreal k_zoom_impulse_per_step = 1.0;
