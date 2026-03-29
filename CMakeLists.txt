@@ -17,9 +17,16 @@ option(VNM_PLOT_BUILD_QT "Build Qt wrapper library (requires Qt6)" ON)
 option(VNM_PLOT_CORE_ONLY "Build only the Qt-free core library" OFF)
 option(VNM_PLOT_ENABLE_TEXT "Enable MSDF text rendering (requires FreeType + msdfgen)" ON)
 option(VNM_PLOT_BUILD_TESTS "Build core tests" OFF)
+option(VNM_PLOT_USE_SYSTEM_LIBS "Prefer system/precompiled FreeType and msdfgen over FetchContent" OFF)
 
 include(FetchContent)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/EmbedAssets.cmake)
+
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/workspace_deps_overrides.cmake OPTIONAL)
+if(VNM_PLOT_DEP_OVERRIDES_FILE AND EXISTS "${VNM_PLOT_DEP_OVERRIDES_FILE}")
+    message(STATUS "vnm_plot: Loading dependency overrides from ${VNM_PLOT_DEP_OVERRIDES_FILE}")
+    include("${VNM_PLOT_DEP_OVERRIDES_FILE}")
+endif()
 
 # -----------------------------------------------------------------------------
 # Find or fetch required dependencies
@@ -113,6 +120,22 @@ endif()
 # --- FreeType + msdfgen (needed for MSDF text rendering) ---
 # Used by the core font_renderer for MSDF atlas generation.
 if(VNM_PLOT_ENABLE_TEXT)
+if(VNM_PLOT_USE_SYSTEM_LIBS)
+    find_package(Freetype QUIET)
+    if(FREETYPE_FOUND)
+        if(TARGET Freetype::Freetype)
+            # ok
+        elseif(TARGET freetype)
+            add_library(Freetype::Freetype ALIAS freetype)
+        else()
+            add_library(Freetype::Freetype INTERFACE IMPORTED)
+            set_target_properties(Freetype::Freetype PROPERTIES
+                INTERFACE_INCLUDE_DIRECTORIES "${FREETYPE_INCLUDE_DIRS}"
+                INTERFACE_LINK_LIBRARIES "${FREETYPE_LIBRARIES}")
+        endif()
+    endif()
+endif()
+
 if(TARGET Freetype::Freetype)
     message(STATUS "vnm_plot: Using existing Freetype::Freetype target")
 elseif(TARGET freetype)
@@ -137,29 +160,14 @@ else()
     if(NOT freetype_POPULATED)
         FetchContent_Populate(freetype)
 
-        # Patch freetype's cmake_minimum_required to avoid policy warnings
-        set(_freetype_cmakelists "${freetype_SOURCE_DIR}/CMakeLists.txt")
-        if(EXISTS "${_freetype_cmakelists}")
-            file(READ "${_freetype_cmakelists}" _freetype_cmake_txt)
-            set(_freetype_target_version "3.16")
-
-            string(REGEX REPLACE
-                   "cmake_minimum_required\\(VERSION [^\\)]+\\)"
-                   "cmake_minimum_required(VERSION ${_freetype_target_version})"
-                   _freetype_cmake_txt
-                   "${_freetype_cmake_txt}")
-
-            string(REGEX REPLACE
-                   "cmake_policy\\(VERSION [^\\)]+\\)"
-                   "cmake_policy(VERSION ${_freetype_target_version})"
-                   _freetype_cmake_txt
-                   "${_freetype_cmake_txt}")
-
-            file(READ "${_freetype_cmakelists}" _freetype_original_txt)
-            if(NOT _freetype_cmake_txt STREQUAL _freetype_original_txt)
-                file(WRITE "${_freetype_cmakelists}" "${_freetype_cmake_txt}")
-            endif()
+        # Set FreeType's policy floor from the parent instead of rewriting the checkout.
+        set(_vnm_plot_policy_version_minimum_saved "")
+        set(_vnm_plot_policy_version_minimum_was_defined FALSE)
+        if(DEFINED CMAKE_POLICY_VERSION_MINIMUM)
+            set(_vnm_plot_policy_version_minimum_saved "${CMAKE_POLICY_VERSION_MINIMUM}")
+            set(_vnm_plot_policy_version_minimum_was_defined TRUE)
         endif()
+        set(CMAKE_POLICY_VERSION_MINIMUM "3.16")
 
         # Disable optional FreeType features
         set(FT_DISABLE_HARFBUZZ ON CACHE BOOL "" FORCE)
@@ -179,6 +187,12 @@ else()
         if(DEFINED _vnm_plot_build_shared_libs_saved)
             set(BUILD_SHARED_LIBS "${_vnm_plot_build_shared_libs_saved}" CACHE BOOL "" FORCE)
         endif()
+
+        if(_vnm_plot_policy_version_minimum_was_defined)
+            set(CMAKE_POLICY_VERSION_MINIMUM "${_vnm_plot_policy_version_minimum_saved}")
+        else()
+            unset(CMAKE_POLICY_VERSION_MINIMUM)
+        endif()
     endif()
 
     if(TARGET freetype AND NOT TARGET Freetype::Freetype)
@@ -190,7 +204,26 @@ else()
     endif()
 endif()
 
+if(TARGET Freetype::Freetype)
+    get_target_property(_vnm_plot_ft_real Freetype::Freetype ALIASED_TARGET)
+    if(NOT _vnm_plot_ft_real)
+        set(_vnm_plot_ft_real Freetype::Freetype)
+    endif()
+    get_target_property(_vnm_plot_ft_imported ${_vnm_plot_ft_real} IMPORTED)
+    if(NOT _vnm_plot_ft_imported)
+        if(MSVC)
+            target_compile_options(${_vnm_plot_ft_real} PRIVATE /w)
+        else()
+            target_compile_options(${_vnm_plot_ft_real} PRIVATE -w)
+        endif()
+    endif()
+endif()
+
 # --- msdfgen (needed for MSDF text rendering in core) ---
+if(VNM_PLOT_USE_SYSTEM_LIBS)
+    find_package(msdfgen QUIET)
+endif()
+
 if(TARGET msdfgen::msdfgen-core AND TARGET msdfgen::msdfgen-ext)
     message(STATUS "vnm_plot: Using existing msdfgen targets")
 else()
