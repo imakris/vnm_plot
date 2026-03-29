@@ -25,14 +25,14 @@ struct function_sample_t
     float  y_max;  // Optional: range maximum
 
     function_sample_t() : x(0), y(0), y_min(0), y_max(0) {}
-    function_sample_t(double x_, float y_) : x(x_), y(y_), y_min(y_), y_max(y_) {}
+    function_sample_t(double xv, float yv) : x(xv), y(yv), y_min(yv), y_max(yv) {}
 
-    function_sample_t(double x_, float y_, float y_min_, float y_max_)
+    function_sample_t(double xv, float yv, float ymin, float ymax)
     :
-        x(x_),
-        y(y_),
-        y_min(y_min_),
-        y_max(y_max_)
+        x(xv),
+        y(yv),
+        y_min(ymin),
+        y_max(ymax)
     {}
 };
 #pragma pack(pop)

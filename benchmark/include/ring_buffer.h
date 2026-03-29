@@ -42,11 +42,11 @@ public:
     /// Construct a ring buffer with the given capacity.
     /// @param capacity Maximum number of elements (must be > 0)
     explicit Ring_buffer(std::size_t capacity)
-        : buffer_(capacity)
+        : m_buffer(capacity)
     {
         // Capacity of 0 would cause division by zero
         if (capacity == 0) {
-            buffer_.resize(1);
+            m_buffer.resize(1);
         }
     }
 
@@ -58,7 +58,7 @@ public:
 
     /// Optional profiler hookup for copy_to() timing.
     void set_profiler(vnm::plot::Profiler* profiler) noexcept {
-        profiler_ = profiler;
+        m_profiler = profiler;
     }
 
     // -------------------------------------------------------------------------
@@ -67,25 +67,25 @@ public:
 
     /// Push a single sample. Overwrites oldest if full.
     void push(const T& sample) {
-        std::unique_lock lock(mutex_);
+        std::unique_lock lock(m_mutex);
 
-        const std::size_t cap = buffer_.size();
-        const std::size_t h = head_.load(std::memory_order_relaxed);
-        const std::size_t t = tail_.load(std::memory_order_relaxed);
-        const uint64_t seq = sequence_.load(std::memory_order_relaxed);
+        const std::size_t cap = m_buffer.size();
+        const std::size_t h = m_head.load(std::memory_order_relaxed);
+        const std::size_t t = m_tail.load(std::memory_order_relaxed);
+        const uint64_t seq = m_sequence.load(std::memory_order_relaxed);
 
         // Check if buffer is currently full (head == tail && has data)
         const bool was_full = (h == t) && (seq > 0);
 
-        buffer_[h] = sample;
-        head_.store((h + 1) % cap, std::memory_order_relaxed);
+        m_buffer[h] = sample;
+        m_head.store((h + 1) % cap, std::memory_order_relaxed);
 
         // If buffer was full, advance tail to discard oldest
         if (was_full) {
-            tail_.store((t + 1) % cap, std::memory_order_relaxed);
+            m_tail.store((t + 1) % cap, std::memory_order_relaxed);
         }
 
-        sequence_.fetch_add(1, std::memory_order_release);
+        m_sequence.fetch_add(1, std::memory_order_release);
     }
 
     /// Push multiple samples. Overwrites oldest as needed.
@@ -94,27 +94,27 @@ public:
             return;
         }
 
-        std::unique_lock lock(mutex_);
+        std::unique_lock lock(m_mutex);
 
-        const std::size_t cap = buffer_.size();
+        const std::size_t cap = m_buffer.size();
 
         for (std::size_t i = 0; i < count; ++i) {
-            const std::size_t h = head_.load(std::memory_order_relaxed);
-            const std::size_t t = tail_.load(std::memory_order_relaxed);
-            const uint64_t seq = sequence_.load(std::memory_order_relaxed);
+            const std::size_t h = m_head.load(std::memory_order_relaxed);
+            const std::size_t t = m_tail.load(std::memory_order_relaxed);
+            const uint64_t seq = m_sequence.load(std::memory_order_relaxed);
 
             // Check if buffer is currently full (head == tail && has data)
             const bool was_full = (h == t) && (seq > 0);
 
-            buffer_[h] = samples[i];
-            head_.store((h + 1) % cap, std::memory_order_relaxed);
+            m_buffer[h] = samples[i];
+            m_head.store((h + 1) % cap, std::memory_order_relaxed);
 
             // If buffer was full, advance tail to discard oldest
             if (was_full) {
-                tail_.store((t + 1) % cap, std::memory_order_relaxed);
+                m_tail.store((t + 1) % cap, std::memory_order_relaxed);
             }
 
-            sequence_.fetch_add(1, std::memory_order_relaxed);
+            m_sequence.fetch_add(1, std::memory_order_relaxed);
         }
 
         // Release fence for change-detection consistency
@@ -129,24 +129,24 @@ public:
     /// Holds a shared lock for the lifetime of the returned View_result.
     View_result view() const {
         View_result view;
-        view.lock = std::make_shared<std::shared_lock<std::shared_mutex>>(mutex_);
+        view.lock = std::make_shared<std::shared_lock<std::shared_mutex>>(m_mutex);
 
-        const std::size_t h = head_.load(std::memory_order_acquire);
-        const std::size_t t = tail_.load(std::memory_order_acquire);
-        const uint64_t seq = sequence_.load(std::memory_order_acquire);
+        const std::size_t h = m_head.load(std::memory_order_acquire);
+        const std::size_t t = m_tail.load(std::memory_order_acquire);
+        const uint64_t seq = m_sequence.load(std::memory_order_acquire);
         view.sequence = seq;
 
         if (h == t && seq == 0) {
             return view;
         }
 
-        const std::size_t cap = buffer_.size();
+        const std::size_t cap = m_buffer.size();
         if (h == t) {
             // Full buffer
-            view.data = buffer_.data() + t;
+            view.data = m_buffer.data() + t;
             view.count = cap;
             if (t > 0) {
-                view.data2 = buffer_.data();
+                view.data2 = m_buffer.data();
                 view.count2 = t;
             }
             return view;
@@ -154,14 +154,14 @@ public:
 
         if (h > t) {
             // Contiguous
-            view.data = buffer_.data() + t;
+            view.data = m_buffer.data() + t;
             view.count = h - t;
             return view;
         }
 
         // Wrapped
-        view.data = buffer_.data() + t;
-        view.data2 = buffer_.data();
+        view.data = m_buffer.data() + t;
+        view.data2 = m_buffer.data();
         view.count2 = h;
         view.count = (cap - t) + h;
         return view;
@@ -172,12 +172,12 @@ public:
     /// @param dest Destination vector (resized as needed)
     /// @return Copy_result with count and sequence
     Copy_result copy_to(std::vector<T>& dest) const {
-        VNM_PLOT_PROFILE_SCOPE(profiler_, "renderer.frame.data_copy");
-        std::shared_lock lock(mutex_);
+        VNM_PLOT_PROFILE_SCOPE(m_profiler, "renderer.frame.data_copy");
+        std::shared_lock lock(m_mutex);
 
-        const std::size_t h = head_.load(std::memory_order_acquire);
-        const std::size_t t = tail_.load(std::memory_order_acquire);
-        const uint64_t seq = sequence_.load(std::memory_order_acquire);
+        const std::size_t h = m_head.load(std::memory_order_acquire);
+        const std::size_t t = m_tail.load(std::memory_order_acquire);
+        const uint64_t seq = m_sequence.load(std::memory_order_acquire);
 
         if (h == t && seq == 0) {
             // Empty buffer (never written to)
@@ -185,14 +185,14 @@ public:
             return {0, seq};
         }
 
-        const std::size_t cap = buffer_.size();
+        const std::size_t cap = m_buffer.size();
         std::size_t count;
 
         if (h > t) {
             // Contiguous: [tail, head)
             count = h - t;
             dest.resize(count);
-            std::copy(buffer_.begin() + t, buffer_.begin() + h, dest.begin());
+            std::copy(m_buffer.begin() + t, m_buffer.begin() + h, dest.begin());
         }
         else
         if (h < t) {
@@ -201,16 +201,16 @@ public:
             const std::size_t part2 = h;
             count = part1 + part2;
             dest.resize(count);
-            std::copy(buffer_.begin() + t, buffer_.end(), dest.begin());
-            std::copy(buffer_.begin(), buffer_.begin() + h, dest.begin() + part1);
+            std::copy(m_buffer.begin() + t, m_buffer.end(), dest.begin());
+            std::copy(m_buffer.begin(), m_buffer.begin() + h, dest.begin() + part1);
         }
         else {
             // h == t && seq > 0: buffer is full (all N elements valid)
             count = cap;
             dest.resize(count);
             // Copy from tail to end, then from beginning to tail
-            std::copy(buffer_.begin() + t, buffer_.end(), dest.begin());
-            std::copy(buffer_.begin(), buffer_.begin() + t, dest.begin() + (cap - t));
+            std::copy(m_buffer.begin() + t, m_buffer.end(), dest.begin());
+            std::copy(m_buffer.begin(), m_buffer.begin() + t, dest.begin() + (cap - t));
         }
 
         return {count, seq};
@@ -219,7 +219,7 @@ public:
     /// Query current sequence without copying (for change detection).
     /// Returns sequence number which increments on every push.
     uint64_t sequence() const {
-        return sequence_.load(std::memory_order_acquire);
+        return m_sequence.load(std::memory_order_acquire);
     }
 
     // -------------------------------------------------------------------------
@@ -228,46 +228,46 @@ public:
 
     /// Return the maximum capacity of the buffer.
     std::size_t capacity() const {
-        return buffer_.size();
+        return m_buffer.size();
     }
 
     /// Return current number of valid samples.
     /// Note: This is a snapshot and may change immediately after return.
     std::size_t size() const {
-        std::shared_lock lock(mutex_);
-        const std::size_t h = head_.load(std::memory_order_acquire);
-        const std::size_t t = tail_.load(std::memory_order_acquire);
-        const uint64_t seq = sequence_.load(std::memory_order_acquire);
+        std::shared_lock lock(m_mutex);
+        const std::size_t h = m_head.load(std::memory_order_acquire);
+        const std::size_t t = m_tail.load(std::memory_order_acquire);
+        const uint64_t seq = m_sequence.load(std::memory_order_acquire);
 
         if (h == t) {
-            return seq == 0 ? 0 : buffer_.size();  // Empty or full
+            return seq == 0 ? 0 : m_buffer.size();  // Empty or full
         }
         if (h > t) {
             return h - t;
         }
-        return buffer_.size() - t + h;
+        return m_buffer.size() - t + h;
     }
 
     /// Check if buffer is empty.
     bool empty() const {
-        return sequence_.load(std::memory_order_acquire) == 0;
+        return m_sequence.load(std::memory_order_acquire) == 0;
     }
 
     /// Clear all data and reset sequence.
     void clear() {
-        std::unique_lock lock(mutex_);
-        head_.store(0, std::memory_order_relaxed);
-        tail_.store(0, std::memory_order_relaxed);
-        sequence_.store(0, std::memory_order_release);
+        std::unique_lock lock(m_mutex);
+        m_head.store(0, std::memory_order_relaxed);
+        m_tail.store(0, std::memory_order_relaxed);
+        m_sequence.store(0, std::memory_order_release);
     }
 
 private:
-    std::vector<T> buffer_;
-    std::atomic<std::size_t> head_{0};   ///< Write position (next slot to write)
-    std::atomic<std::size_t> tail_{0};   ///< Start of valid data
-    std::atomic<uint64_t> sequence_{0};  ///< Increments on every push
-    mutable std::shared_mutex mutex_;    ///< Protects buffer_ during copy
-    vnm::plot::Profiler* profiler_ = nullptr;
+    std::vector<T> m_buffer;
+    std::atomic<std::size_t> m_head{0};   ///< Write position (next slot to write)
+    std::atomic<std::size_t> m_tail{0};   ///< Start of valid data
+    std::atomic<uint64_t> m_sequence{0};  ///< Increments on every push
+    mutable std::shared_mutex m_mutex;    ///< Protects m_buffer during copy
+    vnm::plot::Profiler* m_profiler = nullptr;
 };
 
 }  // namespace vnm::benchmark

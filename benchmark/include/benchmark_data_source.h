@@ -32,7 +32,7 @@ public:
     /// Construct with reference to a ring buffer.
     /// @param buffer Ring buffer to read from (must outlive this data source)
     explicit Benchmark_data_source(Ring_buffer<T>& buffer)
-        : buffer_(buffer)
+        : m_buffer(buffer)
     {}
 
     ~Benchmark_data_source() override = default;
@@ -47,11 +47,11 @@ public:
             return {vnm::plot::data_snapshot_t{}, Status::FAILED};
         }
 
-        auto view = buffer_.view();
-        snapshot_sequence_ = view.sequence;
+        auto view = m_buffer.view();
+        m_snapshot_sequence = view.sequence;
 
         if (view.count == 0) {
-            range_valid_ = false;
+            m_range_valid = false;
             return {vnm::plot::data_snapshot_t{}, Status::EMPTY};
         }
 
@@ -64,9 +64,9 @@ public:
         snapshot.count2 = view.count2;
         snapshot.hold = view.lock;
 
-        if (view.sequence != last_buffer_sequence_) {
+        if (view.sequence != m_last_buffer_sequence) {
             update_value_range(snapshot);
-            last_buffer_sequence_ = view.sequence;
+            m_last_buffer_sequence = view.sequence;
         }
 
         return {
@@ -82,43 +82,43 @@ public:
     /// O(1) value range query (computed during snapshot)
     /// Returns false if snapshot is empty or no data has been processed
     bool has_value_range() const override {
-        return range_valid_;
+        return m_range_valid;
     }
 
     std::pair<float, float> value_range() const override {
-        return {value_min_, value_max_};
+        return {m_value_min, m_value_max};
     }
 
     bool value_range_needs_rescan() const override {
         // Range is updated on each snapshot, so no rescan needed
         // But return true if range is invalid to signal need for data
-        return !range_valid_;
+        return !m_range_valid;
     }
 
     /// Get current sequence for change detection
     uint64_t sequence() const {
-        return snapshot_sequence_;
+        return m_snapshot_sequence;
     }
 
 private:
-    Ring_buffer<T>& buffer_;
-    uint64_t snapshot_sequence_ = 0;
-    uint64_t last_buffer_sequence_ = 0;
-    float value_min_ = std::numeric_limits<float>::max();
-    float value_max_ = std::numeric_limits<float>::lowest();
-    bool range_valid_ = false;
+    Ring_buffer<T>& m_buffer;
+    uint64_t m_snapshot_sequence = 0;
+    uint64_t m_last_buffer_sequence = 0;
+    float m_value_min = std::numeric_limits<float>::max();
+    float m_value_max = std::numeric_limits<float>::lowest();
+    bool m_range_valid = false;
 
     /// Update value range from current snapshot data
     void update_value_range(const vnm::plot::data_snapshot_t& snapshot) {
         if (!snapshot || snapshot.count == 0 || snapshot.stride == 0) {
-            value_min_ = 0.0f;
-            value_max_ = 0.0f;
-            range_valid_ = false;
+            m_value_min = 0.0f;
+            m_value_max = 0.0f;
+            m_range_valid = false;
             return;
         }
 
-        value_min_ = std::numeric_limits<float>::max();
-        value_max_ = std::numeric_limits<float>::lowest();
+        m_value_min = std::numeric_limits<float>::max();
+        m_value_max = std::numeric_limits<float>::lowest();
 
         for (std::size_t i = 0; i < snapshot.count; ++i) {
             const void* sample_ptr = snapshot.at(i);
@@ -127,11 +127,11 @@ private:
             }
             const auto& sample = *static_cast<const T*>(sample_ptr);
             auto [lo, hi] = get_sample_range(sample);
-            value_min_ = std::min(value_min_, lo);
-            value_max_ = std::max(value_max_, hi);
+            m_value_min = std::min(m_value_min, lo);
+            m_value_max = std::max(m_value_max, hi);
         }
 
-        range_valid_ = true;
+        m_range_valid = true;
     }
 
     /// Extract value range from a sample (specialized per type)
