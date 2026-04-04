@@ -222,7 +222,15 @@ public:
     snapshot_result_t try_snapshot(size_t /*lod_level*/ = 0) override
     {
         return {
-            data_snapshot_t{m_data.data(), m_data.size(), sizeof(T), m_sequence},
+            data_snapshot_t{
+                m_data.data(),
+                m_data.size(),
+                sizeof(T),
+                m_sequence,
+                nullptr,
+                0,
+                {}
+            },
             m_data.empty() ? snapshot_result_t::Snapshot_status::EMPTY : snapshot_result_t::Snapshot_status::READY
         };
     }
