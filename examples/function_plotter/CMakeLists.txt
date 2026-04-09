@@ -44,7 +44,9 @@ else()
     FetchContent_Declare(mexce
         GIT_REPOSITORY https://github.com/imakris/mexce.git
         GIT_TAG        master
-        GIT_SHALLOW    TRUE
+        # Keep full history for fetched libraries because this workspace patches
+        # and reviews them directly during active development.
+        GIT_SHALLOW    FALSE
     )
     FetchContent_MakeAvailable(mexce)
 endif()

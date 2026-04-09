@@ -78,10 +78,12 @@ elseif(TARGET glm)
     message(STATUS "vnm_plot: Using existing glm target (aliased)")
 else()
     message(STATUS "vnm_plot: Fetching glm")
+    # Keep full history for fetched libraries because this workspace patches and
+    # reviews them directly instead of treating them as disposable third-party code.
     FetchContent_Declare(glm
         GIT_REPOSITORY https://github.com/g-truc/glm.git
         GIT_TAG        1.0.1
-        GIT_SHALLOW    TRUE
+        GIT_SHALLOW    FALSE
     )
     FetchContent_MakeAvailable(glm)
     if(TARGET glm AND NOT TARGET glm::glm)
@@ -106,7 +108,7 @@ else()
     FetchContent_Declare(glatter
         GIT_REPOSITORY https://github.com/imakris/glatter.git
         GIT_TAG        v1.0.1
-        GIT_SHALLOW    TRUE
+        GIT_SHALLOW    FALSE
     )
     FetchContent_Populate(glatter)
 
@@ -154,7 +156,7 @@ else()
     FetchContent_Declare(freetype
         GIT_REPOSITORY https://gitlab.freedesktop.org/freetype/freetype.git
         GIT_TAG        VER-2-13-3
-        GIT_SHALLOW    TRUE
+        GIT_SHALLOW    FALSE
     )
     FetchContent_GetProperties(freetype)
     if(NOT freetype_POPULATED)
@@ -231,7 +233,7 @@ else()
     FetchContent_Declare(msdfgen
         GIT_REPOSITORY https://github.com/Chlumsky/msdfgen.git
         GIT_TAG        v1.12.1
-        GIT_SHALLOW    TRUE
+        GIT_SHALLOW    FALSE
     )
     set(MSDFGEN_USE_VCPKG OFF CACHE BOOL "" FORCE)
     set(MSDFGEN_BUILD_STANDALONE OFF CACHE BOOL "" FORCE)
