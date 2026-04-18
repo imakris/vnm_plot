@@ -110,7 +110,7 @@ private:
 
     /// Update value range from current snapshot data
     void update_value_range(const vnm::plot::data_snapshot_t& snapshot) {
-        if (!snapshot || snapshot.count == 0 || snapshot.stride == 0) {
+        if (!snapshot.is_valid()) {
             m_value_min = 0.0f;
             m_value_max = 0.0f;
             m_range_valid = false;

@@ -285,7 +285,7 @@ std::size_t lower_bound_timestamp(
     GetTimestampFn&& get_timestamp,
     double t)
 {
-    if (!snapshot || snapshot.count == 0) {
+    if (!snapshot.is_valid()) {
         return 0;
     }
 
@@ -344,7 +344,7 @@ std::size_t upper_bound_timestamp(
     GetTimestampFn&& get_timestamp,
     double t)
 {
-    if (!snapshot || snapshot.count == 0) {
+    if (!snapshot.is_valid()) {
         return 0;
     }
 

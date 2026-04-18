@@ -1,5 +1,7 @@
 // vnm_plot core cache tests
 
+#include "test_macros.h"
+
 #include <vnm_plot/core/asset_loader.h>
 #include <vnm_plot/core/series_renderer.h>
 #include <vnm_plot/core/plot_config.h>
@@ -183,27 +185,6 @@ void fill_lod_data(Lod_data_source& ds)
         ds.lod1[i].aux = 0.5 + static_cast<double>(src) * 0.1;
     }
 }
-
-#define TEST_ASSERT(cond, msg) \
-    do { \
-        if (!(cond)) { \
-            std::cerr << "FAIL: " << msg << " (line " << __LINE__ << ")" << std::endl; \
-            return false; \
-        } \
-    } while (0)
-
-#define RUN_TEST(test_fn) \
-    do { \
-        std::cout << "Running " << #test_fn << "... "; \
-        if (test_fn()) { \
-            std::cout << "OK" << std::endl; \
-            ++passed; \
-        } \
-        else { \
-            std::cout << "FAIL" << std::endl; \
-            ++failed; \
-        } \
-    } while (0)
 
 bool test_lod0_sequence_fallback_calls_snapshot()
 {

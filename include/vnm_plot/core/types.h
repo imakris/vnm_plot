@@ -56,9 +56,15 @@ using Byte_view = std::string_view;
 // If data2/count2 is set, the logical snapshot is split into two contiguous
 // segments (e.g., ring buffer wrap). The total count is `count`.
 // `sequence` is a monotonic counter that increments on data changes.
-// NOTE: The Data_source implementation owns the data contract. If it returns
-// copied data, it must keep that buffer alive. If it returns a direct view,
-// it must ensure the view stays valid (e.g., by holding a lock in `hold`).
+//
+// Lifetime contract:
+// - The Data_source implementation decides whether the pointers refer to a
+//   copy it owns, or a direct view into its live storage.
+// - Whatever guarantees the view's validity (an internal buffer, a lock, a
+//   reference count) must be kept alive via `hold`; the snapshot is safe to
+//   read for exactly as long as the caller keeps `hold` alive.
+// - Consumers must not cache `data`/`data2` beyond the lifetime of the
+//   snapshot unless they also retain `hold`.
 struct data_snapshot_t
 {
     const void* data     = nullptr;  ///< Pointer to first sample
@@ -70,6 +76,11 @@ struct data_snapshot_t
     std::shared_ptr<void> hold;      ///< Optional ownership/lock guard
 
     explicit operator bool() const { return data != nullptr && count > 0; }
+
+    bool is_valid() const noexcept
+    {
+        return data != nullptr && count > 0 && stride > 0;
+    }
 
     const void* at(size_t index) const
     {
@@ -265,6 +276,8 @@ private:
 struct Data_access_policy
 {
     // --- Sample value extraction ---
+    // Values narrow to float before upload. For large-biased signals, subtract
+    // the bias inside the accessor so the remaining dynamic range survives.
     std::function<double(const void* sample)>                   get_timestamp;  ///< Extract timestamp
     std::function<float(const void* sample)>                    get_value;      ///< Extract primary value
     std::function<std::pair<float, float>(const void* sample)>  get_range;      ///< Extract min/max range

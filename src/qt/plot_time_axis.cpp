@@ -107,6 +107,9 @@ void Plot_time_axis::clear_shared_vbar_width(const QObject* owner)
 
 void Plot_time_axis::set_t_min(double v)
 {
+    if (!std::isfinite(v)) {
+        return;
+    }
     double new_min = v;
     double new_max = m_t_max;
     if (v >= m_t_max) {
@@ -121,6 +124,9 @@ void Plot_time_axis::set_t_min(double v)
 
 void Plot_time_axis::set_t_max(double v)
 {
+    if (!std::isfinite(v)) {
+        return;
+    }
     double new_min = m_t_min;
     double new_max = v;
     if (v <= m_t_min) {
@@ -135,40 +141,53 @@ void Plot_time_axis::set_t_max(double v)
 
 void Plot_time_axis::set_t_available_min(double v)
 {
+    if (!std::isfinite(v)) {
+        return;
+    }
     set_limits_if_changed(m_t_min, m_t_max, v, m_t_available_max);
 }
 
 void Plot_time_axis::set_t_available_max(double v)
 {
+    if (!std::isfinite(v)) {
+        return;
+    }
     set_limits_if_changed(m_t_min, m_t_max, m_t_available_min, v);
 }
 
 void Plot_time_axis::set_t_range(double t_min, double t_max)
 {
+    if (!std::isfinite(t_min) || !std::isfinite(t_max) || !(t_max > t_min)) {
+        return;
+    }
     set_limits_if_changed(t_min, t_max, m_t_available_min, m_t_available_max);
 }
 
 void Plot_time_axis::set_available_t_range(double t_available_min, double t_available_max)
 {
+    if (!std::isfinite(t_available_min) || !std::isfinite(t_available_max) ||
+        !(t_available_max > t_available_min))
+    {
+        return;
+    }
+
     double new_t_min = m_t_min;
     double new_t_max = m_t_max;
 
-    if (t_available_max > t_available_min) {
-        const double span = t_available_max - t_available_min;
-        const double cur_span = new_t_max - new_t_min;
-        if (cur_span > span) {
+    const double span = t_available_max - t_available_min;
+    const double cur_span = new_t_max - new_t_min;
+    if (cur_span > span) {
+        new_t_min = t_available_min;
+        new_t_max = t_available_max;
+    }
+    else {
+        if (new_t_min < t_available_min) {
             new_t_min = t_available_min;
-            new_t_max = t_available_max;
+            new_t_max = t_available_min + cur_span;
         }
-        else {
-            if (new_t_min < t_available_min) {
-                new_t_min = t_available_min;
-                new_t_max = t_available_min + cur_span;
-            }
-            if (new_t_max > t_available_max) {
-                new_t_max = t_available_max;
-                new_t_min = t_available_max - cur_span;
-            }
+        if (new_t_max > t_available_max) {
+            new_t_max = t_available_max;
+            new_t_min = t_available_max - cur_span;
         }
     }
 

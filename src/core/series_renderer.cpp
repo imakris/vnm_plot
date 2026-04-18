@@ -108,7 +108,7 @@ bool compute_aux_metric_range(
 {
     out_used_data_source_range = false;
 
-    if (!access.get_aux_metric || !snapshot || snapshot.count == 0 || snapshot.stride == 0) {
+    if (!access.get_aux_metric || !snapshot.is_valid()) {
         return false;
     }
 
@@ -315,7 +315,18 @@ std::shared_ptr<GL_program> Series_renderer::get_or_load_shader(
     const shader_set_t& shader_set,
     const Plot_config* config)
 {
-    if (shader_set.vert.empty() || !m_asset_loader) {
+    const auto log_error = [&](const std::string& message) {
+        if (config && config->log_error) {
+            config->log_error(message);
+        }
+    };
+
+    if (!m_asset_loader) {
+        log_error("Series_renderer: asset loader not initialized; cannot compile shaders");
+        return nullptr;
+    }
+    if (shader_set.vert.empty()) {
+        log_error("Series_renderer: shader set has no vertex stage; cannot compile program");
         return nullptr;
     }
 
@@ -332,9 +343,7 @@ std::shared_ptr<GL_program> Series_renderer::get_or_load_shader(
     }
 
     if (!vert_src || !frag_src) {
-        if (config && config->log_error) {
-            config->log_error("Failed to load shader sources: " + normalized.vert);
-        }
+        log_error("Failed to load shader sources: " + normalized.vert);
         return nullptr;
     }
 
@@ -345,10 +354,11 @@ std::shared_ptr<GL_program> Series_renderer::get_or_load_shader(
         geom_str.assign(geom_src->begin(), geom_src->end());
     }
 
-    auto log_error = config ? config->log_error : std::function<void(const std::string&)>();
-    auto sp = create_gl_program(vert_str, geom_str, frag_str, log_error);
+    auto log_error_fn = config ? config->log_error : std::function<void(const std::string&)>();
+    auto sp = create_gl_program(vert_str, geom_str, frag_str, log_error_fn);
 
     if (!sp) {
+        log_error("Shader program creation failed for: " + normalized.vert);
         return nullptr;
     }
     auto shared_sp = std::shared_ptr<GL_program>(std::move(sp));

@@ -6,37 +6,98 @@ on:
   pull_request:
     branches: [ main, master, dev ]
 
+defaults:
+  run:
+    shell: bash
+
+env:
+  CMAKE_BUILD_TYPE: Release
+
 jobs:
-  build-core:
-    name: Core (Windows)
+  build-core-variants:
+    name: ${{ matrix.name }}
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Core (Windows)
+            cmake_args: >-
+              -DVNM_PLOT_CORE_ONLY=ON
+              -DVNM_PLOT_ENABLE_TEXT=OFF
+              -DVNM_PLOT_BUILD_TESTS=ON
+            run_tests: true
+            test_command: ctest --output-on-failure -C Release
+            summary_label: Build completed
+          - name: Core+Text (Windows)
+            cmake_args: >-
+              -DVNM_PLOT_CORE_ONLY=ON
+              -DVNM_PLOT_ENABLE_TEXT=ON
+            run_tests: false
+            summary_label: Build completed (with text rendering)
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure CMake
+        run: |
+          cmake -B build -S . \
+            -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
+            ${{ matrix.cmake_args }}
+
+      - name: Build
+        run: cmake --build build --config ${CMAKE_BUILD_TYPE}
+
+      - name: Run tests
+        if: matrix.run_tests
+        working-directory: build
+        run: ${{ matrix.test_command }}
+
+      - name: Build summary
+        run: |
+          echo "=== ${{ matrix.summary_label }} ==="
+          ls -la build/Release/*.lib 2>/dev/null || ls -la build/*.lib 2>/dev/null || \
+            echo "Static libraries in build directory"
+
+  build-qt:
+    name: Qt Wrapper (Windows)
     runs-on: windows-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Configure CMake (Core only)
-        shell: bash
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4.3.1
+        with:
+          version: '6.8.3'
+          arch: 'win64_msvc2022_64'
+          archives: 'qtbase qtdeclarative'
+          cache: 'true'
+
+      - name: Configure CMake (Qt wrapper)
         run: |
           cmake -B build -S . \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DVNM_PLOT_CORE_ONLY=ON \
+            -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
+            -DVNM_PLOT_CORE_ONLY=OFF \
+            -DVNM_PLOT_BUILD_QT=ON \
             -DVNM_PLOT_ENABLE_TEXT=OFF \
-            -DVNM_PLOT_BUILD_TESTS=ON
+            -DVNM_PLOT_BUILD_TESTS=ON \
+            -DVNM_PLOT_BUILD_EXAMPLES=OFF
 
-      - name: Build core library
-        run: cmake --build build --config Release
+      - name: Build Qt wrapper
+        run: cmake --build build --config ${CMAKE_BUILD_TYPE} --target test_plot_interaction_item
 
-      - name: Run core tests
-        shell: bash
+      - name: Run Qt wrapper test
         working-directory: build
-        run: ctest --output-on-failure -C Release
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --output-on-failure -C ${CMAKE_BUILD_TYPE} -R PlotInteractionItem
 
       - name: Build summary
-        shell: bash
         run: |
-          echo "=== Build completed ==="
+          echo "=== Qt build completed ==="
           ls -la build/Release/*.lib 2>/dev/null || ls -la build/*.lib 2>/dev/null || \
-            echo "Static libraries in build directory"
+            echo "Libraries built successfully"
 
   build-standalone-example:
     name: GLFW Example (Windows)
@@ -46,48 +107,21 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Configure CMake (standalone_glfw)
-        shell: bash
         working-directory: examples/standalone_glfw
         run: |
           cmake -B build -S . \
-            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
             -DVNM_PLOT_BUILD_QT=OFF \
             -DVNM_PLOT_ENABLE_TEXT=OFF
 
       - name: Build standalone_glfw example
         working-directory: examples/standalone_glfw
-        run: cmake --build build --config Release
+        run: cmake --build build --config ${CMAKE_BUILD_TYPE}
 
       - name: Verify executable
-        shell: bash
         working-directory: examples/standalone_glfw
         run: |
           echo "=== Build completed ==="
           ls -la build/Release/standalone_glfw.exe 2>/dev/null || \
           ls -la build/standalone_glfw.exe 2>/dev/null || \
           echo "Executable built successfully"
-
-  build-core-with-text:
-    name: Core+Text (Windows)
-    runs-on: windows-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Configure CMake (Core with text)
-        shell: bash
-        run: |
-          cmake -B build -S . \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DVNM_PLOT_CORE_ONLY=ON \
-            -DVNM_PLOT_ENABLE_TEXT=ON
-
-      - name: Build core library with text
-        run: cmake --build build --config Release
-
-      - name: Build summary
-        shell: bash
-        run: |
-          echo "=== Build completed (with text rendering) ==="
-          ls -la build/Release/*.lib 2>/dev/null || ls -la build/*.lib 2>/dev/null || \
-            echo "Static libraries built"

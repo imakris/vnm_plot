@@ -100,8 +100,8 @@ import VnmPlot 1.0
 PlotTimeAxis { id: sharedAxis }
 
 Column {
-    PlotView { timeAxis: sharedAxis }
-    PlotView { timeAxis: sharedAxis }
+    PlotView { time_axis: sharedAxis }
+    PlotView { time_axis: sharedAxis }
 }
 ```
 

@@ -1,5 +1,5 @@
 #include <vnm_plot/qt/plot_widget.h>
-#include <vnm_plot/qt/plot_renderer.h>
+#include "plot_renderer.h"
 #include <vnm_plot/qt/plot_time_axis.h>
 #include <vnm_plot/core/constants.h>
 #include <vnm_plot/core/algo.h>
@@ -100,7 +100,7 @@ bool plot_config_equivalent(
     const vnm::plot::Plot_config& rhs)
 {
     // If a field is added to Plot_config, update this comparator and bump field_count.
-    static_assert(vnm::plot::Plot_config::field_count == 20,
+    static_assert(vnm::plot::Plot_config::field_count == 22,
         "Plot_config field_count changed — update plot_config_equivalent to cover new fields");
     return
         lhs.dark_mode == rhs.dark_mode &&
@@ -271,18 +271,24 @@ bool Plot_widget::dark_mode() const
     return m_config.dark_mode;
 }
 
-void Plot_widget::set_dark_mode(bool dark)
+template <typename Field, typename Value, typename Signal>
+void Plot_widget::update_config_field(Field& field, Value new_value, Signal signal)
 {
     {
         std::unique_lock lock(m_config_mutex);
-        if (m_config.dark_mode == dark) {
+        if (field == new_value) {
             return;
         }
-        m_config.dark_mode = dark;
+        field = static_cast<Field>(new_value);
         m_config_revision.fetch_add(1, std::memory_order_relaxed);
     }
-    emit dark_mode_changed();
+    (this->*signal)();
     update();
+}
+
+void Plot_widget::set_dark_mode(bool dark)
+{
+    update_config_field(m_config.dark_mode, dark, &Plot_widget::dark_mode_changed);
 }
 
 double Plot_widget::grid_visibility() const
@@ -293,18 +299,10 @@ double Plot_widget::grid_visibility() const
 
 void Plot_widget::set_grid_visibility(double visibility)
 {
-    // Clamp to 0..1
-    visibility = std::clamp(visibility, 0.0, 1.0);
-    {
-        std::unique_lock lock(m_config_mutex);
-        if (m_config.grid_visibility == visibility) {
-            return;
-        }
-        m_config.grid_visibility = visibility;
-        m_config_revision.fetch_add(1, std::memory_order_relaxed);
-    }
-    emit grid_visibility_changed();
-    update();
+    update_config_field(
+        m_config.grid_visibility,
+        std::clamp(visibility, 0.0, 1.0),
+        &Plot_widget::grid_visibility_changed);
 }
 
 double Plot_widget::preview_visibility() const
@@ -315,18 +313,10 @@ double Plot_widget::preview_visibility() const
 
 void Plot_widget::set_preview_visibility(double visibility)
 {
-    // Clamp to 0..1
-    visibility = std::clamp(visibility, 0.0, 1.0);
-    {
-        std::unique_lock lock(m_config_mutex);
-        if (m_config.preview_visibility == visibility) {
-            return;
-        }
-        m_config.preview_visibility = visibility;
-        m_config_revision.fetch_add(1, std::memory_order_relaxed);
-    }
-    emit preview_visibility_changed();
-    update();
+    update_config_field(
+        m_config.preview_visibility,
+        std::clamp(visibility, 0.0, 1.0),
+        &Plot_widget::preview_visibility_changed);
 }
 
 double Plot_widget::line_width_px() const
@@ -337,16 +327,7 @@ double Plot_widget::line_width_px() const
 
 void Plot_widget::set_line_width_px(double width)
 {
-    {
-        std::unique_lock lock(m_config_mutex);
-        if (m_config.line_width_px == width) {
-            return;
-        }
-        m_config.line_width_px = width;
-        m_config_revision.fetch_add(1, std::memory_order_relaxed);
-    }
-    emit line_width_px_changed();
-    update();
+    update_config_field(m_config.line_width_px, width, &Plot_widget::line_width_px_changed);
 }
 
 double Plot_widget::t_min() const
@@ -375,6 +356,9 @@ double Plot_widget::t_available_max() const
 
 void Plot_widget::set_t_range(double t_min, double t_max)
 {
+    if (!std::isfinite(t_min) || !std::isfinite(t_max) || !(t_max > t_min)) {
+        return;
+    }
     if (m_time_axis) {
         m_time_axis->set_t_range(t_min, t_max);
         return;
@@ -388,34 +372,40 @@ void Plot_widget::set_t_range(double t_min, double t_max)
     update();
 }
 
+void Plot_widget::clamp_t_range_to_available(double t_avail_min, double t_avail_max)
+{
+    const double span = t_avail_max - t_avail_min;
+    const double cur_span = m_data_cfg.t_max - m_data_cfg.t_min;
+    if (cur_span > span) {
+        m_data_cfg.t_min = t_avail_min;
+        m_data_cfg.t_max = t_avail_max;
+    }
+    else {
+        if (m_data_cfg.t_min < t_avail_min) {
+            m_data_cfg.t_min = t_avail_min;
+            m_data_cfg.t_max = t_avail_min + cur_span;
+        }
+        if (m_data_cfg.t_max > t_avail_max) {
+            m_data_cfg.t_max = t_avail_max;
+            m_data_cfg.t_min = t_avail_max - cur_span;
+        }
+    }
+    m_data_cfg.t_available_min = t_avail_min;
+    m_data_cfg.t_available_max = t_avail_max;
+}
+
 void Plot_widget::set_available_t_range(double t_min, double t_max)
 {
+    if (!std::isfinite(t_min) || !std::isfinite(t_max) || !(t_max > t_min)) {
+        return;
+    }
     if (m_time_axis) {
         m_time_axis->set_available_t_range(t_min, t_max);
         return;
     }
     {
         std::unique_lock lock(m_data_cfg_mutex);
-        if (t_max > t_min) {
-            const double span = t_max - t_min;
-            const double cur_span = m_data_cfg.t_max - m_data_cfg.t_min;
-            if (cur_span > span) {
-                m_data_cfg.t_min = t_min;
-                m_data_cfg.t_max = t_max;
-            }
-            else {
-                if (m_data_cfg.t_min < t_min) {
-                    m_data_cfg.t_min = t_min;
-                    m_data_cfg.t_max = t_min + cur_span;
-                }
-                if (m_data_cfg.t_max > t_max) {
-                    m_data_cfg.t_max = t_max;
-                    m_data_cfg.t_min = t_max - cur_span;
-                }
-            }
-        }
-        m_data_cfg.t_available_min = t_min;
-        m_data_cfg.t_available_max = t_max;
+        clamp_t_range_to_available(t_min, t_max);
     }
     emit t_limits_changed();
     update();
@@ -426,52 +416,43 @@ void Plot_widget::set_view(const Plot_view& view)
     bool t_changed = false;
     bool v_changed = false;
 
+    const auto t_range_valid = [](const std::pair<double, double>& r) {
+        return std::isfinite(r.first) && std::isfinite(r.second) && r.second > r.first;
+    };
+    const auto v_range_valid = [](const std::pair<float, float>& r) {
+        return std::isfinite(r.first) && std::isfinite(r.second) && r.second > r.first;
+    };
+
+    const bool t_range_ok = view.t_range && t_range_valid(*view.t_range);
+    const bool t_avail_ok = view.t_available_range && t_range_valid(*view.t_available_range);
+
     if (m_time_axis) {
-        if (view.t_range) {
+        if (t_range_ok) {
             m_time_axis->set_t_range(view.t_range->first, view.t_range->second);
             t_changed = true;
         }
-        if (view.t_available_range) {
+        if (t_avail_ok) {
             m_time_axis->set_available_t_range(view.t_available_range->first, view.t_available_range->second);
             t_changed = true;
         }
     }
     else
-    if (view.t_range || view.t_available_range) {
+    if (t_range_ok || t_avail_ok) {
         std::unique_lock lock(m_data_cfg_mutex);
-        if (view.t_range) {
+        if (t_range_ok) {
             m_data_cfg.t_min = view.t_range->first;
             m_data_cfg.t_max = view.t_range->second;
             t_changed = true;
         }
-        if (view.t_available_range) {
-            const double t_min = view.t_available_range->first;
-            const double t_max = view.t_available_range->second;
-            if (t_max > t_min) {
-                const double span = t_max - t_min;
-                const double cur_span = m_data_cfg.t_max - m_data_cfg.t_min;
-                if (cur_span > span) {
-                    m_data_cfg.t_min = t_min;
-                    m_data_cfg.t_max = t_max;
-                }
-                else {
-                    if (m_data_cfg.t_min < t_min) {
-                        m_data_cfg.t_min = t_min;
-                        m_data_cfg.t_max = t_min + cur_span;
-                    }
-                    if (m_data_cfg.t_max > t_max) {
-                        m_data_cfg.t_max = t_max;
-                        m_data_cfg.t_min = t_max - cur_span;
-                    }
-                }
-            }
-            m_data_cfg.t_available_min = t_min;
-            m_data_cfg.t_available_max = t_max;
+        if (t_avail_ok) {
+            clamp_t_range_to_available(
+                view.t_available_range->first,
+                view.t_available_range->second);
             t_changed = true;
         }
     }
 
-    if (view.v_range) {
+    if (view.v_range && v_range_valid(*view.v_range)) {
         std::unique_lock lock(m_data_cfg_mutex);
         m_data_cfg.v_min = view.v_range->first;
         m_data_cfg.v_max = view.v_range->second;
@@ -611,6 +592,9 @@ void Plot_widget::set_v_auto(bool auto_scale)
 
 void Plot_widget::set_v_range(float v_min, float v_max)
 {
+    if (!std::isfinite(v_min) || !std::isfinite(v_max) || !(v_max > v_min)) {
+        return;
+    }
     {
         std::unique_lock lock(m_data_cfg_mutex);
         m_data_cfg.v_min = v_min;
@@ -1038,10 +1022,7 @@ void Plot_widget::auto_adjust_view(bool adjust_t, double extra_v_scale, bool anc
         }
 
         auto snapshot = series->main_source()->snapshot(0);
-        if (!snapshot) {
-            continue;
-        }
-        if (snapshot.stride == 0) {
+        if (!snapshot.is_valid()) {
             continue;
         }
 
@@ -1208,7 +1189,7 @@ QVariantList Plot_widget::get_indicator_samples(
         }
 
         auto snap = series->main_source()->snapshot(0);
-        if (!snap || snap.count == 0 || snap.stride == 0) {
+        if (!snap.is_valid()) {
             continue;
         }
 
@@ -1413,8 +1394,9 @@ void Plot_widget::set_rendered_v_range(float v_min, float v_max) const
         m_rendered_v_range_valid.store(false, std::memory_order_release);
         return;
     }
-    m_rendered_v_min.store(v_min, std::memory_order_release);
-    m_rendered_v_max.store(v_max, std::memory_order_release);
+    m_rendered_v_range_valid.store(false, std::memory_order_release);
+    m_rendered_v_min.store(v_min, std::memory_order_relaxed);
+    m_rendered_v_max.store(v_max, std::memory_order_relaxed);
     m_rendered_v_range_valid.store(true, std::memory_order_release);
 }
 
@@ -1425,8 +1407,9 @@ void Plot_widget::set_rendered_t_range(double t_min, double t_max) const
         m_rendered_t_range_valid.store(false, std::memory_order_release);
         return;
     }
-    m_rendered_t_min.store(t_min, std::memory_order_release);
-    m_rendered_t_max.store(t_max, std::memory_order_release);
+    m_rendered_t_range_valid.store(false, std::memory_order_release);
+    m_rendered_t_min.store(t_min, std::memory_order_relaxed);
+    m_rendered_t_max.store(t_max, std::memory_order_relaxed);
     m_rendered_t_range_valid.store(true, std::memory_order_release);
 }
 

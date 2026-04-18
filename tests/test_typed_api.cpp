@@ -1,5 +1,7 @@
 // vnm_plot typed API tests
 
+#include "test_macros.h"
+
 #include <vnm_plot/core/access_policy.h>
 #include <vnm_plot/core/series_builder.h>
 #include <vnm_plot/core/types.h>
@@ -22,27 +24,6 @@ struct sample_t
     float v_min = 0.0f;
     float v_max = 0.0f;
 };
-
-#define TEST_ASSERT(cond, msg) \
-    do { \
-        if (!(cond)) { \
-            std::cerr << "FAIL: " << msg << " (line " << __LINE__ << ")" << std::endl; \
-            return false; \
-        } \
-    } while (0)
-
-#define RUN_TEST(test_fn) \
-    do { \
-        std::cout << "Running " << #test_fn << "... "; \
-        if (test_fn()) { \
-            std::cout << "OK" << std::endl; \
-            ++passed; \
-        } \
-        else { \
-            std::cout << "FAIL" << std::endl; \
-            ++failed; \
-        } \
-    } while (0)
 
 bool test_vertex_attrib_type_for_mappings()
 {

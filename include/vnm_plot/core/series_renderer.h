@@ -33,7 +33,8 @@ public:
     Series_renderer(const Series_renderer&) = delete;
     Series_renderer& operator=(const Series_renderer&) = delete;
 
-    // Initialize with asset loader for shader loading
+    // Remember the asset loader used for lazy shader compilation. This does
+    // not perform any GL work and cannot fail.
     void initialize(Asset_loader& asset_loader);
 
     // Clean up GL resources

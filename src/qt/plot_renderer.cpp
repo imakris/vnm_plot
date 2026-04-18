@@ -1,4 +1,4 @@
-#include <vnm_plot/qt/plot_renderer.h>
+#include "plot_renderer.h"
 #include <vnm_plot/qt/plot_widget.h>
 #include <vnm_plot/core/color_palette.h>
 #include <vnm_plot/core/constants.h>
@@ -288,7 +288,7 @@ bool scan_snapshot_minmax(
         return false;
     }
 
-    if (!snapshot || snapshot.count == 0 || snapshot.stride == 0) {
+    if (!snapshot.is_valid()) {
         return false;
     }
 
@@ -352,7 +352,7 @@ bool find_window_indices(
     start_idx = 0;
     end_idx = snapshot.count;
 
-    if (!access.get_timestamp || !snapshot || snapshot.count == 0 || snapshot.stride == 0) {
+    if (!access.get_timestamp || !snapshot.is_valid()) {
         return false;
     }
     if (!(t_max > t_min)) {
@@ -402,7 +402,7 @@ bool get_lod_minmax(
         VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.range_calc.get_lod_minmax.snapshot");
         snapshot = data_source.snapshot(level);
     }
-    if (!snapshot || snapshot.count == 0 || snapshot.stride == 0) {
+    if (!snapshot.is_valid()) {
         if (entry.valid) {
             out_min = entry.v_min;
             out_max = entry.v_max;
@@ -624,7 +624,7 @@ std::pair<float, float> compute_visible_v_range(
         if (levels == 0) continue;
 
         data_snapshot_t snapshot0 = view.source->snapshot(0);
-        if (!snapshot0 || snapshot0.count == 0 || snapshot0.stride == 0) continue;
+        if (!snapshot0.is_valid()) continue;
 
         std::size_t start0 = 0, end0 = 0;
         if (!find_window_indices(*view.access, snapshot0, t_min, t_max, start0, end0)) continue;
@@ -641,7 +641,7 @@ std::pair<float, float> compute_visible_v_range(
 
         std::size_t applied_level = desired_level;
         data_snapshot_t snapshot = view.source->snapshot(applied_level);
-        if (!snapshot || snapshot.count == 0 || snapshot.stride == 0) {
+        if (!snapshot.is_valid()) {
             snapshot = snapshot0;
             applied_level = 0;
         }
@@ -966,9 +966,8 @@ const frame_layout_result_t& Plot_renderer::impl_t::calculate_frame_layout(
     {
         // Notify widget to animate to new width
         if (owner) {
-            post_to_plot_widget(
+            Plot_renderer::post_vbar_width_from_renderer(
                 const_cast<Plot_widget*>(owner),
-                &Plot_widget::set_vbar_width_from_renderer,
                 measured_vbar_width);
         }
 
@@ -1519,9 +1518,8 @@ void Plot_renderer::render()
                 if (std::abs(v0 - m_impl->snapshot.cfg.v_min) > k_auto_v_sync_eps ||
                     std::abs(v1 - m_impl->snapshot.cfg.v_max) > k_auto_v_sync_eps)
                 {
-                    post_to_plot_widget(
+                    Plot_renderer::post_auto_v_range_from_renderer(
                         const_cast<Plot_widget*>(m_impl->owner),
-                        &Plot_widget::set_auto_v_range_from_renderer,
                         v0, v1);
                 }
             }
@@ -1700,6 +1698,19 @@ QOpenGLFramebufferObject* Plot_renderer::createFramebufferObject(const QSize& si
     format.setAttachment(QOpenGLFramebufferObject::CombinedDepthStencil);
     format.setInternalTextureFormat(GL_RGBA8);
     return new QOpenGLFramebufferObject(size, format);
+}
+
+void Plot_renderer::post_vbar_width_from_renderer(Plot_widget* widget, double px)
+{
+    post_to_plot_widget(widget, &Plot_widget::set_vbar_width_from_renderer, px);
+}
+
+void Plot_renderer::post_auto_v_range_from_renderer(
+    Plot_widget* widget,
+    float v_min,
+    float v_max)
+{
+    post_to_plot_widget(widget, &Plot_widget::set_auto_v_range_from_renderer, v_min, v_max);
 }
 
 } // namespace vnm::plot

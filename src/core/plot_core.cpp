@@ -150,10 +150,6 @@ void Plot_core::cleanup_gl_resources()
 }
 
 Asset_loader& Plot_core::asset_loader() { return m_impl->asset_loader; }
-Primitive_renderer& Plot_core::primitives() { return m_impl->primitives; }
-Series_renderer& Plot_core::series_renderer() { return m_impl->series; }
-Chrome_renderer& Plot_core::chrome_renderer() { return m_impl->chrome; }
-Text_renderer* Plot_core::text_renderer() { return m_impl->text.get(); }
 
 void Plot_core::render(
     const render_params_t& params,
@@ -168,6 +164,10 @@ void Plot_core::render(
 
     vnm::plot::Profiler* profiler = config ? config->profiler.get() : nullptr;
     m_impl->primitives.set_profiler(profiler);
+    const auto log_error = config ? config->log_error : std::function<void(const std::string&)>{};
+    const auto log_debug = config ? config->log_debug : std::function<void(const std::string&)>{};
+    m_impl->asset_loader.set_log_callback(log_error);
+    m_impl->primitives.set_log_callback(log_error);
 
     const float preview_v_min = params.preview_v_min.value_or(params.v_min);
     const float preview_v_max = params.preview_v_max.value_or(params.v_max);
@@ -190,11 +190,13 @@ void Plot_core::render(
     const double usable_height = std::max(0.0, double(params.height) - reserved_height);
 
 #if defined(VNM_PLOT_ENABLE_TEXT)
+    if (m_impl->fonts) {
+        m_impl->fonts->set_log_callbacks(log_error, log_debug);
+    }
     if (!skip_gl && m_impl->fonts && m_impl->text && config && config->show_text) {
         const int font_px_int = static_cast<int>(std::lround(font_px));
         const bool force_rebuild = (font_px_int != m_impl->last_font_px);
         if (font_px_int > 0) {
-            m_impl->fonts->set_log_callbacks(config->log_error, config->log_debug);
             m_impl->fonts->initialize(m_impl->asset_loader, font_px_int, force_rebuild);
             m_impl->last_font_px = font_px_int;
         }

@@ -16,7 +16,7 @@ option(VNM_PLOT_BUILD_EXAMPLES "Build example applications" OFF)
 option(VNM_PLOT_BUILD_QT "Build Qt wrapper library (requires Qt6)" ON)
 option(VNM_PLOT_CORE_ONLY "Build only the Qt-free core library" OFF)
 option(VNM_PLOT_ENABLE_TEXT "Enable MSDF text rendering (requires FreeType + msdfgen)" ON)
-option(VNM_PLOT_BUILD_TESTS "Build core tests" OFF)
+option(VNM_PLOT_BUILD_TESTS "Build test suite" OFF)
 option(VNM_PLOT_USE_SYSTEM_LIBS "Prefer system/precompiled FreeType and msdfgen over FetchContent" OFF)
 
 include(FetchContent)
@@ -331,10 +331,11 @@ set(VNM_PLOT_SOURCES
 
 set(VNM_PLOT_HEADERS
     # Public headers
-    include/vnm_plot/qt/plot_renderer.h
     include/vnm_plot/qt/plot_widget.h
     include/vnm_plot/qt/plot_interaction_item.h
     include/vnm_plot/qt/plot_time_axis.h
+    # Private internal header (lives next to its sources, not installed)
+    src/qt/plot_renderer.h
 )
 
 # -----------------------------------------------------------------------------
@@ -596,7 +597,7 @@ if(VNM_PLOT_BUILD_BENCHMARK_HEADLESS)
 endif()
 
 # -----------------------------------------------------------------------------
-# Tests (headless, core-only)
+# Tests (headless/unit-style)
 # -----------------------------------------------------------------------------
 
 if(VNM_PLOT_BUILD_TESTS)

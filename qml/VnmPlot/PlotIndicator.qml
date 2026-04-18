@@ -15,7 +15,7 @@ Item {
     property string x_value_label: "x"
     property string y_value_label: "y"
 
-    readonly property var time_axis: plot_widget ? plot_widget.timeAxis : null
+    readonly property var time_axis: plot_widget ? plot_widget.time_axis : null
 
     readonly property real usable_width: width - plot_widget.vbar_width_qml
     readonly property real usable_height: height - plot_widget.reserved_height

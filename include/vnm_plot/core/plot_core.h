@@ -12,10 +12,6 @@
 namespace vnm::plot {
 
 class Asset_loader;
-class Primitive_renderer;
-class Series_renderer;
-class Chrome_renderer;
-class Text_renderer;
 struct Plot_config;
 
 class Plot_core
@@ -57,11 +53,10 @@ public:
     bool initialize(const init_params_t& params);
     void cleanup_gl_resources();
 
+    // Loader for application-supplied assets (custom shaders, fonts, etc.).
+    // Users register overrides through this; the sub-renderers themselves are
+    // intentionally not exposed.
     Asset_loader& asset_loader();
-    Primitive_renderer& primitives();
-    Series_renderer& series_renderer();
-    Chrome_renderer& chrome_renderer();
-    Text_renderer* text_renderer();
 
     void render(
         const render_params_t& params,
