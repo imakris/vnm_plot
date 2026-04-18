@@ -47,16 +47,19 @@ struct Plot_view
 // This is the main public interface for the vnm_plot library.
 //
 // Threading model:
-// - All public setters (e.g. set_t_range, set_v_range, set_config, add_series,
-//   adjust_* helpers) must be called from the Qt GUI thread (the one that owns
-//   the QQuickWindow). Internally they take short-lived locks on m_config_mutex,
-//   m_data_cfg_mutex, or m_series_mutex so the render thread can read a
-//   consistent snapshot.
-// - Methods tagged `_from_renderer` (set_vbar_width_from_renderer,
-//   set_auto_v_range_from_renderer, set_rendered_v_range, set_rendered_t_range)
-//   are invoked on the GL render thread and are implemented to be safe to call
-//   without the main thread serializing with them. State they publish back to
-//   the UI thread is carried by atomics.
+// - All user-facing setters (e.g. set_t_range, set_v_range, set_config,
+//   add_series, adjust_* helpers) must be called from the Qt GUI thread (the
+//   one that owns the QQuickWindow). Internally they take short-lived locks on
+//   m_config_mutex, m_data_cfg_mutex, or m_series_mutex so the render thread
+//   can read a consistent snapshot.
+// - set_vbar_width_from_renderer / set_auto_v_range_from_renderer are internal
+//   callbacks — Plot_renderer posts them through QMetaObject::invokeMethod so
+//   they execute on the GUI thread once the queued event is dispatched. They
+//   are intentionally not Q_INVOKABLE (QML must not call them). Application
+//   code should ignore them.
+// - set_rendered_v_range / set_rendered_t_range run on the render thread and
+//   publish through atomics for UI-side readers (rendered_v_range /
+//   rendered_t_range).
 // - Non-finite values (NaN, +/-inf) are silently ignored by the range setters;
 //   they never produce a partial update. Invalid ranges (max <= min) are also
 //   ignored.
@@ -163,9 +166,6 @@ public:
     double vbar_width_pixels() const;
     double vbar_width_qml() const;
     Q_INVOKABLE void set_vbar_width(double vbar_width);
-    Q_INVOKABLE void set_vbar_width_from_renderer(double px);
-    // Render-thread updates to keep v_min/v_max in sync with auto range.
-    Q_INVOKABLE void set_auto_v_range_from_renderer(float v_min, float v_max);
 
     // --- Interaction ---
 
@@ -189,6 +189,15 @@ public:
 
     Q_INVOKABLE QVariantList get_indicator_samples(double x, double plot_width, double plot_height, double mouse_px = -1.0) const;
     Q_INVOKABLE QString format_timestamp_precise(double timestamp) const;
+
+    // --- Internal render-thread callbacks ---
+    // These exist only so Plot_renderer can post updates back to the widget via
+    // QMetaObject::invokeMethod. They are NOT part of the QML API (no
+    // Q_INVOKABLE) and application code should not call them directly. They
+    // accept non-finite values by silently ignoring them, matching the rest of
+    // the range-setter surface.
+    void set_vbar_width_from_renderer(double px);
+    void set_auto_v_range_from_renderer(float v_min, float v_max);
 
     // --- Qt Quick FBO Interface ---
 

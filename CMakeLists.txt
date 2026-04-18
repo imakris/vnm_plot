@@ -6,7 +6,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(vnm_plot
-    VERSION 0.1.0
+    VERSION 1.0.4
     DESCRIPTION "High-performance GPU-accelerated plotting library"
     LANGUAGES CXX C
 )

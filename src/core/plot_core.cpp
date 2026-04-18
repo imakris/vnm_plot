@@ -169,6 +169,14 @@ void Plot_core::render(
     vnm::plot::Profiler* profiler = config ? config->profiler.get() : nullptr;
     m_impl->primitives.set_profiler(profiler);
 
+    // Route failures from asset loading, primitive rendering, and (where
+    // applicable) font rendering through the caller-provided log callback so
+    // standalone core users see the same diagnostics the Qt wrapper does.
+    if (config && config->log_error) {
+        m_impl->asset_loader.set_log_callback(config->log_error);
+        m_impl->primitives.set_log_callback(config->log_error);
+    }
+
     const float preview_v_min = params.preview_v_min.value_or(params.v_min);
     const float preview_v_max = params.preview_v_max.value_or(params.v_max);
     const double t_available_min = params.t_available_min.value_or(params.t_min);

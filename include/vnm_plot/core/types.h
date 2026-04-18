@@ -271,14 +271,21 @@ private:
 // -----------------------------------------------------------------------------
 // Defines how the renderer extracts meaningful values from opaque sample data.
 // This enables rendering of arbitrary sample types without template explosion.
+//
+// Precision note: get_value and get_range return float because the renderer
+// ultimately uploads values as float attributes. If your source data has
+// narrow dynamic range offset by a large bias (e.g. physical quantities with
+// an absolute reference), subtract that bias inside the accessor before
+// narrowing to float so the remaining dynamic range survives the conversion.
+// Timestamps and aux metrics use double and are not affected.
 struct Data_access_policy
 {
     // --- Sample value extraction ---
-    std::function<double(const void* sample)>                   get_timestamp;  ///< Extract timestamp
-    std::function<float(const void* sample)>                    get_value;      ///< Extract primary value
-    std::function<std::pair<float, float>(const void* sample)>  get_range;      ///< Extract min/max range
+    std::function<double(const void* sample)>                   get_timestamp;  ///< Extract timestamp (double precision)
+    std::function<float(const void* sample)>                    get_value;      ///< Extract primary value (narrow with care; see above)
+    std::function<std::pair<float, float>(const void* sample)>  get_range;      ///< Extract min/max range (narrow with care; see above)
 
-    std::function<double(const void* sample)> get_aux_metric;  ///< Optional auxiliary metric
+    std::function<double(const void* sample)> get_aux_metric;  ///< Optional auxiliary metric (double precision)
     std::function<float(const void* sample)>  get_signal;      ///< Optional [0,1] signal for COLORMAP_LINE
 
     // Optional sample cloning with timestamp rewrite, used for render-only hold-forward paths.
