@@ -15,6 +15,8 @@ env:
   LINUX_DEPS: >-
     libgl-dev libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev
     libxi-dev libxext-dev libwayland-dev libxkbcommon-dev
+  LINUX_QT_DEPS: >-
+    qt6-base-dev qt6-declarative-dev libqt6opengl6-dev
 
 jobs:
   build-core-variants:
@@ -68,7 +70,7 @@ jobs:
 
   build-qt:
     name: Qt Wrapper (Linux)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -76,14 +78,7 @@ jobs:
       - name: Install dependencies (Linux)
         run: |
           sudo apt-get update
-          sudo apt-get install -y ${LINUX_DEPS}
-
-      - name: Install Qt
-        uses: jurplel/install-qt-action@v4.3.1
-        with:
-          version: '6.8.3'
-          archives: 'qtbase qtdeclarative'
-          cache: 'true'
+          sudo apt-get install -y ${LINUX_DEPS} ${LINUX_QT_DEPS}
 
       - name: Configure CMake (Qt wrapper)
         run: |
