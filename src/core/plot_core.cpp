@@ -150,10 +150,6 @@ void Plot_core::cleanup_gl_resources()
 }
 
 Asset_loader& Plot_core::asset_loader() { return m_impl->asset_loader; }
-Primitive_renderer& Plot_core::primitives() { return m_impl->primitives; }
-Series_renderer& Plot_core::series_renderer() { return m_impl->series; }
-Chrome_renderer& Plot_core::chrome_renderer() { return m_impl->chrome; }
-Text_renderer* Plot_core::text_renderer() { return m_impl->text.get(); }
 
 void Plot_core::render(
     const render_params_t& params,

@@ -331,10 +331,11 @@ set(VNM_PLOT_SOURCES
 
 set(VNM_PLOT_HEADERS
     # Public headers
-    include/vnm_plot/qt/plot_renderer.h
     include/vnm_plot/qt/plot_widget.h
     include/vnm_plot/qt/plot_interaction_item.h
     include/vnm_plot/qt/plot_time_axis.h
+    # Private internal header (lives next to its sources, not installed)
+    src/qt/plot_renderer.h
 )
 
 # -----------------------------------------------------------------------------

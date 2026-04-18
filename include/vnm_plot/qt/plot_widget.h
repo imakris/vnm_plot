@@ -84,7 +84,7 @@ class Plot_widget : public QQuickFramebufferObject
     Q_PROPERTY(double line_width_px READ line_width_px WRITE set_line_width_px NOTIFY line_width_px_changed)
     Q_PROPERTY(double vbar_width_px READ vbar_width_pixels NOTIFY vbar_width_changed)
     Q_PROPERTY(double vbar_width_qml READ vbar_width_qml NOTIFY vbar_width_changed)
-    Q_PROPERTY(Plot_time_axis* timeAxis READ time_axis WRITE set_time_axis NOTIFY time_axis_changed)
+    Q_PROPERTY(Plot_time_axis* time_axis READ time_axis WRITE set_time_axis NOTIFY time_axis_changed)
 
 public:
     Plot_widget();
@@ -277,6 +277,16 @@ private:
     double compute_preview_height_px(double widget_height_px) const;
     std::pair<float, float> current_v_range() const;
     data_config_t data_cfg_snapshot() const;
+
+    // Shared body of the QML property setters: locks m_config_mutex, no-ops
+    // when the value is unchanged, otherwise bumps m_config_revision, fires
+    // the supplied signal, and requests a repaint.
+    template <typename Field, typename Value, typename Signal>
+    void update_config_field(Field& field, Value new_value, Signal signal);
+
+    // Apply an available-range clamp to m_data_cfg in place. Caller must hold
+    // m_data_cfg_mutex. Used by both set_available_t_range and set_view.
+    void clamp_t_range_to_available(double t_avail_min, double t_avail_max);
 
     bool consume_view_state_reset_request();
     void set_rendered_v_range(float v_min, float v_max) const;

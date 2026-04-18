@@ -27,11 +27,12 @@
 
 namespace vnm::plot {
 
-// Library version
-constexpr int k_version_major = 0;
-constexpr int k_version_minor = 1;
-constexpr int k_version_patch = 0;
+// Library version. Kept in sync with the CMake project() VERSION; bump both
+// together when releasing.
+constexpr int k_version_major = 1;
+constexpr int k_version_minor = 0;
+constexpr int k_version_patch = 4;
 
-constexpr const char* k_version_string = "0.1.0";
+constexpr const char* k_version_string = "1.0.4";
 
 } // namespace vnm::plot

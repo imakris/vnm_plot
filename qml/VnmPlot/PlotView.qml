@@ -16,7 +16,7 @@ Item {
     PlotWidget {
         id: plot
         anchors.fill: parent
-        timeAxis: root.time_axis
+        time_axis: root.time_axis
     }
 
     PlotIndicator {

@@ -80,6 +80,15 @@ struct data_snapshot_t
 
     explicit operator bool() const { return data != nullptr && count > 0; }
 
+    /// True iff the snapshot is non-empty AND has a usable stride.
+    /// Prefer this over the bool conversion when downstream code is going to
+    /// dereference samples; the bool conversion only checks `data` and
+    /// `count` and does not catch a zero-stride source.
+    bool is_valid() const noexcept
+    {
+        return data != nullptr && count > 0 && stride > 0;
+    }
+
     const void* at(size_t index) const
     {
         if (index >= count || stride == 0) {

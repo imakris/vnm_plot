@@ -1,4 +1,4 @@
-#include <vnm_plot/qt/plot_renderer.h>
+#include "plot_renderer.h"
 #include <vnm_plot/qt/plot_widget.h>
 #include <vnm_plot/core/color_palette.h>
 #include <vnm_plot/core/constants.h>
@@ -173,6 +173,13 @@ bool spans_approx_equal(double a, double b)
     return diff <= scale * k_eps;
 }
 
+// Boost-style 64-bit hash combiner; declared first so the helpers below can
+// share it instead of inlining the same XOR/shift mix at every call site.
+void hash_mix_u64(std::uint64_t& hash, std::uint64_t value)
+{
+    hash ^= value + 0x9e3779b97f4a7c15ULL + (hash << 6) + (hash >> 2);
+}
+
 std::uint64_t hash_data_sources(const std::map<int, std::shared_ptr<const series_data_t>>& series_map)
 {
     std::uint64_t hash = 1469598103934665603ULL;
@@ -200,14 +207,14 @@ std::uint64_t hash_data_sources(const std::map<int, std::shared_ptr<const series
                 : 0ULL;
 
         std::uint64_t value = static_cast<std::uint64_t>(id);
-        value ^= main_ptr + 0x9e3779b97f4a7c15ULL + (value << 6) + (value >> 2);
+        hash_mix_u64(value, main_ptr);
         if (has_preview) {
-            value ^= 0x0f0f0f0f0f0f0f0fULL + (value << 6) + (value >> 2);
-            value ^= preview_ptr + 0x9e3779b97f4a7c15ULL + (value << 6) + (value >> 2);
-            value ^= preview_layout_key + 0x9e3779b97f4a7c15ULL + (value << 6) + (value >> 2);
-            value ^= preview_style_bits + 0x9e3779b97f4a7c15ULL + (value << 6) + (value >> 2);
+            hash_mix_u64(value, 0x0f0f0f0f0f0f0f0fULL);
+            hash_mix_u64(value, preview_ptr);
+            hash_mix_u64(value, preview_layout_key);
+            hash_mix_u64(value, preview_style_bits);
         }
-        hash ^= value + 0x9e3779b97f4a7c15ULL + (hash << 6) + (hash >> 2);
+        hash_mix_u64(hash, value);
     }
     return hash;
 }
@@ -222,15 +229,10 @@ std::uint64_t hash_series_snapshot(const std::map<int, std::shared_ptr<const ser
         const std::uint64_t series_ptr = static_cast<std::uint64_t>(
             reinterpret_cast<std::uintptr_t>(series.get()));
         std::uint64_t value = static_cast<std::uint64_t>(id);
-        value ^= series_ptr + 0x9e3779b97f4a7c15ULL + (value << 6) + (value >> 2);
-        hash ^= value + 0x9e3779b97f4a7c15ULL + (hash << 6) + (hash >> 2);
+        hash_mix_u64(value, series_ptr);
+        hash_mix_u64(hash, value);
     }
     return hash;
-}
-
-void hash_mix_u64(std::uint64_t& hash, std::uint64_t value)
-{
-    hash ^= value + 0x9e3779b97f4a7c15ULL + (hash << 6) + (hash >> 2);
 }
 
 std::uint64_t hash_series_sequences(const std::map<int, std::shared_ptr<const series_data_t>>& series_map)
@@ -288,7 +290,7 @@ bool scan_snapshot_minmax(
         return false;
     }
 
-    if (!snapshot || snapshot.count == 0 || snapshot.stride == 0) {
+    if (!snapshot.is_valid()) {
         return false;
     }
 
@@ -352,7 +354,7 @@ bool find_window_indices(
     start_idx = 0;
     end_idx = snapshot.count;
 
-    if (!access.get_timestamp || !snapshot || snapshot.count == 0 || snapshot.stride == 0) {
+    if (!access.get_timestamp || !snapshot.is_valid()) {
         return false;
     }
     if (!(t_max > t_min)) {
@@ -402,7 +404,7 @@ bool get_lod_minmax(
         VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.range_calc.get_lod_minmax.snapshot");
         snapshot = data_source.snapshot(level);
     }
-    if (!snapshot || snapshot.count == 0 || snapshot.stride == 0) {
+    if (!snapshot.is_valid()) {
         if (entry.valid) {
             out_min = entry.v_min;
             out_max = entry.v_max;
@@ -641,7 +643,7 @@ std::pair<float, float> compute_visible_v_range(
 
         std::size_t applied_level = desired_level;
         data_snapshot_t snapshot = view.source->snapshot(applied_level);
-        if (!snapshot || snapshot.count == 0 || snapshot.stride == 0) {
+        if (!snapshot.is_valid()) {
             snapshot = snapshot0;
             applied_level = 0;
         }

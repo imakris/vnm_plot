@@ -3,6 +3,8 @@
 // concurrent snapshot and mutation, verifying that readers see a consistent
 // view and the monotonic sequence counter reflects updates.
 
+#include "test_macros.h"
+
 #include <vnm_plot/core/types.h>
 
 #include <atomic>
@@ -18,27 +20,6 @@
 namespace plot = vnm::plot;
 
 namespace {
-
-#define TEST_ASSERT(cond, msg) \
-    do { \
-        if (!(cond)) { \
-            std::cerr << "FAIL: " << msg << " (line " << __LINE__ << ")" << std::endl; \
-            return false; \
-        } \
-    } while (0)
-
-#define RUN_TEST(test_fn) \
-    do { \
-        std::cout << "Running " << #test_fn << "... "; \
-        if (test_fn()) { \
-            std::cout << "OK" << std::endl; \
-            ++passed; \
-        } \
-        else { \
-            std::cout << "FAIL" << std::endl; \
-            ++failed; \
-        } \
-    } while (0)
 
 struct sample_t
 {

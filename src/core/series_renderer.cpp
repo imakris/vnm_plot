@@ -108,7 +108,7 @@ bool compute_aux_metric_range(
 {
     out_used_data_source_range = false;
 
-    if (!access.get_aux_metric || !snapshot || snapshot.count == 0 || snapshot.stride == 0) {
+    if (!access.get_aux_metric || !snapshot.is_valid()) {
         return false;
     }
 

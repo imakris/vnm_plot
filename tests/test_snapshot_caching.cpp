@@ -1,5 +1,7 @@
 // vnm_plot core snapshot cache tests
 
+#include "test_macros.h"
+
 #include <vnm_plot/core/asset_loader.h>
 #define private public
 #include <vnm_plot/core/series_renderer.h>
@@ -171,26 +173,6 @@ void fill_lod_samples(Two_level_source& source)
     }
 }
 
-#define TEST_ASSERT(cond, msg) \
-    do { \
-        if (!(cond)) { \
-            std::cerr << "FAIL: " << msg << " (line " << __LINE__ << ")" << std::endl; \
-            return false; \
-        } \
-    } while (0)
-
-#define RUN_TEST(test_fn) \
-    do { \
-        std::cout << "Running " << #test_fn << "... "; \
-        if (test_fn()) { \
-            std::cout << "OK" << std::endl; \
-            ++passed; \
-        } \
-        else { \
-            std::cout << "FAIL" << std::endl; \
-            ++failed; \
-        } \
-    } while (0)
 
 bool test_frame_scoped_cache_reuse()
 {
