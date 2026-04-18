@@ -152,7 +152,7 @@ struct Plot_config
 
     // Maintenance aid: bump when adding a field so that comparators (e.g.
     // plot_config_equivalent) fail to compile until they are updated.
-    static constexpr int field_count = 20;
+    static constexpr int field_count = 22;
 };
 
 // -----------------------------------------------------------------------------

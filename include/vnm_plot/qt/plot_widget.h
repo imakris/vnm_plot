@@ -45,6 +45,21 @@ struct Plot_view
 // -----------------------------------------------------------------------------
 // Qt Quick widget for rendering GPU-accelerated plots.
 // This is the main public interface for the vnm_plot library.
+//
+// Threading model:
+// - All public setters (e.g. set_t_range, set_v_range, set_config, add_series,
+//   adjust_* helpers) must be called from the Qt GUI thread (the one that owns
+//   the QQuickWindow). Internally they take short-lived locks on m_config_mutex,
+//   m_data_cfg_mutex, or m_series_mutex so the render thread can read a
+//   consistent snapshot.
+// - Methods tagged `_from_renderer` (set_vbar_width_from_renderer,
+//   set_auto_v_range_from_renderer, set_rendered_v_range, set_rendered_t_range)
+//   are invoked on the GL render thread and are implemented to be safe to call
+//   without the main thread serializing with them. State they publish back to
+//   the UI thread is carried by atomics.
+// - Non-finite values (NaN, +/-inf) are silently ignored by the range setters;
+//   they never produce a partial update. Invalid ranges (max <= min) are also
+//   ignored.
 class Plot_widget : public QQuickFramebufferObject
 {
     Q_OBJECT

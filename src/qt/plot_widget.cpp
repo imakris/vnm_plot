@@ -100,7 +100,7 @@ bool plot_config_equivalent(
     const vnm::plot::Plot_config& rhs)
 {
     // If a field is added to Plot_config, update this comparator and bump field_count.
-    static_assert(vnm::plot::Plot_config::field_count == 20,
+    static_assert(vnm::plot::Plot_config::field_count == 22,
         "Plot_config field_count changed — update plot_config_equivalent to cover new fields");
     return
         lhs.dark_mode == rhs.dark_mode &&
@@ -375,6 +375,9 @@ double Plot_widget::t_available_max() const
 
 void Plot_widget::set_t_range(double t_min, double t_max)
 {
+    if (!std::isfinite(t_min) || !std::isfinite(t_max) || !(t_max > t_min)) {
+        return;
+    }
     if (m_time_axis) {
         m_time_axis->set_t_range(t_min, t_max);
         return;
@@ -390,6 +393,9 @@ void Plot_widget::set_t_range(double t_min, double t_max)
 
 void Plot_widget::set_available_t_range(double t_min, double t_max)
 {
+    if (!std::isfinite(t_min) || !std::isfinite(t_max) || !(t_max > t_min)) {
+        return;
+    }
     if (m_time_axis) {
         m_time_axis->set_available_t_range(t_min, t_max);
         return;
@@ -426,43 +432,51 @@ void Plot_widget::set_view(const Plot_view& view)
     bool t_changed = false;
     bool v_changed = false;
 
+    const auto t_range_valid = [](const std::pair<double, double>& r) {
+        return std::isfinite(r.first) && std::isfinite(r.second) && r.second > r.first;
+    };
+    const auto v_range_valid = [](const std::pair<float, float>& r) {
+        return std::isfinite(r.first) && std::isfinite(r.second) && r.second > r.first;
+    };
+
+    const bool t_range_ok = view.t_range && t_range_valid(*view.t_range);
+    const bool t_avail_ok = view.t_available_range && t_range_valid(*view.t_available_range);
+
     if (m_time_axis) {
-        if (view.t_range) {
+        if (t_range_ok) {
             m_time_axis->set_t_range(view.t_range->first, view.t_range->second);
             t_changed = true;
         }
-        if (view.t_available_range) {
+        if (t_avail_ok) {
             m_time_axis->set_available_t_range(view.t_available_range->first, view.t_available_range->second);
             t_changed = true;
         }
     }
     else
-    if (view.t_range || view.t_available_range) {
+    if (t_range_ok || t_avail_ok) {
         std::unique_lock lock(m_data_cfg_mutex);
-        if (view.t_range) {
+        if (t_range_ok) {
             m_data_cfg.t_min = view.t_range->first;
             m_data_cfg.t_max = view.t_range->second;
             t_changed = true;
         }
-        if (view.t_available_range) {
+        if (t_avail_ok) {
             const double t_min = view.t_available_range->first;
             const double t_max = view.t_available_range->second;
-            if (t_max > t_min) {
-                const double span = t_max - t_min;
-                const double cur_span = m_data_cfg.t_max - m_data_cfg.t_min;
-                if (cur_span > span) {
+            const double span = t_max - t_min;
+            const double cur_span = m_data_cfg.t_max - m_data_cfg.t_min;
+            if (cur_span > span) {
+                m_data_cfg.t_min = t_min;
+                m_data_cfg.t_max = t_max;
+            }
+            else {
+                if (m_data_cfg.t_min < t_min) {
                     m_data_cfg.t_min = t_min;
-                    m_data_cfg.t_max = t_max;
+                    m_data_cfg.t_max = t_min + cur_span;
                 }
-                else {
-                    if (m_data_cfg.t_min < t_min) {
-                        m_data_cfg.t_min = t_min;
-                        m_data_cfg.t_max = t_min + cur_span;
-                    }
-                    if (m_data_cfg.t_max > t_max) {
-                        m_data_cfg.t_max = t_max;
-                        m_data_cfg.t_min = t_max - cur_span;
-                    }
+                if (m_data_cfg.t_max > t_max) {
+                    m_data_cfg.t_max = t_max;
+                    m_data_cfg.t_min = t_max - cur_span;
                 }
             }
             m_data_cfg.t_available_min = t_min;
@@ -471,7 +485,7 @@ void Plot_widget::set_view(const Plot_view& view)
         }
     }
 
-    if (view.v_range) {
+    if (view.v_range && v_range_valid(*view.v_range)) {
         std::unique_lock lock(m_data_cfg_mutex);
         m_data_cfg.v_min = view.v_range->first;
         m_data_cfg.v_max = view.v_range->second;
@@ -611,6 +625,9 @@ void Plot_widget::set_v_auto(bool auto_scale)
 
 void Plot_widget::set_v_range(float v_min, float v_max)
 {
+    if (!std::isfinite(v_min) || !std::isfinite(v_max) || !(v_max > v_min)) {
+        return;
+    }
     {
         std::unique_lock lock(m_data_cfg_mutex);
         m_data_cfg.v_min = v_min;
@@ -1413,8 +1430,13 @@ void Plot_widget::set_rendered_v_range(float v_min, float v_max) const
         m_rendered_v_range_valid.store(false, std::memory_order_release);
         return;
     }
-    m_rendered_v_min.store(v_min, std::memory_order_release);
-    m_rendered_v_max.store(v_max, std::memory_order_release);
+    // Narrow (but do not fully close) the window where a reader can observe a
+    // torn mix of old and new endpoints by invalidating first, publishing the
+    // new values, then re-validating. A full fix would require a seqlock; the
+    // worst case here is one frame of slightly stale indicator coordinates.
+    m_rendered_v_range_valid.store(false, std::memory_order_release);
+    m_rendered_v_min.store(v_min, std::memory_order_relaxed);
+    m_rendered_v_max.store(v_max, std::memory_order_relaxed);
     m_rendered_v_range_valid.store(true, std::memory_order_release);
 }
 
@@ -1425,8 +1447,10 @@ void Plot_widget::set_rendered_t_range(double t_min, double t_max) const
         m_rendered_t_range_valid.store(false, std::memory_order_release);
         return;
     }
-    m_rendered_t_min.store(t_min, std::memory_order_release);
-    m_rendered_t_max.store(t_max, std::memory_order_release);
+    // See set_rendered_v_range for the invalidate-first rationale.
+    m_rendered_t_range_valid.store(false, std::memory_order_release);
+    m_rendered_t_min.store(t_min, std::memory_order_relaxed);
+    m_rendered_t_max.store(t_max, std::memory_order_relaxed);
     m_rendered_t_range_valid.store(true, std::memory_order_release);
 }
 

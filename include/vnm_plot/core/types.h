@@ -56,9 +56,18 @@ using Byte_view = std::string_view;
 // If data2/count2 is set, the logical snapshot is split into two contiguous
 // segments (e.g., ring buffer wrap). The total count is `count`.
 // `sequence` is a monotonic counter that increments on data changes.
-// NOTE: The Data_source implementation owns the data contract. If it returns
-// copied data, it must keep that buffer alive. If it returns a direct view,
-// it must ensure the view stays valid (e.g., by holding a lock in `hold`).
+//
+// Lifetime contract:
+// - The Data_source implementation decides whether the pointers refer to a
+//   copy it owns, or a direct view into its live storage.
+// - Whatever guarantees the view's validity (an internal buffer, a lock, a
+//   reference count) must be kept alive via `hold`; the snapshot is safe to
+//   read for exactly as long as the caller keeps `hold` alive (or, if `hold`
+//   is empty, as long as the Data_source promises the view remains stable —
+//   usually until the next call into the Data_source from the same thread).
+// - Consumers must not copy `data`/`data2` into long-lived storage without
+//   also retaining `hold`. Treat the pointers as only valid while a
+//   `data_snapshot_t` value is live.
 struct data_snapshot_t
 {
     const void* data     = nullptr;  ///< Pointer to first sample

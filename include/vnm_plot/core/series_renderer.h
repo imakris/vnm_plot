@@ -33,7 +33,10 @@ public:
     Series_renderer(const Series_renderer&) = delete;
     Series_renderer& operator=(const Series_renderer&) = delete;
 
-    // Initialize with asset loader for shader loading
+    // Remember the asset loader used for on-demand shader lookup. Shaders are
+    // compiled lazily from render() rather than up front, so this call performs
+    // no GL work and cannot fail. The referenced loader must outlive the
+    // Series_renderer.
     void initialize(Asset_loader& asset_loader);
 
     // Clean up GL resources
