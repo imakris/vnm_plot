@@ -966,9 +966,8 @@ const frame_layout_result_t& Plot_renderer::impl_t::calculate_frame_layout(
     {
         // Notify widget to animate to new width
         if (owner) {
-            post_to_plot_widget(
+            Plot_renderer::post_vbar_width_from_renderer(
                 const_cast<Plot_widget*>(owner),
-                &Plot_widget::set_vbar_width_from_renderer,
                 measured_vbar_width);
         }
 
@@ -1519,9 +1518,8 @@ void Plot_renderer::render()
                 if (std::abs(v0 - m_impl->snapshot.cfg.v_min) > k_auto_v_sync_eps ||
                     std::abs(v1 - m_impl->snapshot.cfg.v_max) > k_auto_v_sync_eps)
                 {
-                    post_to_plot_widget(
+                    Plot_renderer::post_auto_v_range_from_renderer(
                         const_cast<Plot_widget*>(m_impl->owner),
-                        &Plot_widget::set_auto_v_range_from_renderer,
                         v0, v1);
                 }
             }
@@ -1700,6 +1698,19 @@ QOpenGLFramebufferObject* Plot_renderer::createFramebufferObject(const QSize& si
     format.setAttachment(QOpenGLFramebufferObject::CombinedDepthStencil);
     format.setInternalTextureFormat(GL_RGBA8);
     return new QOpenGLFramebufferObject(size, format);
+}
+
+void Plot_renderer::post_vbar_width_from_renderer(Plot_widget* widget, double px)
+{
+    post_to_plot_widget(widget, &Plot_widget::set_vbar_width_from_renderer, px);
+}
+
+void Plot_renderer::post_auto_v_range_from_renderer(
+    Plot_widget* widget,
+    float v_min,
+    float v_max)
+{
+    post_to_plot_widget(widget, &Plot_widget::set_auto_v_range_from_renderer, v_min, v_max);
 }
 
 } // namespace vnm::plot

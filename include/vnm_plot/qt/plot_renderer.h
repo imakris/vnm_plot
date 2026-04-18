@@ -37,6 +37,14 @@ public:
 private:
     struct impl_t;
     std::unique_ptr<impl_t> m_impl;
+
+    // Forwarders for posting updates to the widget's private render-thread
+    // hooks. Plot_widget declares Plot_renderer (this class) as a friend, so
+    // taking the pointer-to-member of a private setter is legal here; the
+    // nested impl_t inherits that access through enclosing-class membership
+    // and calls these helpers instead of naming the private setters directly.
+    static void post_vbar_width_from_renderer(Plot_widget* widget, double px);
+    static void post_auto_v_range_from_renderer(Plot_widget* widget, float v_min, float v_max);
 };
 
 } // namespace vnm::plot
