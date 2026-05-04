@@ -344,22 +344,34 @@ bool test_sequence_short_circuit() {
     bar.close = 100.0f;
     buffer.push(bar);
 
-    // First snapshot
-    auto result1 = source.try_snapshot();
-    TEST_ASSERT(result1.status == vnm::plot::snapshot_result_t::Snapshot_status::READY,
-                "first snapshot should be READY");
-    uint64_t seq1 = source.sequence();
+    // First and second snapshots: same data, same cached pointer expected.
+    // Each snapshot holds a shared_lock on the ring buffer for its
+    // lifetime, so a subsequent push() would block on the writer lock
+    // until every outstanding snapshot is released. Capture the
+    // identity bits we need to assert on, then drop the snapshots
+    // before pushing further data.
+    std::size_t result1_count = 0;
+    const void* result1_data = nullptr;
+    uint64_t seq1 = 0;
+    {
+        auto result1 = source.try_snapshot();
+        TEST_ASSERT(result1.status == vnm::plot::snapshot_result_t::Snapshot_status::READY,
+                    "first snapshot should be READY");
+        result1_count = result1.snapshot.count;
+        result1_data = result1.snapshot.data;
+        seq1 = source.sequence();
 
-    // Second snapshot without any new data should return cached result
-    auto result2 = source.try_snapshot();
-    TEST_ASSERT(result2.status == vnm::plot::snapshot_result_t::Snapshot_status::READY,
-                "cached snapshot should be READY");
-    TEST_ASSERT(result2.snapshot.count == result1.snapshot.count,
-                "cached snapshot should have same count");
-    TEST_ASSERT(result2.snapshot.data == result1.snapshot.data,
-                "cached snapshot should return same pointer");
+        auto result2 = source.try_snapshot();
+        TEST_ASSERT(result2.status == vnm::plot::snapshot_result_t::Snapshot_status::READY,
+                    "cached snapshot should be READY");
+        TEST_ASSERT(result2.snapshot.count == result1_count,
+                    "cached snapshot should have same count");
+        TEST_ASSERT(result2.snapshot.data == result1_data,
+                    "cached snapshot should return same pointer");
+    }
 
-    // Push new data
+    // Push new data. Snapshot locks released above; push acquires the
+    // writer lock cleanly.
     Bar_sample bar2{};
     bar2.close = 200.0f;
     buffer.push(bar2);
