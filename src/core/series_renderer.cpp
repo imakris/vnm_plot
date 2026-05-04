@@ -316,17 +316,41 @@ GLuint Series_renderer::ensure_series_vao(
     if (access.setup_vertex_attributes) {
         access.setup_vertex_attributes();
     }
-    // DOTS expand each sample into a four-vertex quad via instancing. Make
-    // every per-vertex attribute advance per-instance so each instance sees
-    // the matching sample. Other styles read sample data through SSBOs and
-    // ignore the vertex attributes entirely, so the divisor does not matter
-    // there.
+    // DOTS expands each sample into a four-vertex quad via instancing. AREA
+    // needs sample i and sample i+1 per instance, fed through two attribute
+    // bindings on the same VBO with location 4/5's offset shifted by one
+    // stride. Both styles set divisor=1 so the GPU's attribute fetcher does
+    // the per-instance lookup. LINE and the colormap styles still pull
+    // samples through an SSBO and ignore vertex attributes entirely.
     if (!!(style & Display_style::DOTS)) {
-        // Function-sample layout locations are the only ones the dot quad
-        // shader binds (x, y); the optional range slots are present but
-        // unused. Setting the divisor on the unused locations is harmless.
         constexpr GLuint k_dot_attrib_locations[] = {0u, 1u, 2u, 3u};
         for (GLuint loc : k_dot_attrib_locations) {
+            glVertexAttribDivisor(loc, 1u);
+        }
+    }
+    else
+    if (!!(style & Display_style::AREA)) {
+        const std::size_t stride = access.sample_stride_bytes;
+        const std::size_t ts_off = access.timestamp_offset_bytes;
+        const std::size_t v_off  = access.value_offset_bytes;
+        if (stride > 0) {
+            glVertexAttribLPointer(
+                4, 1, GL_DOUBLE,
+                static_cast<GLsizei>(stride),
+                reinterpret_cast<void*>(stride + ts_off));
+            glEnableVertexAttribArray(4);
+            glVertexAttribPointer(
+                5, 1, GL_FLOAT, GL_FALSE,
+                static_cast<GLsizei>(stride),
+                reinterpret_cast<void*>(stride + v_off));
+            glEnableVertexAttribArray(5);
+        }
+        // The shader does not consume locations 2/3 (y_min/y_max). Disable
+        // them so the GPU does not fetch them per vertex on every instance.
+        glDisableVertexAttribArray(2);
+        glDisableVertexAttribArray(3);
+        constexpr GLuint k_area_attrib_locations[] = {0u, 1u, 4u, 5u};
+        for (GLuint loc : k_area_attrib_locations) {
             glVertexAttribDivisor(loc, 1u);
         }
     }
@@ -1081,20 +1105,27 @@ void Series_renderer::render(
         }
 
         // Styles that consume neighbour samples need the adjacency index
-        // buffer; DOTS reads only its own sample.
+        // buffer. DOTS and AREA pull their samples directly via instanced
+        // vertex attributes (one sample for DOTS, sample i and i+1 for
+        // AREA), so they bypass the SSBO path entirely.
         const bool use_adjacency =
             (primitive_style == Display_style::LINE) ||
-            (primitive_style == Display_style::AREA) ||
             (primitive_style == Display_style::COLORMAP_AREA) ||
             (primitive_style == Display_style::COLORMAP_LINE);
         // Per-instance vertex count for the triangle-strip expansion.
         // LINE / COLORMAP_LINE: a single thickened quad (4 verts).
-        // AREA / COLORMAP_AREA: a fill region plus a zero-axis emphasis quad
-        //   stitched together with degenerate connectors (13 verts).
+        // AREA: drawn in two passes - 6-vert fill + 4-vert zero-axis bar.
+        //   Splitting the passes keeps every triangle either real or close
+        //   to it, instead of stitching the fill and emphasis quad together
+        //   through a degenerate-connector chain.
+        // COLORMAP_AREA: a fill region plus emphasis quad stitched together
+        //   via degenerate connectors (13 verts), still on the SSBO path.
         // DOTS: a screen-aligned quad (4 verts).
         GLsizei verts_per_instance = 4;
-        if (primitive_style == Display_style::AREA ||
-            primitive_style == Display_style::COLORMAP_AREA) {
+        if (primitive_style == Display_style::AREA) {
+            verts_per_instance = 6;
+        }
+        if (primitive_style == Display_style::COLORMAP_AREA) {
             verts_per_instance = 13;
         }
         if (primitive_style != Display_style::DOTS && count < 2) {
@@ -1478,11 +1509,11 @@ void Series_renderer::render(
         if (do_draw) {
             // Geometry-shader expansion has been folded into the vertex
             // shaders, which generate triangle-strip primitives directly.
-            // DOTS draws one quad per sample with the base instance set so
-            // per-instance attributes start at the visible window. Other
-            // styles read sample data through SSBOs and the adjacency
-            // buffer already encodes the absolute sample indices, so the
-            // base instance can stay zero.
+            // DOTS and AREA pull samples through instanced vertex attributes
+            // and use the base-instance offset to start at the visible
+            // window. The remaining SSBO-backed styles read absolute sample
+            // indices from the adjacency buffer, so their base instance
+            // stays zero.
             if (primitive_style == Display_style::DOTS) {
                 if (count > 0) {
                     glDrawArraysInstancedBaseInstance(
@@ -1490,6 +1521,32 @@ void Series_renderer::render(
                         0,
                         verts_per_instance,
                         count,
+                        static_cast<GLuint>(view_result.first));
+                }
+            }
+            else
+            if (primitive_style == Display_style::AREA) {
+                const GLsizei instance_count = count - 1;
+                if (instance_count > 0) {
+                    const GLint axis_pass_loc =
+                        pass_shader->uniform_location("u_axis_pass");
+                    if (axis_pass_loc >= 0) {
+                        glUniform1ui(axis_pass_loc, 0u);
+                    }
+                    glDrawArraysInstancedBaseInstance(
+                        GL_TRIANGLE_STRIP,
+                        0,
+                        verts_per_instance,
+                        instance_count,
+                        static_cast<GLuint>(view_result.first));
+                    if (axis_pass_loc >= 0) {
+                        glUniform1ui(axis_pass_loc, 1u);
+                    }
+                    glDrawArraysInstancedBaseInstance(
+                        GL_TRIANGLE_STRIP,
+                        0,
+                        4,
+                        instance_count,
                         static_cast<GLuint>(view_result.first));
                 }
             }
