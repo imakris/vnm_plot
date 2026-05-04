@@ -170,6 +170,8 @@ void Series_renderer::initialize(Asset_loader& asset_loader)
 
 void Series_renderer::cleanup_gl_resources()
 {
+    clear_frame_snapshot_caches();
+
     for (auto* pipe : {m_pipe_line.get(), m_pipe_dots.get(), m_pipe_area.get(), m_pipe_colormap.get()}) {
         if (!pipe) {
             continue;
@@ -209,6 +211,17 @@ void Series_renderer::cleanup_gl_resources()
     }
     m_colormap_textures.clear();
     m_logged_errors.clear();
+}
+
+void Series_renderer::clear_frame_snapshot_caches()
+{
+    for (auto& [_, state] : m_vbo_states) {
+        state.cached_snapshot_frame_id = 0;
+        state.cached_snapshot_level = SIZE_MAX;
+        state.cached_snapshot_source = nullptr;
+        state.cached_snapshot = {};
+        state.cached_snapshot_hold.reset();
+    }
 }
 
 Series_renderer::series_pipe_t& Series_renderer::pipe_for(Display_style style)
@@ -787,6 +800,8 @@ void Series_renderer::render(
     const frame_context_t& ctx,
     const std::map<int, std::shared_ptr<const series_data_t>>& series)
 {
+    clear_frame_snapshot_caches();
+
     if (series.empty() || !m_asset_loader) {
         return;
     }
@@ -798,6 +813,11 @@ void Series_renderer::render(
 
     // Increment frame counter for snapshot caching
     ++m_frame_id;
+
+    struct Frame_snapshot_cache_scope {
+        Series_renderer& renderer;
+        ~Frame_snapshot_cache_scope() { renderer.clear_frame_snapshot_caches(); }
+    } frame_snapshot_cache_scope{*this};
 
     vnm::plot::Profiler* profiler = ctx.config ? ctx.config->profiler.get() : nullptr;
     VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.execute_passes.render_data_series");

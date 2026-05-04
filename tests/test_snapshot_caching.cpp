@@ -211,6 +211,8 @@ bool test_frame_scoped_cache_reuse()
     TEST_ASSERT(data_source->snapshot_calls == 1,
                 std::string("expected shared snapshot between main and preview views, got ") +
                     std::to_string(data_source->snapshot_calls));
+    TEST_ASSERT(data_source->last_hold.expired(),
+                "expected frame-scoped snapshot hold to release after render");
 
     return true;
 }
@@ -504,7 +506,7 @@ bool test_lod_level_separation()
     return true;
 }
 
-bool test_snapshot_released_on_series_removal()
+bool test_snapshot_released_after_render()
 {
     auto data_source = std::make_shared<Single_level_source>();
     data_source->samples.resize(8);
@@ -537,16 +539,7 @@ bool test_snapshot_released_on_series_removal()
     renderer.render(ctx, series_map);
 
     std::weak_ptr<void> hold = data_source->last_hold;
-    TEST_ASSERT(!hold.expired(), "expected snapshot hold to stay alive in cache");
-
-    std::map<int, std::shared_ptr<const series_data_t>> replacement_map;
-    const int placeholder_id = 99;
-    auto placeholder = std::make_shared<series_data_t>();
-    placeholder->enabled = false;
-    replacement_map[placeholder_id] = placeholder;
-    renderer.render(ctx, replacement_map);
-
-    TEST_ASSERT(hold.expired(), "expected snapshot hold to release after series removal");
+    TEST_ASSERT(hold.expired(), "expected snapshot hold to release after render");
 
     return true;
 }
@@ -633,7 +626,7 @@ int main()
     RUN_TEST(test_empty_window_behavior_invalidates_fast_path_cache);
     RUN_TEST(test_preview_honors_hold_last_forward);
     RUN_TEST(test_lod_level_separation);
-    RUN_TEST(test_snapshot_released_on_series_removal);
+    RUN_TEST(test_snapshot_released_after_render);
     RUN_TEST(test_render_empty_series_map);
     RUN_TEST(test_render_skips_invalid_series);
 

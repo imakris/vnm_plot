@@ -151,6 +151,8 @@ private:
 
     uint64_t m_frame_id = 0;  // Monotonic frame counter for snapshot caching
 
+    void clear_frame_snapshot_caches();
+
     std::shared_ptr<GL_program> get_or_load_shader(
         const shader_set_t& shader_set,
         const Plot_config* config);
