@@ -839,9 +839,18 @@ void Function_plotter::update_plot_widget()
         return;
     }
 
+    // Plot_view::t_range expects int64 nanoseconds; the function-domain
+    // x-bounds are stored as fp seconds in m_x_min / m_x_max. Convert at
+    // the API boundary instead of relying on pair<double,double> narrowing
+    // through the optional<pair<qint64,qint64>> assignment, which silently
+    // truncated -10.0 / 10.0 to a 20-nanosecond view.
+    constexpr qint64 k_ns_per_second = 1'000'000'000;
+    const qint64 t_min_ns = static_cast<qint64>(m_x_min * static_cast<double>(k_ns_per_second));
+    const qint64 t_max_ns = static_cast<qint64>(m_x_max * static_cast<double>(k_ns_per_second));
+
     vnm::plot::Plot_view view;
-    view.t_range = std::make_pair(m_x_min, m_x_max);
-    view.t_available_range = std::make_pair(m_x_min, m_x_max);
+    view.t_range = std::make_pair(t_min_ns, t_max_ns);
+    view.t_available_range = std::make_pair(t_min_ns, t_max_ns);
     m_plot_widget->set_view(view);
 }
 

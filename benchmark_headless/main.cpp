@@ -689,10 +689,12 @@ int main(int argc, char* argv[])
     std::map<int, std::shared_ptr<const vnm::plot::series_data_t>> series_map;
     series_map[series_id] = series;
 
-    // View range state
-    double t_min = 0.0;
-    double t_max = 10.0;
-    double t_available_min = 0.0;
+    // View range state. Timestamps are int64 nanoseconds (API convention);
+    // Benchmark_frame_params binds these by reference, so the types must
+    // match. The pre-int64-migration values 0.0 / 10.0 / 0.0 were seconds.
+    std::int64_t t_min = 0;
+    std::int64_t t_max = std::int64_t{10} * 1'000'000'000;  // 10 s
+    std::int64_t t_available_min = 0;
     float v_min = 90.0f;
     float v_max = 110.0f;
 
