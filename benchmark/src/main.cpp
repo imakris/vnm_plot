@@ -41,6 +41,9 @@ void print_usage(const char* program_name)
               << "  --session <name>        Session name for report header (default: benchmark_run)\n"
               << "  --stream <name>         Stream name for report (default: SIM)\n"
               << "  --data-type <type>      bars|trades (default: bars)\n"
+              << "  --render-style <style>  dots|line|area (default: dots for trades, area for bars)\n"
+              << "  --static                Skip the generator and render a fixed 4-segment line (visual-diff mode)\n"
+              << "  --line-px <pixels>      Line thickness for line/area rendering (default: 1.5)\n"
               << "  --output-dir <path>     Output directory for reports (default: current dir)\n"
               << "  --seed <number>         RNG seed for reproducibility (default: time-based)\n"
               << "  --volatility <value>    Brownian volatility (default: 0.02, range: 0.0-1.0)\n"
@@ -99,6 +102,34 @@ Parse_result parse_args(int argc, char* argv[])
                     result.error_message = "Invalid data type '" + type + "'. Use 'bars' or 'trades'.";
                     return result;
                 }
+            }
+            else
+            if (arg == "--render-style" && i + 1 < argc) {
+                std::string style = argv[++i];
+                if (style == "dots" || style == "Dots") {
+                    config.style = "Dots";
+                }
+                else
+                if (style == "line" || style == "Line") {
+                    config.style = "Line";
+                }
+                else
+                if (style == "area" || style == "Area") {
+                    config.style = "Area";
+                }
+                else {
+                    result.success = false;
+                    result.error_message = "Invalid style '" + style + "'. Use 'dots', 'line', or 'area'.";
+                    return result;
+                }
+            }
+            else
+            if (arg == "--static") {
+                config.static_data = true;
+            }
+            else
+            if (arg == "--line-px" && i + 1 < argc) {
+                config.line_width_px = std::stod(argv[++i]);
             }
             else
             if (arg == "--output-dir" && i + 1 < argc) {
@@ -205,6 +236,7 @@ void print_config_summary(const vnm::benchmark::Benchmark_config& config, std::o
     os << "Configuration:\n"
        << "  Duration:     " << config.duration_seconds << "s\n"
        << "  Data type:    " << config.data_type << "\n"
+       << "  Style:        " << (config.style.empty() ? "default" : config.style) << "\n"
        << "  Rate:         " << config.rate << " samples/sec\n"
        << "  Ring size:    " << config.ring_capacity << "\n"
        << "  Volatility:   " << config.volatility << "\n"

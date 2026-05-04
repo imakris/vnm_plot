@@ -40,6 +40,9 @@ struct Benchmark_config {
     std::string session = "benchmark_run";
     std::string stream = "SIM";
     std::string data_type = "Bars";  // "Bars" or "Trades"
+    // "" => default per data type (Trades=Dots, Bars=Area).
+    // Otherwise one of: "Dots", "Line", "Area".
+    std::string style = "";
     std::string output_directory = ".";
     uint64_t seed = 0;
     double volatility = 0.02;
@@ -48,6 +51,12 @@ struct Benchmark_config {
     bool extended_metadata = false;
     bool quiet = false;  // Suppress console output during benchmark
     bool show_text = true;  // Text/font rendering (default: on)
+    // Visual-diff mode: pre-fill 5 fixed samples (4-segment zig-zag) and
+    // skip the generator. Useful for side-by-side rendering comparisons.
+    bool static_data = false;
+    // Line thickness in pixels (default 1.5 for animated runs; bumped via
+    // --line-px when comparing visuals so segments are easy to inspect).
+    double line_width_px = 1.5;
 };
 
 /// Main benchmark window with vnm_plot rendering

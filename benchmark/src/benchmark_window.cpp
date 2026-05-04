@@ -7,6 +7,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cstdio>
 #include <cstring>
 #include <iostream>
@@ -163,7 +164,7 @@ void Benchmark_window::initializeGL()
         false;
 #endif
     m_render_config.snap_lines_to_pixels = false;
-    m_render_config.line_width_px = 1.5;
+    m_render_config.line_width_px = m_config.line_width_px;
     m_render_config.format_timestamp = format_benchmark_timestamp;
     m_render_config.profiler = std::shared_ptr<vnm::plot::Profiler>(
         &m_profiler, [](vnm::plot::Profiler*) {});  // Wire up profiler for vnm_plot internal scopes
@@ -176,9 +177,39 @@ void Benchmark_window::initializeGL()
     // Record start time
     m_started_at = std::chrono::system_clock::now();
 
-    // Start generator thread (separate from UI thread)
-    m_stop_generator.store(false);
-    m_generator_thread = std::thread(&Benchmark_window::generator_thread_func, this);
+    if (m_config.static_data) {
+        // Visual-diff mode: push five fixed samples that form a 4-segment
+        // zig-zag spanning t = [0, 4]. The view-range logic in
+        // benchmark_frame uses (t_last - 10s, t_last) so the whole zig-zag
+        // is visible. No generator thread is started, so what we render is
+        // exactly what is in the ring buffer.
+        const std::array<double, 5> ts  = {0.0, 1.0, 2.0, 3.0, 4.0};
+        const std::array<float,  5> vs  = {-0.5f, 0.5f, -0.5f, 0.5f, -0.5f};
+        for (std::size_t i = 0; i < ts.size(); ++i) {
+            if (m_config.data_type == "Trades") {
+                Trade_sample s{};
+                s.timestamp = ts[i];
+                s.price = vs[i];
+                s.size = 1.0f;
+                m_trade_buffer->push(s);
+            }
+            else {
+                Bar_sample b{};
+                b.timestamp = ts[i];
+                b.open = vs[i];
+                b.high = vs[i];
+                b.low  = vs[i];
+                b.close = vs[i];
+                b.volume = 1.0f;
+                m_bar_buffer->push(b);
+            }
+        }
+    }
+    else {
+        // Start generator thread (separate from UI thread)
+        m_stop_generator.store(false);
+        m_generator_thread = std::thread(&Benchmark_window::generator_thread_func, this);
+    }
 
     // Start render timer and benchmark duration timer
     // Drive the render loop as fast as the event loop will dispatch so the
@@ -274,24 +305,40 @@ void Benchmark_window::setup_series()
     series->color = glm::vec4(0.2f, 0.7f, 0.9f, 1.0f);
 
     if (m_config.data_type == "Trades") {
-        // Use DOTS style for point data (trades)
+        series->set_data_source_ref(*m_trade_source);
+        series->access = make_trade_access_policy();
+    }
+    else {
+        series->set_data_source_ref(*m_bar_source);
+        series->access = make_bar_access_policy();
+    }
+
+    const std::string& style = !m_config.style.empty()
+        ? m_config.style
+        : (m_config.data_type == "Trades" ? std::string("Dots") : std::string("Area"));
+
+    if (style == "Dots") {
         series->style = vnm::plot::Display_style::DOTS;
         series->shader_set = {
             "shaders/plot_dot_quad.vert",
             "shaders/plot_dot_quad.frag"
         };
-        series->set_data_source_ref(*m_trade_source);
-        series->access = make_trade_access_policy();
+    }
+    else
+    if (style == "Line") {
+        series->style = vnm::plot::Display_style::LINE;
+        series->shader_set = {
+            "shaders/plot_line.vert",
+            "shaders/plot_line.frag"
+        };
     }
     else {
-        // Use AREA style for range data (bars) to exercise OHLC range
+        // Area exercises the OHLC range path on Bar_sample.
         series->style = vnm::plot::Display_style::AREA;
         series->shader_set = {
             "shaders/plot_area.vert",
             "shaders/plot_area.frag"
         };
-        series->set_data_source_ref(*m_bar_source);
-        series->access = make_bar_access_policy();
     }
 
     m_series_map[series_id] = series;
