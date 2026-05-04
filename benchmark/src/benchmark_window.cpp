@@ -181,7 +181,9 @@ void Benchmark_window::initializeGL()
     m_generator_thread = std::thread(&Benchmark_window::generator_thread_func, this);
 
     // Start render timer and benchmark duration timer
-    m_render_timer.start(16);    // ~60Hz rendering
+    // Drive the render loop as fast as the event loop will dispatch so the
+    // benchmark saturates the renderer instead of pacing at 60 Hz.
+    m_render_timer.start(0);
     m_benchmark_timer.setSingleShot(true);
     m_benchmark_timer.start(static_cast<int>(m_config.duration_seconds * 1000));
 }

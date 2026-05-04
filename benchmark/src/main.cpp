@@ -267,6 +267,9 @@ int main(int argc, char* argv[])
     format.setDepthBufferSize(24);
     format.setSamples(4);  // MSAA
     format.setSwapBehavior(QSurfaceFormat::DoubleBuffer);
+    // Disable vsync so the benchmark measures actual rendering throughput
+    // rather than the display refresh rate.
+    format.setSwapInterval(0);
     QSurfaceFormat::setDefaultFormat(format);
 
     QApplication app(argc, argv);
