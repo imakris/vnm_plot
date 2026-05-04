@@ -72,7 +72,17 @@ auto make_clone_with_timestamp(Timestamp_member Sample::* timestamp_member)
     return [timestamp_member](Sample& dst_sample, const Sample& src_sample, std::int64_t timestamp_ns) {
         dst_sample = src_sample;
         using timestamp_t = std::decay_t<decltype(dst_sample.*timestamp_member)>;
-        dst_sample.*timestamp_member = static_cast<timestamp_t>(timestamp_ns);
+        // The vnm_plot API contract for timestamps is int64_t nanoseconds.
+        // Sample types store the raw timestamp; if a sample's timestamp
+        // member is floating-point, the convention is that the field
+        // holds seconds (so it remains intuitive to the user populating
+        // it). The boundary code in this file converts both directions.
+        if constexpr (std::is_floating_point_v<timestamp_t>) {
+            dst_sample.*timestamp_member = static_cast<timestamp_t>(timestamp_ns) * 1e-9;
+        }
+        else {
+            dst_sample.*timestamp_member = static_cast<timestamp_t>(timestamp_ns);
+        }
     };
 }
 
@@ -252,8 +262,20 @@ inline void assign_standard_accessors(
     Timestamp_member Sample::* timestamp_member,
     Value_member Sample::* value_member)
 {
-    policy.get_timestamp = [timestamp_member](const Sample& sample) {
-        return static_cast<std::int64_t>(sample.*timestamp_member);
+    policy.get_timestamp = [timestamp_member](const Sample& sample) -> std::int64_t {
+        using timestamp_t = std::decay_t<decltype(sample.*timestamp_member)>;
+        // API contract: timestamps are int64_t nanoseconds. If the user's
+        // sample type stores its timestamp as a floating-point member, the
+        // convention is that the value is in seconds; convert to ns at the
+        // boundary so the rest of vnm_plot sees one consistent unit. An
+        // integer-typed member is taken at face value; the user is
+        // responsible for storing nanoseconds in that case.
+        if constexpr (std::is_floating_point_v<timestamp_t>) {
+            return static_cast<std::int64_t>((sample.*timestamp_member) * 1e9);
+        }
+        else {
+            return static_cast<std::int64_t>(sample.*timestamp_member);
+        }
     };
     policy.get_value = [value_member](const Sample& sample) {
         return static_cast<float>(sample.*value_member);

@@ -7,10 +7,12 @@
 #include <vnm_plot/core/types.h>
 #include <vnm_plot/core/vertex_layout.h>
 
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
 #include <memory>
+#include <string>
 
 namespace plot = vnm::plot;
 
@@ -169,6 +171,56 @@ bool test_clone_with_timestamp_for_both_overloads()
     return true;
 }
 
+bool test_typed_api_floating_point_timestamp_member()
+{
+    // Some legacy / convenience sample types store the timestamp as a
+    // floating-point value in seconds. The vnm_plot API works in int64
+    // nanoseconds, so the typed API must auto-convert at the boundary
+    // instead of silently truncating with static_cast<int64_t>(double).
+    //
+    // The original failure mode this test guards against: a Sample with
+    // double t = 12.5 (seconds) used to produce get_timestamp() == 12 (ns)
+    // because of a blind static_cast. Anything that constructed a view
+    // window in seconds (-10 .. 10) ended up with a 20-ns view instead.
+
+    struct fp_sample_t
+    {
+        double t_seconds = 0.0;
+        float  v = 0.0f;
+    };
+
+    auto policy = plot::make_access_policy<fp_sample_t>(
+        &fp_sample_t::t_seconds,
+        &fp_sample_t::v);
+
+    fp_sample_t s{};
+    s.t_seconds = 12.5;
+    s.v = 3.5f;
+
+    // Forward direction: seconds -> int64 ns.
+    constexpr std::int64_t k_expected_ns = 12'500'000'000;
+    TEST_ASSERT(policy.get_timestamp(s) == k_expected_ns,
+        std::string("expected fp timestamp seconds to convert to ns; got ") +
+            std::to_string(policy.get_timestamp(s)));
+
+    // Reverse direction: int64 ns written through clone_with_timestamp
+    // lands back in the floating-point member as seconds.
+    fp_sample_t dst{};
+    constexpr std::int64_t k_clone_ns = -7'250'000'000;
+    policy.clone_with_timestamp(dst, s, k_clone_ns);
+    const double k_expected_seconds = -7.25;
+    TEST_ASSERT(std::abs(dst.t_seconds - k_expected_seconds) < 1e-9,
+        std::string("expected ns -> fp seconds round-trip; got ") +
+            std::to_string(dst.t_seconds));
+
+    // Erased policy must propagate the same conversion.
+    const plot::Data_access_policy erased = policy.erase();
+    TEST_ASSERT(erased.get_timestamp(&s) == k_expected_ns,
+        "erased fp timestamp accessor mismatch");
+
+    return true;
+}
+
 bool test_ssbo_sample_layout_metadata()
 {
     // Series_renderer trusts sample_stride_bytes / timestamp_offset_bytes /
@@ -277,6 +329,7 @@ int main()
     RUN_TEST(test_layout_key_for_variations);
     RUN_TEST(test_make_access_policy_and_erase);
     RUN_TEST(test_clone_with_timestamp_for_both_overloads);
+    RUN_TEST(test_typed_api_floating_point_timestamp_member);
     RUN_TEST(test_ssbo_sample_layout_metadata);
     RUN_TEST(test_series_builder_preview_config);
 

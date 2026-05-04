@@ -84,12 +84,21 @@ int main()
         return EXIT_FAILURE;
     }
 
-    const double t_min = -10.0;
-    const double t_max = 10.0;
+    // The synthetic data uses fractional seconds for readability; vnm_plot's
+    // public API works in int64 nanoseconds. The access policy below detects
+    // Sample::x's floating-point type and auto-converts at the boundary, so
+    // the data side is unit-clean automatically. The view-range parameters
+    // we pass to plot_core need an explicit conversion since they are int64
+    // ns directly.
+    constexpr std::int64_t k_ns_per_second = 1'000'000'000;
+    const double t_min_seconds = -10.0;
+    const double t_max_seconds = 10.0;
+    const std::int64_t t_min_ns = static_cast<std::int64_t>(t_min_seconds * static_cast<double>(k_ns_per_second));
+    const std::int64_t t_max_ns = static_cast<std::int64_t>(t_max_seconds * static_cast<double>(k_ns_per_second));
     const float v_min = -1.3f;
     const float v_max = 1.3f;
 
-    auto samples = build_samples(t_min, t_max, 2000);
+    auto samples = build_samples(t_min_seconds, t_max_seconds, 2000);
     auto source = std::make_shared<vnm::plot::Vector_data_source<Sample>>(std::move(samples));
 
     auto policy = vnm::plot::make_access_policy<Sample>(
@@ -141,8 +150,8 @@ int main()
         params.height = fb_h;
         params.v_min = v_min;
         params.v_max = v_max;
-        params.t_min = t_min;
-        params.t_max = t_max;
+        params.t_min = t_min_ns;
+        params.t_max = t_max_ns;
 
         plot_core.render(params, series_map, &config);
 
