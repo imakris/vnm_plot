@@ -239,6 +239,18 @@ void Plot_time_axis::set_t_range(qint64 t_min_ns, qint64 t_max_ns)
     set_limits_if_changed(t_min_ns, t_max_ns, m_t_available_min, m_t_available_max);
 }
 
+void Plot_time_axis::set_t_range_qml_ms(qint64 t_min_ms, qint64 t_max_ms)
+{
+    set_t_range(ms_for_qml_to_ns(t_min_ms), ms_for_qml_to_ns(t_max_ms));
+}
+
+void Plot_time_axis::set_available_t_range_qml_ms(qint64 t_available_min_ms, qint64 t_available_max_ms)
+{
+    set_available_t_range(
+        ms_for_qml_to_ns(t_available_min_ms),
+        ms_for_qml_to_ns(t_available_max_ms));
+}
+
 void Plot_time_axis::set_available_t_range(qint64 t_available_min_ns, qint64 t_available_max_ns)
 {
     if (!(t_available_max_ns > t_available_min_ns)) {

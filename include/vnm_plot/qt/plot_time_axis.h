@@ -71,10 +71,19 @@ public:
     // C++-facing methods (timestamp arguments are int64 nanoseconds).
     // These are NOT Q_INVOKABLE because the only callers live in
     // plot_widget.cpp; exposing them to QML in nanoseconds would tear
-    // their qint64 values via JS double precision loss.
+    // their qint64 values via JS double precision loss. The QML
+    // counterparts below take milliseconds and convert internally.
     void set_t_range(qint64 t_min_ns, qint64 t_max_ns);
     void set_available_t_range(qint64 t_available_min_ns, qint64 t_available_max_ns);
     void adjust_t_to_target(qint64 target_min_ns, qint64 target_max_ns);
+
+    // QML-facing seeders. Atomic two-sided range setters; needed because
+    // the property-style single-side setters (set_t_min_qml_ms et al.) gate
+    // on view_initialized() / available_initialized() and silently no-op
+    // until a paired bound is known. A QML caller seeds the axis through
+    // these once, then the property bindings can update individual sides.
+    Q_INVOKABLE void set_t_range_qml_ms(qint64 t_min_ms, qint64 t_max_ms);
+    Q_INVOKABLE void set_available_t_range_qml_ms(qint64 t_available_min_ms, qint64 t_available_max_ms);
 
     Q_INVOKABLE void adjust_t_from_mouse_diff(double ref_width, double diff);
     Q_INVOKABLE void adjust_t_from_mouse_diff_on_preview(double ref_width, double diff);
