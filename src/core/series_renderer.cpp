@@ -1538,16 +1538,13 @@ void Series_renderer::render(
                 glUniform1ui(loc, y_offset_uints);
             }
 
-            // The colormap-line shader has an SSBO at binding 2 for an
-            // optional per-sample signal channel. We do not yet upload that
-            // data, so flag the shader to short-circuit the read and bind a
-            // placeholder buffer to slot 2 so a driver that speculatively
-            // reads the SSBO does not hit an unbound binding (length() and
-            // indexed reads on an unbound SSBO are both UB per the spec).
-            if (const GLint loc = pass_shader->uniform_location("u_has_signal"); loc >= 0) {
-                glUniform1i(loc, 0);
-                glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, view_state.active_vbo);
-            }
+            // SSBO binding 2 is reserved for the colormap-line shader's
+            // optional per-sample signal channel. The renderer does not
+            // bind it: series using the default plot_colormap_line.vert
+            // are rejected upstream (signal-data upload is not yet
+            // implemented), and series with a custom shader_set are
+            // responsible for binding their own buffer and setting any
+            // companion uniforms via Data_access_policy::bind_uniforms.
         }
 
         // Note: glLineWidth is set once at the start of render() to avoid per-draw overhead
