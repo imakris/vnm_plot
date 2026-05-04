@@ -1272,7 +1272,16 @@ void Series_renderer::render(
         // collapses to sample[0] under stride=0, and AREA's p1 attribute
         // bindings would fall back to packed reads of the wrong field.
         // Skip the draw and surface a one-time error instead.
-        if (primitive_style != Display_style::DOTS) {
+        //
+        // The check is gated on !skip_gl because it validates the SSBO
+        // upload layout, which only matters when we are actually issuing
+        // GL draws. CPU-only paths (skip_gl_calls = true, e.g. aux-metric
+        // range computation in tests) only need the value/timestamp
+        // accessors and must not be blocked by a missing layout.
+        //
+        // Slice 2c removes this entire block when Vertex_layout
+        // infrastructure goes away; the gate is a temporary measure.
+        if (!skip_gl && primitive_style != Display_style::DOTS) {
             const std::size_t stride = access->sample_stride_bytes;
             const std::size_t ts_off = access->timestamp_offset_bytes;
             const std::size_t v_off  = access->value_offset_bytes;
