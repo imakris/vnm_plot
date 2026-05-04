@@ -15,6 +15,7 @@
 
 #include <QObject>
 
+#include <limits>
 #include <unordered_map>
 
 namespace vnm::plot {
@@ -90,6 +91,16 @@ public:
     bool indicator_x_norm_valid() const;
     double indicator_x_norm() const;
 
+    // Sentinel that marks a t_* member as "not yet set". A freshly-constructed
+    // axis carries this in every t_* slot so callers (notably
+    // Plot_widget::sync_time_axis_state) can distinguish "no range configured"
+    // from "user set this to INT64_MIN" and avoid overwriting a widget's
+    // explicitly-set view with stale defaults at attach time.
+    static constexpr qint64 k_t_unset = std::numeric_limits<qint64>::min();
+
+    bool view_initialized() const;
+    bool available_initialized() const;
+
 signals:
     void t_limits_changed();
     void sync_vbar_width_changed();
@@ -103,10 +114,14 @@ private:
         qint64 t_available_min_ns,
         qint64 t_available_max_ns);
 
-    qint64 m_t_min = 5000;
-    qint64 m_t_max = 10000;
-    qint64 m_t_available_min = 0;
-    qint64 m_t_available_max = 10000;
+    // Sentinel-initialized: see k_t_unset. The previous concrete defaults
+    // (5000 / 10000) were carried over from a pre-int64 era when the unit
+    // was seconds; reused as nanoseconds they collapsed every freshly-attached
+    // widget's view to a 5-microsecond window via sync_time_axis_state.
+    qint64 m_t_min = k_t_unset;
+    qint64 m_t_max = k_t_unset;
+    qint64 m_t_available_min = k_t_unset;
+    qint64 m_t_available_max = k_t_unset;
 
     bool m_sync_vbar_width = false;
     std::unordered_map<const QObject*, double> m_vbar_width_by_owner;

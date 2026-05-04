@@ -549,6 +549,25 @@ void Plot_widget::set_time_axis(Plot_time_axis* axis)
                 }
                 apply_vbar_width_target(px);
             });
+        // Seed an uninitialized axis from the widget's existing configuration
+        // before pulling. This preserves a user-set view (typically applied
+        // via set_view before the QML time_axis binding fires) and gives
+        // subsequent mouse interactions a real span to operate on, since
+        // adjust_t_from_* on Plot_time_axis is gated on view_initialized().
+        // Subsequent attachments to a shared axis still pull through
+        // sync_time_axis_state() because the axis is no longer uninitialized.
+        {
+            const auto cfg = data_cfg_snapshot();
+            if (!m_time_axis->view_initialized() && cfg.t_max > cfg.t_min) {
+                m_time_axis->set_t_range(cfg.t_min, cfg.t_max);
+            }
+            if (!m_time_axis->available_initialized()
+                && cfg.t_available_max > cfg.t_available_min)
+            {
+                m_time_axis->set_available_t_range(
+                    cfg.t_available_min, cfg.t_available_max);
+            }
+        }
         sync_time_axis_state();
         if (m_time_axis->sync_vbar_width()) {
             const double current_px = m_vbar_width_px.load(std::memory_order_acquire);
@@ -1389,12 +1408,26 @@ void Plot_widget::sync_time_axis_state()
         return;
     }
 
+    // Only pull bounds the axis has actually been told about. A freshly-
+    // attached axis reports k_t_unset for every slot; pulling those into
+    // m_data_cfg would silently overwrite a view that was set via set_view
+    // before the axis was attached.
+    const bool view_init = m_time_axis->view_initialized();
+    const bool available_init = m_time_axis->available_initialized();
+    if (!view_init && !available_init) {
+        return;
+    }
+
     {
         std::unique_lock lock(m_data_cfg_mutex);
-        m_data_cfg.t_min = m_time_axis->t_min();
-        m_data_cfg.t_max = m_time_axis->t_max();
-        m_data_cfg.t_available_min = m_time_axis->t_available_min();
-        m_data_cfg.t_available_max = m_time_axis->t_available_max();
+        if (view_init) {
+            m_data_cfg.t_min = m_time_axis->t_min();
+            m_data_cfg.t_max = m_time_axis->t_max();
+        }
+        if (available_init) {
+            m_data_cfg.t_available_min = m_time_axis->t_available_min();
+            m_data_cfg.t_available_max = m_time_axis->t_available_max();
+        }
     }
 
     emit t_limits_changed();

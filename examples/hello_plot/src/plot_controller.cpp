@@ -49,25 +49,13 @@ void Plot_controller::set_plot_widget(vnm::plot::Plot_widget* widget)
         if (m_series) {
             m_plot_widget->add_series(k_series_id, m_series);
         }
-        const auto apply_initial_view = [w = m_plot_widget]() {
-            vnm::plot::Plot_view view;
-            view.t_range = std::make_pair(k_t_min_ns, k_t_max_ns);
-            view.t_available_range = std::make_pair(k_t_min_ns, k_t_max_ns);
-            view.v_auto = false;
-            view.v_range = std::make_pair(-1.3f, 1.3f);
-            w->set_view(view);
-            w->update();
-        };
-        // Apply once now in case the time_axis is already bound. Then
-        // re-apply when the time_axis property fires its first change
-        // notification: Plot_widget::sync_time_axis_state overwrites the
-        // local m_data_cfg with the freshly-attached time_axis's defaults,
-        // which (post int64-ns migration) are tiny meaningless values.
-        // Re-applying after the attach completes routes our intended view
-        // through the time_axis itself.
-        apply_initial_view();
-        connect(m_plot_widget, &vnm::plot::Plot_widget::time_axis_changed,
-                this, apply_initial_view);
+        vnm::plot::Plot_view view;
+        view.t_range = std::make_pair(k_t_min_ns, k_t_max_ns);
+        view.t_available_range = std::make_pair(k_t_min_ns, k_t_max_ns);
+        view.v_auto = false;
+        view.v_range = std::make_pair(-1.3f, 1.3f);
+        m_plot_widget->set_view(view);
+        m_plot_widget->update();
     }
 
     emit plot_widget_changed();

@@ -49,24 +49,39 @@ qint64 Plot_time_axis::t_available_max() const
     return m_t_available_max;
 }
 
+bool Plot_time_axis::view_initialized() const
+{
+    return m_t_min != k_t_unset && m_t_max != k_t_unset;
+}
+
+bool Plot_time_axis::available_initialized() const
+{
+    return m_t_available_min != k_t_unset && m_t_available_max != k_t_unset;
+}
+
+// QML-facing readers. While the axis is still uninitialized, surface 0
+// instead of the sentinel mapped through ns_to_ms_for_qml(): QML eagerly
+// evaluates property bindings before any user code runs set_t_range, and
+// a giant negative integer would feed straight into spans and pixel math
+// in PlotIndicator-style consumers.
 qint64 Plot_time_axis::t_min_qml_ms() const
 {
-    return ns_to_ms_for_qml(m_t_min);
+    return view_initialized() ? ns_to_ms_for_qml(m_t_min) : 0;
 }
 
 qint64 Plot_time_axis::t_max_qml_ms() const
 {
-    return ns_to_ms_for_qml(m_t_max);
+    return view_initialized() ? ns_to_ms_for_qml(m_t_max) : 0;
 }
 
 qint64 Plot_time_axis::t_available_min_qml_ms() const
 {
-    return ns_to_ms_for_qml(m_t_available_min);
+    return available_initialized() ? ns_to_ms_for_qml(m_t_available_min) : 0;
 }
 
 qint64 Plot_time_axis::t_available_max_qml_ms() const
 {
-    return ns_to_ms_for_qml(m_t_available_max);
+    return available_initialized() ? ns_to_ms_for_qml(m_t_available_max) : 0;
 }
 
 void Plot_time_axis::set_t_min_qml_ms(qint64 v_ms)
@@ -162,6 +177,13 @@ void Plot_time_axis::clear_shared_vbar_width(const QObject* owner)
 
 void Plot_time_axis::set_t_min(qint64 v)
 {
+    // Single-sided setter only makes sense once the paired bound is known;
+    // otherwise we cannot compute a span to slide. The QML property bindings
+    // for t_min/t_max go through this; if the user wants to seed the axis
+    // they should call set_t_range with both ends.
+    if (!view_initialized()) {
+        return;
+    }
     qint64 new_min = v;
     qint64 new_max = m_t_max;
     if (v >= m_t_max) {
@@ -176,6 +198,9 @@ void Plot_time_axis::set_t_min(qint64 v)
 
 void Plot_time_axis::set_t_max(qint64 v)
 {
+    if (!view_initialized()) {
+        return;
+    }
     qint64 new_min = m_t_min;
     qint64 new_max = v;
     if (v <= m_t_min) {
@@ -190,11 +215,19 @@ void Plot_time_axis::set_t_max(qint64 v)
 
 void Plot_time_axis::set_t_available_min(qint64 v)
 {
+    // Same single-sided constraint as set_t_min: without the paired bound
+    // the available range is half-defined.
+    if (!available_initialized()) {
+        return;
+    }
     set_limits_if_changed(m_t_min, m_t_max, v, m_t_available_max);
 }
 
 void Plot_time_axis::set_t_available_max(qint64 v)
 {
+    if (!available_initialized()) {
+        return;
+    }
     set_limits_if_changed(m_t_min, m_t_max, m_t_available_min, v);
 }
 
@@ -212,23 +245,34 @@ void Plot_time_axis::set_available_t_range(qint64 t_available_min_ns, qint64 t_a
         return;
     }
 
-    qint64 new_t_min = m_t_min;
-    qint64 new_t_max = m_t_max;
-
-    const qint64 span = t_available_max_ns - t_available_min_ns;
-    const qint64 cur_span = new_t_max - new_t_min;
-    if (cur_span > span) {
+    qint64 new_t_min;
+    qint64 new_t_max;
+    if (!view_initialized()) {
+        // No view yet; adopt the entire available range as the initial view.
+        // Without this, the clamp logic below would read the sentinel as a
+        // real bound and collapse new_t_min/new_t_max onto t_available_min.
         new_t_min = t_available_min_ns;
         new_t_max = t_available_max_ns;
     }
     else {
-        if (new_t_min < t_available_min_ns) {
+        new_t_min = m_t_min;
+        new_t_max = m_t_max;
+
+        const qint64 span = t_available_max_ns - t_available_min_ns;
+        const qint64 cur_span = new_t_max - new_t_min;
+        if (cur_span > span) {
             new_t_min = t_available_min_ns;
-            new_t_max = t_available_min_ns + cur_span;
-        }
-        if (new_t_max > t_available_max_ns) {
             new_t_max = t_available_max_ns;
-            new_t_min = t_available_max_ns - cur_span;
+        }
+        else {
+            if (new_t_min < t_available_min_ns) {
+                new_t_min = t_available_min_ns;
+                new_t_max = t_available_min_ns + cur_span;
+            }
+            if (new_t_max > t_available_max_ns) {
+                new_t_max = t_available_max_ns;
+                new_t_min = t_available_max_ns - cur_span;
+            }
         }
     }
 
@@ -237,7 +281,7 @@ void Plot_time_axis::set_available_t_range(qint64 t_available_min_ns, qint64 t_a
 
 void Plot_time_axis::adjust_t_from_mouse_diff(double ref_width, double diff)
 {
-    if (ref_width <= 0.0) {
+    if (ref_width <= 0.0 || !view_initialized()) {
         return;
     }
 
@@ -251,7 +295,7 @@ void Plot_time_axis::adjust_t_from_mouse_diff(double ref_width, double diff)
 
 void Plot_time_axis::adjust_t_from_mouse_diff_on_preview(double ref_width, double diff)
 {
-    if (ref_width <= 0.0) {
+    if (ref_width <= 0.0 || !view_initialized() || !available_initialized()) {
         return;
     }
 
@@ -263,7 +307,7 @@ void Plot_time_axis::adjust_t_from_mouse_diff_on_preview(double ref_width, doubl
 
 void Plot_time_axis::adjust_t_from_mouse_pos_on_preview(double ref_width, double x_pos)
 {
-    if (ref_width <= 0.0) {
+    if (ref_width <= 0.0 || !view_initialized() || !available_initialized()) {
         return;
     }
 
@@ -278,7 +322,7 @@ void Plot_time_axis::adjust_t_from_mouse_pos_on_preview(double ref_width, double
 
 void Plot_time_axis::adjust_t_from_pivot_and_scale(double pivot, double scale)
 {
-    if (scale <= 0.0) {
+    if (scale <= 0.0 || !view_initialized()) {
         return;
     }
 
