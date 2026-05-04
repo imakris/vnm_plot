@@ -49,9 +49,12 @@ profiling report format for reproducible comparisons.
 
 ## Rendering Pipeline
 - vnm_plot Asset_loader loads embedded shaders.
-- Series_renderer draws the data using function_sample.vert plus:
-  - Bars: plot_area.geom / plot_area.frag
-  - Trades: plot_dot_quad.geom / plot_dot_quad.frag
+- Series_renderer draws each instance through a dedicated vertex shader:
+  - Bars: plot_area.vert / plot_area.frag (instanced 6-vert fill +
+    4-vert zero-axis emphasis bar; samples i and i+1 fed through two
+    instanced vertex-attribute bindings on the same VBO).
+  - Trades: plot_dot_quad.vert / plot_dot_quad.frag (one instance per
+    sample, expanded to a 4-vert quad via gl_VertexID).
 - Chrome_renderer draws grids and preview overlays.
 - Primitive_renderer flushes batched primitives.
 
@@ -61,7 +64,10 @@ Bar_sample and Trade_sample are packed structs. Each Data_access_policy defines:
 - Primary value (close or price)
 - Range (low/high for Bars, price/price for Trades)
 - Optional aux metric (volume or size)
-- Vertex attribute setup matching function_sample.vert
+- Vertex attribute setup binding location 0 to the timestamp (double)
+  and location 1 to the primary value (float), with sample_stride_bytes,
+  timestamp_offset_bytes and value_offset_bytes set so the AREA shader
+  can locate sample i+1 via a stride-shifted attribute view.
 - A stable layout_key for VAO caching
 
 ## Profiling and Report Output

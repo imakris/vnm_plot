@@ -152,8 +152,10 @@ inline std::pair<float, float> Benchmark_data_source<Trade_sample>::get_sample_r
     return {sample.price, sample.price};
 }
 
-/// Create a Data_access_policy for Bar_sample
-/// Includes vertex attribute setup for function_sample.vert shader compatibility
+/// Create a Data_access_policy for Bar_sample.
+/// Sets up vertex attributes (locations 0/1 = timestamp/close, 2/3 = low/high)
+/// and the sample_stride / field offset metadata that the AREA pipe uses to
+/// locate the next-sample attribute slot.
 inline vnm::plot::Data_access_policy make_bar_access_policy() {
     vnm::plot::Data_access_policy policy;
 
@@ -210,8 +212,10 @@ inline vnm::plot::Data_access_policy make_bar_access_policy() {
     return policy;
 }
 
-/// Create a Data_access_policy for Trade_sample
-/// Includes vertex attribute setup for function_sample.vert shader compatibility
+/// Create a Data_access_policy for Trade_sample.
+/// Sets up vertex attributes (location 0 = timestamp, locations 1/2/3 all
+/// pointing at price for parity with the bar layout) and the sample_stride
+/// / field offset metadata.
 inline vnm::plot::Data_access_policy make_trade_access_policy() {
     vnm::plot::Data_access_policy policy;
 

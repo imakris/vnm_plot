@@ -158,6 +158,69 @@ bool test_clone_with_timestamp_for_both_overloads()
     return true;
 }
 
+bool test_ssbo_sample_layout_metadata()
+{
+    // Series_renderer trusts sample_stride_bytes / timestamp_offset_bytes /
+    // value_offset_bytes for every non-DOTS draw: AREA needs them to set
+    // up the next-sample attribute binding, and the SSBO-backed line and
+    // colormap-line shaders use them as uniform indices into the points
+    // VBO. A default-constructed policy must read as "missing" so the
+    // renderer's runtime validation can reject it instead of silently
+    // collapsing every sample to the first record.
+
+    plot::Data_access_policy empty;
+    TEST_ASSERT(empty.sample_stride_bytes == 0,
+        "default Data_access_policy::sample_stride_bytes should be zero");
+    TEST_ASSERT(empty.timestamp_offset_bytes == 0,
+        "default Data_access_policy::timestamp_offset_bytes should be zero");
+    TEST_ASSERT(empty.value_offset_bytes == 0,
+        "default Data_access_policy::value_offset_bytes should be zero");
+
+    // make_access_policy goes through apply_layout, which is the canonical
+    // path for users that follow the typed API. The metadata must mirror
+    // the underlying Vertex_layout so the renderer can locate sample i+1.
+    auto policy = plot::make_access_policy<sample_t>(
+        &sample_t::t,
+        &sample_t::v,
+        &sample_t::v_min,
+        &sample_t::v_max);
+
+    TEST_ASSERT(policy.sample_stride_bytes == sizeof(sample_t),
+        "typed policy stride should match sizeof(sample_t)");
+    TEST_ASSERT(policy.timestamp_offset_bytes == offsetof(sample_t, t),
+        "typed policy timestamp offset should match offsetof(t)");
+    TEST_ASSERT(policy.value_offset_bytes == offsetof(sample_t, v),
+        "typed policy value offset should match offsetof(v)");
+
+    const plot::Data_access_policy erased = policy.erase();
+    TEST_ASSERT(erased.sample_stride_bytes == policy.sample_stride_bytes,
+        "erase() should propagate sample_stride_bytes");
+    TEST_ASSERT(erased.timestamp_offset_bytes == policy.timestamp_offset_bytes,
+        "erase() should propagate timestamp_offset_bytes");
+    TEST_ASSERT(erased.value_offset_bytes == policy.value_offset_bytes,
+        "erase() should propagate value_offset_bytes");
+
+    // Apply a hand-built Vertex_layout to verify apply_layout reads the
+    // location-0 timestamp slot and location-1 value slot, not whichever
+    // attribute happens to come first.
+    plot::Vertex_layout custom_layout;
+    custom_layout.stride = 32;
+    custom_layout.attributes = {
+        {1, plot::Vertex_attrib_type::FLOAT32, 1, 16, false},
+        {0, plot::Vertex_attrib_type::FLOAT64, 1, 4,  false}
+    };
+    plot::Data_access_policy_typed<sample_t> custom_policy;
+    plot::apply_layout(custom_policy, custom_layout);
+    TEST_ASSERT(custom_policy.sample_stride_bytes == 32,
+        "apply_layout should set stride from Vertex_layout::stride");
+    TEST_ASSERT(custom_policy.timestamp_offset_bytes == 4,
+        "apply_layout should pull timestamp offset from location 0");
+    TEST_ASSERT(custom_policy.value_offset_bytes == 16,
+        "apply_layout should pull value offset from location 1");
+
+    return true;
+}
+
 bool test_series_builder_preview_config()
 {
     auto main_source = std::make_shared<plot::Vector_data_source<sample_t>>();
@@ -203,6 +266,7 @@ int main()
     RUN_TEST(test_layout_key_for_variations);
     RUN_TEST(test_make_access_policy_and_erase);
     RUN_TEST(test_clone_with_timestamp_for_both_overloads);
+    RUN_TEST(test_ssbo_sample_layout_metadata);
     RUN_TEST(test_series_builder_preview_config);
 
     std::cout << "Results: " << passed << " passed, " << failed << " failed" << std::endl;

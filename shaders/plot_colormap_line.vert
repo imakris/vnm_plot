@@ -2,9 +2,11 @@
 #extension GL_ARB_gpu_shader_int64 : require
 
 // Mirror of plot_line.vert with an additional per-sample signal channel
-// pulled from binding 2.  Custom layouts using COLORMAP_LINE must populate
-// that buffer; the default function_sample layout has no signal field, so
-// the host leaves binding 2 unbound and the buffer-size check picks 0.0.
+// pulled from binding 2. The host sets u_has_signal to indicate whether
+// a real signal buffer is bound; when false the shader returns 0.0
+// without touching binding 2, so unbound-SSBO undefined-behaviour cannot
+// be triggered (length() and indexed reads on an unbound SSBO are both
+// UB per the spec).
 
 layout(std430, binding = 0) readonly buffer Sample_buffer
 {
@@ -42,6 +44,7 @@ flat out float fs_signal_1;
 uniform uint u_sample_stride_uints;
 uniform uint u_sample_x_offset_uints;
 uniform uint u_sample_y_offset_uints;
+uniform bool u_has_signal;
 
 double sample_x(uint idx)
 {
@@ -56,7 +59,7 @@ float sample_y(uint idx)
 
 float sample_signal(uint idx)
 {
-    if (u_signal.values.length() == 0) {
+    if (!u_has_signal) {
         return 0.0;
     }
     return u_signal.values[idx];

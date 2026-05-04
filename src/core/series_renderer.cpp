@@ -936,8 +936,27 @@ void Series_renderer::render(
       enum class Error_cat : uint32_t {
           MISSING_SIGNAL, MISSING_SIGNAL_PREVIEW,
           PREVIEW_MISSING_SOURCE,
-          MISSING_SHADER
+          MISSING_SHADER,
+          INVALID_SAMPLE_LAYOUT,
+          COLORMAP_LINE_DEFAULT_NOT_SUPPORTED,
+          COLORMAP_LINE_DEFAULT_NOT_SUPPORTED_PREVIEW
       };
+
+    // The default plot_colormap_line.vert shader pulls per-sample signal
+    // floats from SSBO binding 2, but the renderer does not yet upload that
+    // data. Detect whether a series relies on the default colormap-line
+    // shader so we can disable the mode on those series instead of letting
+    // them render with constant signal=0.0 (which collapses every sample to
+    // the first colormap entry). Series that supply a custom shader_set or
+    // a per-style override are presumed to handle signal upload themselves
+    // through bind_uniforms.
+    const auto uses_default_colormap_line_shader = [](const series_data_t& s) {
+        auto it = s.shaders.find(Display_style::COLORMAP_LINE);
+        if (it != s.shaders.end() && !it->second.empty()) {
+            return false;
+        }
+        return s.shader_set.empty();
+    };
     const auto log_error_once = [&](Error_cat cat, int series_id,
                                     const std::string& message) {
         if (!ctx.config || !ctx.config->log_error) {
@@ -971,6 +990,17 @@ void Series_renderer::render(
             main_style = static_cast<Display_style>(
                 static_cast<int>(main_style) & ~static_cast<int>(Display_style::COLORMAP_LINE));
         }
+        if (!!(main_style & Display_style::COLORMAP_LINE) && uses_default_colormap_line_shader(*s)) {
+            log_error_once(Error_cat::COLORMAP_LINE_DEFAULT_NOT_SUPPORTED, id,
+                "COLORMAP_LINE with the default shader is currently disabled: "
+                "the renderer does not yet upload per-sample signal data to "
+                "the signal SSBO. Provide a custom shader_set / per-style "
+                "shader override and bind_uniforms, or wait for the feature. "
+                "Series " + std::to_string(id) + " falls back to LINE if "
+                "requested or is otherwise skipped.");
+            main_style = static_cast<Display_style>(
+                static_cast<int>(main_style) & ~static_cast<int>(Display_style::COLORMAP_LINE));
+        }
         if (!main_style) {
             continue;
         }
@@ -1001,6 +1031,17 @@ void Series_renderer::render(
                 log_error_once(Error_cat::MISSING_SIGNAL_PREVIEW, id,
                     "COLORMAP_LINE requires Data_access_policy::get_signal (preview series "
                         + std::to_string(id) + ")");
+                preview_style = static_cast<Display_style>(
+                    static_cast<int>(preview_style) & ~static_cast<int>(Display_style::COLORMAP_LINE));
+            }
+            if (!!(preview_style & Display_style::COLORMAP_LINE) &&
+                uses_default_colormap_line_shader(*s))
+            {
+                log_error_once(Error_cat::COLORMAP_LINE_DEFAULT_NOT_SUPPORTED_PREVIEW, id,
+                    "COLORMAP_LINE preview with the default shader is "
+                    "currently disabled (signal-data upload not implemented). "
+                    "Series " + std::to_string(id) + " preview will not render "
+                    "in colormap-line mode.");
                 preview_style = static_cast<Display_style>(
                     static_cast<int>(preview_style) & ~static_cast<int>(Display_style::COLORMAP_LINE));
             }
@@ -1143,6 +1184,37 @@ void Series_renderer::render(
 
         if (!data_source || !access) {
             return;
+        }
+
+        // AREA, LINE, and the colormap styles read sample data from the
+        // VBO using the layout described by access->sample_stride_bytes,
+        // timestamp_offset_bytes and value_offset_bytes. A manually
+        // constructed Data_access_policy that forgot to populate those
+        // fields would draw silently broken geometry: every sample read
+        // collapses to sample[0] under stride=0, and AREA's p1 attribute
+        // bindings would fall back to packed reads of the wrong field.
+        // Skip the draw and surface a one-time error instead.
+        if (primitive_style != Display_style::DOTS) {
+            const std::size_t stride = access->sample_stride_bytes;
+            const std::size_t ts_off = access->timestamp_offset_bytes;
+            const std::size_t v_off  = access->value_offset_bytes;
+            const bool layout_ok =
+                stride > 0
+                && stride % sizeof(GLuint) == 0
+                && ts_off % sizeof(GLuint) == 0
+                && v_off  % sizeof(GLuint) == 0
+                && ts_off + sizeof(double) <= stride
+                && v_off  + sizeof(float)  <= stride;
+            if (!layout_ok) {
+                log_error_once(Error_cat::INVALID_SAMPLE_LAYOUT, draw_state.id,
+                    "Series " + std::to_string(draw_state.id)
+                        + ": Data_access_policy is missing or has invalid sample"
+                          " layout fields (stride=" + std::to_string(stride)
+                        + ", t_offset=" + std::to_string(ts_off)
+                        + ", v_offset=" + std::to_string(v_off)
+                        + "); skipping non-DOTS draws.");
+                return;
+            }
         }
 
         // CPU-side color/uniform preparation (no GL calls)
@@ -1464,6 +1536,17 @@ void Series_renderer::render(
             }
             if (const GLint loc = pass_shader->uniform_location("u_sample_y_offset_uints"); loc >= 0) {
                 glUniform1ui(loc, y_offset_uints);
+            }
+
+            // The colormap-line shader has an SSBO at binding 2 for an
+            // optional per-sample signal channel. We do not yet upload that
+            // data, so flag the shader to short-circuit the read and bind a
+            // placeholder buffer to slot 2 so a driver that speculatively
+            // reads the SSBO does not hit an unbound binding (length() and
+            // indexed reads on an unbound SSBO are both UB per the spec).
+            if (const GLint loc = pass_shader->uniform_location("u_has_signal"); loc >= 0) {
+                glUniform1i(loc, 0);
+                glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, view_state.active_vbo);
             }
         }
 
