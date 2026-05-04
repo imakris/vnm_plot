@@ -49,6 +49,46 @@ qint64 Plot_time_axis::t_available_max() const
     return m_t_available_max;
 }
 
+qint64 Plot_time_axis::t_min_qml_ms() const
+{
+    return ns_to_ms_for_qml(m_t_min);
+}
+
+qint64 Plot_time_axis::t_max_qml_ms() const
+{
+    return ns_to_ms_for_qml(m_t_max);
+}
+
+qint64 Plot_time_axis::t_available_min_qml_ms() const
+{
+    return ns_to_ms_for_qml(m_t_available_min);
+}
+
+qint64 Plot_time_axis::t_available_max_qml_ms() const
+{
+    return ns_to_ms_for_qml(m_t_available_max);
+}
+
+void Plot_time_axis::set_t_min_qml_ms(qint64 v_ms)
+{
+    set_t_min(ms_for_qml_to_ns(v_ms));
+}
+
+void Plot_time_axis::set_t_max_qml_ms(qint64 v_ms)
+{
+    set_t_max(ms_for_qml_to_ns(v_ms));
+}
+
+void Plot_time_axis::set_t_available_min_qml_ms(qint64 v_ms)
+{
+    set_t_available_min(ms_for_qml_to_ns(v_ms));
+}
+
+void Plot_time_axis::set_t_available_max_qml_ms(qint64 v_ms)
+{
+    set_t_available_max(ms_for_qml_to_ns(v_ms));
+}
+
 bool Plot_time_axis::sync_vbar_width() const
 {
     return m_sync_vbar_width;
@@ -283,16 +323,20 @@ void Plot_time_axis::adjust_t_to_target(qint64 target_min_ns, qint64 target_max_
     set_limits_if_changed(new_min_ns, new_max_ns, m_t_available_min, m_t_available_max);
 }
 
-void Plot_time_axis::set_indicator_state(QObject* owner, bool active, qint64 t_ns)
+void Plot_time_axis::set_indicator_state(QObject* owner, bool active, qint64 t_ms)
 {
-    set_indicator_state(owner, active, t_ns, std::numeric_limits<double>::quiet_NaN());
+    set_indicator_state(owner, active, t_ms, std::numeric_limits<double>::quiet_NaN());
 }
 
-void Plot_time_axis::set_indicator_state(QObject* owner, bool active, qint64 t_ns, double x_norm)
+void Plot_time_axis::set_indicator_state(QObject* owner, bool active, qint64 t_ms, double x_norm)
 {
     if (!owner) {
         return;
     }
+
+    // QML callers pass t_ms in milliseconds-since-epoch; internal storage
+    // is nanoseconds.
+    const qint64 t_ns = ms_for_qml_to_ns(t_ms);
 
     bool changed = false;
     if (active) {
@@ -349,6 +393,11 @@ bool Plot_time_axis::indicator_active() const
 qint64 Plot_time_axis::indicator_t() const
 {
     return m_indicator_t;
+}
+
+qint64 Plot_time_axis::indicator_t_qml_ms() const
+{
+    return ns_to_ms_for_qml(m_indicator_t);
 }
 
 bool Plot_time_axis::indicator_x_norm_valid() const

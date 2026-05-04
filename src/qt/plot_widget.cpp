@@ -354,6 +354,26 @@ qint64 Plot_widget::t_available_max() const
     return m_data_cfg.t_available_max;
 }
 
+qint64 Plot_widget::t_min_qml_ms() const
+{
+    return ns_to_ms_for_qml(t_min());
+}
+
+qint64 Plot_widget::t_max_qml_ms() const
+{
+    return ns_to_ms_for_qml(t_max());
+}
+
+qint64 Plot_widget::t_available_min_qml_ms() const
+{
+    return ns_to_ms_for_qml(t_available_min());
+}
+
+qint64 Plot_widget::t_available_max_qml_ms() const
+{
+    return ns_to_ms_for_qml(t_available_max());
+}
+
 void Plot_widget::set_t_range(qint64 t_min_ns, qint64 t_max_ns)
 {
     if (!(t_max_ns > t_min_ns)) {
@@ -1146,7 +1166,7 @@ bool Plot_widget::can_zoom_in() const
 }
 
 QVariantList Plot_widget::get_indicator_samples(
-    double x,
+    double x_ms,
     double plot_width,
     double plot_height,
     double mouse_px) const
@@ -1164,6 +1184,12 @@ QVariantList Plot_widget::get_indicator_samples(
         tmin_ns = cfg.t_min;
         tmax_ns = cfg.t_max;
     }
+    // QML passes x_ms in milliseconds-since-epoch; the rest of this routine
+    // works in nanoseconds (cast to fp64 for arithmetic, as before). Bring
+    // x onto the same axis up front. entry["x"] is converted back to ms at
+    // the end so the QML side stays on the ms surface end-to-end.
+    constexpr double k_ns_per_ms = 1'000'000.0;
+    double x = x_ms * k_ns_per_ms;
     const double tmin = static_cast<double>(tmin_ns);
     const double tmax = static_cast<double>(tmax_ns);
     float vmin = 0.0f;
@@ -1310,7 +1336,9 @@ QVariantList Plot_widget::get_indicator_samples(
         );
 
         QVariantMap entry;
-        entry["x"] = x;
+        // x_ms keeps the QML side on the milliseconds-since-epoch surface;
+        // see the Plot_widget class-level comment for the convention.
+        entry["x"] = x / k_ns_per_ms;
         entry["y"] = y;
         entry["px"] = px;
         entry["py"] = py;
@@ -1322,10 +1350,13 @@ QVariantList Plot_widget::get_indicator_samples(
     return result;
 }
 
-QString Plot_widget::format_timestamp_precise(qint64 timestamp_ns) const
+QString Plot_widget::format_timestamp_precise(qint64 timestamp_ms) const
 {
     const auto cfg = config();
     const auto formatter = cfg.format_timestamp ? cfg.format_timestamp : default_format_timestamp;
+    // QML passes timestamp_ms (milliseconds-since-epoch); the formatter
+    // expects nanoseconds. Convert at the boundary.
+    const qint64 timestamp_ns = ms_for_qml_to_ns(timestamp_ms);
     // Step is zero ns: this caller asks for a single-instant rendering, not
     // a tick label, so the step argument is moot.
     return QString::fromStdString(formatter(timestamp_ns, std::int64_t{0}));

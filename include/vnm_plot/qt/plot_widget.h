@@ -29,6 +29,34 @@ namespace vnm::plot {
 class Plot_renderer;
 class Plot_time_axis;
 
+// QML/JS double precision boundary helpers.
+//
+// QML's JavaScript engine has no true int64 type; qint64 values cross the
+// QML boundary as JS doubles, which lose precision above 2^53 (~9.0e15).
+// Modern wall-clock timestamps in nanoseconds since 1970 are around 1.78e18,
+// well past that limit. The library keeps every C++ time value in
+// int64 nanoseconds, but every QML-facing property and signal exposes
+// milliseconds-since-epoch instead. ms-since-epoch fits exactly in a JS
+// double until roughly the year 285,000 AD, so cursor/indicator tooling
+// keeps full integer fidelity. The precision lost in the QML layer is
+// bounded to one millisecond, which the indicator does not depend on for
+// sub-ms accuracy. C++ callers continue to use the ns-typed methods.
+inline qint64 ns_to_ms_for_qml(qint64 ns_value)
+{
+    // Signed floor division so negative values round toward -inf, matching
+    // the inverse multiplication's symmetry around zero.
+    constexpr qint64 k_ns_per_ms = 1'000'000;
+    const qint64 q = ns_value / k_ns_per_ms;
+    const qint64 r = ns_value % k_ns_per_ms;
+    return (r != 0 && ((r < 0) != (k_ns_per_ms < 0))) ? q - 1 : q;
+}
+
+inline qint64 ms_for_qml_to_ns(qint64 ms_value)
+{
+    constexpr qint64 k_ns_per_ms = 1'000'000;
+    return ms_value * k_ns_per_ms;
+}
+
 // -----------------------------------------------------------------------------
 // Plot_view
 // -----------------------------------------------------------------------------
@@ -48,19 +76,32 @@ struct Plot_view
 // This is the main public interface for the vnm_plot library.
 //
 // Public setters silently ignore non-finite or inverted ranges.
+//
+// Time-unit convention:
+//
+// The C++ API keeps every time value as int64 nanoseconds. QML, however,
+// receives values as JS doubles, which only represent integers exactly up
+// to 2^53. Modern epoch-ns values (~1.78e18) overflow that limit and would
+// silently lose sub-microsecond precision in the QML layer, including any
+// round-trip back to C++. To dodge the JS-double precision loss, every
+// QML-facing property, signal, and Q_INVOKABLE timestamp parameter is
+// expressed in milliseconds-since-epoch instead. ms-since-epoch fits
+// exactly in a JS double until ~285,000 AD, so cursor/indicator tooling
+// keeps integer fidelity. The conversions happen in the property
+// accessors via ns_to_ms_for_qml() and ms_for_qml_to_ns(); C++ callers
+// stay on the int64-ns surface (t_min(), t_max(), set_t_range(...) etc.).
 class Plot_widget : public QQuickFramebufferObject
 {
     Q_OBJECT
 
-    // Time properties are qint64 nanoseconds (API convention). QML's numeric
-    // literal type is double, so QML reads of these properties go through
-    // qint64 -> double in the JS engine; precision is sufficient for plotting
-    // ranges but applications doing raw arithmetic on raw timestamps near
-    // modern wall-clock epochs should keep them on the C++ side.
-    Q_PROPERTY(qint64 t_min READ t_min NOTIFY t_limits_changed)
-    Q_PROPERTY(qint64 t_max READ t_max NOTIFY t_limits_changed)
-    Q_PROPERTY(qint64 t_available_min READ t_available_min NOTIFY t_limits_changed)
-    Q_PROPERTY(qint64 t_available_max READ t_available_max NOTIFY t_limits_changed)
+    // Time properties expose milliseconds-since-epoch to QML. The Q_PROPERTY
+    // READ method names end with _qml_ms to make the unit obvious at the
+    // boundary. Internally the widget stores int64 nanoseconds; conversion
+    // happens in the getter.
+    Q_PROPERTY(qint64 t_min READ t_min_qml_ms NOTIFY t_limits_changed)
+    Q_PROPERTY(qint64 t_max READ t_max_qml_ms NOTIFY t_limits_changed)
+    Q_PROPERTY(qint64 t_available_min READ t_available_min_qml_ms NOTIFY t_limits_changed)
+    Q_PROPERTY(qint64 t_available_max READ t_available_max_qml_ms NOTIFY t_limits_changed)
     Q_PROPERTY(float v_min READ v_min NOTIFY v_limits_changed)
     Q_PROPERTY(float v_max READ v_max NOTIFY v_limits_changed)
     Q_PROPERTY(bool v_auto READ v_auto WRITE set_v_auto NOTIFY v_auto_changed)
@@ -128,6 +169,12 @@ public:
     qint64 t_max() const;
     qint64 t_available_min() const;
     qint64 t_available_max() const;
+    // QML-facing accessors return milliseconds-since-epoch; see the
+    // class-level comment for why. Not part of the C++ API surface.
+    qint64 t_min_qml_ms() const;
+    qint64 t_max_qml_ms() const;
+    qint64 t_available_min_qml_ms() const;
+    qint64 t_available_max_qml_ms() const;
     void set_t_range(qint64 t_min_ns, qint64 t_max_ns);
     void set_available_t_range(qint64 t_min_ns, qint64 t_max_ns);
     void set_view(const Plot_view& view);
@@ -177,8 +224,11 @@ public:
     Q_INVOKABLE void set_show_if_calculated_preview_height_below_min(bool v);
     Q_INVOKABLE void set_preview_height_steps(int steps);
 
-    Q_INVOKABLE QVariantList get_indicator_samples(double x, double plot_width, double plot_height, double mouse_px = -1.0) const;
-    Q_INVOKABLE QString format_timestamp_precise(qint64 timestamp_ns) const;
+    // Q_INVOKABLEs that take or return timestamps cross the QML boundary
+    // in milliseconds-since-epoch. The result map for get_indicator_samples
+    // also reports entry["x"] in ms.
+    Q_INVOKABLE QVariantList get_indicator_samples(double x_ms, double plot_width, double plot_height, double mouse_px = -1.0) const;
+    Q_INVOKABLE QString format_timestamp_precise(qint64 timestamp_ms) const;
 
     // --- Qt Quick FBO Interface ---
 
