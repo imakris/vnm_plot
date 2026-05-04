@@ -718,15 +718,21 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
 
             const auto stage_one_sample = [&](unsigned char* dst, const void* src) {
                 if (has_layout_metadata) {
-                    // Copy everything, then overwrite the timestamp slot with
-                    // the seconds-domain double. memcpy keeps everything UB-
-                    // free under the strict aliasing rule and respects the
-                    // packed layout used by benchmark sample structs.
+                    // Copy everything, then overwrite the timestamp slot
+                    // with the seconds-domain double. The canonical
+                    // timestamp value comes from access.get_timestamp() so
+                    // sample types whose timestamp member is fp64 (e.g.
+                    // function_sample_t::x) work correctly: reading the
+                    // source bytes directly as int64 would corrupt them
+                    // because the bytes are already a double. The renderer
+                    // unconditionally calls access.get_timestamp() in
+                    // monotonicity scans and binary searches above, so it
+                    // is guaranteed to be set by the time we get here.
+                    // memcpy keeps everything UB-free under the strict
+                    // aliasing rule and respects the packed layout used by
+                    // benchmark sample structs.
                     std::memcpy(dst, src, snapshot.stride);
-                    std::int64_t ts_ns = 0;
-                    std::memcpy(&ts_ns,
-                        static_cast<const unsigned char*>(src) + ts_off_bytes,
-                        sizeof(std::int64_t));
+                    const std::int64_t ts_ns = access.get_timestamp(src);
                     const double ts_seconds = static_cast<double>(ts_ns) * 1.0e-9;
                     std::memcpy(dst + ts_off_bytes, &ts_seconds, sizeof(double));
                 }

@@ -1,6 +1,8 @@
 #include "plot_controller.h"
 #include <vnm_plot/core/series_builder.h>
 
+#include <QtCore/QtGlobal>
+
 #include <cmath>
 #include <utility>
 
@@ -8,6 +10,13 @@ namespace {
 
 constexpr double k_x_min = -10.0;
 constexpr double k_x_max = 10.0;
+// vnm_plot's view-range API works in int64 nanoseconds (the access policy
+// for function_sample_t auto-converts the fp seconds member at the data
+// boundary, but Plot_view::t_range is on the C++ qint64 surface and has
+// to be set explicitly).
+constexpr qint64 k_ns_per_second = 1'000'000'000;
+constexpr qint64 k_t_min_ns = static_cast<qint64>(k_x_min * static_cast<double>(k_ns_per_second));
+constexpr qint64 k_t_max_ns = static_cast<qint64>(k_x_max * static_cast<double>(k_ns_per_second));
 constexpr std::size_t k_num_samples = 2000;
 constexpr double k_auto_v_scale = 0.4;
 constexpr int k_series_id = 1;
@@ -40,13 +49,25 @@ void Plot_controller::set_plot_widget(vnm::plot::Plot_widget* widget)
         if (m_series) {
             m_plot_widget->add_series(k_series_id, m_series);
         }
-        vnm::plot::Plot_view view;
-        view.t_range = std::make_pair(k_x_min, k_x_max);
-        view.t_available_range = std::make_pair(k_x_min, k_x_max);
-        view.v_auto = false;
-        view.v_range = std::make_pair(-1.3f, 1.3f);
-        m_plot_widget->set_view(view);
-        m_plot_widget->update();
+        const auto apply_initial_view = [w = m_plot_widget]() {
+            vnm::plot::Plot_view view;
+            view.t_range = std::make_pair(k_t_min_ns, k_t_max_ns);
+            view.t_available_range = std::make_pair(k_t_min_ns, k_t_max_ns);
+            view.v_auto = false;
+            view.v_range = std::make_pair(-1.3f, 1.3f);
+            w->set_view(view);
+            w->update();
+        };
+        // Apply once now in case the time_axis is already bound. Then
+        // re-apply when the time_axis property fires its first change
+        // notification: Plot_widget::sync_time_axis_state overwrites the
+        // local m_data_cfg with the freshly-attached time_axis's defaults,
+        // which (post int64-ns migration) are tiny meaningless values.
+        // Re-applying after the attach completes routes our intended view
+        // through the time_axis itself.
+        apply_initial_view();
+        connect(m_plot_widget, &vnm::plot::Plot_widget::time_axis_changed,
+                this, apply_initial_view);
     }
 
     emit plot_widget_changed();
