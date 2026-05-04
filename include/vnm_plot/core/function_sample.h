@@ -103,6 +103,18 @@ inline Data_access_policy_typed<function_sample_t> make_function_sample_policy_t
         &function_sample_t::y,
         &function_sample_t::y_min,
         &function_sample_t::y_max);
+    // function_sample_t::x is a synthetic-data convenience expressed in
+    // seconds. The vnm_plot API works in int64 nanoseconds, so convert at
+    // the access-policy boundary.
+    constexpr double k_ns_per_second = 1.0e9;
+    policy.get_timestamp = [](const function_sample_t& sample) -> std::int64_t {
+        return static_cast<std::int64_t>(sample.x * k_ns_per_second);
+    };
+    policy.clone_with_timestamp = [](function_sample_t& dst, const function_sample_t& src,
+                                     std::int64_t timestamp_ns) {
+        dst = src;
+        dst.x = static_cast<double>(timestamp_ns) / k_ns_per_second;
+    };
     return policy;
 }
 

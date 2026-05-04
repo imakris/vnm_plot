@@ -16,7 +16,8 @@ namespace {
 
 struct sample_t
 {
-    double t = 0.0;
+    // Timestamps are int64 nanoseconds (API convention).
+    std::int64_t t = 0;
     float v = 0.0f;
 };
 
@@ -90,29 +91,33 @@ bool test_compute_lod_scales_forces_minimum_of_one()
 
 bool test_lower_and_upper_bound_on_contiguous_buffer()
 {
+    // Sample timestamps are int64 nanoseconds; the test uses small ordinals
+    // (0..9 ns) for clarity. Query values are also nanosecond integers.
     std::vector<sample_t> samples;
     for (int i = 0; i < 10; ++i) {
-        samples.push_back({static_cast<double>(i), static_cast<float>(i)});
+        samples.push_back({static_cast<std::int64_t>(i), static_cast<float>(i)});
     }
 
-    const auto get_ts = [](const void* p) {
+    const auto get_ts = [](const void* p) -> std::int64_t {
         return static_cast<const sample_t*>(p)->t;
     };
 
+    // The original "3.5" probe has no integer-only equivalent; use 4 as the
+    // first timestamp >= 3.5, which is what lower_bound is meant to find.
     TEST_ASSERT(
-        plot::detail::lower_bound_timestamp(samples.data(), samples.size(), sizeof(sample_t), get_ts, 3.5) == 4,
-        "lower_bound(3.5) should land on index 4");
+        plot::detail::lower_bound_timestamp(samples.data(), samples.size(), sizeof(sample_t), get_ts, std::int64_t{4}) == 4,
+        "lower_bound(4) should land on index 4");
     TEST_ASSERT(
-        plot::detail::lower_bound_timestamp(samples.data(), samples.size(), sizeof(sample_t), get_ts, 3.0) == 3,
-        "lower_bound(3.0) should land on index 3");
+        plot::detail::lower_bound_timestamp(samples.data(), samples.size(), sizeof(sample_t), get_ts, std::int64_t{3}) == 3,
+        "lower_bound(3) should land on index 3");
     TEST_ASSERT(
-        plot::detail::upper_bound_timestamp(samples.data(), samples.size(), sizeof(sample_t), get_ts, 3.0) == 4,
-        "upper_bound(3.0) should land on index 4");
+        plot::detail::upper_bound_timestamp(samples.data(), samples.size(), sizeof(sample_t), get_ts, std::int64_t{3}) == 4,
+        "upper_bound(3) should land on index 4");
     TEST_ASSERT(
-        plot::detail::lower_bound_timestamp(samples.data(), samples.size(), sizeof(sample_t), get_ts, -5.0) == 0,
+        plot::detail::lower_bound_timestamp(samples.data(), samples.size(), sizeof(sample_t), get_ts, std::int64_t{-5}) == 0,
         "lower_bound below range should be 0");
     TEST_ASSERT(
-        plot::detail::lower_bound_timestamp(samples.data(), samples.size(), sizeof(sample_t), get_ts, 100.0)
+        plot::detail::lower_bound_timestamp(samples.data(), samples.size(), sizeof(sample_t), get_ts, std::int64_t{100})
             == samples.size(),
         "lower_bound above range should be count");
     return true;
@@ -123,10 +128,10 @@ bool test_bounds_on_segmented_snapshot()
     std::vector<sample_t> tail;
     std::vector<sample_t> head;
     for (int i = 0; i < 6; ++i) {
-        tail.push_back({static_cast<double>(i), 0.0f});
+        tail.push_back({static_cast<std::int64_t>(i), 0.0f});
     }
     for (int i = 6; i < 10; ++i) {
-        head.push_back({static_cast<double>(i), 0.0f});
+        head.push_back({static_cast<std::int64_t>(i), 0.0f});
     }
 
     plot::data_snapshot_t snap;
@@ -136,18 +141,19 @@ bool test_bounds_on_segmented_snapshot()
     snap.data2 = head.data();
     snap.count2 = head.size();
 
-    const auto get_ts = [](const void* p) {
+    const auto get_ts = [](const void* p) -> std::int64_t {
         return static_cast<const sample_t*>(p)->t;
     };
 
-    TEST_ASSERT(get_ts(snap.at(0)) == 0.0, "segmented at(0) should be 0");
-    TEST_ASSERT(get_ts(snap.at(5)) == 5.0, "segmented at(5) should be 5");
-    TEST_ASSERT(get_ts(snap.at(6)) == 6.0, "segmented at(6) should cross into second segment");
-    TEST_ASSERT(get_ts(snap.at(9)) == 9.0, "segmented at(9) should be 9");
-    TEST_ASSERT(plot::detail::lower_bound_timestamp(snap, get_ts, 6.5) == 7,
-        "segmented lower_bound(6.5) should land on index 7");
-    TEST_ASSERT(plot::detail::upper_bound_timestamp(snap, get_ts, 6.0) == 7,
-        "segmented upper_bound(6.0) should land on index 7");
+    TEST_ASSERT(get_ts(snap.at(0)) == 0, "segmented at(0) should be 0");
+    TEST_ASSERT(get_ts(snap.at(5)) == 5, "segmented at(5) should be 5");
+    TEST_ASSERT(get_ts(snap.at(6)) == 6, "segmented at(6) should cross into second segment");
+    TEST_ASSERT(get_ts(snap.at(9)) == 9, "segmented at(9) should be 9");
+    // Original "6.5" probe equivalent: first index with timestamp >= 7 is 7.
+    TEST_ASSERT(plot::detail::lower_bound_timestamp(snap, get_ts, std::int64_t{7}) == 7,
+        "segmented lower_bound(7) should land on index 7");
+    TEST_ASSERT(plot::detail::upper_bound_timestamp(snap, get_ts, std::int64_t{6}) == 7,
+        "segmented upper_bound(6) should land on index 7");
     return true;
 }
 

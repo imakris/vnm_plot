@@ -92,10 +92,12 @@ struct Plot_config
 
     // --- Timestamp Formatting ---
     // Callback to format timestamps for axis labels.
-    // Parameters: timestamp (unix seconds), step (tick interval in seconds)
+    // Parameters: timestamp_ns (int64 nanoseconds), step_ns (tick interval in
+    // nanoseconds). Both are in the API's int64 nanosecond unit; converters to
+    // seconds (or any other unit) live inside the formatter implementation.
     // Returns: formatted string for display
     // If null, a default formatter is used.
-    std::function<std::string(double timestamp, double step)> format_timestamp;
+    std::function<std::string(std::int64_t timestamp_ns, std::int64_t step_ns)> format_timestamp;
     // Revision for formatter behavior. Caller contract: increment when the
     // effective output of format_timestamp changes without replacing the
     // callback identity (e.g. captured/stateful data updates).
@@ -163,12 +165,19 @@ struct Plot_config
 // -----------------------------------------------------------------------------
 // Simple formatter when no custom one is provided.
 // For full formatting with timezone support, applications should provide
-// their own formatter via Plot_config::format_timestamp.
-inline std::string default_format_timestamp(double timestamp, double step)
+// their own formatter via Plot_config::format_timestamp. Both inputs are in
+// nanoseconds (API convention).
+inline std::string default_format_timestamp(std::int64_t timestamp_ns, std::int64_t step_ns)
 {
     // Simple formatting with step-appropriate precision.
     // Applications should override for timezone-aware formatting.
-    time_t t = static_cast<time_t>(timestamp);
+    constexpr std::int64_t k_ns_per_second = 1'000'000'000;
+    constexpr std::int64_t k_ns_per_minute = 60 * k_ns_per_second;
+    // Floor-divide so negative timestamps map to the matching second-of-epoch.
+    const std::int64_t whole_seconds = (timestamp_ns >= 0)
+        ? (timestamp_ns / k_ns_per_second)
+        : -((-timestamp_ns + k_ns_per_second - 1) / k_ns_per_second);
+    time_t t = static_cast<time_t>(whole_seconds);
     struct tm tm_buf;
 
 #ifdef _WIN32
@@ -178,7 +187,7 @@ inline std::string default_format_timestamp(double timestamp, double step)
 #endif
 
     char buf[32];
-    if (step >= 60.0) {
+    if (step_ns >= k_ns_per_minute) {
         std::strftime(buf, sizeof(buf), "%H:%M", &tm_buf);
     }
     else {

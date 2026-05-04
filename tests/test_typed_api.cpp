@@ -18,7 +18,8 @@ namespace {
 
 struct sample_t
 {
-    double t = 0.0;
+    // Timestamps are int64 nanoseconds (API convention).
+    std::int64_t t = 0;
     float v = 0.0f;
     std::int32_t pad = 0;
     float v_min = 0.0f;
@@ -87,12 +88,16 @@ bool test_make_access_policy_and_erase()
     TEST_ASSERT(policy.is_valid(), "expected typed policy to be valid");
 
     sample_t s{};
-    s.t = 12.5;
+    // 12.5 seconds in nanoseconds. The typed API works in int64 ns; this
+    // single literal stands for what the previous double-keyed test wrote
+    // as 12.5.
+    constexpr std::int64_t k_test_ts_ns = 12'500'000'000;
+    s.t = k_test_ts_ns;
     s.v = 3.5f;
     s.v_min = 1.0f;
     s.v_max = 6.0f;
 
-    TEST_ASSERT(policy.get_timestamp(s) == 12.5, "timestamp accessor mismatch");
+    TEST_ASSERT(policy.get_timestamp(s) == k_test_ts_ns, "timestamp accessor mismatch");
     TEST_ASSERT(policy.get_value(s) == 3.5f, "value accessor mismatch");
     const auto range = policy.get_range(s);
     TEST_ASSERT(range.first == 1.0f && range.second == 6.0f, "range accessor mismatch");
@@ -103,7 +108,7 @@ bool test_make_access_policy_and_erase()
         "layout_key mismatch for typed policy");
 
     const plot::Data_access_policy erased = policy.erase();
-    TEST_ASSERT(erased.get_timestamp(&s) == 12.5, "erased timestamp accessor mismatch");
+    TEST_ASSERT(erased.get_timestamp(&s) == k_test_ts_ns, "erased timestamp accessor mismatch");
     TEST_ASSERT(erased.get_value(&s) == 3.5f, "erased value accessor mismatch");
     const auto erased_range = erased.get_range(&s);
     TEST_ASSERT(erased_range.first == 1.0f && erased_range.second == 6.0f,
@@ -117,7 +122,9 @@ bool test_make_access_policy_and_erase()
 bool test_clone_with_timestamp_for_both_overloads()
 {
     sample_t src{};
-    src.t = 100.25;
+    // Source timestamp == 100.25 s in nanoseconds.
+    constexpr std::int64_t k_src_ts_ns = 100'250'000'000;
+    src.t = k_src_ts_ns;
     src.v = 7.0f;
     src.v_min = 6.5f;
     src.v_max = 7.5f;
@@ -129,8 +136,10 @@ bool test_clone_with_timestamp_for_both_overloads()
             "value-only overload should set clone_with_timestamp");
 
         sample_t dst{};
-        value_only.clone_with_timestamp(dst, src, 130.5);
-        TEST_ASSERT(dst.t == 130.5, "value-only clone should overwrite timestamp");
+        // 130.5 s in nanoseconds.
+        constexpr std::int64_t k_value_only_ts_ns = 130'500'000'000;
+        value_only.clone_with_timestamp(dst, src, k_value_only_ts_ns);
+        TEST_ASSERT(dst.t == k_value_only_ts_ns, "value-only clone should overwrite timestamp");
         TEST_ASSERT(dst.v == src.v, "value-only clone should copy value");
         TEST_ASSERT(dst.pad == src.pad, "value-only clone should copy pad");
         TEST_ASSERT(dst.v_min == src.v_min && dst.v_max == src.v_max,
@@ -147,8 +156,10 @@ bool test_clone_with_timestamp_for_both_overloads()
             "range overload should set clone_with_timestamp");
 
         sample_t dst{};
-        with_range.clone_with_timestamp(dst, src, 222.0);
-        TEST_ASSERT(dst.t == 222.0, "range clone should overwrite timestamp");
+        // 222.0 s in nanoseconds.
+        constexpr std::int64_t k_range_ts_ns = 222'000'000'000;
+        with_range.clone_with_timestamp(dst, src, k_range_ts_ns);
+        TEST_ASSERT(dst.t == k_range_ts_ns, "range clone should overwrite timestamp");
         TEST_ASSERT(dst.v == src.v, "range clone should copy value");
         TEST_ASSERT(dst.pad == src.pad, "range clone should copy pad");
         TEST_ASSERT(dst.v_min == src.v_min && dst.v_max == src.v_max,

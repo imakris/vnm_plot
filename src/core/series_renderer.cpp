@@ -415,8 +415,8 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
     Data_source& data_source,
     const Data_access_policy& access,
     const std::vector<std::size_t>& scales,
-    double t_min,
-    double t_max,
+    std::int64_t t_min_ns,
+    std::int64_t t_max_ns,
     double width_px,
     Empty_window_behavior empty_window_behavior,
     vnm::plot::Profiler* profiler,
@@ -425,7 +425,7 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
     view_render_result_t result;
     const auto& get_timestamp = access.get_timestamp;
 
-    if (scales.empty() || t_max <= t_min || width_px <= 0.0) {
+    if (scales.empty() || t_max_ns <= t_min_ns || width_px <= 0.0) {
         return result;
     }
 
@@ -503,8 +503,8 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
             view_state.active_vbo != UINT_MAX &&
             view_state.last_count > 0 &&
             view_state.cached_data_identity == data_source.identity() &&
-            view_state.last_t_min == t_min &&
-            view_state.last_t_max == t_max &&
+            view_state.last_t_min == t_min_ns &&
+            view_state.last_t_max == t_max_ns &&
             view_state.last_width_px == width_px &&
             view_state.last_empty_window_behavior == empty_window_behavior)
         {
@@ -560,24 +560,19 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
                     is_monotonic = false;
                 }
                 else {
-                    double prev_ts = get_timestamp(first_sample);
-                    if (!std::isfinite(prev_ts)) {
-                        is_monotonic = false;
-                    }
-                    else {
-                        for (std::size_t i = 1; i < snapshot.count; ++i) {
-                            const void* sample = snapshot.at(i);
-                            if (!sample) {
-                                is_monotonic = false;
-                                break;
-                            }
-                            const double ts = get_timestamp(sample);
-                            if (!std::isfinite(ts) || ts < prev_ts) {
-                                is_monotonic = false;
-                                break;
-                            }
-                            prev_ts = ts;
+                    std::int64_t prev_ts = get_timestamp(first_sample);
+                    for (std::size_t i = 1; i < snapshot.count; ++i) {
+                        const void* sample = snapshot.at(i);
+                        if (!sample) {
+                            is_monotonic = false;
+                            break;
                         }
+                        const std::int64_t ts = get_timestamp(sample);
+                        if (ts < prev_ts) {
+                            is_monotonic = false;
+                            break;
+                        }
+                        prev_ts = ts;
                     }
                 }
                 view_state.last_timestamp_order_sequence = snapshot.sequence;
@@ -590,13 +585,13 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
         // Find visible range using binary search
         std::size_t first_idx = 0;
         std::size_t last_idx = snapshot.count;
-        double last_ts = 0.0;
+        std::int64_t last_ts = 0;
         bool have_last_ts = false;
         if (get_timestamp) {
             const void* last_sample = snapshot.at(snapshot.count - 1);
             if (last_sample) {
                 last_ts = get_timestamp(last_sample);
-                have_last_ts = std::isfinite(last_ts);
+                have_last_ts = true;
             }
             if (!timestamps_monotonic) {
                 // Non-monotonic timestamps invalidate binary-search assumptions.
@@ -609,8 +604,8 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
                     if (!sample) {
                         continue;
                     }
-                    const double ts = get_timestamp(sample);
-                    if (!std::isfinite(ts) || ts < t_min || ts > t_max) {
+                    const std::int64_t ts = get_timestamp(sample);
+                    if (ts < t_min_ns || ts > t_max_ns) {
                         continue;
                     }
                     if (match_first == snapshot.count) {
@@ -629,11 +624,11 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
             }
             else {
                 VNM_PLOT_PROFILE_SCOPE(profiler, "process_view.binary_search");
-                first_idx = lower_bound_timestamp(snapshot, get_timestamp, t_min);
+                first_idx = lower_bound_timestamp(snapshot, get_timestamp, t_min_ns);
                 if (first_idx > 0) {
                     --first_idx;
                 }
-                last_idx = upper_bound_timestamp(snapshot, get_timestamp, t_max);
+                last_idx = upper_bound_timestamp(snapshot, get_timestamp, t_max_ns);
                 last_idx = std::min(last_idx + 2, snapshot.count);
             }
         }
@@ -642,7 +637,7 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
             empty_window_behavior == Empty_window_behavior::HOLD_LAST_FORWARD &&
             access.clone_with_timestamp &&
             have_last_ts &&
-            last_ts < t_max;
+            last_ts < t_max_ns;
 
         if (first_idx >= last_idx) {
             if (can_hold_last_forward) {
@@ -693,7 +688,7 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
             const bool region_changed = (view_state.last_ring_size < needed_bytes);
             const bool hold_changed =
                 (view_state.last_hold_last_forward != hold_last_forward) ||
-                (hold_last_forward && view_state.last_t_max != t_max);
+                (hold_last_forward && view_state.last_t_max != t_max_ns);
             const bool must_upload = region_changed
                 || (snapshot.sequence != view_state.last_sequence)
                 || (applied_level != view_state.last_lod_level)
@@ -705,6 +700,45 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
             // sample land in a single glBufferSubData call. The hold-only
             // path below patches just the trailing sample when the
             // synthetic timestamp moved without the data changing.
+            //
+            // Per-sample staging conversion: user samples carry an int64
+            // nanosecond timestamp at access.timestamp_offset_bytes. The GPU
+            // path still consumes a 64-bit fp64 timestamp at that same byte
+            // offset (8 bytes wide, identical layout, different
+            // interpretation), so the staging step rewrites the timestamp
+            // slot from int64 ns to fp64 seconds and copies the rest of the
+            // sample bytes verbatim. This int64 -> double bridge is
+            // temporary scaffolding owned by this commit; the fp32
+            // GPU pipeline replaces it.
+            const std::size_t ts_off_bytes  = access.timestamp_offset_bytes;
+            const bool has_layout_metadata =
+                access.sample_stride_bytes > 0
+                && access.sample_stride_bytes == snapshot.stride
+                && ts_off_bytes + sizeof(double) <= snapshot.stride;
+
+            const auto stage_one_sample = [&](unsigned char* dst, const void* src) {
+                if (has_layout_metadata) {
+                    // Copy everything, then overwrite the timestamp slot with
+                    // the seconds-domain double. memcpy keeps everything UB-
+                    // free under the strict aliasing rule and respects the
+                    // packed layout used by benchmark sample structs.
+                    std::memcpy(dst, src, snapshot.stride);
+                    std::int64_t ts_ns = 0;
+                    std::memcpy(&ts_ns,
+                        static_cast<const unsigned char*>(src) + ts_off_bytes,
+                        sizeof(std::int64_t));
+                    const double ts_seconds = static_cast<double>(ts_ns) * 1.0e-9;
+                    std::memcpy(dst + ts_off_bytes, &ts_seconds, sizeof(double));
+                }
+                else {
+                    // No timestamp metadata exposed (DOTS-only series, or a
+                    // hand-rolled access policy that left layout bytes
+                    // zeroed). Copy bytes through unchanged; non-DOTS draws
+                    // are rejected upstream by the layout-validation guard.
+                    std::memcpy(dst, src, snapshot.stride);
+                }
+            };
+
             if (must_upload && !skip_gl) {
                 const std::size_t snapshot_bytes = snapshot.count * snapshot.stride;
                 const std::size_t hold_bytes = hold_last_forward ? snapshot.stride : 0;
@@ -712,18 +746,14 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
                 staging.resize(snapshot_bytes + hold_bytes);
 
                 if (snapshot_bytes > 0) {
-                    if (!snapshot.is_segmented()) {
-                        std::memcpy(staging.data(), snapshot.data, snapshot_bytes);
-                    }
-                    else {
-                        const std::size_t bytes1 = snapshot.count1() * snapshot.stride;
-                        const std::size_t bytes2 = snapshot.count2 * snapshot.stride;
-                        if (bytes1 > 0) {
-                            std::memcpy(staging.data(), snapshot.data, bytes1);
+                    for (std::size_t i = 0; i < snapshot.count; ++i) {
+                        const void* src = snapshot.at(i);
+                        if (!src) {
+                            std::memset(staging.data() + i * snapshot.stride,
+                                        0, snapshot.stride);
+                            continue;
                         }
-                        if (bytes2 > 0) {
-                            std::memcpy(staging.data() + bytes1, snapshot.data2, bytes2);
-                        }
+                        stage_one_sample(staging.data() + i * snapshot.stride, src);
                     }
                 }
 
@@ -731,10 +761,17 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
                     const void* source_sample = (snapshot.count > 0)
                         ? snapshot.at(snapshot.count - 1) : nullptr;
                     if (source_sample) {
+                        // Build the synthetic sample in the user struct
+                        // layout first, then run it through the staging
+                        // converter so the timestamp slot ends up in
+                        // seconds-domain fp64 like the rest of the upload.
+                        std::vector<unsigned char> user_sample(snapshot.stride);
                         access.clone_with_timestamp(
-                            staging.data() + snapshot_bytes,
+                            user_sample.data(),
                             source_sample,
-                            t_max);
+                            t_max_ns);
+                        stage_one_sample(staging.data() + snapshot_bytes,
+                                         user_sample.data());
                     }
                     else {
                         std::memset(staging.data() + snapshot_bytes, 0, snapshot.stride);
@@ -754,14 +791,19 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
             else
             if (needs_hold_upload && !skip_gl) {
                 // Data unchanged, only the synthetic last sample's timestamp
-                // moved with t_max. Stage just that one sample and patch the
-                // VBO at its trailing offset.
+                // moved with t_max_ns. Stage just that one sample (built in
+                // user-struct layout, then run through the staging converter
+                // so the GPU sees seconds-domain fp64) and patch the VBO at
+                // its trailing offset.
                 const void* source_sample = (snapshot.count > 0)
                     ? snapshot.at(snapshot.count - 1) : nullptr;
                 if (source_sample) {
                     auto& staging = view_state.upload_staging;
                     staging.resize(snapshot.stride);
-                    access.clone_with_timestamp(staging.data(), source_sample, t_max);
+                    std::vector<unsigned char> user_sample(snapshot.stride);
+                    access.clone_with_timestamp(
+                        user_sample.data(), source_sample, t_max_ns);
+                    stage_one_sample(staging.data(), user_sample.data());
                     glBindBuffer(GL_ARRAY_BUFFER, view_state.id);
                     glBufferSubData(
                         GL_ARRAY_BUFFER,
@@ -782,8 +824,8 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
         view_state.last_count = count;
 
         view_state.last_lod_level = applied_level;
-        view_state.last_t_min = t_min;
-        view_state.last_t_max = t_max;
+        view_state.last_t_min = t_min_ns;
+        view_state.last_t_max = t_max_ns;
         view_state.last_width_px = width_px;
         view_state.last_empty_window_behavior = empty_window_behavior;
 
@@ -815,8 +857,11 @@ void Series_renderer::set_common_uniforms(
     glUniform1d(program.uniform_location("height"), layout.usable_height);
     glUniform1f(program.uniform_location("y_offset"), 0.0f);
     glUniform1f(program.uniform_location("win_h"), static_cast<float>(ctx.win_h));
-    glUniform1d(program.uniform_location("t_min"), ctx.t0);
-    glUniform1d(program.uniform_location("t_max"), ctx.t1);
+    // Time uniforms still travel as fp64 seconds; the staging step rebases the
+    // sample timestamps the same way before upload, so axes and samples agree
+    // on a single fp64-seconds domain.
+    glUniform1d(program.uniform_location("t_min"), static_cast<double>(ctx.t0) * 1.0e-9);
+    glUniform1d(program.uniform_location("t_max"), static_cast<double>(ctx.t1) * 1.0e-9);
     glUniform1f(program.uniform_location("v_min"), ctx.v0);
     glUniform1f(program.uniform_location("v_max"), ctx.v1);
 
@@ -845,8 +890,10 @@ void Series_renderer::modify_uniforms_for_preview(
     glUniform1d(program.uniform_location("height"), static_cast<double>(preview_height));
     glUniform1f(program.uniform_location("v_min"), ctx.preview_v0);
     glUniform1f(program.uniform_location("v_max"), ctx.preview_v1);
-    glUniform1d(program.uniform_location("t_min"), ctx.t_available_min);
-    glUniform1d(program.uniform_location("t_max"), ctx.t_available_max);
+    glUniform1d(program.uniform_location("t_min"),
+        static_cast<double>(ctx.t_available_min) * 1.0e-9);
+    glUniform1d(program.uniform_location("t_max"),
+        static_cast<double>(ctx.t_available_max) * 1.0e-9);
 }
 
 void Series_renderer::render(

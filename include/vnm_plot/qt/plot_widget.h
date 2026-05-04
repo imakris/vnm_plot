@@ -34,10 +34,11 @@ class Plot_time_axis;
 // -----------------------------------------------------------------------------
 struct Plot_view
 {
-    std::optional<std::pair<double, double>> t_range;
-    std::optional<std::pair<double, double>> t_available_range;
-    std::optional<std::pair<float, float>> v_range;
-    std::optional<bool> v_auto;
+    // Timestamps are int64 nanoseconds (API convention).
+    std::optional<std::pair<qint64, qint64>> t_range;
+    std::optional<std::pair<qint64, qint64>> t_available_range;
+    std::optional<std::pair<float, float>>   v_range;
+    std::optional<bool>                      v_auto;
 };
 
 // -----------------------------------------------------------------------------
@@ -51,10 +52,15 @@ class Plot_widget : public QQuickFramebufferObject
 {
     Q_OBJECT
 
-    Q_PROPERTY(double t_min READ t_min NOTIFY t_limits_changed)
-    Q_PROPERTY(double t_max READ t_max NOTIFY t_limits_changed)
-    Q_PROPERTY(double t_available_min READ t_available_min NOTIFY t_limits_changed)
-    Q_PROPERTY(double t_available_max READ t_available_max NOTIFY t_limits_changed)
+    // Time properties are qint64 nanoseconds (API convention). QML's numeric
+    // literal type is double, so QML reads of these properties go through
+    // qint64 -> double in the JS engine; precision is sufficient for plotting
+    // ranges but applications doing raw arithmetic on raw timestamps near
+    // modern wall-clock epochs should keep them on the C++ side.
+    Q_PROPERTY(qint64 t_min READ t_min NOTIFY t_limits_changed)
+    Q_PROPERTY(qint64 t_max READ t_max NOTIFY t_limits_changed)
+    Q_PROPERTY(qint64 t_available_min READ t_available_min NOTIFY t_limits_changed)
+    Q_PROPERTY(qint64 t_available_max READ t_available_max NOTIFY t_limits_changed)
     Q_PROPERTY(float v_min READ v_min NOTIFY v_limits_changed)
     Q_PROPERTY(float v_max READ v_max NOTIFY v_limits_changed)
     Q_PROPERTY(bool v_auto READ v_auto WRITE set_v_auto NOTIFY v_auto_changed)
@@ -118,12 +124,12 @@ public:
 
     // --- Time Range ---
 
-    double t_min() const;
-    double t_max() const;
-    double t_available_min() const;
-    double t_available_max() const;
-    void set_t_range(double t_min, double t_max);
-    void set_available_t_range(double t_min, double t_max);
+    qint64 t_min() const;
+    qint64 t_max() const;
+    qint64 t_available_min() const;
+    qint64 t_available_max() const;
+    void set_t_range(qint64 t_min_ns, qint64 t_max_ns);
+    void set_available_t_range(qint64 t_min_ns, qint64 t_max_ns);
     void set_view(const Plot_view& view);
     // Optional shared time axis (non-owning). When set, this widget mirrors its values.
     Plot_time_axis* time_axis() const;
@@ -172,7 +178,7 @@ public:
     Q_INVOKABLE void set_preview_height_steps(int steps);
 
     Q_INVOKABLE QVariantList get_indicator_samples(double x, double plot_width, double plot_height, double mouse_px = -1.0) const;
-    Q_INVOKABLE QString format_timestamp_precise(double timestamp) const;
+    Q_INVOKABLE QString format_timestamp_precise(qint64 timestamp_ns) const;
 
     // --- Qt Quick FBO Interface ---
 
@@ -195,10 +201,10 @@ signals:
 protected:
     void geometryChange(const QRectF& newGeometry, const QRectF& oldGeometry) override;
     void timerEvent(QTimerEvent* ev) override;
-    void adjust_t_to_target(double target_tmin, double target_tmax);
+    void adjust_t_to_target(qint64 target_tmin_ns, qint64 target_tmax_ns);
     std::pair<float, float> manual_v_range() const;
     bool rendered_v_range(float& out_min, float& out_max) const;
-    bool rendered_t_range(double& out_min, double& out_max) const;
+    bool rendered_t_range(qint64& out_min_ns, qint64& out_max_ns) const;
 
 private:
     friend class Plot_renderer;
@@ -234,8 +240,9 @@ private:
     mutable std::atomic<float> m_rendered_v_min{0.0f};
     mutable std::atomic<float> m_rendered_v_max{1.0f};
     mutable std::atomic<bool> m_rendered_v_range_valid{false};
-    mutable std::atomic<double> m_rendered_t_min{0.0};
-    mutable std::atomic<double> m_rendered_t_max{1.0};
+    // Rendered time range cached for QML/tooltips, in int64 nanoseconds.
+    mutable std::atomic<qint64> m_rendered_t_min{0};
+    mutable std::atomic<qint64> m_rendered_t_max{1};
     mutable std::atomic<bool> m_rendered_t_range_valid{false};
     std::atomic<double> m_vbar_width_px{0.0};
     QBasicTimer m_vbar_width_timer;
@@ -263,11 +270,11 @@ private:
     data_config_t data_cfg_snapshot() const;
     template<typename Field, typename Value, typename Signal>
     void update_config_field(Field& field, Value new_value, Signal signal);
-    void clamp_t_range_to_available(double t_avail_min, double t_avail_max);
+    void clamp_t_range_to_available(qint64 t_avail_min_ns, qint64 t_avail_max_ns);
 
     bool consume_view_state_reset_request();
     void set_rendered_v_range(float v_min, float v_max) const;
-    void set_rendered_t_range(double t_min, double t_max) const;
+    void set_rendered_t_range(qint64 t_min_ns, qint64 t_max_ns) const;
     void sync_time_axis_state();
     void clear_time_axis();
     void apply_vbar_width_target(double px);

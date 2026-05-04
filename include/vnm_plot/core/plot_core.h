@@ -5,6 +5,7 @@
 
 #include "types.h"
 
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <optional>
@@ -31,14 +32,15 @@ public:
         float v_min = -1.0f;
         float v_max = 1.0f;
 
-        double t_min = 0.0;
-        double t_max = 1.0;
+        // Timestamps are int64_t nanoseconds (API convention).
+        std::int64_t t_min = 0;
+        std::int64_t t_max = 1;
 
         std::optional<float> preview_v_min;
         std::optional<float> preview_v_max;
 
-        std::optional<double> t_available_min;
-        std::optional<double> t_available_max;
+        std::optional<std::int64_t> t_available_min;
+        std::optional<std::int64_t> t_available_max;
 
         bool show_info = false;
     };

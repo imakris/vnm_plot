@@ -129,9 +129,9 @@ private:
     vnm::plot::Plot_config m_render_config;
     vnm::plot::Layout_cache m_layout_cache;
 
-    // View state
-    double m_t_min = 0.0;
-    double m_t_max = 10.0;
+    // View state. Timestamps are int64 nanoseconds (API convention).
+    int64_t m_t_min = 0;
+    int64_t m_t_max = 10'000'000'000;  // 10 s
     float m_v_min = 90.0f;
     float m_v_max = 110.0f;
     bool m_gl_initialized = false;
@@ -141,7 +141,7 @@ private:
     double m_base_label_height_px = k_base_label_height_px;
     double m_adjusted_preview_height = k_adjusted_preview_height;
     double m_vbar_width_pixels = k_vbar_width_pixels;
-    double m_t_available_min = 0.0;  // First sample timestamp
+    int64_t m_t_available_min = 0;  // First sample timestamp (ns)
 
     // Timing
     QTimer m_render_timer;

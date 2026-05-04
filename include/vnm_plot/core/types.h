@@ -149,19 +149,20 @@ public:
     virtual bool has_aux_metric_range() const { return false; }
     virtual std::pair<double, double> aux_metric_range() const { return {0.0, 0.0}; }
     virtual bool aux_metric_range_needs_rescan() const { return false; }
-    /// Query v-range for samples within [t_min, t_max].
+    /// Query v-range for samples within [t_min_ns, t_max_ns]. Timestamps
+    /// are int64_t nanoseconds (by API convention).
     /// Returns false if unsupported, no samples are in range, or a consistent snapshot
     /// cannot be obtained without blocking.
     /// Thread-safe; called from the render thread.
     virtual bool query_v_range_for_t_window(
-        double t_min,
-        double t_max,
+        std::int64_t t_min_ns,
+        std::int64_t t_max_ns,
         float& v_min_out,
         float& v_max_out,
         uint64_t* out_sequence = nullptr) const
     {
-        (void)t_min;
-        (void)t_max;
+        (void)t_min_ns;
+        (void)t_max_ns;
         (void)v_min_out;
         (void)v_max_out;
         (void)out_sequence;
@@ -278,7 +279,9 @@ struct Data_access_policy
     // --- Sample value extraction ---
     // Values narrow to float before upload. For large-biased signals, subtract
     // the bias inside the accessor so the remaining dynamic range survives.
-    std::function<double(const void* sample)>                   get_timestamp;  ///< Extract timestamp
+    // Timestamps are int64_t nanoseconds (by API convention; the unit is the
+    // accessor's contract with vnm_plot).
+    std::function<std::int64_t(const void* sample)>             get_timestamp;  ///< Extract timestamp (ns)
     std::function<float(const void* sample)>                    get_value;      ///< Extract primary value
     std::function<std::pair<float, float>(const void* sample)>  get_range;      ///< Extract min/max range
 
@@ -287,7 +290,7 @@ struct Data_access_policy
 
     // Optional sample cloning with timestamp rewrite, used for render-only hold-forward paths.
     // Caller owns dst_sample storage; implementation writes one full sample there.
-    std::function<void(void* dst_sample, const void* src_sample, double timestamp)> clone_with_timestamp;
+    std::function<void(void* dst_sample, const void* src_sample, std::int64_t timestamp_ns)> clone_with_timestamp;
 
     // --- GPU rendering configuration ---
     std::function<void()> setup_vertex_attributes;              ///< Configures VAO for custom shaders
@@ -400,10 +403,11 @@ struct data_config_t
     float  v_manual_min    = 0.f;
     float  v_manual_max    = 5.f;
 
-    double t_min           = 5000.;
-    double t_max           = 10000.;
-    double t_available_min = 0.;
-    double t_available_max = 10000.;
+    // Timestamps are int64_t nanoseconds (API convention).
+    std::int64_t t_min           = 5000;
+    std::int64_t t_max           = 10000;
+    std::int64_t t_available_min = 0;
+    std::int64_t t_available_max = 10000;
 
     double vbar_width      = 150.;
 };
@@ -431,9 +435,9 @@ struct series_data_t
     shader_set_t shader_set;
     std::map<Display_style, shader_set_t> shaders;
 
-    double get_timestamp(const void* sample) const
+    std::int64_t get_timestamp(const void* sample) const
     {
-        return access.get_timestamp ? access.get_timestamp(sample) : 0.0;
+        return access.get_timestamp ? access.get_timestamp(sample) : std::int64_t{0};
     }
 
     float get_value(const void* sample) const
@@ -535,9 +539,9 @@ struct v_label_t
 /// Horizontal axis label (time bar below plot)
 struct h_label_t
 {
-    double      value;     ///< Timestamp this label represents
-    glm::vec2   position;  ///< Position in pixels (x, y from bottom-left)
-    std::string text;      ///< Formatted label text
+    std::int64_t value;     ///< Timestamp this label represents (nanoseconds)
+    glm::vec2    position;  ///< Position in pixels (x, y from bottom-left)
+    std::string  text;      ///< Formatted label text
 };
 
 /// Result of layout calculation for a single frame.
@@ -566,10 +570,10 @@ struct frame_layout_result_t
 /// Key for layout caching. Layout is recomputed only when this key changes.
 struct layout_cache_key_t
 {
-    float     v0                           = 0.0f;
-    float     v1                           = 0.0f;
-    double    t0                           = 0.0;
-    double    t1                           = 0.0;
+    float        v0                           = 0.0f;
+    float        v1                           = 0.0f;
+    std::int64_t t0                           = 0;  // nanoseconds
+    std::int64_t t1                           = 0;  // nanoseconds
     Size_2i    viewport_size;
     double    adjusted_reserved_height     = 0.0;
     double    adjusted_preview_height      = 0.0;
@@ -632,11 +636,12 @@ struct frame_context_t
     float preview_v0 = 0.0f;
     float preview_v1 = 0.0f;
 
-    double t0 = 0.0;
-    double t1 = 1.0;
+    // Timestamps are int64_t nanoseconds (API convention).
+    std::int64_t t0 = 0;
+    std::int64_t t1 = 1;
 
-    double t_available_min = 0.0;
-    double t_available_max = 1.0;
+    std::int64_t t_available_min = 0;
+    std::int64_t t_available_max = 1;
 
     int win_w = 0;
     int win_h = 0;

@@ -26,7 +26,7 @@ public:
         double initial_price = 100.0;   ///< Starting price
         double drift = 0.0001;          ///< mu: expected return per step
         double volatility = 0.02;       ///< sigma: standard deviation per step
-        double time_step = 0.001;       ///< Seconds between samples
+        double time_step = 0.001;       ///< Seconds between samples (drives GBM math)
         uint64_t seed = 12345;          ///< RNG seed for reproducibility
     };
 
@@ -36,7 +36,10 @@ public:
         , m_rng(config.seed)
         , m_normal(0.0, 1.0)
         , m_current_price(config.initial_price)
-        , m_current_time(0.0)
+        , m_current_time_ns(0)
+        // Round to the nearest nanosecond. For the rates the benchmark uses
+        // (10/100/1000 sps) the conversion is exact.
+        , m_step_ns(static_cast<int64_t>(std::llround(config.time_step * 1.0e9)))
     {
         // Pre-compute constants for GBM formula
         // drift_term = (mu - sigma^2/2) * dt
@@ -49,7 +52,7 @@ public:
     /// Simulates one time step of price movement and generates OHLC data.
     Bar_sample next_bar() {
         Bar_sample bar;
-        bar.timestamp = m_current_time;
+        bar.timestamp = m_current_time_ns;
         bar.open = static_cast<float>(m_current_price);
 
         // Simulate intra-bar volatility for OHLC
@@ -76,14 +79,14 @@ public:
         double volume_z = m_normal(m_rng);
         bar.volume = static_cast<float>(std::exp(10.0 + volume_z));  // Typical volume scale
 
-        m_current_time += m_config.time_step;
+        m_current_time_ns += m_step_ns;
         return bar;
     }
 
     /// Generate the next trade sample.
     Trade_sample next_trade() {
         Trade_sample trade;
-        trade.timestamp = m_current_time;
+        trade.timestamp = m_current_time_ns;
 
         // Single price step
         double z = m_normal(m_rng);
@@ -94,7 +97,7 @@ public:
         double size_z = m_normal(m_rng);
         trade.size = static_cast<float>(std::max(1.0, std::exp(3.0 + size_z)));
 
-        m_current_time += m_config.time_step;
+        m_current_time_ns += m_step_ns;
         return trade;
     }
 
@@ -121,14 +124,14 @@ public:
         m_rng.seed(m_config.seed);
         m_normal.reset();  // Clear any cached values
         m_current_price = m_config.initial_price;
-        m_current_time = 0.0;
+        m_current_time_ns = 0;
     }
 
     /// Get current price.
     double current_price() const { return m_current_price; }
 
-    /// Get current time.
-    double current_time() const { return m_current_time; }
+    /// Get current time as int64 nanoseconds (API convention).
+    int64_t current_time_ns() const { return m_current_time_ns; }
 
     /// Get configuration.
     const Config& config() const { return m_config; }
@@ -138,7 +141,8 @@ private:
     std::mt19937_64 m_rng;
     std::normal_distribution<double> m_normal;
     double m_current_price;
-    double m_current_time;
+    int64_t m_current_time_ns;
+    int64_t m_step_ns;
 
     // Pre-computed constants
     double m_drift_term;  ///< (mu - sigma^2/2) * dt

@@ -65,8 +65,11 @@ private:
         GLint last_first = 0;
         GLsizei last_count = 0;
         std::size_t last_lod_level = 0;
-        double last_t_min = std::numeric_limits<double>::quiet_NaN();
-        double last_t_max = std::numeric_limits<double>::quiet_NaN();
+        // Timestamps are int64_t nanoseconds; sentinel SENTINEL_NONE means "no
+        // valid value yet" so the first frame always invalidates cached state.
+        static constexpr std::int64_t SENTINEL_NONE = std::numeric_limits<std::int64_t>::min();
+        std::int64_t last_t_min = SENTINEL_NONE;
+        std::int64_t last_t_max = SENTINEL_NONE;
         double last_width_px = std::numeric_limits<double>::quiet_NaN();
         Empty_window_behavior last_empty_window_behavior = Empty_window_behavior::DRAW_NOTHING;
         double last_applied_pps = 0.0;
@@ -173,8 +176,8 @@ private:
         Data_source& data_source,
         const Data_access_policy& access,
         const std::vector<std::size_t>& scales,
-        double t_min,
-        double t_max,
+        std::int64_t t_min_ns,
+        std::int64_t t_max_ns,
         double width_px,
         Empty_window_behavior empty_window_behavior,
         vnm::plot::Profiler* profiler,

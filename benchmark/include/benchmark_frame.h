@@ -27,10 +27,11 @@ namespace vnm::benchmark {
 
 /// Input parameters for a benchmark frame render
 struct Benchmark_frame_params {
-    // View range state (in/out - will be updated by update_view_range)
-    double& t_min;
-    double& t_max;
-    double& t_available_min;
+    // View range state (in/out - will be updated by update_view_range).
+    // Timestamps are int64 nanoseconds (API convention).
+    std::int64_t& t_min;
+    std::int64_t& t_max;
+    std::int64_t& t_available_min;
     float& v_min;
     float& v_max;
 
@@ -73,17 +74,18 @@ struct Benchmark_frame_context {
 #endif
 };
 
-/// Shared format_benchmark_timestamp function
-std::string format_benchmark_timestamp(double ts, double step);
+/// Shared format_benchmark_timestamp function. Both arguments are int64
+/// nanoseconds (API convention).
+std::string format_benchmark_timestamp(std::int64_t ts_ns, std::int64_t step_ns);
 
 /// Update view range from data source (t_min, t_max, v_min, v_max)
-/// Uses a 10-second sliding window
+/// Uses a 10-second sliding window. Timestamps are int64 nanoseconds.
 void update_view_range_from_source(
     vnm::plot::Data_source* source,
     const std::string& data_type,
-    double& t_min,
-    double& t_max,
-    double& t_available_min,
+    std::int64_t& t_min,
+    std::int64_t& t_max,
+    std::int64_t& t_available_min,
     float& v_min,
     float& v_max);
 

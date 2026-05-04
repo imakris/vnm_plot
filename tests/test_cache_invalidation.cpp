@@ -40,7 +40,8 @@ using plot::validate_range_cache_sequences;
 namespace {
 
 struct Test_sample {
-    double t = 0.0;
+    // Timestamps are int64 nanoseconds (API convention).
+    std::int64_t t = 0;
     float v = 0.0f;
     double aux = 0.0;
 };
@@ -128,7 +129,7 @@ public:
 Data_access_policy make_policy()
 {
     Data_access_policy policy;
-    policy.get_timestamp = [](const void* sample) {
+    policy.get_timestamp = [](const void* sample) -> std::int64_t {
         return static_cast<const Test_sample*>(sample)->t;
     };
     policy.get_value = [](const void* sample) {
@@ -156,10 +157,12 @@ std::shared_ptr<series_data_t> make_series(const std::shared_ptr<Data_source>& s
 frame_context_t make_context(const frame_layout_result_t& layout, Plot_config& config)
 {
     frame_context_t ctx{layout};
-    ctx.t0 = 0.0;
-    ctx.t1 = 399.0;
-    ctx.t_available_min = 0.0;
-    ctx.t_available_max = 399.0;
+    // Timestamps are int64 ns. Sample-index domain test data; the values
+    // double as ordinal sample indices, so they remain small and clear.
+    ctx.t0 = 0;
+    ctx.t1 = 399;
+    ctx.t_available_min = 0;
+    ctx.t_available_max = 399;
     ctx.win_w = 100;
     ctx.win_h = 100;
     ctx.skip_gl = config.skip_gl_calls;
@@ -172,7 +175,7 @@ void fill_lod_data(Lod_data_source& ds)
 {
     ds.lod0.resize(400);
     for (size_t i = 0; i < ds.lod0.size(); ++i) {
-        ds.lod0[i].t = static_cast<double>(i);
+        ds.lod0[i].t = static_cast<std::int64_t>(i);
         ds.lod0[i].v = 1.0f + static_cast<float>(i) * 0.01f;
         ds.lod0[i].aux = 0.5 + static_cast<double>(i) * 0.1;
     }
@@ -180,7 +183,7 @@ void fill_lod_data(Lod_data_source& ds)
     ds.lod1.resize(100);
     for (size_t i = 0; i < ds.lod1.size(); ++i) {
         const size_t src = i * 4;
-        ds.lod1[i].t = static_cast<double>(src);
+        ds.lod1[i].t = static_cast<std::int64_t>(src);
         ds.lod1[i].v = 1.0f + static_cast<float>(src) * 0.01f;
         ds.lod1[i].aux = 0.5 + static_cast<double>(src) * 0.1;
     }

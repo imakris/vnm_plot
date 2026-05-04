@@ -224,9 +224,14 @@ void Chrome_renderer::render_grid_and_backgrounds(
 
     const grid_layer_params_t vertical_levels = calculate_grid_params(
         double(ctx.v0), double(ctx.v1), pl.usable_height, ctx.adjusted_font_px);
+    // Grid spacing math runs in fp64 seconds; the shift origin is the
+    // (rebased) seconds-domain t_min that the axis uniforms already use.
+    constexpr double k_seconds_per_ns = 1.0e-9;
+    const double t0_seconds = static_cast<double>(ctx.t0) * k_seconds_per_ns;
+    const double t1_seconds = static_cast<double>(ctx.t1) * k_seconds_per_ns;
     const grid_layer_params_t horizontal_levels = build_time_grid(
-        ctx.t0,
-        ctx.t1,
+        t0_seconds,
+        t1_seconds,
         pl.usable_width,
         ctx.adjusted_font_px,
         ctx.config ? ctx.config->log_debug : std::function<void(const std::string&)>());
@@ -356,10 +361,14 @@ void Chrome_renderer::render_preview_overlay(
         return;
     }
 
-    const double t_avail_span = ctx.t_available_max - ctx.t_available_min;
-    if (t_avail_span <= 0) {
+    // Subtract nearby int64 nanoseconds first, then convert to fp64 once for
+    // the proportional math below. Going straight to double on each operand
+    // would lose sub-ms precision near modern wall-clock epochs.
+    const std::int64_t t_avail_span_ns = ctx.t_available_max - ctx.t_available_min;
+    if (t_avail_span_ns <= 0) {
         return;
     }
+    const double t_avail_span = static_cast<double>(t_avail_span_ns);
 
     const bool dark_mode = ctx.dark_mode;
     const Color_palette palette = dark_mode ? Color_palette::dark() : Color_palette::light();
@@ -368,8 +377,10 @@ void Chrome_renderer::render_preview_overlay(
     const glm::vec4 separator_color = palette.separator;
 
     // CPU calculations
-    const double x0 = ctx.win_w * (ctx.t0 - ctx.t_available_min) / t_avail_span;
-    const double x1 = ctx.win_w * (1.0 - (ctx.t_available_max - ctx.t1) / t_avail_span);
+    const double x0 = ctx.win_w *
+        static_cast<double>(ctx.t0 - ctx.t_available_min) / t_avail_span;
+    const double x1 = ctx.win_w * (1.0 -
+        static_cast<double>(ctx.t_available_max - ctx.t1) / t_avail_span);
 
     const double dd = x1 - x0;
     const double blh = ctx.base_label_height_px;

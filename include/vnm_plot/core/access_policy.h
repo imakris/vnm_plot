@@ -31,6 +31,15 @@ constexpr Vertex_attrib_type vertex_attrib_type_for()
         return Vertex_attrib_type::FLOAT64;
     }
     else
+    if constexpr (std::is_same_v<U, std::int64_t>) {
+        // The user-visible timestamp type is int64 nanoseconds, but the
+        // renderer's upload-staging layout reinterprets that 8-byte slot as
+        // fp64 seconds (the staging step rebases int64 ns -> double s before
+        // upload). The vertex layout description therefore declares FLOAT64
+        // at the timestamp slot to match what the GPU actually sees.
+        return Vertex_attrib_type::FLOAT64;
+    }
+    else
     if constexpr (std::is_same_v<U, std::int32_t> || std::is_same_v<U, int>) {
         return Vertex_attrib_type::INT32;
     }
@@ -60,10 +69,10 @@ std::size_t member_offset(Member Sample::* member)
 template<typename Sample, typename Timestamp_member>
 auto make_clone_with_timestamp(Timestamp_member Sample::* timestamp_member)
 {
-    return [timestamp_member](Sample& dst_sample, const Sample& src_sample, double timestamp) {
+    return [timestamp_member](Sample& dst_sample, const Sample& src_sample, std::int64_t timestamp_ns) {
         dst_sample = src_sample;
         using timestamp_t = std::decay_t<decltype(dst_sample.*timestamp_member)>;
-        dst_sample.*timestamp_member = static_cast<timestamp_t>(timestamp);
+        dst_sample.*timestamp_member = static_cast<timestamp_t>(timestamp_ns);
     };
 }
 
@@ -72,13 +81,14 @@ auto make_clone_with_timestamp(Timestamp_member Sample::* timestamp_member)
 template<typename Sample>
 struct Data_access_policy_typed
 {
-    std::function<double(const Sample&)> get_timestamp;
+    // Timestamps are int64_t nanoseconds (API convention).
+    std::function<std::int64_t(const Sample&)> get_timestamp;
     std::function<float(const Sample&)> get_value;
     std::function<std::pair<float, float>(const Sample&)> get_range;
 
     std::function<double(const Sample&)> get_aux_metric;
     std::function<float(const Sample&)> get_signal;
-    std::function<void(Sample& dst_sample, const Sample& src_sample, double timestamp)> clone_with_timestamp;
+    std::function<void(Sample& dst_sample, const Sample& src_sample, std::int64_t timestamp_ns)> clone_with_timestamp;
 
     std::function<void()> setup_vertex_attributes;
     std::function<void(unsigned int)> bind_uniforms;
@@ -122,7 +132,7 @@ struct Data_access_policy_typed
             };
         }
         if (clone_with_timestamp) {
-            policy.clone_with_timestamp = [fn = clone_with_timestamp](void* dst_sample, const void* src_sample, double timestamp) {
+            policy.clone_with_timestamp = [fn = clone_with_timestamp](void* dst_sample, const void* src_sample, std::int64_t timestamp_ns) {
                 if (!dst_sample || !src_sample) {
                     return;
                 }
@@ -132,7 +142,7 @@ struct Data_access_policy_typed
                 fn(
                     tmp_sample,
                     *static_cast<const Sample*>(src_sample),
-                    timestamp);
+                    timestamp_ns);
                 std::memcpy(dst_sample, &tmp_sample, sizeof(Sample));
             };
         }
@@ -243,7 +253,7 @@ inline void assign_standard_accessors(
     Value_member Sample::* value_member)
 {
     policy.get_timestamp = [timestamp_member](const Sample& sample) {
-        return static_cast<double>(sample.*timestamp_member);
+        return static_cast<std::int64_t>(sample.*timestamp_member);
     };
     policy.get_value = [value_member](const Sample& sample) {
         return static_cast<float>(sample.*value_member);

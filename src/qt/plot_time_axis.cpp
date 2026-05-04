@@ -7,29 +7,44 @@
 namespace vnm::plot {
 
 namespace {
-constexpr double k_axis_eps = 1e-12;
+
+// Round-to-nearest helper for fp64 -> qint64 conversions on the time axis.
+// Saturates instead of overflowing on extreme inputs so a stray Infinity from
+// a misuse cannot tear the integer field.
+qint64 to_qint64_rounded(double value)
+{
+    if (!std::isfinite(value)) {
+        return 0;
+    }
+    const double clamped = std::clamp(
+        value,
+        static_cast<double>(std::numeric_limits<qint64>::min()),
+        static_cast<double>(std::numeric_limits<qint64>::max()));
+    return static_cast<qint64>(std::llround(clamped));
 }
+
+} // anonymous namespace
 
 Plot_time_axis::Plot_time_axis(QObject* parent)
     : QObject(parent)
 {}
 
-double Plot_time_axis::t_min() const
+qint64 Plot_time_axis::t_min() const
 {
     return m_t_min;
 }
 
-double Plot_time_axis::t_max() const
+qint64 Plot_time_axis::t_max() const
 {
     return m_t_max;
 }
 
-double Plot_time_axis::t_available_min() const
+qint64 Plot_time_axis::t_available_min() const
 {
     return m_t_available_min;
 }
 
-double Plot_time_axis::t_available_max() const
+qint64 Plot_time_axis::t_available_max() const
 {
     return m_t_available_max;
 }
@@ -77,7 +92,7 @@ void Plot_time_axis::update_shared_vbar_width(const QObject* owner, double width
         max_width = std::max(max_width, entry.second);
     }
 
-    if (std::abs(max_width - m_shared_vbar_width_px) > k_axis_eps) {
+    if (std::abs(max_width - m_shared_vbar_width_px) > 1e-12) {
         m_shared_vbar_width_px = max_width;
         emit shared_vbar_width_changed(m_shared_vbar_width_px);
     }
@@ -99,22 +114,19 @@ void Plot_time_axis::clear_shared_vbar_width(const QObject* owner)
         max_width = std::max(max_width, entry.second);
     }
 
-    if (std::abs(max_width - m_shared_vbar_width_px) > k_axis_eps) {
+    if (std::abs(max_width - m_shared_vbar_width_px) > 1e-12) {
         m_shared_vbar_width_px = max_width;
         emit shared_vbar_width_changed(m_shared_vbar_width_px);
     }
 }
 
-void Plot_time_axis::set_t_min(double v)
+void Plot_time_axis::set_t_min(qint64 v)
 {
-    if (!std::isfinite(v)) {
-        return;
-    }
-    double new_min = v;
-    double new_max = m_t_max;
+    qint64 new_min = v;
+    qint64 new_max = m_t_max;
     if (v >= m_t_max) {
-        const double span = m_t_max - m_t_min;
-        if (!(span > 0.0)) {
+        const qint64 span = m_t_max - m_t_min;
+        if (span <= 0) {
             return;
         }
         new_max = v + span;
@@ -122,16 +134,13 @@ void Plot_time_axis::set_t_min(double v)
     set_limits_if_changed(new_min, new_max, m_t_available_min, m_t_available_max);
 }
 
-void Plot_time_axis::set_t_max(double v)
+void Plot_time_axis::set_t_max(qint64 v)
 {
-    if (!std::isfinite(v)) {
-        return;
-    }
-    double new_min = m_t_min;
-    double new_max = v;
+    qint64 new_min = m_t_min;
+    qint64 new_max = v;
     if (v <= m_t_min) {
-        const double span = m_t_max - m_t_min;
-        if (!(span > 0.0)) {
+        const qint64 span = m_t_max - m_t_min;
+        if (span <= 0) {
             return;
         }
         new_min = v - span;
@@ -139,59 +148,51 @@ void Plot_time_axis::set_t_max(double v)
     set_limits_if_changed(new_min, new_max, m_t_available_min, m_t_available_max);
 }
 
-void Plot_time_axis::set_t_available_min(double v)
+void Plot_time_axis::set_t_available_min(qint64 v)
 {
-    if (!std::isfinite(v)) {
-        return;
-    }
     set_limits_if_changed(m_t_min, m_t_max, v, m_t_available_max);
 }
 
-void Plot_time_axis::set_t_available_max(double v)
+void Plot_time_axis::set_t_available_max(qint64 v)
 {
-    if (!std::isfinite(v)) {
-        return;
-    }
     set_limits_if_changed(m_t_min, m_t_max, m_t_available_min, v);
 }
 
-void Plot_time_axis::set_t_range(double t_min, double t_max)
+void Plot_time_axis::set_t_range(qint64 t_min_ns, qint64 t_max_ns)
 {
-    if (!std::isfinite(t_min) || !std::isfinite(t_max) || !(t_max > t_min)) {
+    if (!(t_max_ns > t_min_ns)) {
         return;
     }
-    set_limits_if_changed(t_min, t_max, m_t_available_min, m_t_available_max);
+    set_limits_if_changed(t_min_ns, t_max_ns, m_t_available_min, m_t_available_max);
 }
 
-void Plot_time_axis::set_available_t_range(double t_available_min, double t_available_max)
+void Plot_time_axis::set_available_t_range(qint64 t_available_min_ns, qint64 t_available_max_ns)
 {
-    if (!std::isfinite(t_available_min) || !std::isfinite(t_available_max) ||
-        !(t_available_max > t_available_min))
-    {
+    if (!(t_available_max_ns > t_available_min_ns)) {
         return;
     }
 
-    double new_t_min = m_t_min;
-    double new_t_max = m_t_max;
+    qint64 new_t_min = m_t_min;
+    qint64 new_t_max = m_t_max;
 
-    const double span = t_available_max - t_available_min;
-    const double cur_span = new_t_max - new_t_min;
+    const qint64 span = t_available_max_ns - t_available_min_ns;
+    const qint64 cur_span = new_t_max - new_t_min;
     if (cur_span > span) {
-        new_t_min = t_available_min;
-        new_t_max = t_available_max;
+        new_t_min = t_available_min_ns;
+        new_t_max = t_available_max_ns;
     }
     else {
-        if (new_t_min < t_available_min) {
-            new_t_min = t_available_min;
-            new_t_max = t_available_min + cur_span;
+        if (new_t_min < t_available_min_ns) {
+            new_t_min = t_available_min_ns;
+            new_t_max = t_available_min_ns + cur_span;
         }
-        if (new_t_max > t_available_max) {
-            new_t_max = t_available_max;
-            new_t_min = t_available_max - cur_span;
+        if (new_t_max > t_available_max_ns) {
+            new_t_max = t_available_max_ns;
+            new_t_min = t_available_max_ns - cur_span;
         }
     }
 
-    set_limits_if_changed(new_t_min, new_t_max, t_available_min, t_available_max);
+    set_limits_if_changed(new_t_min, new_t_max, t_available_min_ns, t_available_max_ns);
 }
 
 void Plot_time_axis::adjust_t_from_mouse_diff(double ref_width, double diff)
@@ -200,9 +201,12 @@ void Plot_time_axis::adjust_t_from_mouse_diff(double ref_width, double diff)
         return;
     }
 
-    const double span = m_t_max - m_t_min;
-    const double delta = diff * span / ref_width;
-    adjust_t_to_target(m_t_min - delta, m_t_max - delta);
+    // Pixel deltas are double, but the visible span is in int64 nanoseconds;
+    // convert through fp64 once, round when re-attaching to the qint64 axis.
+    const qint64 span_ns = m_t_max - m_t_min;
+    const qint64 delta_ns = to_qint64_rounded(
+        diff * static_cast<double>(span_ns) / ref_width);
+    adjust_t_to_target(m_t_min - delta_ns, m_t_max - delta_ns);
 }
 
 void Plot_time_axis::adjust_t_from_mouse_diff_on_preview(double ref_width, double diff)
@@ -211,9 +215,10 @@ void Plot_time_axis::adjust_t_from_mouse_diff_on_preview(double ref_width, doubl
         return;
     }
 
-    const double avail_span = m_t_available_max - m_t_available_min;
-    const double delta = diff * avail_span / ref_width;
-    adjust_t_to_target(m_t_min + delta, m_t_max + delta);
+    const qint64 avail_span_ns = m_t_available_max - m_t_available_min;
+    const qint64 delta_ns = to_qint64_rounded(
+        diff * static_cast<double>(avail_span_ns) / ref_width);
+    adjust_t_to_target(m_t_min + delta_ns, m_t_max + delta_ns);
 }
 
 void Plot_time_axis::adjust_t_from_mouse_pos_on_preview(double ref_width, double x_pos)
@@ -222,11 +227,13 @@ void Plot_time_axis::adjust_t_from_mouse_pos_on_preview(double ref_width, double
         return;
     }
 
-    const double span = m_t_max - m_t_min;
-    const double avail_span = m_t_available_max - m_t_available_min;
+    const qint64 span_ns = m_t_max - m_t_min;
+    const qint64 avail_span_ns = m_t_available_max - m_t_available_min;
     const double rel = x_pos / ref_width;
-    const double new_center = m_t_available_min + rel * avail_span;
-    adjust_t_to_target(new_center - span * 0.5, new_center + span * 0.5);
+    const qint64 new_center_ns = m_t_available_min
+        + to_qint64_rounded(rel * static_cast<double>(avail_span_ns));
+    const qint64 half_ns = span_ns / 2;
+    adjust_t_to_target(new_center_ns - half_ns, new_center_ns + (span_ns - half_ns));
 }
 
 void Plot_time_axis::adjust_t_from_pivot_and_scale(double pivot, double scale)
@@ -235,48 +242,53 @@ void Plot_time_axis::adjust_t_from_pivot_and_scale(double pivot, double scale)
         return;
     }
 
-    const double t_pivot = m_t_min + (m_t_max - m_t_min) * pivot;
-    const double new_min = t_pivot - (t_pivot - m_t_min) * scale;
-    const double new_max = t_pivot + (m_t_max - t_pivot) * scale;
-    adjust_t_to_target(new_min, new_max);
+    const qint64 span_ns = m_t_max - m_t_min;
+    const qint64 t_pivot_ns = m_t_min
+        + to_qint64_rounded(pivot * static_cast<double>(span_ns));
+    const qint64 new_min_ns = t_pivot_ns - to_qint64_rounded(
+        static_cast<double>(t_pivot_ns - m_t_min) * scale);
+    const qint64 new_max_ns = t_pivot_ns + to_qint64_rounded(
+        static_cast<double>(m_t_max - t_pivot_ns) * scale);
+    adjust_t_to_target(new_min_ns, new_max_ns);
 }
 
-void Plot_time_axis::adjust_t_to_target(double target_min, double target_max)
+void Plot_time_axis::adjust_t_to_target(qint64 target_min_ns, qint64 target_max_ns)
 {
-    if (!(target_max > target_min)) {
+    if (!(target_max_ns > target_min_ns)) {
         return;
     }
 
-    const double avail_span = m_t_available_max - m_t_available_min;
-    double span = target_max - target_min;
-    if (avail_span > 0.0 && span > avail_span) {
-        span = avail_span;
+    const qint64 avail_span_ns = m_t_available_max - m_t_available_min;
+    qint64 span_ns = target_max_ns - target_min_ns;
+    if (avail_span_ns > 0 && span_ns > avail_span_ns) {
+        span_ns = avail_span_ns;
     }
 
-    const double center = 0.5 * (target_min + target_max);
-    double new_min = center - span * 0.5;
-    double new_max = center + span * 0.5;
+    const qint64 half_ns = span_ns / 2;
+    const qint64 center_ns = target_min_ns + (target_max_ns - target_min_ns) / 2;
+    qint64 new_min_ns = center_ns - half_ns;
+    qint64 new_max_ns = new_min_ns + span_ns;
 
-    if (avail_span > 0.0) {
-        if (new_max > m_t_available_max) {
-            new_max = m_t_available_max;
-            new_min = new_max - span;
+    if (avail_span_ns > 0) {
+        if (new_max_ns > m_t_available_max) {
+            new_max_ns = m_t_available_max;
+            new_min_ns = new_max_ns - span_ns;
         }
-        if (new_min < m_t_available_min) {
-            new_min = m_t_available_min;
-            new_max = new_min + span;
+        if (new_min_ns < m_t_available_min) {
+            new_min_ns = m_t_available_min;
+            new_max_ns = new_min_ns + span_ns;
         }
     }
 
-    set_limits_if_changed(new_min, new_max, m_t_available_min, m_t_available_max);
+    set_limits_if_changed(new_min_ns, new_max_ns, m_t_available_min, m_t_available_max);
 }
 
-void Plot_time_axis::set_indicator_state(QObject* owner, bool active, double t)
+void Plot_time_axis::set_indicator_state(QObject* owner, bool active, qint64 t_ns)
 {
-    set_indicator_state(owner, active, t, std::numeric_limits<double>::quiet_NaN());
+    set_indicator_state(owner, active, t_ns, std::numeric_limits<double>::quiet_NaN());
 }
 
-void Plot_time_axis::set_indicator_state(QObject* owner, bool active, double t, double x_norm)
+void Plot_time_axis::set_indicator_state(QObject* owner, bool active, qint64 t_ns, double x_norm)
 {
     if (!owner) {
         return;
@@ -294,13 +306,13 @@ void Plot_time_axis::set_indicator_state(QObject* owner, bool active, double t, 
             m_indicator_active = true;
             changed = true;
         }
-        if (std::isfinite(t) && std::abs(m_indicator_t - t) > k_axis_eps) {
-            m_indicator_t = t;
+        if (m_indicator_t != t_ns) {
+            m_indicator_t = t_ns;
             changed = true;
         }
         if (std::isfinite(x_norm)) {
             const double clamped_x_norm = std::clamp(x_norm, 0.0, 1.0);
-            if (!m_indicator_x_norm_valid || std::abs(m_indicator_x_norm - clamped_x_norm) > k_axis_eps) {
+            if (!m_indicator_x_norm_valid || std::abs(m_indicator_x_norm - clamped_x_norm) > 1e-12) {
                 m_indicator_x_norm = clamped_x_norm;
                 changed = true;
             }
@@ -334,7 +346,7 @@ bool Plot_time_axis::indicator_active() const
     return m_indicator_active;
 }
 
-double Plot_time_axis::indicator_t() const
+qint64 Plot_time_axis::indicator_t() const
 {
     return m_indicator_t;
 }
@@ -358,25 +370,25 @@ bool Plot_time_axis::indicator_owned_by(QObject* owner) const
 }
 
 bool Plot_time_axis::set_limits_if_changed(
-    double t_min,
-    double t_max,
-    double t_available_min,
-    double t_available_max)
+    qint64 t_min_ns,
+    qint64 t_max_ns,
+    qint64 t_available_min_ns,
+    qint64 t_available_max_ns)
 {
     const bool changed =
-        (std::abs(m_t_min - t_min) > k_axis_eps) ||
-        (std::abs(m_t_max - t_max) > k_axis_eps) ||
-        (std::abs(m_t_available_min - t_available_min) > k_axis_eps) ||
-        (std::abs(m_t_available_max - t_available_max) > k_axis_eps);
+        m_t_min != t_min_ns ||
+        m_t_max != t_max_ns ||
+        m_t_available_min != t_available_min_ns ||
+        m_t_available_max != t_available_max_ns;
 
     if (!changed) {
         return false;
     }
 
-    m_t_min = t_min;
-    m_t_max = t_max;
-    m_t_available_min = t_available_min;
-    m_t_available_max = t_available_max;
+    m_t_min = t_min_ns;
+    m_t_max = t_max_ns;
+    m_t_available_min = t_available_min_ns;
+    m_t_available_max = t_available_max_ns;
     emit t_limits_changed();
     return true;
 }

@@ -80,9 +80,13 @@ qreal Plot_interaction_item::t_stop_min() const
     if (!m_plot_widget) {
         return 0.0;
     }
-    const qreal t_available_span = std::max(1e-9,
-        m_plot_widget->t_available_max() - m_plot_widget->t_available_min());
-    return (m_plot_widget->t_min() - m_plot_widget->t_available_min()) / t_available_span;
+    // Subtract qint64 nanoseconds first, then widen to qreal once for the
+    // proportional math. A floor of 1 ns prevents division-by-zero when the
+    // available range is empty.
+    const qreal t_available_span = std::max<qreal>(1.0,
+        static_cast<qreal>(m_plot_widget->t_available_max() - m_plot_widget->t_available_min()));
+    return static_cast<qreal>(m_plot_widget->t_min() - m_plot_widget->t_available_min())
+        / t_available_span;
 }
 
 qreal Plot_interaction_item::t_stop_max() const
@@ -90,9 +94,10 @@ qreal Plot_interaction_item::t_stop_max() const
     if (!m_plot_widget) {
         return 1.0;
     }
-    const qreal t_available_span = std::max(1e-9,
-        m_plot_widget->t_available_max() - m_plot_widget->t_available_min());
-    return 1.0 - (m_plot_widget->t_available_max() - m_plot_widget->t_max()) / t_available_span;
+    const qreal t_available_span = std::max<qreal>(1.0,
+        static_cast<qreal>(m_plot_widget->t_available_max() - m_plot_widget->t_available_min()));
+    return 1.0 - static_cast<qreal>(m_plot_widget->t_available_max() - m_plot_widget->t_max())
+        / t_available_span;
 }
 
 qreal Plot_interaction_item::zoom_animation_scale_factor(qreal velocity, qreal elapsed_timer_steps)

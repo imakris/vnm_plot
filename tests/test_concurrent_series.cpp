@@ -152,7 +152,9 @@ bool test_data_source_default_query_v_range_returns_false()
     float v_min = 123.f;
     float v_max = 456.f;
     std::uint64_t seq = 999;
-    const bool handled = source.query_v_range_for_t_window(0.0, 1.0, v_min, v_max, &seq);
+    // Query in int64 nanoseconds (API convention).
+    const bool handled = source.query_v_range_for_t_window(
+        std::int64_t{0}, std::int64_t{1}, v_min, v_max, &seq);
     TEST_ASSERT(!handled, "default Data_source should report v-range query as unsupported");
     TEST_ASSERT(v_min == 123.f && v_max == 456.f,
         "default query_v_range_for_t_window must not touch its outputs");

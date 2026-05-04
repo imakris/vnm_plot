@@ -186,20 +186,29 @@ void Benchmark_window::initializeGL()
         // exactly what is in the ring buffer.
         //
         // Coordinates are deliberately offset from integer/half grid lines
-        // so small dots and thin lines do not blend into the grid.
-        const std::array<double, 5> ts  = {0.23, 1.23, 2.23, 3.23, 4.23};
-        const std::array<float,  5> vs  = {-0.43f, 0.43f, -0.43f, 0.43f, -0.43f};
-        for (std::size_t i = 0; i < ts.size(); ++i) {
+        // so small dots and thin lines do not blend into the grid. The seed
+        // ts values are seconds; the static array stores them already
+        // converted to int64 nanoseconds so the rest of the pipeline does
+        // not see any double-domain timestamp.
+        constexpr std::array<int64_t, 5> ts_ns = {
+            int64_t{   230'000'000},  // 0.23 s
+            int64_t{ 1'230'000'000},  // 1.23 s
+            int64_t{ 2'230'000'000},  // 2.23 s
+            int64_t{ 3'230'000'000},  // 3.23 s
+            int64_t{ 4'230'000'000}   // 4.23 s
+        };
+        const std::array<float, 5> vs = {-0.43f, 0.43f, -0.43f, 0.43f, -0.43f};
+        for (std::size_t i = 0; i < ts_ns.size(); ++i) {
             if (m_config.data_type == "Trades") {
                 Trade_sample s{};
-                s.timestamp = ts[i];
+                s.timestamp = ts_ns[i];
                 s.price = vs[i];
                 s.size = 1.0f;
                 m_trade_buffer->push(s);
             }
             else {
                 Bar_sample b{};
-                b.timestamp = ts[i];
+                b.timestamp = ts_ns[i];
                 b.open = vs[i];
                 b.high = vs[i];
                 b.low  = vs[i];

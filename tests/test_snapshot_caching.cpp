@@ -36,7 +36,8 @@ using plot::snapshot_result_t;
 namespace {
 
 struct Test_sample {
-    double t = 0.0;
+    // Timestamps are int64 nanoseconds (API convention).
+    std::int64_t t = 0;
     float v = 0.0f;
 };
 
@@ -115,7 +116,7 @@ public:
 Data_access_policy make_policy()
 {
     Data_access_policy policy;
-    policy.get_timestamp = [](const void* sample) {
+    policy.get_timestamp = [](const void* sample) -> std::int64_t {
         return static_cast<const Test_sample*>(sample)->t;
     };
     policy.get_value = [](const void* sample) {
@@ -131,13 +132,13 @@ Data_access_policy make_policy()
 Data_access_policy make_policy_with_clone()
 {
     Data_access_policy policy = make_policy();
-    policy.clone_with_timestamp = [](void* dst_sample, const void* src_sample, double timestamp) {
+    policy.clone_with_timestamp = [](void* dst_sample, const void* src_sample, std::int64_t timestamp_ns) {
         if (!dst_sample || !src_sample) {
             return;
         }
         Test_sample tmp_sample{};
         std::memcpy(&tmp_sample, src_sample, sizeof(Test_sample));
-        tmp_sample.t = timestamp;
+        tmp_sample.t = timestamp_ns;
         std::memcpy(dst_sample, &tmp_sample, sizeof(Test_sample));
     };
     return policy;
@@ -146,10 +147,11 @@ Data_access_policy make_policy_with_clone()
 frame_context_t make_context(const frame_layout_result_t& layout, Plot_config& config)
 {
     frame_context_t ctx{layout};
-    ctx.t0 = 0.0;
-    ctx.t1 = 10.0;
-    ctx.t_available_min = 0.0;
-    ctx.t_available_max = 10.0;
+    // Timestamps are int64 ns. Tests use small ordinal indices for clarity.
+    ctx.t0 = 0;
+    ctx.t1 = 10;
+    ctx.t_available_min = 0;
+    ctx.t_available_max = 10;
     ctx.win_w = 200;
     ctx.win_h = 120;
     ctx.skip_gl = config.skip_gl_calls;
@@ -162,13 +164,13 @@ void fill_lod_samples(Two_level_source& source)
 {
     source.lod0.resize(100);
     for (size_t i = 0; i < source.lod0.size(); ++i) {
-        source.lod0[i].t = static_cast<double>(i);
+        source.lod0[i].t = static_cast<std::int64_t>(i);
         source.lod0[i].v = 1.0f + static_cast<float>(i);
     }
     source.lod1.resize(25);
     for (size_t i = 0; i < source.lod1.size(); ++i) {
         const size_t src = i * 4;
-        source.lod1[i].t = static_cast<double>(src);
+        source.lod1[i].t = static_cast<std::int64_t>(src);
         source.lod1[i].v = 1.0f + static_cast<float>(src);
     }
 }
@@ -178,7 +180,7 @@ bool test_frame_scoped_cache_reuse()
     auto data_source = std::make_shared<Single_level_source>();
     data_source->samples.resize(16);
     for (size_t i = 0; i < data_source->samples.size(); ++i) {
-        data_source->samples[i].t = static_cast<double>(i);
+        data_source->samples[i].t = static_cast<std::int64_t>(i);
         data_source->samples[i].v = 1.0f + static_cast<float>(i);
     }
 
@@ -224,9 +226,9 @@ bool test_preview_uses_distinct_source_snapshot()
     main_source->samples.resize(8);
     preview_source->samples.resize(8);
     for (size_t i = 0; i < main_source->samples.size(); ++i) {
-        main_source->samples[i].t = static_cast<double>(i);
+        main_source->samples[i].t = static_cast<std::int64_t>(i);
         main_source->samples[i].v = 1.0f + static_cast<float>(i);
-        preview_source->samples[i].t = static_cast<double>(i);
+        preview_source->samples[i].t = static_cast<std::int64_t>(i);
         preview_source->samples[i].v = 2.0f + static_cast<float>(i);
     }
 
@@ -320,7 +322,7 @@ bool test_frame_change_invalidates_snapshot_cache()
     auto data_source = std::make_shared<Single_level_source>();
     data_source->samples.resize(12);
     for (size_t i = 0; i < data_source->samples.size(); ++i) {
-        data_source->samples[i].t = static_cast<double>(i);
+        data_source->samples[i].t = static_cast<std::int64_t>(i);
         data_source->samples[i].v = 0.5f + static_cast<float>(i);
     }
 
@@ -360,7 +362,7 @@ bool test_empty_window_behavior_invalidates_fast_path_cache()
     auto data_source = std::make_shared<Single_level_source>();
     data_source->samples.resize(32);
     for (size_t i = 0; i < data_source->samples.size(); ++i) {
-        data_source->samples[i].t = static_cast<double>(i);
+        data_source->samples[i].t = static_cast<std::int64_t>(i);
         data_source->samples[i].v = 10.0f + static_cast<float>(i);
     }
 
@@ -414,7 +416,7 @@ bool test_preview_honors_hold_last_forward()
     auto data_source = std::make_shared<Single_level_source>();
     data_source->samples.resize(16);
     for (size_t i = 0; i < data_source->samples.size(); ++i) {
-        data_source->samples[i].t = static_cast<double>(i);
+        data_source->samples[i].t = static_cast<std::int64_t>(i);
         data_source->samples[i].v = 20.0f + static_cast<float>(i);
     }
 
@@ -511,7 +513,7 @@ bool test_snapshot_released_after_render()
     auto data_source = std::make_shared<Single_level_source>();
     data_source->samples.resize(8);
     for (size_t i = 0; i < data_source->samples.size(); ++i) {
-        data_source->samples[i].t = static_cast<double>(i);
+        data_source->samples[i].t = static_cast<std::int64_t>(i);
         data_source->samples[i].v = 2.0f + static_cast<float>(i);
     }
 

@@ -59,9 +59,9 @@ bool test_snapshot_with_data() {
     Ring_buffer<Bar_sample> buffer(100);
     Benchmark_data_source<Bar_sample> source(buffer);
 
-    // Push some data
+    // Push some data. Timestamps are int64 nanoseconds (API convention).
     Bar_sample bar{};
-    bar.timestamp = 1.0;
+    bar.timestamp = 1'000'000'000;  // 1.0 s
     bar.open = 100.0f;
     bar.high = 105.0f;
     bar.low = 95.0f;
@@ -85,9 +85,10 @@ bool test_snapshot_data_correctness() {
     Ring_buffer<Bar_sample> buffer(100);
     Benchmark_data_source<Bar_sample> source(buffer);
 
-    // Push specific data
+    // Push specific data. Timestamps are int64 nanoseconds (API convention).
+    constexpr int64_t k_test_ts_ns = 123'456'000'000;  // 123.456 s in ns
     Bar_sample bar{};
-    bar.timestamp = 123.456;
+    bar.timestamp = k_test_ts_ns;
     bar.open = 100.0f;
     bar.high = 110.0f;
     bar.low = 90.0f;
@@ -98,7 +99,7 @@ bool test_snapshot_data_correctness() {
     auto result = source.try_snapshot();
     const auto* sample = static_cast<const Bar_sample*>(result.snapshot.at(0));
     TEST_ASSERT(sample != nullptr, "sample should be available");
-    TEST_ASSERT(sample->timestamp == 123.456, "timestamp should match");
+    TEST_ASSERT(sample->timestamp == k_test_ts_ns, "timestamp should match");
     TEST_ASSERT(sample->close == 105.0f, "close should match");
 
     return true;
@@ -203,14 +204,15 @@ bool test_bar_access_policy() {
 
     TEST_ASSERT(policy.is_valid(), "policy should be valid");
 
+    constexpr int64_t k_bar_ts_ns = 1'000'000'000'000;  // 1000.0 s in ns
     Bar_sample bar{};
-    bar.timestamp = 1000.0;
+    bar.timestamp = k_bar_ts_ns;
     bar.close = 105.5f;
     bar.low = 100.0f;
     bar.high = 110.0f;
     bar.volume = 5000.0f;
 
-    TEST_ASSERT(policy.get_timestamp(&bar) == 1000.0, "timestamp extraction");
+    TEST_ASSERT(policy.get_timestamp(&bar) == k_bar_ts_ns, "timestamp extraction");
     TEST_ASSERT(policy.get_value(&bar) == 105.5f, "value extraction (close)");
 
     auto [lo, hi] = policy.get_range(&bar);
@@ -228,12 +230,13 @@ bool test_trade_access_policy() {
 
     TEST_ASSERT(policy.is_valid(), "policy should be valid");
 
+    constexpr int64_t k_trade_ts_ns = 2'000'000'000'000;  // 2000.0 s in ns
     Trade_sample trade{};
-    trade.timestamp = 2000.0;
+    trade.timestamp = k_trade_ts_ns;
     trade.price = 99.5f;
     trade.size = 100.0f;
 
-    TEST_ASSERT(policy.get_timestamp(&trade) == 2000.0, "timestamp extraction");
+    TEST_ASSERT(policy.get_timestamp(&trade) == k_trade_ts_ns, "timestamp extraction");
     TEST_ASSERT(policy.get_value(&trade) == 99.5f, "value extraction (price)");
 
     auto [lo, hi] = policy.get_range(&trade);

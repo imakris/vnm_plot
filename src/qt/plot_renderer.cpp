@@ -344,8 +344,8 @@ bool scan_snapshot_minmax(
 bool find_window_indices(
     const Data_access_policy& access,
     const data_snapshot_t& snapshot,
-    double t_min,
-    double t_max,
+    std::int64_t t_min_ns,
+    std::int64_t t_max_ns,
     std::size_t& start_idx,
     std::size_t& end_idx)
 {
@@ -355,7 +355,7 @@ bool find_window_indices(
     if (!access.get_timestamp || !snapshot.is_valid()) {
         return false;
     }
-    if (!(t_max > t_min)) {
+    if (!(t_max_ns > t_min_ns)) {
         return true;
     }
 
@@ -364,17 +364,16 @@ bool find_window_indices(
     if (!first_sample || !last_sample) {
         return false;
     }
-    const double first_ts = access.get_timestamp(first_sample);
-    const double last_ts = access.get_timestamp(last_sample);
-    if (std::isfinite(first_ts) && std::isfinite(last_ts) &&
-        (t_max < first_ts || t_min > last_ts)) {
+    const std::int64_t first_ts = access.get_timestamp(first_sample);
+    const std::int64_t last_ts = access.get_timestamp(last_sample);
+    if (t_max_ns < first_ts || t_min_ns > last_ts) {
         return false;
     }
 
     const auto& get_ts = access.get_timestamp;
-    std::size_t lb = detail::lower_bound_timestamp(snapshot, get_ts, t_min);
+    std::size_t lb = detail::lower_bound_timestamp(snapshot, get_ts, t_min_ns);
     start_idx = (lb > 0) ? (lb - 1) : 0;
-    std::size_t ub = detail::upper_bound_timestamp(snapshot, get_ts, t_max);
+    std::size_t ub = detail::upper_bound_timestamp(snapshot, get_ts, t_max_ns);
     end_idx = std::min(ub + 1, snapshot.count);
     if (end_idx <= start_idx) {
         end_idx = std::min(start_idx + 1, snapshot.count);
@@ -558,8 +557,8 @@ std::pair<float, float> compute_visible_v_range(
     std::unordered_map<int, series_minmax_cache_t>* alt_cache_map,
     Resolver&& resolve,
     vnm::plot::Profiler* profiler,
-    double t_min,
-    double t_max,
+    std::int64_t t_min_ns,
+    std::int64_t t_max_ns,
     double width_px,
     float fallback_min,
     float fallback_max)
@@ -597,7 +596,7 @@ std::pair<float, float> compute_visible_v_range(
         float series_max = 0.0f;
         uint64_t query_sequence = 0;
         if (view.source->query_v_range_for_t_window(
-                t_min, t_max, series_min, series_max, &query_sequence))
+                t_min_ns, t_max_ns, series_min, series_max, &query_sequence))
         {
             if (!std::isfinite(series_min) || !std::isfinite(series_max) || series_min > series_max) {
                 continue;
@@ -627,7 +626,7 @@ std::pair<float, float> compute_visible_v_range(
         if (!snapshot0.is_valid()) continue;
 
         std::size_t start0 = 0, end0 = 0;
-        if (!find_window_indices(*view.access, snapshot0, t_min, t_max, start0, end0)) continue;
+        if (!find_window_indices(*view.access, snapshot0, t_min_ns, t_max_ns, start0, end0)) continue;
         const std::size_t count0 = (end0 > start0) ? (end0 - start0) : 0;
         if (count0 == 0) continue;
 
@@ -647,7 +646,7 @@ std::pair<float, float> compute_visible_v_range(
         }
 
         std::size_t start = 0, end = 0;
-        if (!find_window_indices(*view.access, snapshot, t_min, t_max, start, end)) continue;
+        if (!find_window_indices(*view.access, snapshot, t_min_ns, t_max_ns, start, end)) continue;
 
         const bool full_range = (start == 0 && end == snapshot.count);
 
@@ -701,8 +700,9 @@ struct Plot_renderer::impl_t
         bool v_auto = true;
         bool preview_enabled = false;
         double extra_scale = 0.0;
-        double t_min = 0.0;
-        double t_max = 0.0;
+        // Visible-mode range cache key: nanoseconds (API convention).
+        std::int64_t t_min = 0;
+        std::int64_t t_max = 0;
         double usable_width = 0.0;
 
         bool operator==(const range_cache_key_t& other) const noexcept
@@ -841,8 +841,8 @@ struct Plot_renderer::impl_t
     const frame_layout_result_t& calculate_frame_layout(
         float v0,
         float v1,
-        double t0,
-        double t1,
+        std::int64_t t0_ns,
+        std::int64_t t1_ns,
         int win_w,
         int win_h);
 
@@ -855,14 +855,15 @@ struct Plot_renderer::impl_t
 const frame_layout_result_t& Plot_renderer::impl_t::calculate_frame_layout(
     float v0,
     float v1,
-    double t0,
-    double t1,
+    std::int64_t t0_ns,
+    std::int64_t t1_ns,
     int win_w,
     int win_h)
 {
     const double usable_height = win_h - snapshot.adjusted_reserved_height;
     const double v_span = double(v1) - double(v0);
-    const double t_span = t1 - t0;
+    // Subtract first, then convert: keeps sub-ms precision near modern epochs.
+    const double t_span = static_cast<double>(t1_ns - t0_ns);
     const Plot_config* config = &snapshot.config;
     vnm::plot::Profiler* profiler = config ? config->profiler.get() : nullptr;
 
@@ -871,8 +872,8 @@ const frame_layout_result_t& Plot_renderer::impl_t::calculate_frame_layout(
     Layout_cache::key_t cache_key;
     cache_key.v0 = v0;
     cache_key.v1 = v1;
-    cache_key.t0 = t0;
-    cache_key.t1 = t1;
+    cache_key.t0 = t0_ns;
+    cache_key.t1 = t1_ns;
     cache_key.viewport_size = Size_2i{win_w, win_h};
     cache_key.adjusted_reserved_height = snapshot.adjusted_reserved_height;
     cache_key.adjusted_preview_height = snapshot.adjusted_preview_height;
@@ -896,8 +897,8 @@ const frame_layout_result_t& Plot_renderer::impl_t::calculate_frame_layout(
 
         layout_params.v_min = v0;
         layout_params.v_max = v1;
-        layout_params.t_min = t0;
-        layout_params.t_max = t1;
+        layout_params.t_min = t0_ns;
+        layout_params.t_max = t1_ns;
         layout_params.usable_width = win_w - vbar_width;
         layout_params.usable_height = usable_height;
         layout_params.vbar_width = vbar_width;
@@ -933,11 +934,11 @@ const frame_layout_result_t& Plot_renderer::impl_t::calculate_frame_layout(
 
         if (config) {
             layout_params.get_required_fixed_digits_func = [](double) { return 2; };
-            layout_params.format_timestamp_func = [config](double ts, double step) -> std::string {
+            layout_params.format_timestamp_func = [config](std::int64_t ts_ns, std::int64_t step_ns) -> std::string {
                 if (config->format_timestamp) {
-                    return config->format_timestamp(ts, step);
+                    return config->format_timestamp(ts_ns, step_ns);
                 }
-                return format_axis_fixed_or_int(ts, 3);
+                return format_axis_fixed_or_int(static_cast<double>(ts_ns) / 1e9, 3);
             };
             layout_params.profiler = config->profiler.get();
         }
@@ -1246,10 +1247,10 @@ void Plot_renderer::render()
         hash_mix_u64(render_signature, static_cast<std::uint64_t>(m_impl->snapshot.v_auto ? 1 : 0));
 
         // Data config (changes independently of Plot_config)
-        hash_mix_u64(render_signature, std::hash<double>{}(cfg.t_min));
-        hash_mix_u64(render_signature, std::hash<double>{}(cfg.t_max));
-        hash_mix_u64(render_signature, std::hash<double>{}(cfg.t_available_min));
-        hash_mix_u64(render_signature, std::hash<double>{}(cfg.t_available_max));
+        hash_mix_u64(render_signature, std::hash<std::int64_t>{}(cfg.t_min));
+        hash_mix_u64(render_signature, std::hash<std::int64_t>{}(cfg.t_max));
+        hash_mix_u64(render_signature, std::hash<std::int64_t>{}(cfg.t_available_min));
+        hash_mix_u64(render_signature, std::hash<std::int64_t>{}(cfg.t_available_max));
         hash_mix_u64(render_signature, std::hash<float>{}(cfg.v_min));
         hash_mix_u64(render_signature, std::hash<float>{}(cfg.v_max));
         hash_mix_u64(render_signature, std::hash<float>{}(cfg.v_manual_min));
@@ -1565,7 +1566,9 @@ void Plot_renderer::render()
         prev_v_span = m_impl->view.last_vertical_span;
         prev_t_span = m_impl->view.last_horizontal_span;
         v_span = double(v1) - double(v0);
-        t_span = m_impl->snapshot.cfg.t_max - m_impl->snapshot.cfg.t_min;
+        // Subtract int64 nanoseconds first, then widen.
+        t_span = static_cast<double>(
+            m_impl->snapshot.cfg.t_max - m_impl->snapshot.cfg.t_min);
 
         fade_v_labels = (prev_v_span > 0.0) && !spans_approx_equal(v_span, prev_v_span);
         fade_h_labels = (prev_t_span > 0.0) && !spans_approx_equal(t_span, prev_t_span);

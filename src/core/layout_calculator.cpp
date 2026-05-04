@@ -213,11 +213,21 @@ public:
         std::string signature_text;
         signature_text.reserve(96);
 
-        static constexpr std::array<double, 3> k_samples = {0.0, 0.123456789, 12345.6789};
+        // Probe the formatter at a handful of synthetic timestamps. The set
+        // crosses second/sub-second boundaries so the resulting schema covers
+        // both regimes the calculator may pick. Step is in seconds; convert to
+        // the formatter's int64-nanosecond contract.
+        static constexpr std::array<std::int64_t, 3> k_sample_ns = {
+            std::int64_t{0},
+            std::int64_t{123'456'789},          // 0.123456789 s
+            std::int64_t{12'345'678'900'000}    // 12345.6789 s
+        };
+        const std::int64_t step_ns =
+            static_cast<std::int64_t>(std::llround(step * 1.0e9));
 
         bool first = true;
-        for (double sample : k_samples) {
-            std::string text = params.format_timestamp_func(sample, step);
+        for (std::int64_t sample_ns : k_sample_ns) {
+            std::string text = params.format_timestamp_func(sample_ns, step_ns);
             for (char& ch : text) {
                 if (ch >= '0' && ch <= '9') {
                     ch = '0';
@@ -693,12 +703,19 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
     }
 
     // --- Horizontal (T) Axis Label Selection ---
+    // Time math runs in fp64 seconds because the existing axis-step ladder
+    // (build_time_steps_covering) is expressed in seconds. The span is computed
+    // by subtracting nearby int64 nanoseconds first, then scaling once, so we
+    // never feed two raw nanosecond values into a double subtraction.
+    constexpr double k_ns_per_second_d = 1.0e9;
+    constexpr double k_seconds_per_ns  = 1.0 / k_ns_per_second_d;
     double t_range = 0.0;
+    const double t_min_seconds = static_cast<double>(params.t_min) * k_seconds_per_ns;
     {
         VNM_PLOT_PROFILE_SCOPE(
             profiler,
             "renderer.frame.calculate_layout.impl.cache_miss.pass1.t_range");
-        t_range = params.t_max - params.t_min;
+        t_range = static_cast<double>(params.t_max - params.t_min) * k_seconds_per_ns;
     }
     if (t_range > 0.0 && params.usable_width > 0.0f) {
         VNM_PLOT_PROFILE_SCOPE(
@@ -722,15 +739,19 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
             steps = build_time_steps_covering(t_range);
         }
 
-        const auto x_of_t = [&](double tt) -> float {
-            return float((tt - params.t_min) * px_per_t);
+        const auto x_of_t = [&](double tt_seconds) -> float {
+            return float((tt_seconds - t_min_seconds) * px_per_t);
         };
 
-        const auto label_text = [&](double t, double step) -> std::string {
+        const auto seconds_to_ns = [](double seconds) -> std::int64_t {
+            return static_cast<std::int64_t>(std::llround(seconds * k_ns_per_second_d));
+        };
+
+        const auto label_text = [&](double t_seconds, double step_seconds) -> std::string {
             if (!params.format_timestamp_func) {
                 return {};
             }
-            return params.format_timestamp_func(t, step);
+            return params.format_timestamp_func(seconds_to_ns(t_seconds), seconds_to_ns(step_seconds));
         };
 
         std::vector<std::pair<float, float>> accepted;
@@ -817,7 +838,7 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
                 const double left_steps =
                     static_cast<double>(label_extent_px) / static_cast<double>(pixel_step);
                 const int64_t k_min = static_cast<int64_t>(
-                    std::floor((params.t_min / step) - 1.0 - left_steps));
+                    std::floor((t_min_seconds / step) - 1.0 - left_steps));
                 t_start = k_min * step;
             }
 
@@ -845,6 +866,7 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
 
             int64_t tick_index = 0;
             double t = t_start;
+            const double t_max_seconds = static_cast<double>(params.t_max) * k_seconds_per_ns;
             float last_width = estimated_label_width;
             bool have_prev_candidate = false;
             float prev_candidate_x1 = std::numeric_limits<float>::lowest();
@@ -854,7 +876,7 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
                 VNM_PLOT_PROFILE_SCOPE(
                     profiler,
                     "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis.format_labels");
-                while (t <= params.t_max + step) {
+                while (t <= t_max_seconds + step) {
                     VNM_PLOT_PROFILE_SCOPE(
                         profiler,
                         "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis.format_labels.candidate_loop");
@@ -1069,7 +1091,7 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
                     }
 
                     res.h_labels.push_back({
-                        candidate.t,
+                        seconds_to_ns(candidate.t),
                         glm::vec2(
                             candidate.x_anchor,
                             float(params.usable_height + params.h_label_vertical_nudge_factor *
@@ -1102,8 +1124,10 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
         if (any_level && finest_step > 0.0 && params.format_timestamp_func &&
             res.h_labels.size() > 1)
         {
+            const std::int64_t finest_step_ns =
+                static_cast<std::int64_t>(std::llround(finest_step * k_ns_per_second_d));
             for (auto& label : res.h_labels) {
-                label.text = params.format_timestamp_func(label.value, finest_step);
+                label.text = params.format_timestamp_func(label.value, finest_step_ns);
             }
 
             std::sort(res.h_labels.begin(), res.h_labels.end(),

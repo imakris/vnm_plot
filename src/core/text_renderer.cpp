@@ -72,7 +72,11 @@ bool update_and_draw_faded_labels(
     current_values.reserve(labels.size());
 
     for (const auto& label : labels) {
-        const double v = label.value;
+        // Tracker key is double; v_label_t::value is double already, h_label_t::
+        // value is int64 ns and round-trips through double here. Within one
+        // session the same int64 always maps to the same double, which is what
+        // the fade tracker needs.
+        const double v = static_cast<double>(label.value);
         current_values.insert(v);
 
         auto it = tracker.states.find(v);
@@ -276,18 +280,23 @@ bool Text_renderer::render_info_overlay(const frame_context_t& ctx, bool fade_la
     const auto& pl = ctx.layout;
     const bool dark_mode = ctx.dark_mode;
     const glm::vec4 font_color = dark_mode ? glm::vec4(1.f, 1.f, 1.f, 1.f) : glm::vec4(0.f, 0.f, 0.f, 1.f);
-    const double t_span = ctx.t1 - ctx.t0;
+    // Subtract first, then convert: keeps sub-ms precision near modern epochs.
+    const std::int64_t t_span_ns = ctx.t1 - ctx.t0;
+    const double t_span = static_cast<double>(t_span_ns);
 
     // Skip GL calls if configured (for pure CPU profiling)
     const bool skip_gl = ctx.skip_gl;
 
-    const auto draw_label = [&](double t, const label_fade_state_t& state) {
+    const auto draw_label = [&](double t_ns_as_double, const label_fade_state_t& state) {
         if (!(t_span > 0.0) || !(pl.usable_width > 0.0)) {
             return;
         }
 
+        // The fade tracker keys labels by their double-cast value; treat that
+        // as the int64-nanosecond domain it came from when computing pixels.
         const double px_per_unit = pl.usable_width / t_span;
-        const float x_anchor = static_cast<float>((t - ctx.t0) * px_per_unit);
+        const float x_anchor = static_cast<float>(
+            (t_ns_as_double - static_cast<double>(ctx.t0)) * px_per_unit);
         const float pen_x = x_anchor + k_text_margin_px;
         const float pen_y = static_cast<float>(pl.usable_height + k_h_label_vertical_nudge_px * ctx.adjusted_font_px);
 
@@ -320,8 +329,10 @@ bool Text_renderer::render_info_overlay(const frame_context_t& ctx, bool fade_la
             state.alpha = 1.0f;
             state.direction = 0;
             state.text = label.text;
-            m_horizontal_fade.states.emplace(label.value, state);
-            draw_label(label.value, state);
+            // Tracker key is double; cast int64 ns once at the boundary.
+            const double key = static_cast<double>(label.value);
+            m_horizontal_fade.states.emplace(key, state);
+            draw_label(key, state);
         }
         m_horizontal_fade.last_update = now;
         m_horizontal_fade.initialized = true;
@@ -353,14 +364,14 @@ bool Text_renderer::render_info_overlay(const frame_context_t& ctx, bool fade_la
 
         const bool timestamp_style_changed = (pl.h_labels_subsecond != m_last_subsecond);
         const bool timestamp_values_changed =
-            (std::abs(ctx.t0 - m_last_t0) > 1e-9) || (std::abs(ctx.t1 - m_last_t1) > 1e-9);
+            (ctx.t0 != m_last_t0) || (ctx.t1 != m_last_t1);
 
         if (timestamp_style_changed || timestamp_values_changed || m_cached_from_ts.empty() || m_cached_to_ts.empty()) {
             const auto format_ts = (ctx.config && ctx.config->format_timestamp)
                 ? ctx.config->format_timestamp
                 : default_format_timestamp;
-            m_cached_from_ts = format_ts(ctx.t0, t_span);
-            m_cached_to_ts = format_ts(ctx.t1, t_span);
+            m_cached_from_ts = format_ts(ctx.t0, t_span_ns);
+            m_cached_to_ts = format_ts(ctx.t1, t_span_ns);
             m_last_t0 = ctx.t0;
             m_last_t1 = ctx.t1;
             m_last_subsecond = pl.h_labels_subsecond;

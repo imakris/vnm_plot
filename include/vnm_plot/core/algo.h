@@ -248,14 +248,16 @@ std::vector<std::size_t> compute_lod_scales(const DataSourceT& data_source)
 // These functions perform binary search on a contiguous array of samples,
 // using a callback to extract timestamps. Assumes ascending timestamp order.
 
-// Returns index of first sample with timestamp >= t (lower_bound semantics).
+// Returns index of first sample with timestamp >= t_ns (lower_bound semantics).
+// Query value t_ns is in nanoseconds (API convention); the user-supplied
+// get_timestamp accessor must return the same unit.
 template<typename GetTimestampFn>
 std::size_t lower_bound_timestamp(
     const void* data,
     std::size_t count,
     std::size_t stride,
     GetTimestampFn&& get_timestamp,
-    double t)
+    std::int64_t t_ns)
 {
     if (data == nullptr || count == 0) {
         return 0;
@@ -268,7 +270,7 @@ std::size_t lower_bound_timestamp(
     while (lo < hi) {
         std::size_t mid = lo + (hi - lo) / 2;
         const void* sample = base + mid * stride;
-        if (get_timestamp(sample) < t) {
+        if (get_timestamp(sample) < t_ns) {
             lo = mid + 1;
         }
         else {
@@ -283,7 +285,7 @@ template<typename GetTimestampFn>
 std::size_t lower_bound_timestamp(
     const data_snapshot_t& snapshot,
     GetTimestampFn&& get_timestamp,
-    double t)
+    std::int64_t t_ns)
 {
     if (!snapshot.is_valid()) {
         return 0;
@@ -297,7 +299,7 @@ std::size_t lower_bound_timestamp(
         if (!sample) {
             break;
         }
-        if (get_timestamp(sample) < t) {
+        if (get_timestamp(sample) < t_ns) {
             lo = mid + 1;
         }
         else {
@@ -307,14 +309,15 @@ std::size_t lower_bound_timestamp(
     return lo;
 }
 
-// Returns index of first sample with timestamp > t (upper_bound semantics).
+// Returns index of first sample with timestamp > t_ns (upper_bound semantics).
+// Query value t_ns is in nanoseconds (API convention).
 template<typename GetTimestampFn>
 std::size_t upper_bound_timestamp(
     const void* data,
     std::size_t count,
     std::size_t stride,
     GetTimestampFn&& get_timestamp,
-    double t)
+    std::int64_t t_ns)
 {
     if (data == nullptr || count == 0) {
         return 0;
@@ -327,7 +330,7 @@ std::size_t upper_bound_timestamp(
     while (lo < hi) {
         std::size_t mid = lo + (hi - lo) / 2;
         const void* sample = base + mid * stride;
-        if (get_timestamp(sample) <= t) {
+        if (get_timestamp(sample) <= t_ns) {
             lo = mid + 1;
         }
         else {
@@ -342,7 +345,7 @@ template<typename GetTimestampFn>
 std::size_t upper_bound_timestamp(
     const data_snapshot_t& snapshot,
     GetTimestampFn&& get_timestamp,
-    double t)
+    std::int64_t t_ns)
 {
     if (!snapshot.is_valid()) {
         return 0;
@@ -356,7 +359,7 @@ std::size_t upper_bound_timestamp(
         if (!sample) {
             break;
         }
-        if (get_timestamp(sample) <= t) {
+        if (get_timestamp(sample) <= t_ns) {
             lo = mid + 1;
         }
         else {

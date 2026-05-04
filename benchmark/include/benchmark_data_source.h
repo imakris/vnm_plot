@@ -159,7 +159,7 @@ inline std::pair<float, float> Benchmark_data_source<Trade_sample>::get_sample_r
 inline vnm::plot::Data_access_policy make_bar_access_policy() {
     vnm::plot::Data_access_policy policy;
 
-    policy.get_timestamp = [](const void* sample) -> double {
+    policy.get_timestamp = [](const void* sample) -> std::int64_t {
         return static_cast<const Bar_sample*>(sample)->timestamp;
     };
 
@@ -219,7 +219,7 @@ inline vnm::plot::Data_access_policy make_bar_access_policy() {
 inline vnm::plot::Data_access_policy make_trade_access_policy() {
     vnm::plot::Data_access_policy policy;
 
-    policy.get_timestamp = [](const void* sample) -> double {
+    policy.get_timestamp = [](const void* sample) -> std::int64_t {
         return static_cast<const Trade_sample*>(sample)->timestamp;
     };
 

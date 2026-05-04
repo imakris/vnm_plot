@@ -12,20 +12,22 @@
 
 namespace vnm::benchmark {
 
-std::string format_benchmark_timestamp(double ts, double /*step*/)
+std::string format_benchmark_timestamp(std::int64_t ts_ns, std::int64_t /*step_ns*/)
 {
-    // Format timestamp as seconds with 1 decimal.
+    // Format timestamp as seconds with 1 decimal. The benchmark seeds
+    // timestamps in nanoseconds since run start, so dividing by 1e9 yields
+    // the seconds value originally chosen by the seed.
     char buf[32];
-    std::snprintf(buf, sizeof(buf), "%.1f", ts);
+    std::snprintf(buf, sizeof(buf), "%.1f", static_cast<double>(ts_ns) / 1.0e9);
     return buf;
 }
 
 void update_view_range_from_source(
     vnm::plot::Data_source* source,
     const std::string& data_type,
-    double& t_min,
-    double& t_max,
-    double& t_available_min,
+    std::int64_t& t_min,
+    std::int64_t& t_max,
+    std::int64_t& t_available_min,
     float& v_min,
     float& v_max)
 {
@@ -51,8 +53,8 @@ void update_view_range_from_source(
         return;
     }
 
-    double t_first = 0.0;
-    double t_last = 0.0;
+    std::int64_t t_first = 0;
+    std::int64_t t_last = 0;
 
     if (data_type == "Trades") {
         t_first = reinterpret_cast<const Trade_sample*>(first_sample)->timestamp;
@@ -66,10 +68,10 @@ void update_view_range_from_source(
     // Track available time range for preview bar
     t_available_min = t_first;
 
-    // Show last 10 seconds of data (sliding window)
-    constexpr double window_size = 10.0;
+    // Show last 10 seconds of data (sliding window).
+    constexpr std::int64_t k_window_ns = std::int64_t{10} * 1'000'000'000;
     t_max = t_last;
-    t_min = std::max(t_first, t_last - window_size);
+    t_min = std::max(t_first, t_last - k_window_ns);
 
     // Update value range
     if (source->has_value_range()) {

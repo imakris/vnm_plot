@@ -38,8 +38,8 @@ double sanitize_non_negative(double value, double fallback)
 Layout_calculator::parameters_t build_layout_params(
     float v_min,
     float v_max,
-    double t_min,
-    double t_max,
+    std::int64_t t_min_ns,
+    std::int64_t t_max_ns,
     int win_w,
     double usable_height,
     double vbar_width,
@@ -51,8 +51,8 @@ Layout_calculator::parameters_t build_layout_params(
     Layout_calculator::parameters_t params;
     params.v_min = v_min;
     params.v_max = v_max;
-    params.t_min = t_min;
-    params.t_max = t_max;
+    params.t_min = t_min_ns;
+    params.t_max = t_max_ns;
     params.usable_width = std::max(0.0, double(win_w) - vbar_width);
     params.usable_height = usable_height;
     params.vbar_width = vbar_width;
@@ -71,11 +71,15 @@ Layout_calculator::parameters_t build_layout_params(
 
     if (config) {
         params.get_required_fixed_digits_func = [](double) { return 2; };
-        params.format_timestamp_func = [config](double ts, double step) -> std::string {
+        // Layout calculator hands us int64 nanoseconds for timestamp and step.
+        // Forward as-is to the application formatter; if none was supplied,
+        // fall back to a numeric rendering of the seconds value so that
+        // layout-time text measurement stays sensible.
+        params.format_timestamp_func = [config](std::int64_t ts_ns, std::int64_t step_ns) -> std::string {
             if (config->format_timestamp) {
-                return config->format_timestamp(ts, step);
+                return config->format_timestamp(ts_ns, step_ns);
             }
-            return format_axis_fixed_or_int(ts, 3);
+            return format_axis_fixed_or_int(static_cast<double>(ts_ns) / 1e9, 3);
         };
         params.profiler = config->profiler.get();
     }
@@ -171,8 +175,8 @@ void Plot_core::render(
 
     const float preview_v_min = params.preview_v_min.value_or(params.v_min);
     const float preview_v_max = params.preview_v_max.value_or(params.v_max);
-    const double t_available_min = params.t_available_min.value_or(params.t_min);
-    const double t_available_max = params.t_available_max.value_or(params.t_max);
+    const std::int64_t t_available_min = params.t_available_min.value_or(params.t_min);
+    const std::int64_t t_available_max = params.t_available_max.value_or(params.t_max);
 
     const double font_px = sanitize_positive(
         config ? config->font_size_px : detail::k_default_font_px,
