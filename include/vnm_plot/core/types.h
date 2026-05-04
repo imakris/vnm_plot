@@ -355,7 +355,6 @@ struct preview_config_t
 struct shader_set_t
 {
     std::string vert;  ///< Vertex shader asset name
-    std::string geom;  ///< Geometry shader asset name (optional, may be empty)
     std::string frag;  ///< Fragment shader asset name
 
     bool operator<(const shader_set_t& other) const
@@ -363,15 +362,12 @@ struct shader_set_t
         if (vert != other.vert) {
             return vert < other.vert;
         }
-        if (geom != other.geom) {
-            return geom < other.geom;
-        }
         return frag < other.frag;
     }
 
     bool operator==(const shader_set_t& other) const
     {
-        return vert == other.vert && geom == other.geom && frag == other.frag;
+        return vert == other.vert && frag == other.frag;
     }
 
     bool empty() const { return vert.empty() && frag.empty(); }

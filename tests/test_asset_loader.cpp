@@ -118,20 +118,16 @@ bool test_load_shader_missing_required_stages_logs_and_returns_nullopt()
     return true;
 }
 
-bool test_load_shader_includes_optional_geometry_when_present()
+bool test_load_shader_returns_vertex_and_fragment_sources()
 {
     plot::Asset_loader loader;
     loader.register_embedded("good.vert", "vertex");
     loader.register_embedded("good.frag", "fragment");
 
-    auto without_geom = loader.load_shader("good");
-    TEST_ASSERT(without_geom.has_value(), "shader with just vert+frag should succeed");
-    TEST_ASSERT(without_geom->geometry.empty(), "geometry should be empty when not registered");
-
-    loader.register_embedded("good.geom", "geometry");
-    auto with_geom = loader.load_shader("good");
-    TEST_ASSERT(with_geom.has_value(), "shader with all three stages should succeed");
-    TEST_ASSERT(with_geom->geometry == "geometry", "geometry bytes should match when registered");
+    auto sources = loader.load_shader("good");
+    TEST_ASSERT(sources.has_value(), "shader with vert+frag should succeed");
+    TEST_ASSERT(sources->vertex == "vertex", "vertex bytes should match");
+    TEST_ASSERT(sources->fragment == "fragment", "fragment bytes should match");
     return true;
 }
 
@@ -149,7 +145,7 @@ int main()
     RUN_TEST(test_override_directory_beats_embedded_asset);
     RUN_TEST(test_override_directory_falls_back_to_embedded_when_missing);
     RUN_TEST(test_load_shader_missing_required_stages_logs_and_returns_nullopt);
-    RUN_TEST(test_load_shader_includes_optional_geometry_when_present);
+    RUN_TEST(test_load_shader_returns_vertex_and_fragment_sources);
 
     std::cout << "Results: " << passed << " passed, " << failed << " failed" << std::endl;
     return failed > 0 ? 1 : 0;

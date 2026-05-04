@@ -2,21 +2,19 @@
     <qresource prefix="/vnm_plot">
         <!-- Shaders -->
         <file alias="shaders/generic_rect.vert">shaders/generic_rect.vert</file>
-        <file alias="shaders/generic_rect.geom">shaders/generic_rect.geom</file>
         <file alias="shaders/generic_rect.frag">shaders/generic_rect.frag</file>
         <file alias="shaders/grid_quad.vert">shaders/grid_quad.vert</file>
         <file alias="shaders/grid_quad.frag">shaders/grid_quad.frag</file>
         <file alias="shaders/msdf_text.vert">shaders/msdf_text.vert</file>
         <file alias="shaders/msdf_text.frag">shaders/msdf_text.frag</file>
         <!-- Series shaders -->
-        <file alias="shaders/function_sample.vert">shaders/function_sample.vert</file>
-        <file alias="shaders/plot_line_adjacency.geom">shaders/plot_line_adjacency.geom</file>
+        <file alias="shaders/plot_line.vert">shaders/plot_line.vert</file>
         <file alias="shaders/plot_line.frag">shaders/plot_line.frag</file>
-        <file alias="shaders/plot_dot_quad.geom">shaders/plot_dot_quad.geom</file>
+        <file alias="shaders/plot_dot_quad.vert">shaders/plot_dot_quad.vert</file>
         <file alias="shaders/plot_dot_quad.frag">shaders/plot_dot_quad.frag</file>
-        <file alias="shaders/plot_area.geom">shaders/plot_area.geom</file>
+        <file alias="shaders/plot_area.vert">shaders/plot_area.vert</file>
         <file alias="shaders/plot_area.frag">shaders/plot_area.frag</file>
-        <file alias="shaders/plot_colormap_line_adjacency.geom">shaders/plot_colormap_line_adjacency.geom</file>
+        <file alias="shaders/plot_colormap_line.vert">shaders/plot_colormap_line.vert</file>
         <file alias="shaders/plot_colormap_line.frag">shaders/plot_colormap_line.frag</file>
         <!-- Fonts -->
         <file alias="fonts/monospace.ttf">fonts/monospace.ttf</file>

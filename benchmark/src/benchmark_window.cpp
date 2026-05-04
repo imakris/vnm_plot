@@ -275,8 +275,7 @@ void Benchmark_window::setup_series()
         // Use DOTS style for point data (trades)
         series->style = vnm::plot::Display_style::DOTS;
         series->shader_set = {
-            "shaders/function_sample.vert",
-            "shaders/plot_dot_quad.geom",
+            "shaders/plot_dot_quad.vert",
             "shaders/plot_dot_quad.frag"
         };
         series->set_data_source_ref(*m_trade_source);
@@ -286,8 +285,7 @@ void Benchmark_window::setup_series()
         // Use AREA style for range data (bars) to exercise OHLC range
         series->style = vnm::plot::Display_style::AREA;
         series->shader_set = {
-            "shaders/function_sample.vert",
-            "shaders/plot_area.geom",
+            "shaders/plot_area.vert",
             "shaders/plot_area.frag"
         };
         series->set_data_source_ref(*m_bar_source);

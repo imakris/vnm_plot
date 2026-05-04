@@ -66,7 +66,6 @@ bool Primitive_renderer::initialize(Asset_loader& asset_loader)
     // Create rect shader program
     m_sp_rects = create_gl_program(
         rect_sources->vertex,
-        rect_sources->geometry,
         rect_sources->fragment,
         m_log_error);
 
@@ -88,9 +87,11 @@ bool Primitive_renderer::initialize(Asset_loader& asset_loader)
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, sizeof(rect_vertex_t),
                           reinterpret_cast<void*>(offsetof(rect_vertex_t, color)));
+    glVertexAttribDivisor(0, 1);
     glEnableVertexAttribArray(1);
     glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(rect_vertex_t),
                           reinterpret_cast<void*>(offsetof(rect_vertex_t, rect_coords)));
+    glVertexAttribDivisor(1, 1);
 
     glBindVertexArray(0);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
@@ -108,7 +109,6 @@ bool Primitive_renderer::initialize(Asset_loader& asset_loader)
     // Create grid shader program
     m_sp_grid = create_gl_program(
         grid_sources->vertex,
-        grid_sources->geometry,  // May be empty
         grid_sources->fragment,
         m_log_error);
 
@@ -201,7 +201,8 @@ void Primitive_renderer::flush_rects(const glm::mat4& pmv)
         1, GL_FALSE, glm::value_ptr(pmv));
 
     glBindVertexArray(m_rects_pipe.vao);
-    glDrawArrays(GL_POINTS, 0, static_cast<GLsizei>(m_cpu_buffer.size()));
+    glDrawArraysInstanced(
+        GL_TRIANGLE_STRIP, 0, 4, static_cast<GLsizei>(m_cpu_buffer.size()));
 
     glBindVertexArray(0);
     glBindBuffer(GL_ARRAY_BUFFER, 0);

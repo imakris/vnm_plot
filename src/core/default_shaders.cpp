@@ -7,26 +7,22 @@ namespace {
 const shader_set_t k_empty_shader_set{};
 
 const shader_set_t k_function_dots{
-    "shaders/function_sample.vert",
-    "shaders/plot_dot_quad.geom",
+    "shaders/plot_dot_quad.vert",
     "shaders/plot_dot_quad.frag"
 };
 
 const shader_set_t k_function_line{
-    "shaders/function_sample.vert",
-    "shaders/plot_line_adjacency.geom",
+    "shaders/plot_line.vert",
     "shaders/plot_line.frag"
 };
 
 const shader_set_t k_function_area{
-    "shaders/function_sample.vert",
-    "shaders/plot_area.geom",
+    "shaders/plot_area.vert",
     "shaders/plot_area.frag"
 };
 
 const shader_set_t k_function_colormap_line{
-    "shaders/function_sample.vert",
-    "shaders/plot_colormap_line_adjacency.geom",
+    "shaders/plot_colormap_line.vert",
     "shaders/plot_colormap_line.frag"
 };
 

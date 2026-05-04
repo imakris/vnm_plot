@@ -670,8 +670,7 @@ int main(int argc, char* argv[])
     if (config.data_type == "Trades") {
         series->style = vnm::plot::Display_style::DOTS;
         series->shader_set = {
-            "shaders/function_sample.vert",
-            "shaders/plot_dot_quad.geom",
+            "shaders/plot_dot_quad.vert",
             "shaders/plot_dot_quad.frag"
         };
         series->set_data_source_ref(*trade_source);
@@ -680,8 +679,7 @@ int main(int argc, char* argv[])
     else {
         series->style = vnm::plot::Display_style::AREA;
         series->shader_set = {
-            "shaders/function_sample.vert",
-            "shaders/plot_area.geom",
+            "shaders/plot_area.vert",
             "shaders/plot_area.frag"
         };
         series->set_data_source_ref(*bar_source);

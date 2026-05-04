@@ -47,16 +47,14 @@ public:
 
     // --- Convenience methods for shader loading ---
 
-    // Load a shader program's sources (vertex, optional geometry, fragment)
+    // Load a shader program's sources (vertex, fragment).
     struct Shader_sources
     {
         Byte_buffer vertex;
-        Byte_buffer geometry;  // May be empty
         Byte_buffer fragment;
     };
 
-    // Load shader sources by base name (appends .vert, .geom, .frag)
-    // geom is optional (may return empty string)
+    // Load shader sources by base name (appends .vert, .frag).
     [[nodiscard]] std::optional<Shader_sources> load_shader(std::string_view base_name) const;
 
 private:

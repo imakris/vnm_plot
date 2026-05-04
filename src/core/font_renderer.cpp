@@ -948,7 +948,7 @@ void Font_renderer::initialize(Asset_loader& asset_loader, int pixel_height, boo
         std::string vert_src(shader_sources->vertex.begin(), shader_sources->vertex.end());
         std::string frag_src(shader_sources->fragment.begin(), shader_sources->fragment.end());
 
-        auto sp = create_gl_program(vert_src, "", frag_src, m_impl->m_log_error);
+        auto sp = create_gl_program(vert_src, frag_src, m_impl->m_log_error);
         if (sp) {
             res->m_shader_program = std::move(sp);
             const GLuint program_id = res->m_shader_program->program_id();

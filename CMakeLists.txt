@@ -347,18 +347,16 @@ set(VNM_PLOT_EMBEDDED_ASSETS_OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/generated/embed
 # Core shaders (always embedded)
 set(VNM_PLOT_CORE_ASSETS
     "shaders/generic_rect.vert:shaders/generic_rect.vert"
-    "shaders/generic_rect.geom:shaders/generic_rect.geom"
     "shaders/generic_rect.frag:shaders/generic_rect.frag"
     "shaders/grid_quad.vert:shaders/grid_quad.vert"
     "shaders/grid_quad.frag:shaders/grid_quad.frag"
-    "shaders/function_sample.vert:shaders/function_sample.vert"
-    "shaders/plot_line_adjacency.geom:shaders/plot_line_adjacency.geom"
+    "shaders/plot_line.vert:shaders/plot_line.vert"
     "shaders/plot_line.frag:shaders/plot_line.frag"
-    "shaders/plot_dot_quad.geom:shaders/plot_dot_quad.geom"
+    "shaders/plot_dot_quad.vert:shaders/plot_dot_quad.vert"
     "shaders/plot_dot_quad.frag:shaders/plot_dot_quad.frag"
-    "shaders/plot_area.geom:shaders/plot_area.geom"
+    "shaders/plot_area.vert:shaders/plot_area.vert"
     "shaders/plot_area.frag:shaders/plot_area.frag"
-    "shaders/plot_colormap_line_adjacency.geom:shaders/plot_colormap_line_adjacency.geom"
+    "shaders/plot_colormap_line.vert:shaders/plot_colormap_line.vert"
     "shaders/plot_colormap_line.frag:shaders/plot_colormap_line.frag"
 )
 

@@ -60,7 +60,6 @@ public:
     // Compile and attach shaders from source strings
     // Returns true on success.
     bool add_vertex_shader(std::string_view source);
-    bool add_geometry_shader(std::string_view source);
     bool add_fragment_shader(std::string_view source);
 
     // Link the program after all shaders are attached
@@ -89,7 +88,6 @@ private:
 
     GLuint m_program_id = 0;
     GLuint m_vertex_shader = 0;
-    GLuint m_geometry_shader = 0;
     GLuint m_fragment_shader = 0;
     bool m_linked = false;
 
@@ -101,11 +99,9 @@ private:
 // Helper: Load and create a GL_program from shader sources
 // -----------------------------------------------------------------------------
 // Returns nullptr on failure.
-// geom_source can be empty if no geometry shader is used.
 [[nodiscard]]
 std::unique_ptr<GL_program> create_gl_program(
     std::string_view vert_source,
-    std::string_view geom_source,
     std::string_view frag_source,
     const GL_program::Log_callback& log_error = nullptr);
 

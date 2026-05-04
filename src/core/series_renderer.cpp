@@ -74,7 +74,6 @@ shader_set_t normalize_shader_set(const shader_set_t& shader)
 {
     shader_set_t res;
     res.vert = normalize_asset_name(shader.vert);
-    res.geom = normalize_asset_name(shader.geom);
     res.frag = normalize_asset_name(shader.frag);
     return res;
 }
@@ -304,6 +303,20 @@ GLuint Series_renderer::ensure_series_vao(
     if (access.setup_vertex_attributes) {
         access.setup_vertex_attributes();
     }
+    // DOTS expand each sample into a four-vertex quad via instancing. Make
+    // every per-vertex attribute advance per-instance so each instance sees
+    // the matching sample. Other styles read sample data through SSBOs and
+    // ignore the vertex attributes entirely, so the divisor does not matter
+    // there.
+    if (!!(style & Display_style::DOTS)) {
+        // Function-sample layout locations are the only ones the dot quad
+        // shader binds (x, y); the optional range slots are present but
+        // unused. Setting the divisor on the unused locations is harmless.
+        constexpr GLuint k_dot_attrib_locations[] = {0u, 1u, 2u, 3u};
+        for (GLuint loc : k_dot_attrib_locations) {
+            glVertexAttribDivisor(loc, 1u);
+        }
+    }
     entry.vbo = vbo;
 
     glBindVertexArray(0);
@@ -337,10 +350,6 @@ std::shared_ptr<GL_program> Series_renderer::get_or_load_shader(
 
     auto vert_src = m_asset_loader->load(normalized.vert);
     auto frag_src = m_asset_loader->load(normalized.frag);
-    std::optional<Byte_buffer> geom_src;
-    if (!normalized.geom.empty()) {
-        geom_src = m_asset_loader->load(normalized.geom);
-    }
 
     if (!vert_src || !frag_src) {
         log_error("Failed to load shader sources: " + normalized.vert);
@@ -349,13 +358,9 @@ std::shared_ptr<GL_program> Series_renderer::get_or_load_shader(
 
     std::string vert_str(vert_src->begin(), vert_src->end());
     std::string frag_str(frag_src->begin(), frag_src->end());
-    std::string geom_str;
-    if (geom_src) {
-        geom_str.assign(geom_src->begin(), geom_src->end());
-    }
 
     auto log_error_fn = config ? config->log_error : std::function<void(const std::string&)>();
-    auto sp = create_gl_program(vert_str, geom_str, frag_str, log_error_fn);
+    auto sp = create_gl_program(vert_str, frag_str, log_error_fn);
 
     if (!sp) {
         log_error("Shader program creation failed for: " + normalized.vert);
@@ -1055,15 +1060,24 @@ void Series_renderer::render(
             return;
         }
 
+        // Styles that consume neighbour samples need the adjacency index
+        // buffer; DOTS reads only its own sample.
         const bool use_adjacency =
             (primitive_style == Display_style::LINE) ||
             (primitive_style == Display_style::AREA) ||
             (primitive_style == Display_style::COLORMAP_AREA) ||
             (primitive_style == Display_style::COLORMAP_LINE);
-        const GLenum drawing_mode = (primitive_style == Display_style::DOTS)
-            ? GL_POINTS
-            : (use_adjacency ? GL_LINE_STRIP_ADJACENCY : GL_LINE_STRIP);
-        if (drawing_mode != GL_POINTS && count < 2) {
+        // Per-instance vertex count for the triangle-strip expansion.
+        // LINE / COLORMAP_LINE: a single thickened quad (4 verts).
+        // AREA / COLORMAP_AREA: a fill region plus a zero-axis emphasis quad
+        //   stitched together with degenerate connectors (13 verts).
+        // DOTS: a screen-aligned quad (4 verts).
+        GLsizei verts_per_instance = 4;
+        if (primitive_style == Display_style::AREA ||
+            primitive_style == Display_style::COLORMAP_AREA) {
+            verts_per_instance = 13;
+        }
+        if (primitive_style != Display_style::DOTS && count < 2) {
             return;
         }
 
@@ -1346,11 +1360,14 @@ void Series_renderer::render(
                 needs_upload = true;
             }
 
-            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, view_state.adjacency_ebo);
+            // Adjacency buffer is consumed via SSBO by the new vertex
+            // shaders; binding it as SHADER_STORAGE_BUFFER also makes the
+            // upload path explicit.
+            glBindBuffer(GL_SHADER_STORAGE_BUFFER, view_state.adjacency_ebo);
 
             if (view_state.adjacency_ebo_capacity < required_indices) {
                 glBufferData(
-                    GL_ELEMENT_ARRAY_BUFFER,
+                    GL_SHADER_STORAGE_BUFFER,
                     static_cast<GLsizeiptr>(required_indices * sizeof(GLuint)),
                     nullptr,
                     GL_DYNAMIC_DRAW);
@@ -1368,13 +1385,16 @@ void Series_renderer::render(
                 indices[required_indices - 1] = first + static_cast<GLuint>(count - 1);
 
                 glBufferSubData(
-                    GL_ELEMENT_ARRAY_BUFFER,
+                    GL_SHADER_STORAGE_BUFFER,
                     0,
                     static_cast<GLsizeiptr>(required_indices * sizeof(GLuint)),
                     indices.data());
                 view_state.adjacency_last_first = view_result.first;
                 view_state.adjacency_last_count = count;
             }
+
+            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, view_state.adjacency_ebo);
+            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, view_state.active_vbo);
         }
 
         // Note: glLineWidth is set once at the start of render() to avoid per-draw overhead
@@ -1417,12 +1437,32 @@ void Series_renderer::render(
         }
 
         if (do_draw) {
-            if (use_adjacency) {
-                const GLsizei adjacency_count = count + 2;
-                glDrawElements(drawing_mode, adjacency_count, GL_UNSIGNED_INT, nullptr);
+            // Geometry-shader expansion has been folded into the vertex
+            // shaders, which generate triangle-strip primitives directly.
+            // DOTS draws one quad per sample with the base instance set so
+            // per-instance attributes start at the visible window. Other
+            // styles read sample data through SSBOs and the adjacency
+            // buffer already encodes the absolute sample indices, so the
+            // base instance can stay zero.
+            if (primitive_style == Display_style::DOTS) {
+                if (count > 0) {
+                    glDrawArraysInstancedBaseInstance(
+                        GL_TRIANGLE_STRIP,
+                        0,
+                        verts_per_instance,
+                        count,
+                        static_cast<GLuint>(view_result.first));
+                }
             }
             else {
-                glDrawArrays(drawing_mode, view_result.first, count);
+                const GLsizei instance_count = count - 1;
+                if (instance_count > 0) {
+                    glDrawArraysInstanced(
+                        GL_TRIANGLE_STRIP,
+                        0,
+                        verts_per_instance,
+                        instance_count);
+                }
             }
         }
 

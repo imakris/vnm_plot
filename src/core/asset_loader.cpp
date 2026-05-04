@@ -96,19 +96,6 @@ std::optional<Asset_loader::Shader_sources> Asset_loader::load_shader(std::strin
     }
     sources.vertex = std::move(*vert);
 
-    // Load geometry shader (optional — check existence first to avoid spurious error log)
-    const std::string geom_name = base + ".geom";
-    const bool geom_exists =
-        m_embedded.find(geom_name) != m_embedded.end() ||
-        (!m_override_dir.empty() &&
-         std::filesystem::exists(std::filesystem::path(m_override_dir) / geom_name));
-    if (geom_exists) {
-        auto geom = load(geom_name);
-        if (geom) {
-            sources.geometry = std::move(*geom);
-        }
-    }
-
     // Load fragment shader (required)
     auto frag = load(base + ".frag");
     if (!frag) {

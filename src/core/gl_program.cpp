@@ -34,7 +34,6 @@ GL_program::~GL_program()
     // the program is destroyed.  If destroy() was already called, all IDs are
     // zero and this block is a no-op.
     m_vertex_shader = 0;
-    m_geometry_shader = 0;
     m_fragment_shader = 0;
     m_program_id = 0;
     m_linked = false;
@@ -44,7 +43,6 @@ GL_program::~GL_program()
 GL_program::GL_program(GL_program&& other) noexcept
     : m_program_id(other.m_program_id)
     , m_vertex_shader(other.m_vertex_shader)
-    , m_geometry_shader(other.m_geometry_shader)
     , m_fragment_shader(other.m_fragment_shader)
     , m_linked(other.m_linked)
     , m_log_callback(std::move(other.m_log_callback))
@@ -52,7 +50,6 @@ GL_program::GL_program(GL_program&& other) noexcept
 {
     other.m_program_id = 0;
     other.m_vertex_shader = 0;
-    other.m_geometry_shader = 0;
     other.m_fragment_shader = 0;
     other.m_linked = false;
 }
@@ -64,7 +61,6 @@ GL_program& GL_program::operator=(GL_program&& other) noexcept
 
         m_program_id = other.m_program_id;
         m_vertex_shader = other.m_vertex_shader;
-        m_geometry_shader = other.m_geometry_shader;
         m_fragment_shader = other.m_fragment_shader;
         m_linked = other.m_linked;
         m_log_callback = std::move(other.m_log_callback);
@@ -72,7 +68,6 @@ GL_program& GL_program::operator=(GL_program&& other) noexcept
 
         other.m_program_id = 0;
         other.m_vertex_shader = 0;
-        other.m_geometry_shader = 0;
         other.m_fragment_shader = 0;
         other.m_linked = false;
     }
@@ -117,7 +112,6 @@ bool GL_program::compile_shader(GLuint shader_type, std::string_view source, GLu
         const char* type_name = "Unknown";
         switch (shader_type) {
             case GL_VERTEX_SHADER:   type_name = "Vertex"; break;
-            case GL_GEOMETRY_SHADER: type_name = "Geometry"; break;
             case GL_FRAGMENT_SHADER: type_name = "Fragment"; break;
         }
 
@@ -138,15 +132,6 @@ bool GL_program::add_vertex_shader(std::string_view source)
         return false;
     }
     return compile_shader(GL_VERTEX_SHADER, source, m_vertex_shader);
-}
-
-bool GL_program::add_geometry_shader(std::string_view source)
-{
-    if (m_geometry_shader != 0) {
-        log_error("Geometry shader already attached");
-        return false;
-    }
-    return compile_shader(GL_GEOMETRY_SHADER, source, m_geometry_shader);
 }
 
 bool GL_program::add_fragment_shader(std::string_view source)
@@ -177,9 +162,6 @@ bool GL_program::link()
 
     glAttachShader(m_program_id, m_vertex_shader);
     glAttachShader(m_program_id, m_fragment_shader);
-    if (m_geometry_shader != 0) {
-        glAttachShader(m_program_id, m_geometry_shader);
-    }
 
     glLinkProgram(m_program_id);
 
@@ -208,12 +190,6 @@ bool GL_program::link()
     glDetachShader(m_program_id, m_fragment_shader);
     glDeleteShader(m_fragment_shader);
     m_fragment_shader = 0;
-
-    if (m_geometry_shader != 0) {
-        glDetachShader(m_program_id, m_geometry_shader);
-        glDeleteShader(m_geometry_shader);
-        m_geometry_shader = 0;
-    }
 
     m_uniform_cache.clear();
     m_linked = true;
@@ -254,12 +230,6 @@ void GL_program::destroy()
         }
         m_vertex_shader = 0;
     }
-    if (m_geometry_shader != 0) {
-        if (glIsShader(m_geometry_shader) == GL_TRUE) {
-            glDeleteShader(m_geometry_shader);
-        }
-        m_geometry_shader = 0;
-    }
     if (m_fragment_shader != 0) {
         if (glIsShader(m_fragment_shader) == GL_TRUE) {
             glDeleteShader(m_fragment_shader);
@@ -282,7 +252,6 @@ void GL_program::destroy()
 
 std::unique_ptr<GL_program> create_gl_program(
     std::string_view vert_source,
-    std::string_view geom_source,
     std::string_view frag_source,
     const GL_program::Log_callback& log_error)
 {
@@ -290,10 +259,6 @@ std::unique_ptr<GL_program> create_gl_program(
     program->set_log_callback(log_error);
 
     if (!program->add_vertex_shader(vert_source)) {
-        return nullptr;
-    }
-
-    if (!geom_source.empty() && !program->add_geometry_shader(geom_source)) {
         return nullptr;
     }
 
