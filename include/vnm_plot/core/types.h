@@ -294,6 +294,13 @@ struct Data_access_policy
     std::function<void(unsigned int program_id)> bind_uniforms; ///< Binds custom uniforms
     uint64_t layout_key = 0;  ///< Cache key for vertex attribute layout
 
+    // SSBO layout (used by line/area/colormap_line shaders that pull samples
+    // through a shader-storage buffer). All values in bytes; must be multiples
+    // of 4 so the shader can index `uint raw[]` without bit-twiddling.
+    size_t sample_stride_bytes    = 0;  ///< Byte stride between consecutive samples
+    size_t timestamp_offset_bytes = 0;  ///< Offset of the timestamp/x field within a sample
+    size_t value_offset_bytes     = 0;  ///< Offset of the primary value/y field within a sample
+
     bool is_valid() const
     {
         return get_timestamp && (get_value || get_range);

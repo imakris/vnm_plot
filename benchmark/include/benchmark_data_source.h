@@ -176,7 +176,11 @@ inline vnm::plot::Data_access_policy make_bar_access_policy() {
 
     policy.layout_key = k_bar_sample_layout_key;
 
-    // Setup vertex attributes matching function_sample.vert:
+    policy.sample_stride_bytes    = sizeof(Bar_sample);
+    policy.timestamp_offset_bytes = offsetof(Bar_sample, timestamp);
+    policy.value_offset_bytes     = offsetof(Bar_sample, close);
+
+    // Setup vertex attributes matching plot_dot_quad.vert:
     // layout(location = 0) in double in_x;      -> timestamp
     // layout(location = 1) in float  in_y;      -> close
     // layout(location = 2) in float  in_y_min;  -> low
@@ -230,7 +234,11 @@ inline vnm::plot::Data_access_policy make_trade_access_policy() {
 
     policy.layout_key = k_trade_sample_layout_key;
 
-    // Setup vertex attributes matching function_sample.vert:
+    policy.sample_stride_bytes    = sizeof(Trade_sample);
+    policy.timestamp_offset_bytes = offsetof(Trade_sample, timestamp);
+    policy.value_offset_bytes     = offsetof(Trade_sample, price);
+
+    // Setup vertex attributes matching plot_dot_quad.vert:
     // layout(location = 0) in double in_x;      -> timestamp
     // layout(location = 1) in float  in_y;      -> price
     // layout(location = 2) in float  in_y_min;  -> price (same as y for point data)

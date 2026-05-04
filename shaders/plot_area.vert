@@ -45,17 +45,19 @@ out GS_out
     float t;
 } gs_out;
 
-const uint k_sample_uint_stride = 5u;
+uniform uint u_sample_stride_uints;
+uniform uint u_sample_x_offset_uints;
+uniform uint u_sample_y_offset_uints;
 
 double sample_x(uint idx)
 {
-    uint base = idx * k_sample_uint_stride;
+    uint base = idx * u_sample_stride_uints + u_sample_x_offset_uints;
     return packDouble2x32(uvec2(u_samples.raw[base], u_samples.raw[base + 1u]));
 }
 
 float sample_y(uint idx)
 {
-    return uintBitsToFloat(u_samples.raw[idx * k_sample_uint_stride + 2u]);
+    return uintBitsToFloat(u_samples.raw[idx * u_sample_stride_uints + u_sample_y_offset_uints]);
 }
 
 void main()

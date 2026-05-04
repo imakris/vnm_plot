@@ -84,6 +84,10 @@ struct Data_access_policy_typed
     std::function<void(unsigned int)> bind_uniforms;
     uint64_t layout_key = 0;
 
+    size_t sample_stride_bytes    = 0;
+    size_t timestamp_offset_bytes = 0;
+    size_t value_offset_bytes     = 0;
+
     bool is_valid() const
     {
         return get_timestamp && (get_value || get_range);
@@ -135,6 +139,9 @@ struct Data_access_policy_typed
         policy.setup_vertex_attributes = setup_vertex_attributes;
         policy.bind_uniforms = bind_uniforms;
         policy.layout_key = layout_key;
+        policy.sample_stride_bytes    = sample_stride_bytes;
+        policy.timestamp_offset_bytes = timestamp_offset_bytes;
+        policy.value_offset_bytes     = value_offset_bytes;
         return policy;
     }
 };
@@ -217,6 +224,16 @@ inline void apply_layout(
     policy.setup_vertex_attributes = [layout]() {
         setup_vertex_attributes_for_layout(layout);
     };
+    policy.sample_stride_bytes = layout.stride;
+    for (const auto& attr : layout.attributes) {
+        if (attr.location == 0) {
+            policy.timestamp_offset_bytes = attr.offset;
+        }
+        else
+        if (attr.location == 1) {
+            policy.value_offset_bytes = attr.offset;
+        }
+    }
 }
 
 template<typename Sample, typename Timestamp_member, typename Value_member>

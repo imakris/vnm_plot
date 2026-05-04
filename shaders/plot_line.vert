@@ -6,8 +6,10 @@
 // thickened screen-space quad spanning samples p0 -> p1, with prev and next
 // passed flat to the fragment shader for rounded segment joins.
 //
-// Sample data is pulled from an SSBO mirroring the function_sample_t layout
-// (packed: double x, float y, float y_min, float y_max -> 20 bytes / 5 uints).
+// Sample data is pulled from an SSBO. The host describes the in-buffer
+// layout via three uniforms (stride and field offsets, all in 4-byte units),
+// so any sample type whose timestamp is a 64-bit double and value is a
+// 32-bit float can be rendered without a CPU-side repack.
 // The neighbour-index buffer mirrors the adjacency EBO produced on the host:
 // it contains [first, first, first+1, ..., first+count-1, first+count-1] so
 // boundary segments naturally clamp prev/next to the endpoint sample.
@@ -38,17 +40,19 @@ flat out vec2 fs_p0;
 flat out vec2 fs_p1;
 flat out vec2 fs_p_next;
 
-const uint k_sample_uint_stride = 5u; // 20 bytes / 4
+uniform uint u_sample_stride_uints;
+uniform uint u_sample_x_offset_uints;
+uniform uint u_sample_y_offset_uints;
 
 double sample_x(uint idx)
 {
-    uint base = idx * k_sample_uint_stride;
+    uint base = idx * u_sample_stride_uints + u_sample_x_offset_uints;
     return packDouble2x32(uvec2(u_samples.raw[base], u_samples.raw[base + 1u]));
 }
 
 float sample_y(uint idx)
 {
-    return uintBitsToFloat(u_samples.raw[idx * k_sample_uint_stride + 2u]);
+    return uintBitsToFloat(u_samples.raw[idx * u_sample_stride_uints + u_sample_y_offset_uints]);
 }
 
 vec2 sample_to_pos(uint idx)
@@ -80,32 +84,31 @@ void main()
     vec2 seg_v = p1 - p0;
     float seg_len = length(seg_v);
 
-    // Degenerate segment: collapse the quad to a single point at p0 so
-    // subsequent triangles cull/overlap. The fragment-shader rounded-end
-    // logic still produces correct visuals from the prev/next varyings.
-    vec2 dir;
-    vec2 n;
-    if (seg_len <= 1e-6) {
-        dir = vec2(1.0, 0.0);
-        n   = vec2(0.0, 0.0);
-    }
-    else {
-        dir = seg_v / seg_len;
-        n   = vec2(-dir.y, dir.x);
-    }
     float half_px = max(u_line_px * 0.5, 0.5);
 
-    vec2 p0_ext = p0 - dir * half_px;
-    vec2 p1_ext = p1 + dir * half_px;
+    vec2 pos;
+    if (seg_len <= 1e-6) {
+        // Degenerate: collapse all four vertices onto p0 so the strip
+        // contributes nothing. The old GS returned without emitting; here
+        // we keep the draw call simple and let the rasterizer cull.
+        pos = p0;
+    }
+    else {
+        vec2 dir = seg_v / seg_len;
+        vec2 n   = vec2(-dir.y, dir.x);
 
-    // Triangle strip vertex order: v0 v1 v2 v3 = TL TR-of-p0, TL TR-of-p1
-    //   gl_VertexID 0 -> p0_ext + n
-    //   gl_VertexID 1 -> p0_ext - n
-    //   gl_VertexID 2 -> p1_ext + n
-    //   gl_VertexID 3 -> p1_ext - n
-    vec2 base = (gl_VertexID < 2) ? p0_ext : p1_ext;
-    float n_sign = (gl_VertexID & 1) == 0 ? 1.0 : -1.0;
-    vec2 pos = base + n * (half_px * n_sign);
+        vec2 p0_ext = p0 - dir * half_px;
+        vec2 p1_ext = p1 + dir * half_px;
+
+        // Triangle strip vertex order: v0 v1 v2 v3 = TL TR-of-p0, TL TR-of-p1
+        //   gl_VertexID 0 -> p0_ext + n
+        //   gl_VertexID 1 -> p0_ext - n
+        //   gl_VertexID 2 -> p1_ext + n
+        //   gl_VertexID 3 -> p1_ext - n
+        vec2 base = (gl_VertexID < 2) ? p0_ext : p1_ext;
+        float n_sign = (gl_VertexID & 1) == 0 ? 1.0 : -1.0;
+        pos = base + n * (half_px * n_sign);
+    }
 
     fs_p_prev = p_prev;
     fs_p0     = p0;

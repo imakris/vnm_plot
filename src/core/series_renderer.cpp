@@ -1415,6 +1415,25 @@ void Series_renderer::render(
 
             glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, view_state.adjacency_ebo);
             glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, view_state.active_vbo);
+
+            // Pass the SSBO sample layout so the shader can index any sample
+            // type whose timestamp is fp64 and value is fp32. All offsets are
+            // in 4-byte units; sample stride must be a multiple of 4.
+            const GLuint stride_uints =
+                static_cast<GLuint>(access->sample_stride_bytes / sizeof(GLuint));
+            const GLuint x_offset_uints =
+                static_cast<GLuint>(access->timestamp_offset_bytes / sizeof(GLuint));
+            const GLuint y_offset_uints =
+                static_cast<GLuint>(access->value_offset_bytes / sizeof(GLuint));
+            if (const GLint loc = pass_shader->uniform_location("u_sample_stride_uints"); loc >= 0) {
+                glUniform1ui(loc, stride_uints);
+            }
+            if (const GLint loc = pass_shader->uniform_location("u_sample_x_offset_uints"); loc >= 0) {
+                glUniform1ui(loc, x_offset_uints);
+            }
+            if (const GLint loc = pass_shader->uniform_location("u_sample_y_offset_uints"); loc >= 0) {
+                glUniform1ui(loc, y_offset_uints);
+            }
         }
 
         // Note: glLineWidth is set once at the start of render() to avoid per-draw overhead
