@@ -165,6 +165,7 @@ void Benchmark_window::initializeGL()
 #endif
     m_render_config.snap_lines_to_pixels = false;
     m_render_config.line_width_px = m_config.line_width_px;
+    m_render_config.point_diameter_px = m_config.point_diameter_px;
     m_render_config.format_timestamp = format_benchmark_timestamp;
     m_render_config.profiler = std::shared_ptr<vnm::plot::Profiler>(
         &m_profiler, [](vnm::plot::Profiler*) {});  // Wire up profiler for vnm_plot internal scopes
@@ -179,12 +180,15 @@ void Benchmark_window::initializeGL()
 
     if (m_config.static_data) {
         // Visual-diff mode: push five fixed samples that form a 4-segment
-        // zig-zag spanning t = [0, 4]. The view-range logic in
+        // zig-zag spanning t ~ [0.23, 4.23]. The view-range logic in
         // benchmark_frame uses (t_last - 10s, t_last) so the whole zig-zag
         // is visible. No generator thread is started, so what we render is
         // exactly what is in the ring buffer.
-        const std::array<double, 5> ts  = {0.0, 1.0, 2.0, 3.0, 4.0};
-        const std::array<float,  5> vs  = {-0.5f, 0.5f, -0.5f, 0.5f, -0.5f};
+        //
+        // Coordinates are deliberately offset from integer/half grid lines
+        // so small dots and thin lines do not blend into the grid.
+        const std::array<double, 5> ts  = {0.23, 1.23, 2.23, 3.23, 4.23};
+        const std::array<float,  5> vs  = {-0.43f, 0.43f, -0.43f, 0.43f, -0.43f};
         for (std::size_t i = 0; i < ts.size(); ++i) {
             if (m_config.data_type == "Trades") {
                 Trade_sample s{};

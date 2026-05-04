@@ -57,6 +57,10 @@ struct Benchmark_config {
     // Line thickness in pixels (default 1.5 for animated runs; bumped via
     // --line-px when comparing visuals so segments are easy to inspect).
     double line_width_px = 1.5;
+    // Dot diameter in pixels for DOTS rendering (default 1.0 matches the
+    // animated benchmark; bumped via --point-px so static-mode dots are
+    // visible in side-by-side visual comparisons).
+    double point_diameter_px = 1.0;
 };
 
 /// Main benchmark window with vnm_plot rendering

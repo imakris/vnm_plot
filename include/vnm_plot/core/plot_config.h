@@ -133,6 +133,9 @@ struct Plot_config
     bool snap_lines_to_pixels = false;
     // Line width in pixels (may be clamped by the driver).
     double line_width_px = 1.0;
+    // Dot diameter in pixels for DOTS rendering. The shader floors at 1 px,
+    // so values below 1.0 still render as a 1-pixel dot.
+    double point_diameter_px = 1.0;
     // Area fill alpha multiplier (0..1).
     double area_fill_alpha = 0.3;
 

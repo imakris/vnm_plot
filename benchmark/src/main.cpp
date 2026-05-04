@@ -44,6 +44,7 @@ void print_usage(const char* program_name)
               << "  --render-style <style>  dots|line|area (default: dots for trades, area for bars)\n"
               << "  --static                Skip the generator and render a fixed 4-segment line (visual-diff mode)\n"
               << "  --line-px <pixels>      Line thickness for line/area rendering (default: 1.5)\n"
+              << "  --point-px <pixels>     Dot diameter for dots rendering (default: 1.0)\n"
               << "  --output-dir <path>     Output directory for reports (default: current dir)\n"
               << "  --seed <number>         RNG seed for reproducibility (default: time-based)\n"
               << "  --volatility <value>    Brownian volatility (default: 0.02, range: 0.0-1.0)\n"
@@ -130,6 +131,10 @@ Parse_result parse_args(int argc, char* argv[])
             else
             if (arg == "--line-px" && i + 1 < argc) {
                 config.line_width_px = std::stod(argv[++i]);
+            }
+            else
+            if (arg == "--point-px" && i + 1 < argc) {
+                config.point_diameter_px = std::stod(argv[++i]);
             }
             else
             if (arg == "--output-dir" && i + 1 < argc) {

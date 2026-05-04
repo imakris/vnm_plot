@@ -71,7 +71,13 @@ private:
         Empty_window_behavior last_empty_window_behavior = Empty_window_behavior::DRAW_NOTHING;
         double last_applied_pps = 0.0;
         bool last_hold_last_forward = false;
-        std::vector<unsigned char> hold_sample_buffer;
+        // Renderer-owned scratch buffer for VBO uploads. Holds the raw
+        // bytes assembled before each glBufferSubData call: the full
+        // snapshot (segmented or contiguous) with an optional appended
+        // hold-last-forward sample, or just the synthetic sample when
+        // only its timestamp moved. Reused across uploads to avoid
+        // reallocation.
+        std::vector<unsigned char> upload_staging;
 
         void reset() { *this = vbo_view_state_t{}; }
     };

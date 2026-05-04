@@ -700,45 +700,74 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
                 || (current_identity != view_state.cached_data_identity);
             const bool needs_hold_upload = hold_last_forward && (must_upload || hold_changed);
 
+            // VBO uploads go through view_state.upload_staging so that
+            // both the full snapshot and any appended hold-last-forward
+            // sample land in a single glBufferSubData call. The hold-only
+            // path below patches just the trailing sample when the
+            // synthetic timestamp moved without the data changing.
             if (must_upload && !skip_gl) {
+                const std::size_t snapshot_bytes = snapshot.count * snapshot.stride;
+                const std::size_t hold_bytes = hold_last_forward ? snapshot.stride : 0;
+                auto& staging = view_state.upload_staging;
+                staging.resize(snapshot_bytes + hold_bytes);
+
+                if (snapshot_bytes > 0) {
+                    if (!snapshot.is_segmented()) {
+                        std::memcpy(staging.data(), snapshot.data, snapshot_bytes);
+                    }
+                    else {
+                        const std::size_t bytes1 = snapshot.count1() * snapshot.stride;
+                        const std::size_t bytes2 = snapshot.count2 * snapshot.stride;
+                        if (bytes1 > 0) {
+                            std::memcpy(staging.data(), snapshot.data, bytes1);
+                        }
+                        if (bytes2 > 0) {
+                            std::memcpy(staging.data() + bytes1, snapshot.data2, bytes2);
+                        }
+                    }
+                }
+
+                if (hold_last_forward) {
+                    const void* source_sample = (snapshot.count > 0)
+                        ? snapshot.at(snapshot.count - 1) : nullptr;
+                    if (source_sample) {
+                        access.clone_with_timestamp(
+                            staging.data() + snapshot_bytes,
+                            source_sample,
+                            t_max);
+                    }
+                    else {
+                        std::memset(staging.data() + snapshot_bytes, 0, snapshot.stride);
+                    }
+                }
+
                 glBindBuffer(GL_ARRAY_BUFFER, view_state.id);
                 if (region_changed) {
                     const std::size_t alloc_size = needed_bytes + needed_bytes / 4;
-                    glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(alloc_size), nullptr, GL_DYNAMIC_DRAW);
+                    glBufferData(GL_ARRAY_BUFFER,
+                        static_cast<GLsizeiptr>(alloc_size), nullptr, GL_DYNAMIC_DRAW);
                     view_state.last_ring_size = alloc_size;
                 }
-                if (!snapshot.is_segmented()) {
-                    glBufferSubData(GL_ARRAY_BUFFER, 0,
-                        static_cast<GLsizeiptr>(snapshot.count * snapshot.stride), snapshot.data);
-                }
-                else {
-                    const std::size_t count1 = snapshot.count1();
-                    const std::size_t bytes1 = count1 * snapshot.stride;
-                    const std::size_t bytes2 = snapshot.count2 * snapshot.stride;
-                    if (bytes1 > 0) {
-                        glBufferSubData(GL_ARRAY_BUFFER, 0,
-                            static_cast<GLsizeiptr>(bytes1), snapshot.data);
-                    }
-                    if (bytes2 > 0) {
-                        glBufferSubData(GL_ARRAY_BUFFER, static_cast<GLintptr>(bytes1),
-                            static_cast<GLsizeiptr>(bytes2), snapshot.data2);
-                    }
-                }
+                glBufferSubData(GL_ARRAY_BUFFER, 0,
+                    static_cast<GLsizeiptr>(staging.size()), staging.data());
             }
+            else
             if (needs_hold_upload && !skip_gl) {
-                const void* source_sample = snapshot.at(snapshot.count - 1);
+                // Data unchanged, only the synthetic last sample's timestamp
+                // moved with t_max. Stage just that one sample and patch the
+                // VBO at its trailing offset.
+                const void* source_sample = (snapshot.count > 0)
+                    ? snapshot.at(snapshot.count - 1) : nullptr;
                 if (source_sample) {
-                    auto& hold_sample = view_state.hold_sample_buffer;
-                    hold_sample.resize(snapshot.stride);
-                    access.clone_with_timestamp(hold_sample.data(), source_sample, t_max);
-                    if (!must_upload) {
-                        glBindBuffer(GL_ARRAY_BUFFER, view_state.id);
-                    }
+                    auto& staging = view_state.upload_staging;
+                    staging.resize(snapshot.stride);
+                    access.clone_with_timestamp(staging.data(), source_sample, t_max);
+                    glBindBuffer(GL_ARRAY_BUFFER, view_state.id);
                     glBufferSubData(
                         GL_ARRAY_BUFFER,
                         static_cast<GLintptr>(snapshot.count * snapshot.stride),
                         static_cast<GLsizeiptr>(snapshot.stride),
-                        hold_sample.data());
+                        staging.data());
                 }
             }
             if (must_upload) {
@@ -851,6 +880,8 @@ void Series_renderer::render(
 
     const bool dark_mode = ctx.dark_mode;
     const float line_width = ctx.config ? static_cast<float>(ctx.config->line_width_px) : 1.0f;
+    const float point_diameter = ctx.config
+        ? static_cast<float>(ctx.config->point_diameter_px) : 1.0f;
     const float area_fill_alpha = ctx.config ? static_cast<float>(ctx.config->area_fill_alpha) : 0.3f;
     const auto to_gl_scissor_y = [&](double top, double height) -> GLint {
         return static_cast<GLint>(lround(double(ctx.win_h) - (top + height)));
@@ -1407,6 +1438,9 @@ void Series_renderer::render(
         glUniform4fv(pass_shader->uniform_location("color"), 1, glm::value_ptr(draw_color));
         if (const GLint loc = pass_shader->uniform_location("u_line_px"); loc >= 0) {
             glUniform1f(loc, line_width);
+        }
+        if (const GLint loc = pass_shader->uniform_location("u_point_diameter_px"); loc >= 0) {
+            glUniform1f(loc, point_diameter);
         }
         if (access->bind_uniforms) {
             access->bind_uniforms(pass_shader->program_id());
