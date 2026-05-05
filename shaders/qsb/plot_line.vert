@@ -5,16 +5,23 @@
 // corners (gl_VertexIndex 0..3) form a thickened screen-space quad spanning
 // samples p0 -> p1, with prev and next passed flat to the fragment shader
 // for rounded segment joins.
+//
+// The shader receives the four neighbouring samples (prev, p0, p1, next)
+// for each segment as four per-instance vertex attributes. The host fills a
+// dedicated per-frame buffer that already contains the leading and trailing
+// boundary duplicates ([s[first], s[first], s[first+1], ..., s[last], s[last]])
+// and binds it four times at offsets 0, 16, 32, 48 with stride 16. Reading
+// neighbour samples through vertex attributes avoids the SSBO -> UAV mapping
+// SPIRV-Cross emits for std430 buffers; D3D11 SM 5.0 vertex shaders accept
+// no UAVs at all, so any storage-buffer access in the vertex stage fails to
+// compile.
 
 #include "uniform_blocks.glsl"
 
-struct gpu_sample_t
-{
-    float t_rel;
-    float y;
-    float y_min;
-    float y_max;
-};
+layout(location = 0) in vec2 in_prev;
+layout(location = 1) in vec2 in_p0;
+layout(location = 2) in vec2 in_p1;
+layout(location = 3) in vec2 in_next;
 
 layout(std140, binding = 0) uniform Block
 {
@@ -23,28 +30,18 @@ layout(std140, binding = 0) uniform Block
     int   snap_to_pixels;
 } u;
 
-layout(std430, binding = 1) readonly buffer Sample_buffer
-{
-    gpu_sample_t samples[];
-} u_samples;
-
-layout(std430, binding = 2) readonly buffer Adjacency_index_buffer
-{
-    uint indices[];
-} u_adjacency;
-
 layout(location = 0) flat out vec2 fs_p_prev;
 layout(location = 1) flat out vec2 fs_p0;
 layout(location = 2) flat out vec2 fs_p1;
 layout(location = 3) flat out vec2 fs_p_next;
 
-vec2 sample_to_pos(uint idx)
+vec2 sample_to_pos(vec2 sample_xy)
 {
     float rt = max(u.view.t_max - u.view.t_min, 1e-30);
     float rv = max(u.view.v_max - u.view.v_min, 1e-30);
 
-    float x = u.view.width  *       (u_samples.samples[idx].t_rel - u.view.t_min) / rt;
-    float y = u.view.height * (1.0 - (u_samples.samples[idx].y     - u.view.v_min) / rv) + u.view.y_offset;
+    float x = u.view.width  *       (sample_xy.x - u.view.t_min) / rt;
+    float y = u.view.height * (1.0 - (sample_xy.y - u.view.v_min) / rv) + u.view.y_offset;
 
     if (u.snap_to_pixels != 0) {
         x = floor(x) + 0.5;
@@ -55,13 +52,10 @@ vec2 sample_to_pos(uint idx)
 
 void main()
 {
-    // Boundary samples are duplicated on the host so prev/next clamp at the
-    // strip endpoints without a shader-side branch.
-    uint seg = uint(gl_InstanceIndex);
-    vec2 p_prev = sample_to_pos(u_adjacency.indices[seg + 0u]);
-    vec2 p0     = sample_to_pos(u_adjacency.indices[seg + 1u]);
-    vec2 p1     = sample_to_pos(u_adjacency.indices[seg + 2u]);
-    vec2 p_next = sample_to_pos(u_adjacency.indices[seg + 3u]);
+    vec2 p_prev = sample_to_pos(in_prev);
+    vec2 p0     = sample_to_pos(in_p0);
+    vec2 p1     = sample_to_pos(in_p1);
+    vec2 p_next = sample_to_pos(in_next);
 
     vec2  seg_v   = p1 - p0;
     float seg_len = length(seg_v);

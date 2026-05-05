@@ -16,6 +16,13 @@
 #include <unordered_set>
 #include <vector>
 
+class QRhi;
+class QRhiBuffer;
+class QRhiCommandBuffer;
+class QRhiGraphicsPipeline;
+class QRhiResourceUpdateBatch;
+class QRhiShaderResourceBindings;
+
 namespace vnm::plot {
 
 class Asset_loader;
@@ -41,7 +48,23 @@ public:
     // Clean up GL resources
     void cleanup_gl_resources();
 
-    // Render all series in the frame context
+    // Two-phase rendering. Under RHI, the host opens a resource-update batch,
+    // calls prepare() to fill it with sample/UBO/per-frame uploads, calls
+    // beginPass(rt, clear, depth, batch) to atomically submit those uploads
+    // before any draw, and then calls render() inside the open pass to record
+    // the draw commands. The split is forced by D3D11: cb->resourceUpdate is
+    // only legal outside an open pass, and beginPass consumes its 4th
+    // argument before the renderer's own draws would otherwise have written
+    // to it. Under the GL fallback (no QRhi in ctx), prepare() is a no-op
+    // and render() runs the full GL flow standalone, which keeps every
+    // existing test that calls render() directly working.
+    void prepare(const frame_context_t& ctx,
+                 const std::map<int, std::shared_ptr<const series_data_t>>& series);
+
+    // Render all series in the frame context. Records draws only when
+    // ctx.rhi is non-null (uploads must already have been submitted via
+    // prepare() + beginPass(batch)); runs the full GL flow when ctx.rhi is
+    // null.
     void render(const frame_context_t& ctx,
                 const std::map<int, std::shared_ptr<const series_data_t>>& series);
 
@@ -85,7 +108,25 @@ private:
         // uploads to avoid reallocation.
         std::vector<gpu_sample_t> staging;
 
-        void reset() { *this = vbo_view_state_t{}; }
+        // Per-view RHI resources. Defined out-of-line in series_renderer.cpp
+        // where QRhiBuffer is complete; the public header only sees the
+        // forward declaration. unique_ptr-of-incomplete-type forces every
+        // special member to be defined out-of-line, hence the explicit
+        // declarations below.
+        struct rhi_buffers_t;
+        std::unique_ptr<rhi_buffers_t> rhi;
+
+        std::size_t  rhi_vbo_capacity_bytes              = 0;
+        std::size_t  rhi_line_window_vbo_capacity_bytes  = 0;
+
+        vbo_view_state_t();
+        ~vbo_view_state_t();
+        vbo_view_state_t(const vbo_view_state_t&) = delete;
+        vbo_view_state_t& operator=(const vbo_view_state_t&) = delete;
+        vbo_view_state_t(vbo_view_state_t&&) noexcept;
+        vbo_view_state_t& operator=(vbo_view_state_t&&) noexcept;
+
+        void reset();
     };
 
     struct vbo_state_t
@@ -125,6 +166,31 @@ private:
         std::shared_ptr<void> cached_snapshot_hold;   // Keep snapshot alive
     };
 
+    // Per-(series, view) draw plan computed in prepare() and consumed in
+    // render(). Holds the raw policy/source pointers and the LOD-resolved
+    // view results so the record-draws phase can replay decisions without
+    // re-running process_view. Pointer fields stay valid because the host
+    // passes the same series_map snapshot to both prepare() and render(),
+    // and the renderer's own state (vbo_state) is owned by m_vbo_states.
+    struct series_draw_state_t
+    {
+        int id = 0;
+        std::shared_ptr<const series_data_t> series;
+        Data_source* main_source = nullptr;
+        Data_source* preview_source = nullptr;
+        const Data_access_policy* main_access = nullptr;
+        const Data_access_policy* preview_access = nullptr;
+        Display_style main_style = static_cast<Display_style>(0);
+        Display_style preview_style = static_cast<Display_style>(0);
+        vbo_state_t* vbo_state = nullptr;
+        std::vector<std::size_t> main_scales;
+        std::vector<std::size_t> preview_scales;
+        view_render_result_t main_result;
+        view_render_result_t preview_result;
+        bool has_preview = false;
+        bool preview_matches_main = false;
+    };
+
     struct colormap_resource_t
     {
         unsigned int texture = 0;
@@ -140,9 +206,12 @@ private:
 
     struct series_pipe_t
     {
+        // VBO is the GL-fallback vertex-buffer cache (per-pipe + per-layout).
+        // VAOs moved out of entry_t into m_gl_vaos: GL state objects need to
+        // outlive a single bind/draw cycle, but they are not part of the
+        // pipe's per-layout vertex-buffer accounting.
         struct entry_t
         {
-            GLuint vao = 0;
             GLuint vbo = 0;
         };
         std::unordered_map<std::uint64_t, entry_t> by_layout;
@@ -161,6 +230,35 @@ private:
     std::unique_ptr<series_pipe_t> m_pipe_area;
     std::unique_ptr<series_pipe_t> m_pipe_colormap;
 
+    // GL-fallback VAOs keyed by (pipe pointer, vbo). Outlives any single
+    // draw because GL state objects must persist between bind/draw cycles.
+    // Empty under RHI rendering.
+    struct gl_vao_key_t
+    {
+        const series_pipe_t* pipe;
+        GLuint vbo;
+        bool operator==(const gl_vao_key_t& other) const noexcept
+        {
+            return pipe == other.pipe && vbo == other.vbo;
+        }
+    };
+    struct gl_vao_key_hash_t
+    {
+        std::size_t operator()(const gl_vao_key_t& k) const noexcept
+        {
+            return std::hash<const void*>{}(k.pipe) ^ (std::hash<GLuint>{}(k.vbo) << 1);
+        }
+    };
+    std::unordered_map<gl_vao_key_t, GLuint, gl_vao_key_hash_t> m_gl_vaos;
+
+    // RHI-side state. The renderer drives LINE and DOTS through this path;
+    // AREA and COLORMAP_* keep using the GL fallback, which is gated by
+    // skip_gl whenever a QRhi is bound. Pipelines are cached per
+    // Display_style. The full implementation sits in series_renderer.cpp
+    // where the QRhi types are complete.
+    struct rhi_state_t;
+    std::unique_ptr<rhi_state_t> m_rhi_state;
+
     uint64_t m_frame_id = 0;  // Monotonic frame counter for snapshot caching
 
     void clear_frame_snapshot_caches();
@@ -169,7 +267,10 @@ private:
         const shader_set_t& shader_set,
         const Plot_config* config);
     series_pipe_t& pipe_for(Display_style style);
-    GLuint ensure_series_vao(Display_style style, GLuint vbo);
+    // GL-fallback VAO management. The GL path needs a non-zero VAO bound for
+    // every draw on a core-profile context; the RHI path drives attribute
+    // layout through QRhiVertexInputLayout instead.
+    GLuint ensure_gl_series_vao(Display_style style, GLuint vbo);
     GLuint ensure_colormap_texture(const series_data_t& series, Display_style style);
 
     view_render_result_t process_view(
@@ -185,7 +286,9 @@ private:
         double width_px,
         Empty_window_behavior empty_window_behavior,
         vnm::plot::Profiler* profiler,
-        bool skip_gl);
+        bool skip_gl,
+        QRhi* rhi,
+        QRhiResourceUpdateBatch* rhi_updates);
 
     void set_common_uniforms(
         GL_program& program,
@@ -196,6 +299,35 @@ private:
         GL_program& program,
         const frame_context_t& ctx,
         std::int64_t origin_ns);
+
+    // RHI helpers for LINE / DOTS. AREA and COLORMAP_* never reach these
+    // paths (they fall to the GL fallback, which is gated by skip_gl).
+    //
+    // rhi_prepare_line_or_dots: writes to ctx.rhi_updates only. Builds the
+    //   per-view UBO and (LINE-only) the per-frame line_window_vbo, and
+    //   ensures the cached pipeline / SRB are valid. No cb->* draw calls.
+    //   Must run before the host calls beginPass(batch) so the upload is
+    //   submitted alongside the rest of ctx.rhi_updates.
+    //
+    // rhi_record_line_or_dots: emits cb->setGraphicsPipeline /
+    //   setShaderResources / setVertexInput / setScissor / draw only. No
+    //   buffer writes; safe to call inside the open render pass.
+    void rhi_prepare_line_or_dots(
+        const frame_context_t& ctx,
+        const series_data_t* series,
+        Display_style primitive_style,
+        vbo_view_state_t& view_state,
+        const view_render_result_t& view_result,
+        bool is_preview,
+        float line_width_px,
+        float point_diameter_px,
+        std::int64_t origin_ns);
+    void rhi_record_line_or_dots(
+        const frame_context_t& ctx,
+        Display_style primitive_style,
+        vbo_view_state_t& view_state,
+        const view_render_result_t& view_result,
+        bool is_preview);
 };
 
 } // namespace vnm::plot

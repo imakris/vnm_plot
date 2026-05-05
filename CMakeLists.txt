@@ -496,6 +496,19 @@ endif()
 
 message(STATUS "vnm_plot: Building Qt-free core library")
 
+# Series_renderer.cpp routes uploads and draws through QRhi when the active
+# frame_context_t carries a QRhi*. The QRhi types live behind
+# Qt6::GuiPrivate; linking it PRIVATE here gives the core .cpp files access
+# to <rhi/qrhi.h> without leaking the dependency through the public include
+# surface (series_renderer.h forward-declares the types). When Qt6 is not
+# available the renderer falls back to the GL path automatically through the
+# VNM_PLOT_HAS_QRHI compile guard, which is set here as the single source of
+# truth so the .cpp does not have to probe with __has_include.
+if(VNM_PLOT_BUILD_QT AND TARGET Qt6::GuiPrivate)
+    target_link_libraries(vnm_plot_core PRIVATE Qt6::GuiPrivate)
+    target_compile_definitions(vnm_plot_core PRIVATE VNM_PLOT_HAS_QRHI=1)
+endif()
+
 # -----------------------------------------------------------------------------
 # Qt Resources (only if building Qt wrapper)
 # -----------------------------------------------------------------------------
@@ -587,6 +600,7 @@ if(VNM_PLOT_BUILD_QT)
                 msdfgen::msdfgen-ext
         )
     endif()
+
 
     # Platform-specific settings
     if(WIN32)

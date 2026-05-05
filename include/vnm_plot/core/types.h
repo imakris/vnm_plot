@@ -15,6 +15,15 @@
 #include <glm/vec2.hpp>
 #include <glm/vec4.hpp>
 
+// Forward declarations for the RHI types frame_context_t carries. These
+// live behind Qt6::GuiPrivate; consumers of this public header see only
+// the names so the core renderer code can route uploads and draws through
+// QRhi without leaking Qt private headers.
+class QRhi;
+class QRhiCommandBuffer;
+class QRhiRenderTarget;
+class QRhiResourceUpdateBatch;
+
 namespace vnm::plot {
 struct Plot_config;
 // -----------------------------------------------------------------------------
@@ -656,6 +665,22 @@ struct frame_context_t
     bool dark_mode = false;
 
     const Plot_config* config = nullptr;
+
+    // RHI handles for the active frame. When `rhi` is non-null the renderer
+    // routes uploads through the RHI resource-update batch and draws with
+    // `cb`. The legacy GL path runs when these stay null (used by tests and
+    // the headless benchmark, which run without a QRhi instance).
+    QRhi*              rhi = nullptr;
+    QRhiCommandBuffer* cb  = nullptr;
+    // Render target the host already opened a pass on. The renderer reads
+    // the render-pass descriptor and sample count off it when building
+    // graphics-pipeline state objects.
+    QRhiRenderTarget*  render_target = nullptr;
+    // Resource-update batch the host hands the renderer to fill. The host
+    // owns its lifetime and submits it via beginPass's 4th argument; the
+    // renderer must NOT call cb->resourceUpdate(batch) itself, because that
+    // call is illegal once the host's render pass is open.
+    QRhiResourceUpdateBatch* rhi_updates = nullptr;
 };
 
 } // namespace vnm::plot

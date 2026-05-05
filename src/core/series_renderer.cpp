@@ -10,9 +10,16 @@
 #include <glatter/glatter.h>
 #include <glm/gtc/type_ptr.hpp>
 
+// VNM_PLOT_HAS_QRHI is defined by CMake when this TU links Qt6::GuiPrivate.
+#ifdef VNM_PLOT_HAS_QRHI
+#  include <rhi/qrhi.h>
+#  include <QFile>
+#endif
+
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstring>
 #include <limits>
 #include <string_view>
 #include <unordered_set>
@@ -154,12 +161,261 @@ bool compute_aux_metric_range(
 
 } // anonymous namespace
 
+// Per-view RHI resources held off-line so the public header forward-
+// declares the type. The unique_ptr<rhi_buffers_t> in vbo_view_state_t
+// pulls in QRhiBuffer transitively through this struct's members; under
+// the GL fallback build (no QRhi) the rhi_buffers_t is never instantiated
+// so its definition collapses to an empty placeholder.
+//
+// The SRB is per-view because it captures concrete buffer handles. The
+// pipeline state object stays cached in rhi_state_t (its descriptor only
+// depends on layout, not on which buffer the SRB references). When a
+// buffer is reallocated to grow capacity, the SRB's last_* pointers no
+// longer match and the SRB is rebuilt before the next draw.
+#ifdef VNM_PLOT_HAS_QRHI
+struct Series_renderer::vbo_view_state_t::rhi_buffers_t
+{
+    std::unique_ptr<QRhiBuffer> vbo;
+    std::unique_ptr<QRhiBuffer> ubo;
+    // LINE-specific per-frame buffer that holds the active sample window
+    // padded with leading and trailing duplicates. Bound four times as a
+    // vertex buffer (offsets 0, 16, 32, 48; stride 16; per-instance) so the
+    // vertex shader receives prev/p0/p1/next as plain attributes. Vertex
+    // attributes side-step the SM 5.0 UAV restriction that blocks SSBOs in
+    // the D3D11 vertex stage.
+    std::unique_ptr<QRhiBuffer> line_window_vbo;
+
+    // Per-(view, primitive_style) SRB cache. The SRB only references the
+    // per-view UBO; LINE's per-instance sample window rides vertex
+    // attributes, and DOTS reads the sample VBO through vertex attributes
+    // too, so neither needs a buffer-load entry in the SRB.
+    struct srb_entry_t
+    {
+        std::unique_ptr<QRhiShaderResourceBindings> srb;
+        QRhiBuffer* last_ubo = nullptr;
+    };
+    srb_entry_t dots_srb;
+    srb_entry_t line_srb;
+};
+#else
+struct Series_renderer::vbo_view_state_t::rhi_buffers_t {};
+#endif
+
+Series_renderer::vbo_view_state_t::vbo_view_state_t() = default;
+Series_renderer::vbo_view_state_t::~vbo_view_state_t() = default;
+Series_renderer::vbo_view_state_t::vbo_view_state_t(vbo_view_state_t&&) noexcept = default;
+Series_renderer::vbo_view_state_t&
+Series_renderer::vbo_view_state_t::operator=(vbo_view_state_t&&) noexcept = default;
+
+void Series_renderer::vbo_view_state_t::reset()
+{
+    *this = vbo_view_state_t{};
+}
+
+// -----------------------------------------------------------------------------
+// RHI state: pipelines, shaders, and the global UBO mirror.
+// -----------------------------------------------------------------------------
+//
+// Each Display_style maps to one cached QRhiGraphicsPipeline. The pipeline
+// descriptor only depends on the binding LAYOUT (which stages reference each
+// slot, and the vertex-input layout), not on which buffers fill those slots,
+// so one pipeline is shared across every series. The QRhiShaderResourceBindings
+// that actually reference per-series buffers live on the per-view rhi_buffers_t
+// so each series gets its own SRB.
+
+struct Series_renderer::rhi_state_t
+{
+    enum class pipeline_kind_t : uint32_t
+    {
+        DOTS = 0,
+        LINE = 1
+    };
+
+    struct pipeline_key_t
+    {
+        pipeline_kind_t kind;
+
+        bool operator==(const pipeline_key_t& o) const noexcept
+        {
+            return kind == o.kind;
+        }
+    };
+
+    struct pipeline_key_hash_t
+    {
+        std::size_t operator()(const pipeline_key_t& k) const noexcept
+        {
+            return static_cast<std::size_t>(k.kind);
+        }
+    };
+
+#ifdef VNM_PLOT_HAS_QRHI
+    struct rhi_pipeline_t
+    {
+        std::unique_ptr<QRhiGraphicsPipeline> pipeline;
+        QShader vert;
+        QShader frag;
+        // Render-pass descriptor captured at pipeline creation. If the host's
+        // current render target carries a different descriptor (e.g. resize
+        // recreated the FBO with a different color format or sample count),
+        // the cached pipeline is no longer compatible and is rebuilt.
+        QRhiRenderPassDescriptor* last_rpd = nullptr;
+        int                       last_sample_count = 1;
+    };
+
+    std::unordered_map<pipeline_key_t, rhi_pipeline_t, pipeline_key_hash_t> pipelines;
+    QShader cached_dot_vert;
+    QShader cached_dot_frag;
+    QShader cached_line_vert;
+    QShader cached_line_frag;
+    bool    shaders_loaded = false;
+
+    QRhi*                last_rhi             = nullptr;
+    QRhiResourceUpdateBatch* pending_updates  = nullptr;
+    // Render target captured at the start of Series_renderer::render. The
+    // pipeline state object needs the render-pass descriptor and sample
+    // count from the active target, and QRhiCommandBuffer does not expose a
+    // public accessor for it — Plot_renderer hands it over instead.
+    QRhiRenderTarget*    last_render_target   = nullptr;
+
+    // Per-frame draw plan computed in prepare() (under RHI) and replayed in
+    // render(). Stays empty under the GL fallback path; render() builds it
+    // on the fly in that case so tests that call render() standalone keep
+    // working. The vector lives on the renderer rather than in a stack
+    // frame because the prepare() / render() split happens across two host
+    // calls, with cb->beginPass(batch) sandwiched in between. The fp32
+    // origins computed in prepare() ride inside the per-view UBO/staging
+    // bytes already submitted to the resource-update batch, so they do
+    // not need to be cached here for render() to read back.
+    std::vector<series_draw_state_t> frame_draw_states;
+    bool         frame_preview_visible   = false;
+    // True if prepare() filled this plan. Reset after render() consumes it
+    // so a stray render() without a matching prepare() is a no-op for the
+    // RHI draws (the GL fallback path runs the plan-build inline).
+    bool         frame_plan_ready        = false;
+#endif
+};
+
+// -----------------------------------------------------------------------------
+// std140 UBO mirror for the QSB shader uniform_blocks.glsl::Series_view_t,
+// plus the per-shader trailing scalars consumed by plot_dot_quad and
+// plot_line.
+// -----------------------------------------------------------------------------
+//
+// The shaders declare:
+//
+//     layout(std140, binding = 0) uniform Block {
+//         Series_view_t view;     // 96 bytes
+//         float         line_px;  // .vert/.frag for LINE
+//         int           snap;     // for LINE
+//         float         dot_px;   // for DOTS
+//     } u;
+//
+// std140 requires:
+//   - mat4 aligns to a vec4 (16 bytes)
+//   - vec4 aligns to 16 bytes
+//   - scalar floats and ints align to 4 bytes
+//   - the structure as a whole aligns to a vec4
+//
+// Series_view_t layout (each row is 16 bytes):
+//   offset 0   pmv      (mat4 = 4 vec4 = 64 bytes)
+//   offset 64  color    (vec4 = 16)
+//   offset 80  t_min    (float)
+//   offset 84  t_max    (float)
+//   offset 88  v_min    (float)
+//   offset 92  v_max    (float)
+//   offset 96  width    (float)
+//   offset 100 height   (float)
+//   offset 104 y_offset (float)
+//   offset 108 win_h    (float)
+//   total: 112 bytes
+//
+// Per-shader trailing scalars sit just past the view, padded out to vec4 to
+// satisfy std140's structure-trailing rule. We size the union to fit either
+// the LINE block (line_px + snap, 8 bytes) or the DOTS block (dot_px,
+// 4 bytes) and round to a 16-byte multiple to avoid uniform-buffer
+// alignment surprises across backends.
+struct Series_view_std140
+{
+    float pmv[16];      // offset   0
+    float color[4];     // offset  64
+    float t_min;        // offset  80
+    float t_max;        // offset  84
+    float v_min;        // offset  88
+    float v_max;        // offset  92
+    float width;        // offset  96
+    float height;       // offset 100
+    float y_offset;     // offset 104
+    float win_h;        // offset 108
+};
+static_assert(offsetof(Series_view_std140, pmv)      ==   0, "Series_view_t std140 pmv offset");
+static_assert(offsetof(Series_view_std140, color)    ==  64, "Series_view_t std140 color offset");
+static_assert(offsetof(Series_view_std140, t_min)    ==  80, "Series_view_t std140 t_min offset");
+static_assert(offsetof(Series_view_std140, t_max)    ==  84, "Series_view_t std140 t_max offset");
+static_assert(offsetof(Series_view_std140, v_min)    ==  88, "Series_view_t std140 v_min offset");
+static_assert(offsetof(Series_view_std140, v_max)    ==  92, "Series_view_t std140 v_max offset");
+static_assert(offsetof(Series_view_std140, width)    ==  96, "Series_view_t std140 width offset");
+static_assert(offsetof(Series_view_std140, height)   == 100, "Series_view_t std140 height offset");
+static_assert(offsetof(Series_view_std140, y_offset) == 104, "Series_view_t std140 y_offset offset");
+static_assert(offsetof(Series_view_std140, win_h)    == 108, "Series_view_t std140 win_h offset");
+static_assert(sizeof(Series_view_std140)            == 112, "Series_view_t std140 size");
+
+// Whole-block layout: Series_view + LINE trailing (line_px, snap_to_pixels).
+// Padded out to a 16-byte multiple so the host-side struct mirrors the
+// vec4-aligned trailing element rule std140 enforces on the GLSL block.
+struct Line_block_std140
+{
+    Series_view_std140 view;          // offset 0
+    float              line_px;       // offset 112
+    int                snap_to_pixels;// offset 116
+    float              _pad0;         // offset 120
+    float              _pad1;         // offset 124
+};
+static_assert(sizeof(Line_block_std140) == 128, "Line_block_std140 must be a multiple of 16");
+static_assert(offsetof(Line_block_std140, line_px)        == 112, "Line_block line_px offset");
+static_assert(offsetof(Line_block_std140, snap_to_pixels) == 116, "Line_block snap_to_pixels offset");
+
+// Whole-block layout: Series_view + DOTS trailing (point_diameter_px).
+// Padded out to 128 bytes for the same reason as Line_block_std140.
+struct Dot_block_std140
+{
+    Series_view_std140 view;              // offset 0
+    float              point_diameter_px; // offset 112
+    float              _pad0;             // offset 116
+    float              _pad1;             // offset 120
+    float              _pad2;             // offset 124
+};
+static_assert(sizeof(Dot_block_std140) == 128, "Dot_block_std140 must be a multiple of 16");
+static_assert(offsetof(Dot_block_std140, point_diameter_px) == 112, "Dot_block point_diameter_px offset");
+
+// LINE and DOTS share a single UBO size; the host allocates one buffer per
+// view sized to fit either block.
+constexpr std::uint32_t k_series_ubo_bytes = 128;
+static_assert(sizeof(Line_block_std140) == k_series_ubo_bytes, "ubo bytes match LINE block");
+static_assert(sizeof(Dot_block_std140) == k_series_ubo_bytes,  "ubo bytes match DOTS block");
+
+#ifdef VNM_PLOT_HAS_QRHI
+// Load a baked .qsb artifact from the embedded Qt resource produced by
+// qt_add_shaders. The PREFIX is /vnm_plot in CMakeLists.txt; the BASE is
+// the project root, so an input shaders/qsb/foo.vert ends up at
+// :/vnm_plot/shaders/qsb/foo.vert.qsb.
+static QShader load_qsb(const char* alias)
+{
+    QFile file(QStringLiteral(":/vnm_plot/shaders/qsb/") + QString::fromLatin1(alias));
+    if (!file.open(QIODevice::ReadOnly)) {
+        return {};
+    }
+    return QShader::fromSerialized(file.readAll());
+}
+#endif
+
 Series_renderer::Series_renderer()
 {
     m_pipe_line = std::make_unique<series_pipe_t>();
     m_pipe_dots = std::make_unique<series_pipe_t>();
     m_pipe_area = std::make_unique<series_pipe_t>();
     m_pipe_colormap = std::make_unique<series_pipe_t>();
+    m_rhi_state = std::make_unique<rhi_state_t>();
 }
 
 Series_renderer::~Series_renderer() = default;
@@ -178,14 +434,17 @@ void Series_renderer::cleanup_gl_resources()
             continue;
         }
         for (auto& [_, entry] : pipe->by_layout) {
-            if (entry.vao != 0) {
-                glDeleteVertexArrays(1, &entry.vao);
-                entry.vao = 0;
-            }
             entry.vbo = 0;
         }
         pipe->by_layout.clear();
     }
+
+    for (auto& [_, vao] : m_gl_vaos) {
+        if (vao != 0) {
+            glDeleteVertexArrays(1, &vao);
+        }
+    }
+    m_gl_vaos.clear();
 
     for (auto& [_, state] : m_vbo_states) {
         for (auto* view : {&state.main_view, &state.preview_view}) {
@@ -212,6 +471,19 @@ void Series_renderer::cleanup_gl_resources()
     }
     m_colormap_textures.clear();
     m_logged_errors.clear();
+
+#ifdef VNM_PLOT_HAS_QRHI
+    m_rhi_state->pipelines.clear();
+    m_rhi_state->shaders_loaded = false;
+    m_rhi_state->cached_dot_vert = {};
+    m_rhi_state->cached_dot_frag = {};
+    m_rhi_state->cached_line_vert = {};
+    m_rhi_state->cached_line_frag = {};
+    m_rhi_state->last_rhi = nullptr;
+    m_rhi_state->pending_updates = nullptr;
+    m_rhi_state->frame_draw_states.clear();
+    m_rhi_state->frame_plan_ready = false;
+#endif
 }
 
 void Series_renderer::clear_frame_snapshot_caches()
@@ -296,24 +568,28 @@ GLuint Series_renderer::ensure_colormap_texture(const series_data_t& series, Dis
     return resource.texture;
 }
 
-GLuint Series_renderer::ensure_series_vao(
+GLuint Series_renderer::ensure_gl_series_vao(
     Display_style style,
     GLuint vbo)
 {
     auto& pipe = pipe_for(style);
-    // The VBO holds a fixed gpu_sample_t layout, so a single VAO per pipe is
-    // enough; key 0 is reserved as the canonical entry for that layout.
-    auto& entry = pipe.by_layout[0];
+    // The VBO holds a fixed gpu_sample_t layout. The GL fallback path creates
+    // one VAO per (pipe, vbo) pair and stores it in m_gl_vaos so the entry_t
+    // tracks only the bound vbo handle (per the C1 type contract that VAOs
+    // are not part of series_pipe_t::entry_t).
+    pipe.by_layout[0].vbo = vbo;
 
-    if (entry.vao != 0 && entry.vbo == vbo) {
-        return entry.vao;
+    const gl_vao_key_t key{&pipe, vbo};
+    auto it = m_gl_vaos.find(key);
+    if (it != m_gl_vaos.end()) {
+        glBindVertexArray(it->second);
+        return it->second;
     }
 
-    if (entry.vao == 0) {
-        glGenVertexArrays(1, &entry.vao);
-    }
-
-    glBindVertexArray(entry.vao);
+    GLuint vao = 0;
+    glGenVertexArrays(1, &vao);
+    m_gl_vaos.emplace(key, vao);
+    glBindVertexArray(vao);
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
 
     constexpr GLsizei k_stride            = static_cast<GLsizei>(sizeof(gpu_sample_t));
@@ -374,11 +650,10 @@ GLuint Series_renderer::ensure_series_vao(
             glVertexAttribDivisor(loc, 1u);
         }
     }
-    entry.vbo = vbo;
 
     glBindVertexArray(0);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
-    return entry.vao;
+    return vao;
 }
 
 std::shared_ptr<GL_program> Series_renderer::get_or_load_shader(
@@ -441,8 +716,20 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
     double width_px,
     Empty_window_behavior empty_window_behavior,
     vnm::plot::Profiler* profiler,
-    bool skip_gl)
+    bool skip_gl,
+    QRhi* rhi,
+    QRhiResourceUpdateBatch* rhi_updates)
 {
+#ifndef VNM_PLOT_HAS_QRHI
+    (void)rhi;
+    (void)rhi_updates;
+#endif
+    // The RHI upload path runs whenever a QRhi/batch is bound. skip_gl is a
+    // "do not issue gl* calls" knob, not a "do not render" knob; under any
+    // RHI backend the host sets skip_gl so the legacy GL fallback stays
+    // silent, but the RHI staging upload must still run or LINE/DOTS draw
+    // against an empty vertex buffer.
+    const bool use_rhi_uploads = (rhi != nullptr) && (rhi_updates != nullptr);
     view_render_result_t result;
     const auto& get_timestamp = access.get_timestamp;
 
@@ -704,7 +991,9 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
 
         {
             VNM_PLOT_PROFILE_SCOPE(profiler, "process_view.cpu_prepare");
-            if (!skip_gl && view_state.id == UINT_MAX) {
+            // GL fallback owns its own buffer handle; the RHI path lives
+            // entirely in view_state.rhi->vbo (allocated lazily below).
+            if (!skip_gl && !use_rhi_uploads && view_state.id == UINT_MAX) {
                 glGenBuffers(1, &view_state.id);
             }
 
@@ -741,7 +1030,18 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
                 dst.y_max = range.second;
             };
 
-            if (must_upload && !skip_gl) {
+            // Two write surfaces gate this block:
+            //   - use_rhi_uploads: the RHI upload path runs whenever a QRhi
+            //     and batch are bound, even when the host set skip_gl to
+            //     silence the legacy GL fallback.
+            //   - !skip_gl: the GL upload path runs only when gl* calls are
+            //     allowed (no RHI bound, and the host did not set skip_gl
+            //     for CPU profiling).
+            // The staging vector itself is a CPU-side rebased copy of the
+            // snapshot; it is always built when either upload path runs and
+            // is consumed downstream by rhi_record_line_or_dots when
+            // building the LINE per-frame window buffer.
+            if (must_upload && (use_rhi_uploads || !skip_gl)) {
                 auto& staging = view_state.staging;
                 staging.resize(snapshot.count + (hold_last_forward ? 1 : 0));
 
@@ -775,19 +1075,60 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
                     }
                 }
 
-                glBindBuffer(GL_ARRAY_BUFFER, view_state.id);
-                if (region_changed) {
-                    const std::size_t alloc_size = needed_bytes + needed_bytes / 4;
-                    glBufferData(GL_ARRAY_BUFFER,
-                        static_cast<GLsizeiptr>(alloc_size), nullptr, GL_DYNAMIC_DRAW);
-                    view_state.last_ring_size = alloc_size;
+#ifdef VNM_PLOT_HAS_QRHI
+                if (use_rhi_uploads) {
+                    if (!view_state.rhi) {
+                        view_state.rhi =
+                            std::make_unique<vbo_view_state_t::rhi_buffers_t>();
+                    }
+                    // Allocate or grow the RHI vertex/storage buffer to fit the
+                    // current sample window. Like the GL path we add a 25%
+                    // headroom so subsequent appends do not trigger a
+                    // reallocate every frame.
+                    //
+                    // Type=Static is required: D3D11/Vulkan/Metal forbid
+                    // Dynamic on a buffer with the StorageBuffer usage flag,
+                    // and the LINE path binds this buffer as an SSBO.
+                    // uploadStaticBuffer accepts repeat uploads on Static
+                    // buffers; the renderer calls it once per frame.
+                    const std::size_t alloc_bytes = needed_bytes + needed_bytes / 4;
+                    if (!view_state.rhi->vbo
+                        || view_state.rhi_vbo_capacity_bytes < alloc_bytes)
+                    {
+                        view_state.rhi->vbo.reset(rhi->newBuffer(
+                            QRhiBuffer::Static,
+                            QRhiBuffer::VertexBuffer | QRhiBuffer::StorageBuffer,
+                            static_cast<quint32>(alloc_bytes)));
+                        if (view_state.rhi->vbo && view_state.rhi->vbo->create()) {
+                            view_state.rhi_vbo_capacity_bytes = alloc_bytes;
+                            view_state.last_ring_size = alloc_bytes;
+                        }
+                    }
+                    if (view_state.rhi->vbo) {
+                        rhi_updates->uploadStaticBuffer(
+                            view_state.rhi->vbo.get(),
+                            0,
+                            static_cast<quint32>(staging.size() * sizeof(gpu_sample_t)),
+                            staging.data());
+                    }
                 }
-                glBufferSubData(GL_ARRAY_BUFFER, 0,
-                    static_cast<GLsizeiptr>(staging.size() * sizeof(gpu_sample_t)),
-                    staging.data());
+                else
+#endif
+                if (!skip_gl) {
+                    glBindBuffer(GL_ARRAY_BUFFER, view_state.id);
+                    if (region_changed) {
+                        const std::size_t alloc_size = needed_bytes + needed_bytes / 4;
+                        glBufferData(GL_ARRAY_BUFFER,
+                            static_cast<GLsizeiptr>(alloc_size), nullptr, GL_DYNAMIC_DRAW);
+                        view_state.last_ring_size = alloc_size;
+                    }
+                    glBufferSubData(GL_ARRAY_BUFFER, 0,
+                        static_cast<GLsizeiptr>(staging.size() * sizeof(gpu_sample_t)),
+                        staging.data());
+                }
             }
             else
-            if (needs_hold_upload && !skip_gl) {
+            if (needs_hold_upload && (use_rhi_uploads || !skip_gl)) {
                 // Data unchanged, only the synthetic last sample's timestamp
                 // moved with t_max_ns. Stage just that one gpu_sample_t and
                 // patch the VBO at its trailing offset.
@@ -799,12 +1140,32 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
                         user_sample.data(), source_sample, t_max_ns);
                     gpu_sample_t hold_sample{};
                     stage_one_sample(hold_sample, user_sample.data());
-                    glBindBuffer(GL_ARRAY_BUFFER, view_state.id);
-                    glBufferSubData(
-                        GL_ARRAY_BUFFER,
-                        static_cast<GLintptr>(snapshot.count * sizeof(gpu_sample_t)),
-                        static_cast<GLsizeiptr>(sizeof(gpu_sample_t)),
-                        &hold_sample);
+                    // Mirror the patched sample into the CPU-side staging
+                    // vector so the LINE per-frame window buffer (built from
+                    // staging in rhi_record_line_or_dots) sees the updated
+                    // hold value alongside the GPU-side patch.
+                    auto& staging = view_state.staging;
+                    if (!staging.empty()) {
+                        staging.back() = hold_sample;
+                    }
+#ifdef VNM_PLOT_HAS_QRHI
+                    if (use_rhi_uploads && view_state.rhi && view_state.rhi->vbo) {
+                        rhi_updates->uploadStaticBuffer(
+                            view_state.rhi->vbo.get(),
+                            static_cast<quint32>(snapshot.count * sizeof(gpu_sample_t)),
+                            static_cast<quint32>(sizeof(gpu_sample_t)),
+                            &hold_sample);
+                    }
+                    else
+#endif
+                    if (!skip_gl) {
+                        glBindBuffer(GL_ARRAY_BUFFER, view_state.id);
+                        glBufferSubData(
+                            GL_ARRAY_BUFFER,
+                            static_cast<GLintptr>(snapshot.count * sizeof(gpu_sample_t)),
+                            static_cast<GLsizeiptr>(sizeof(gpu_sample_t)),
+                            &hold_sample);
+                    }
                 }
             }
             if (must_upload) {
@@ -815,6 +1176,17 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
             view_state.last_snapshot_elements = snapshot.count;
         }
 
+        // active_vbo is the contract field both the GL fast-path and the
+        // skip_gl tests inspect. Under RHI it is set to a non-zero sentinel
+        // so the cache predicates in the next frame still observe "we have
+        // bytes ready". The actual buffer is view_state.rhi->vbo on RHI
+        // builds.
+#ifdef VNM_PLOT_HAS_QRHI
+        if (use_rhi_uploads && view_state.rhi && view_state.rhi->vbo) {
+            view_state.active_vbo = 1u;
+        }
+        else
+#endif
         view_state.active_vbo = view_state.id;
         view_state.last_first = static_cast<GLint>(first_idx);
         view_state.last_count = count;
@@ -896,10 +1268,435 @@ void Series_renderer::modify_uniforms_for_preview(
     glUniform1f(program.uniform_location("t_max"), t_max_rel);
 }
 
+void Series_renderer::prepare(
+    const frame_context_t& ctx,
+    const std::map<int, std::shared_ptr<const series_data_t>>& series)
+{
+#ifndef VNM_PLOT_HAS_QRHI
+    (void)ctx;
+    (void)series;
+#else
+    // GL fallback drives everything from render() in a single call. The
+    // record-draws split only matters when a QRhi is bound, because that's
+    // the path where the host wraps draws in beginPass(batch) and
+    // beginPass consumes its 4th argument before render() would otherwise
+    // get to fill it.
+    if (!ctx.rhi) {
+        return;
+    }
+
+    if (series.empty() || !m_asset_loader) {
+        return;
+    }
+
+    const auto& layout = ctx.layout;
+    if (layout.usable_width <= 0.0 || layout.usable_height <= 0.0) {
+        return;
+    }
+
+    ++m_frame_id;
+
+    vnm::plot::Profiler* profiler = ctx.config ? ctx.config->profiler.get() : nullptr;
+    VNM_PLOT_PROFILE_SCOPE(profiler,
+        "renderer.frame.execute_passes.render_data_series.prepare");
+
+    const bool skip_gl = ctx.skip_gl;
+    QRhi*                    rhi         = ctx.rhi;
+    QRhiResourceUpdateBatch* rhi_updates = ctx.rhi_updates;
+    m_rhi_state->last_rhi = rhi;
+    m_rhi_state->pending_updates = rhi_updates;
+
+    const float line_width = ctx.config ? static_cast<float>(ctx.config->line_width_px) : 1.0f;
+    const float point_diameter = ctx.config
+        ? static_cast<float>(ctx.config->point_diameter_px) : 1.0f;
+
+    // Cleanup stale VBO states for series no longer in the map. Under RHI
+    // the GL handles are never allocated (skip_gl is set by the host), so
+    // the glDelete* paths are dormant; the QRhiBuffer destructors run when
+    // the entry is erased.
+    for (auto it = m_vbo_states.begin(); it != m_vbo_states.end(); ) {
+        if (series.find(it->first) == series.end()) {
+            auto& state = it->second;
+            for (auto* view : {&state.main_view, &state.preview_view}) {
+                if (!skip_gl && view->id != UINT_MAX) {
+                    glDeleteBuffers(1, &view->id);
+                }
+                if (!skip_gl && view->adjacency_ebo != UINT_MAX) {
+                    glDeleteBuffers(1, &view->adjacency_ebo);
+                }
+            }
+            it = m_vbo_states.erase(it);
+        }
+        else {
+            ++it;
+        }
+    }
+
+    for (auto it = m_colormap_textures.begin(); it != m_colormap_textures.end(); ) {
+        bool found = false;
+        for (const auto& [_, s] : series) {
+            if (s.get() == it->first) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            if (!skip_gl) {
+                for (auto* resource : {&it->second.area, &it->second.line}) {
+                    if (resource->texture != 0) {
+                        glDeleteTextures(1, &resource->texture);
+                    }
+                }
+            }
+            it = m_colormap_textures.erase(it);
+        }
+        else {
+            ++it;
+        }
+    }
+
+    auto& draw_states = m_rhi_state->frame_draw_states;
+    draw_states.clear();
+    draw_states.reserve(series.size());
+
+    const double preview_visibility = ctx.config ? ctx.config->preview_visibility : 1.0;
+    const bool preview_visible = ctx.adjusted_preview_height > 0.0 && preview_visibility > 0.0;
+    m_rhi_state->frame_preview_visible = preview_visible;
+
+    const std::int64_t main_origin_ns = choose_origin_ns(ctx.t0, ctx.t1 - ctx.t0);
+    const std::int64_t preview_origin_ns = preview_visible
+        ? choose_origin_ns(ctx.t_available_min, ctx.t_available_max - ctx.t_available_min)
+        : main_origin_ns;
+
+    enum class Error_cat : uint32_t {
+        MISSING_SIGNAL, MISSING_SIGNAL_PREVIEW,
+        PREVIEW_MISSING_SOURCE,
+        MISSING_SHADER,
+        COLORMAP_LINE_DEFAULT_NOT_SUPPORTED,
+        COLORMAP_LINE_DEFAULT_NOT_SUPPORTED_PREVIEW
+    };
+
+    const auto uses_default_colormap_line_shader = [](const series_data_t& s) {
+        auto it = s.shaders.find(Display_style::COLORMAP_LINE);
+        if (it != s.shaders.end() && !it->second.empty()) {
+            return false;
+        }
+        return s.shader_set.empty();
+    };
+    const auto log_error_once = [&](Error_cat cat, int series_id,
+                                    const std::string& message) {
+        if (!ctx.config || !ctx.config->log_error) {
+            return;
+        }
+        const uint64_t key = (static_cast<uint64_t>(cat) << 32)
+            | static_cast<uint64_t>(static_cast<uint32_t>(series_id));
+        if (m_logged_errors.insert(key).second) {
+            ctx.config->log_error(message);
+        }
+    };
+
+    for (const auto& [id, s] : series) {
+        VNM_PLOT_PROFILE_SCOPE(profiler,
+            "renderer.frame.execute_passes.render_data_series.series");
+        if (!s || !s->enabled) {
+            continue;
+        }
+
+        Data_source* main_source = s->main_source();
+        if (!main_source) {
+            continue;
+        }
+
+        const Data_access_policy& main_access = s->main_access();
+
+        Display_style main_style = s->style;
+        if (!!(main_style & Display_style::COLORMAP_LINE) && !main_access.get_signal) {
+            log_error_once(Error_cat::MISSING_SIGNAL, id,
+                "COLORMAP_LINE requires Data_access_policy::get_signal (series "
+                    + std::to_string(id) + ")");
+            main_style = static_cast<Display_style>(
+                static_cast<int>(main_style) & ~static_cast<int>(Display_style::COLORMAP_LINE));
+        }
+        if (!!(main_style & Display_style::COLORMAP_LINE) && uses_default_colormap_line_shader(*s)) {
+            log_error_once(Error_cat::COLORMAP_LINE_DEFAULT_NOT_SUPPORTED, id,
+                "COLORMAP_LINE with the default shader is currently disabled: "
+                "the renderer does not yet upload per-sample signal data to "
+                "the signal SSBO. Provide a custom shader_set / per-style "
+                "shader override and bind_uniforms, or wait for the feature. "
+                "Series " + std::to_string(id) + " falls back to LINE if "
+                "requested or is otherwise skipped.");
+            main_style = static_cast<Display_style>(
+                static_cast<int>(main_style) & ~static_cast<int>(Display_style::COLORMAP_LINE));
+        }
+        if (!main_style) {
+            continue;
+        }
+
+        const bool has_preview_config = s->has_preview_config();
+        Data_source* preview_source = nullptr;
+        const Data_access_policy* preview_access = nullptr;
+        Display_style preview_style = static_cast<Display_style>(0);
+        bool preview_matches_main = false;
+        bool preview_valid = false;
+
+        if (preview_visible) {
+            preview_source = s->preview_source();
+            preview_access = &s->preview_access();
+            preview_style = s->effective_preview_style();
+            preview_matches_main = s->preview_matches_main();
+
+            if (has_preview_config && !preview_source) {
+                log_error_once(Error_cat::PREVIEW_MISSING_SOURCE, id,
+                    "Preview config set but preview data_source is null (series "
+                        + std::to_string(id) + ")");
+                preview_style = static_cast<Display_style>(0);
+            }
+
+            if (!!(preview_style & Display_style::COLORMAP_LINE) &&
+                !(preview_access && preview_access->get_signal))
+            {
+                log_error_once(Error_cat::MISSING_SIGNAL_PREVIEW, id,
+                    "COLORMAP_LINE requires Data_access_policy::get_signal (preview series "
+                        + std::to_string(id) + ")");
+                preview_style = static_cast<Display_style>(
+                    static_cast<int>(preview_style) & ~static_cast<int>(Display_style::COLORMAP_LINE));
+            }
+            if (!!(preview_style & Display_style::COLORMAP_LINE) &&
+                uses_default_colormap_line_shader(*s))
+            {
+                log_error_once(Error_cat::COLORMAP_LINE_DEFAULT_NOT_SUPPORTED_PREVIEW, id,
+                    "COLORMAP_LINE preview with the default shader is "
+                    "currently disabled (signal-data upload not implemented). "
+                    "Series " + std::to_string(id) + " preview will not render "
+                    "in colormap-line mode.");
+                preview_style = static_cast<Display_style>(
+                    static_cast<int>(preview_style) & ~static_cast<int>(Display_style::COLORMAP_LINE));
+            }
+
+            if (preview_source && preview_access && !!preview_style) {
+                preview_valid = true;
+            }
+            else {
+                preview_source = nullptr;
+            }
+        }
+
+        auto& vbo_state = m_vbo_states[id];
+
+        std::vector<std::size_t> main_scales = compute_lod_scales(*main_source);
+        const void* main_identity = main_source->identity();
+        if (vbo_state.cached_aux_metric_identity != main_identity) {
+            vbo_state.cached_aux_metric_identity = main_identity;
+            vbo_state.cached_aux_metric_levels.clear();
+        }
+        if (vbo_state.cached_aux_metric_levels.size() != main_scales.size()) {
+            vbo_state.cached_aux_metric_levels.assign(main_scales.size(), {});
+        }
+
+        std::vector<std::size_t> preview_scales;
+        if (preview_valid) {
+            if (preview_matches_main) {
+                preview_scales = main_scales;
+            }
+            else {
+                preview_scales = compute_lod_scales(*preview_source);
+            }
+        }
+
+        if (preview_valid && !preview_matches_main) {
+            const void* preview_identity = preview_source->identity();
+            if (vbo_state.cached_aux_metric_identity_preview != preview_identity) {
+                vbo_state.cached_aux_metric_identity_preview = preview_identity;
+                vbo_state.cached_aux_metric_levels_preview.clear();
+            }
+            if (vbo_state.cached_aux_metric_levels_preview.size() != preview_scales.size()) {
+                vbo_state.cached_aux_metric_levels_preview.assign(preview_scales.size(), {});
+            }
+        }
+        else {
+            vbo_state.cached_aux_metric_identity_preview = nullptr;
+            vbo_state.cached_aux_metric_levels_preview.clear();
+        }
+
+        const std::size_t prev_lod_level = vbo_state.main_view.last_lod_level;
+        auto main_result = process_view(
+            vbo_state.main_view, vbo_state, m_frame_id, *main_source,
+            main_access, main_scales,
+            ctx.t0, ctx.t1, main_origin_ns,
+            layout.usable_width, s->empty_window_behavior, profiler, skip_gl,
+            rhi, rhi_updates);
+        if (ctx.config && ctx.config->log_debug &&
+            main_result.can_draw &&
+            main_result.applied_level != prev_lod_level)
+        {
+            std::string message = "LOD selection: series=" + std::to_string(id)
+                + " level=" + std::to_string(main_result.applied_level)
+                + " pps=" + std::to_string(main_result.applied_pps);
+            ctx.config->log_debug(message);
+        }
+
+        view_render_result_t preview_result;
+        if (preview_visible && preview_valid) {
+            preview_result = process_view(
+                vbo_state.preview_view, vbo_state, m_frame_id, *preview_source,
+                *preview_access, preview_scales,
+                ctx.t_available_min, ctx.t_available_max, preview_origin_ns,
+                ctx.win_w, s->empty_window_behavior, profiler, skip_gl,
+                rhi, rhi_updates);
+        }
+
+        series_draw_state_t draw_state;
+        draw_state.id = id;
+        draw_state.series = s;
+        draw_state.main_source = main_source;
+        draw_state.preview_source = preview_source;
+        draw_state.main_access = &main_access;
+        draw_state.preview_access = preview_access;
+        draw_state.main_style = main_style;
+        draw_state.preview_style = preview_style;
+        draw_state.vbo_state = &vbo_state;
+        draw_state.main_scales = std::move(main_scales);
+        draw_state.preview_scales = std::move(preview_scales);
+        draw_state.main_result = main_result;
+        draw_state.preview_result = preview_result;
+        draw_state.has_preview = preview_visible && preview_valid;
+        draw_state.preview_matches_main = preview_matches_main;
+        draw_states.push_back(std::move(draw_state));
+    }
+
+    // Iterate the plan and run rhi_prepare_line_or_dots for every LINE/DOTS
+    // view that will be drawn. This is what fills the per-view UBO and (for
+    // LINE) the per-frame line_window_vbo. AREA and COLORMAP_* don't reach
+    // a draw under RHI (skip_gl is set), so no prepare call is needed for
+    // them.
+    for (auto& draw_state : draw_states) {
+        if (!draw_state.series || !draw_state.vbo_state) {
+            continue;
+        }
+
+        auto run_prepare = [&](Display_style primitive_style,
+                               vbo_view_state_t& view_state,
+                               const view_render_result_t& view_result,
+                               bool is_preview)
+        {
+            if (!view_result.can_draw || view_result.count <= 0) {
+                return;
+            }
+            rhi_prepare_line_or_dots(
+                ctx, draw_state.series.get(),
+                primitive_style, view_state, view_result, is_preview,
+                line_width, point_diameter,
+                is_preview ? preview_origin_ns : main_origin_ns);
+        };
+
+        if (!!(draw_state.main_style & Display_style::LINE)) {
+            run_prepare(Display_style::LINE,
+                draw_state.vbo_state->main_view, draw_state.main_result,
+                false);
+        }
+        if (!!(draw_state.main_style & Display_style::DOTS)) {
+            run_prepare(Display_style::DOTS,
+                draw_state.vbo_state->main_view, draw_state.main_result,
+                false);
+        }
+        if (draw_state.has_preview) {
+            if (!!(draw_state.preview_style & Display_style::LINE)) {
+                run_prepare(Display_style::LINE,
+                    draw_state.vbo_state->preview_view,
+                    draw_state.preview_result, true);
+            }
+            if (!!(draw_state.preview_style & Display_style::DOTS)) {
+                run_prepare(Display_style::DOTS,
+                    draw_state.vbo_state->preview_view,
+                    draw_state.preview_result, true);
+            }
+        }
+    }
+
+    m_rhi_state->frame_plan_ready = true;
+#endif // VNM_PLOT_HAS_QRHI
+}
+
 void Series_renderer::render(
     const frame_context_t& ctx,
     const std::map<int, std::shared_ptr<const series_data_t>>& series)
 {
+#ifdef VNM_PLOT_HAS_QRHI
+    // Fast path: the host called prepare() before opening the render pass
+    // (RHI two-phase shape). Replay the cached plan as draw commands only.
+    if (ctx.rhi && m_rhi_state->frame_plan_ready) {
+        // Reset the flag up-front so an unmatched prepare() / render() pair
+        // can never silently replay an old plan against a different frame.
+        m_rhi_state->frame_plan_ready = false;
+        // Snapshot cache cleanup matches the standalone path: the per-view
+        // snapshot holds released here let upstream sources mark samples
+        // evictable for the next snapshot.
+        struct Snapshot_cache_scope {
+            Series_renderer& renderer;
+            ~Snapshot_cache_scope() { renderer.clear_frame_snapshot_caches(); }
+        } cache_scope{*this};
+
+        // The origin values that prepare() snapped against drove the UBO
+        // contents already written into the resource-update batch. The
+        // record-draws phase only emits cb->* commands, so it does not
+        // need those origins itself.
+        auto record_one = [&](Display_style primitive_style,
+                              vbo_view_state_t& view_state,
+                              const view_render_result_t& view_result,
+                              bool is_preview)
+        {
+            if (!view_result.can_draw || view_result.count <= 0) {
+                return;
+            }
+            rhi_record_line_or_dots(
+                ctx, primitive_style, view_state, view_result, is_preview);
+        };
+
+        // Group order matches the GL flow so series stack identically: the
+        // main passes paint behind any preview.
+        for (auto& draw_state : m_rhi_state->frame_draw_states) {
+            if (!draw_state.series || !draw_state.vbo_state) {
+                continue;
+            }
+            if (!!(draw_state.main_style & Display_style::LINE)) {
+                record_one(Display_style::LINE,
+                    draw_state.vbo_state->main_view, draw_state.main_result,
+                    false);
+            }
+            if (!!(draw_state.main_style & Display_style::DOTS)) {
+                record_one(Display_style::DOTS,
+                    draw_state.vbo_state->main_view, draw_state.main_result,
+                    false);
+            }
+        }
+        if (m_rhi_state->frame_preview_visible) {
+            for (auto& draw_state : m_rhi_state->frame_draw_states) {
+                if (!draw_state.series || !draw_state.vbo_state ||
+                    !draw_state.has_preview)
+                {
+                    continue;
+                }
+                if (!!(draw_state.preview_style & Display_style::LINE)) {
+                    record_one(Display_style::LINE,
+                        draw_state.vbo_state->preview_view,
+                        draw_state.preview_result, true);
+                }
+                if (!!(draw_state.preview_style & Display_style::DOTS)) {
+                    record_one(Display_style::DOTS,
+                        draw_state.vbo_state->preview_view,
+                        draw_state.preview_result, true);
+                }
+            }
+        }
+
+        m_rhi_state->frame_draw_states.clear();
+        return;
+    }
+#endif
+
+    // Standalone path: GL fallback (tests, headless) and the case where
+    // ctx.rhi is null. Runs prep + draws in a single call. The full
+    // per-series loop and draw_pass / draw_group lambdas live below.
     clear_frame_snapshot_caches();
 
     if (series.empty() || !m_asset_loader) {
@@ -924,6 +1721,19 @@ void Series_renderer::render(
 
     // Skip all GL calls if configured (for pure CPU profiling)
     const bool skip_gl = ctx.skip_gl;
+
+    // Resource uploads ride the host-owned batch handed in via the frame
+    // context. The host opens that batch BEFORE the render pass and submits
+    // it as the 4th argument to beginPass; calling cb->resourceUpdate inside
+    // an open pass is a hard error on D3D11.
+    QRhi*                    rhi         = ctx.rhi;
+    QRhiResourceUpdateBatch* rhi_updates = ctx.rhi_updates;
+#ifdef VNM_PLOT_HAS_QRHI
+    if (rhi) {
+        m_rhi_state->last_rhi = rhi;
+        m_rhi_state->pending_updates = rhi_updates;
+    }
+#endif
 
     const bool dark_mode = ctx.dark_mode;
     const float line_width = ctx.config ? static_cast<float>(ctx.config->line_width_px) : 1.0f;
@@ -977,7 +1787,10 @@ void Series_renderer::render(
             }
     }
 
-    if (!skip_gl) {
+    // The RHI path bakes blend / scissor / MSAA into pipeline state objects
+    // and submits scissors per draw via cb->setScissor; the global GL state
+    // setup below is inert under RHI rendering.
+    if (!skip_gl && !rhi) {
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         // Set line width once for all draw passes to avoid repeated glLineWidth calls
@@ -986,27 +1799,13 @@ void Series_renderer::render(
         glEnable(GL_SCISSOR_TEST);
     }
 
-    struct Series_draw_state
-    {
-        int id = 0;
-        std::shared_ptr<const series_data_t> series;
-        Data_source* main_source = nullptr;
-        Data_source* preview_source = nullptr;
-        const Data_access_policy* main_access = nullptr;
-        const Data_access_policy* preview_access = nullptr;
-        Display_style main_style = static_cast<Display_style>(0);
-        Display_style preview_style = static_cast<Display_style>(0);
-        vbo_state_t* vbo_state = nullptr;
-        std::vector<std::size_t> main_scales;
-        std::vector<std::size_t> preview_scales;
-        view_render_result_t main_result;
-        view_render_result_t preview_result;
-        bool has_preview = false;
-        bool preview_matches_main = false;
-    };
-
-    std::vector<Series_draw_state> draw_states;
-    draw_states.reserve(series.size());
+    // Per-frame draw plan vector. Lives on the renderer so prepare() (when
+    // called separately by the RHI host) can hand the plan off to render()
+    // through m_rhi_state->frame_draw_states. Tests that call render()
+    // standalone build a local vector and never touch the cached plan.
+    std::vector<series_draw_state_t> local_draw_states;
+    local_draw_states.reserve(series.size());
+    std::vector<series_draw_state_t>& draw_states = local_draw_states;
 
     const double preview_visibility = ctx.config ? ctx.config->preview_visibility : 1.0;
     const bool preview_visible = ctx.adjusted_preview_height > 0.0 && preview_visibility > 0.0;
@@ -1182,7 +1981,8 @@ void Series_renderer::render(
             vbo_state.main_view, vbo_state, m_frame_id, *main_source,
             main_access, main_scales,
             ctx.t0, ctx.t1, main_origin_ns,
-            layout.usable_width, s->empty_window_behavior, profiler, skip_gl);
+            layout.usable_width, s->empty_window_behavior, profiler, skip_gl,
+            rhi, rhi_updates);
         if (ctx.config && ctx.config->log_debug &&
             main_result.can_draw &&
             main_result.applied_level != prev_lod_level)
@@ -1199,10 +1999,11 @@ void Series_renderer::render(
                 vbo_state.preview_view, vbo_state, m_frame_id, *preview_source,
                 *preview_access, preview_scales,
                 ctx.t_available_min, ctx.t_available_max, preview_origin_ns,
-                ctx.win_w, s->empty_window_behavior, profiler, skip_gl);
+                ctx.win_w, s->empty_window_behavior, profiler, skip_gl,
+                rhi, rhi_updates);
         }
 
-        Series_draw_state draw_state;
+        series_draw_state_t draw_state;
         draw_state.id = id;
         draw_state.series = s;
         draw_state.main_source = main_source;
@@ -1221,7 +2022,7 @@ void Series_renderer::render(
         draw_states.push_back(std::move(draw_state));
     }
 
-    auto draw_pass = [&](Series_draw_state& draw_state,
+    auto draw_pass = [&](series_draw_state_t& draw_state,
                          Display_style primitive_style,
                          vbo_view_state_t& view_state,
                          const view_render_result_t& view_result,
@@ -1230,6 +2031,30 @@ void Series_renderer::render(
         if (count <= 0) {
             return;
         }
+
+        // LINE and DOTS go through the RHI record helper. AREA and
+        // COLORMAP_* fall through to the GL fallback below, which is gated
+        // by skip_gl; under any RHI backend the host sets skip_gl so those
+        // styles render nothing here. The matching prepare phase that
+        // populates UBO / line_window_vbo for LINE/DOTS already ran before
+        // beginPass when render() was called via prepare()+render() (the
+        // RHI host path); when render() runs standalone (tests + GL
+        // fallback) it falls into the recursive prepare-then-record at the
+        // bottom of this function.
+#ifdef VNM_PLOT_HAS_QRHI
+        const bool rhi_capable_style =
+            (primitive_style == Display_style::LINE) ||
+            (primitive_style == Display_style::DOTS);
+        if (rhi && rhi_capable_style) {
+            rhi_record_line_or_dots(
+                ctx, primitive_style, view_state, view_result,
+                is_preview);
+            return;
+        }
+#else
+        (void)main_origin_ns;
+        (void)preview_origin_ns;
+#endif
 
         // Styles that consume neighbour samples need the adjacency index
         // buffer. DOTS and AREA pull their samples directly via instanced
@@ -1528,7 +2353,7 @@ void Series_renderer::render(
             }
         }
 
-        glBindVertexArray(ensure_series_vao(primitive_style, view_state.active_vbo));
+        glBindVertexArray(ensure_gl_series_vao(primitive_style, view_state.active_vbo));
 
         if (use_adjacency) {
             const std::size_t required_indices = static_cast<std::size_t>(count) + 2;
@@ -1728,7 +2553,7 @@ void Series_renderer::render(
         draw_group(Display_style::DOTS, true);
     }
 
-    if (!skip_gl) {
+    if (!skip_gl && !rhi) {
         glUseProgram(0);
         glBindVertexArray(0);
         // Restore default line width
@@ -1737,6 +2562,449 @@ void Series_renderer::render(
         // Assumption: caller had GL_BLEND enabled before calling render().
         glDisable(GL_SCISSOR_TEST);
     }
+
+#ifdef VNM_PLOT_HAS_QRHI
+    // The host submits rhi_updates via beginPass's 4th argument before any
+    // draw in this pass; the renderer only fills the batch and never calls
+    // cb->resourceUpdate on it. Drop the cached pointer so a stale batch
+    // can't be touched between frames.
+    m_rhi_state->pending_updates = nullptr;
+#endif
 }
+
+#ifdef VNM_PLOT_HAS_QRHI
+void Series_renderer::rhi_prepare_line_or_dots(
+    const frame_context_t& ctx,
+    const series_data_t* series,
+    Display_style primitive_style,
+    vbo_view_state_t& view_state,
+    const view_render_result_t& view_result,
+    bool is_preview,
+    float line_width_px,
+    float point_diameter_px,
+    std::int64_t origin_ns)
+{
+    if (!series) {
+        return;
+    }
+    QRhi* rhi = ctx.rhi;
+    QRhiResourceUpdateBatch* updates = ctx.rhi_updates;
+
+    const bool is_dots = (primitive_style == Display_style::DOTS);
+    const GLsizei count = view_result.count;
+    if (count <= 0) {
+        return;
+    }
+    if (!is_dots && count < 2) {
+        return;
+    }
+
+    QRhiRenderTarget* rt = ctx.render_target;
+
+    // Lazy QShader load.
+    if (!m_rhi_state->shaders_loaded) {
+        m_rhi_state->cached_dot_vert  = load_qsb("plot_dot_quad.vert.qsb");
+        m_rhi_state->cached_dot_frag  = load_qsb("plot_dot_quad.frag.qsb");
+        m_rhi_state->cached_line_vert = load_qsb("plot_line.vert.qsb");
+        m_rhi_state->cached_line_frag = load_qsb("plot_line.frag.qsb");
+        m_rhi_state->shaders_loaded   = true;
+    }
+
+    const QShader& vert = is_dots
+        ? m_rhi_state->cached_dot_vert
+        : m_rhi_state->cached_line_vert;
+    const QShader& frag = is_dots
+        ? m_rhi_state->cached_dot_frag
+        : m_rhi_state->cached_line_frag;
+    if (!vert.isValid() || !frag.isValid()) {
+        return;
+    }
+
+    if (!view_state.rhi) {
+        view_state.rhi = std::make_unique<vbo_view_state_t::rhi_buffers_t>();
+    }
+    // Per-view UBO.
+    if (!view_state.rhi->ubo) {
+        view_state.rhi->ubo.reset(rhi->newBuffer(
+            QRhiBuffer::Dynamic, QRhiBuffer::UniformBuffer,
+            k_series_ubo_bytes));
+        if (view_state.rhi->ubo) {
+            view_state.rhi->ubo->create();
+        }
+    }
+    if (!view_state.rhi->ubo) {
+        return;
+    }
+
+    // LINE under RHI feeds the vertex shader through four per-instance
+    // vertex attributes (prev, p0, p1, next) sourced from a dedicated
+    // per-frame buffer with the active sample window padded by leading and
+    // trailing duplicates: [s[first], s[first], s[first+1], ..., s[last],
+    // s[last]]. The buffer is bound four times at offsets 0, 16, 32, 48
+    // with stride 16, so instance i sees (padded[i], padded[i+1],
+    // padded[i+2], padded[i+3]) which collapses to the desired clamping at
+    // the window edges. SSBOs are unusable here because SPIRV-Cross emits
+    // them as RWByteAddressBuffer UAVs and D3D11 SM 5.0 vertex shaders
+    // accept zero UAVs; QRhi requires HLSL 5.0 bytecode for D3D11, so any
+    // storage-buffer access in the vertex stage fails to compile.
+    if (!is_dots) {
+        const std::size_t padded_count = static_cast<std::size_t>(count) + 2;
+        const std::size_t needed_bytes = padded_count * sizeof(gpu_sample_t);
+        const std::size_t alloc_bytes = needed_bytes + needed_bytes / 4;
+        if (!view_state.rhi->line_window_vbo
+            || view_state.rhi_line_window_vbo_capacity_bytes < needed_bytes)
+        {
+            view_state.rhi->line_window_vbo.reset(rhi->newBuffer(
+                QRhiBuffer::Static, QRhiBuffer::VertexBuffer,
+                static_cast<quint32>(alloc_bytes)));
+            if (view_state.rhi->line_window_vbo
+                && view_state.rhi->line_window_vbo->create())
+            {
+                view_state.rhi_line_window_vbo_capacity_bytes = alloc_bytes;
+            }
+            else {
+                return;
+            }
+        }
+        if (updates) {
+            std::vector<gpu_sample_t> padded(padded_count);
+            const std::size_t first_idx = static_cast<std::size_t>(view_result.first);
+            const std::size_t last_idx = first_idx + static_cast<std::size_t>(count - 1);
+            padded[0] = view_state.staging[first_idx];
+            for (GLsizei i = 0; i < count; ++i) {
+                padded[1 + static_cast<std::size_t>(i)] =
+                    view_state.staging[first_idx + static_cast<std::size_t>(i)];
+            }
+            padded[padded_count - 1] = view_state.staging[last_idx];
+            updates->uploadStaticBuffer(
+                view_state.rhi->line_window_vbo.get(),
+                0,
+                static_cast<quint32>(needed_bytes),
+                padded.data());
+        }
+    }
+
+    // Pipeline cache key: only kind. The pipeline descriptor depends on the
+    // shader-resource-binding LAYOUT (which slots, which stages), not on the
+    // concrete buffer handles. Per-series binding handles ride the SRB,
+    // which is rebuilt per view below.
+    rhi_state_t::pipeline_key_t key{
+        is_dots ? rhi_state_t::pipeline_kind_t::DOTS
+                : rhi_state_t::pipeline_kind_t::LINE
+    };
+    auto& cached = m_rhi_state->pipelines[key];
+
+    // The pipeline state object captures the render-pass descriptor and
+    // sample count of the target it was built for. A resize that recreates
+    // the FBO can swap the descriptor out from under us, leaving the cached
+    // pipeline incompatible with the new pass; rebuild when the descriptor
+    // or sample count moves.
+    QRhiRenderPassDescriptor* current_rpd = rt->renderPassDescriptor();
+    const int current_samples = rt->sampleCount();
+    if (cached.pipeline
+        && (cached.last_rpd != current_rpd
+            || cached.last_sample_count != current_samples))
+    {
+        cached.pipeline.reset();
+    }
+
+    if (!cached.pipeline) {
+        cached.vert = vert;
+        cached.frag = frag;
+
+        // The pipeline only needs an SRB whose LAYOUT matches the real one;
+        // a dummy SRB built from view_state.rhi's buffers is fine because
+        // the actual draws bind a per-view SRB (built below) that shares
+        // that layout. Qt validates layout, not handles, when the pipeline
+        // is created, then re-validates per setShaderResources call.
+        std::unique_ptr<QRhiShaderResourceBindings> layout_srb(
+            rhi->newShaderResourceBindings());
+        QRhiShaderResourceBinding ubo_binding =
+            QRhiShaderResourceBinding::uniformBuffer(
+                0,
+                QRhiShaderResourceBinding::VertexStage
+                    | QRhiShaderResourceBinding::FragmentStage,
+                view_state.rhi->ubo.get(),
+                0,
+                k_series_ubo_bytes);
+        // LINE and DOTS both bind only the per-view UBO through the SRB.
+        // LINE feeds samples via four per-instance vertex attributes
+        // (set up below) instead of an SSBO so the D3D11 backend's SM 5.0
+        // vertex shader has zero UAVs.
+        layout_srb->setBindings({ubo_binding});
+        layout_srb->create();
+
+        cached.pipeline.reset(rhi->newGraphicsPipeline());
+        cached.pipeline->setShaderStages({
+            { QRhiShaderStage::Vertex,   cached.vert },
+            { QRhiShaderStage::Fragment, cached.frag }
+        });
+
+        QRhiVertexInputLayout vlayout;
+        if (is_dots) {
+            QRhiVertexInputBinding ib0(
+                static_cast<quint32>(sizeof(gpu_sample_t)),
+                QRhiVertexInputBinding::PerInstance,
+                1);
+            vlayout.setBindings({ib0});
+            QRhiVertexInputAttribute a0(
+                0, 0, QRhiVertexInputAttribute::Float,
+                static_cast<quint32>(offsetof(gpu_sample_t, t_rel)));
+            QRhiVertexInputAttribute a1(
+                0, 1, QRhiVertexInputAttribute::Float,
+                static_cast<quint32>(offsetof(gpu_sample_t, y)));
+            vlayout.setAttributes({a0, a1});
+        }
+        else {
+            // LINE binds the line_window_vbo four times at offsets 0,
+            // 16, 32, 48. Each binding has stride sizeof(gpu_sample_t)
+            // and steps once per instance, so the bindings form a
+            // sliding (prev, p0, p1, next) window over the padded
+            // sample array. Only the (t_rel, y) pair is consumed by
+            // the LINE vertex shader; the (y_min, y_max) lanes are
+            // left unbound.
+            const quint32 line_stride =
+                static_cast<quint32>(sizeof(gpu_sample_t));
+            QRhiVertexInputBinding ib_prev(
+                line_stride, QRhiVertexInputBinding::PerInstance, 1);
+            QRhiVertexInputBinding ib_p0(
+                line_stride, QRhiVertexInputBinding::PerInstance, 1);
+            QRhiVertexInputBinding ib_p1(
+                line_stride, QRhiVertexInputBinding::PerInstance, 1);
+            QRhiVertexInputBinding ib_next(
+                line_stride, QRhiVertexInputBinding::PerInstance, 1);
+            vlayout.setBindings({ib_prev, ib_p0, ib_p1, ib_next});
+
+            const quint32 ty_offset =
+                static_cast<quint32>(offsetof(gpu_sample_t, t_rel));
+            QRhiVertexInputAttribute a_prev(
+                0, 0, QRhiVertexInputAttribute::Float2, ty_offset);
+            QRhiVertexInputAttribute a_p0(
+                1, 1, QRhiVertexInputAttribute::Float2, ty_offset);
+            QRhiVertexInputAttribute a_p1(
+                2, 2, QRhiVertexInputAttribute::Float2, ty_offset);
+            QRhiVertexInputAttribute a_next(
+                3, 3, QRhiVertexInputAttribute::Float2, ty_offset);
+            vlayout.setAttributes({a_prev, a_p0, a_p1, a_next});
+        }
+        cached.pipeline->setVertexInputLayout(vlayout);
+        cached.pipeline->setShaderResourceBindings(layout_srb.get());
+        cached.pipeline->setTopology(QRhiGraphicsPipeline::TriangleStrip);
+
+        QRhiGraphicsPipeline::TargetBlend blend;
+        blend.enable = true;
+        blend.srcColor = QRhiGraphicsPipeline::SrcAlpha;
+        blend.dstColor = QRhiGraphicsPipeline::OneMinusSrcAlpha;
+        blend.srcAlpha = QRhiGraphicsPipeline::One;
+        blend.dstAlpha = QRhiGraphicsPipeline::OneMinusSrcAlpha;
+        cached.pipeline->setTargetBlends({blend});
+
+        cached.pipeline->setFlags(QRhiGraphicsPipeline::UsesScissor);
+        cached.pipeline->setRenderPassDescriptor(current_rpd);
+        cached.pipeline->setSampleCount(current_samples);
+
+        if (!cached.pipeline->create()) {
+            cached.pipeline.reset();
+            return;
+        }
+        cached.last_rpd = current_rpd;
+        cached.last_sample_count = current_samples;
+    }
+
+    // Per-view SRB. Rebuild whenever the bound UBO pointer has changed
+    // since last frame (capacity grows replace QRhiBuffer outright). The SRB
+    // captures concrete handles, so reusing one whose buffers were freed is
+    // a use-after-free. LINE samples ride vertex attributes, not the SRB,
+    // so only the per-view UBO appears here.
+    auto& srb_entry = is_dots
+        ? view_state.rhi->dots_srb
+        : view_state.rhi->line_srb;
+    QRhiBuffer* current_ubo = view_state.rhi->ubo.get();
+    const bool srb_handles_match = srb_entry.srb
+        && srb_entry.last_ubo == current_ubo;
+    if (!srb_handles_match) {
+        srb_entry.srb.reset(rhi->newShaderResourceBindings());
+        QRhiShaderResourceBinding ubo_binding =
+            QRhiShaderResourceBinding::uniformBuffer(
+                0,
+                QRhiShaderResourceBinding::VertexStage
+                    | QRhiShaderResourceBinding::FragmentStage,
+                current_ubo,
+                0,
+                k_series_ubo_bytes);
+        srb_entry.srb->setBindings({ubo_binding});
+        srb_entry.srb->create();
+        srb_entry.last_ubo = current_ubo;
+    }
+
+    // Build and upload the per-view UBO.
+    const auto& layout = ctx.layout;
+
+    Series_view_std140 view_block{};
+    std::memcpy(view_block.pmv, glm::value_ptr(ctx.pmv), sizeof(float) * 16);
+
+    glm::vec4 draw_color = series->color;
+    if (is_preview) {
+        draw_color.w *= static_cast<float>(
+            ctx.config ? ctx.config->preview_visibility : 1.0);
+    }
+    view_block.color[0] = draw_color.r;
+    view_block.color[1] = draw_color.g;
+    view_block.color[2] = draw_color.b;
+    view_block.color[3] = draw_color.a;
+
+    const float t_min_rel = static_cast<float>(
+        (is_preview ? ctx.t_available_min : ctx.t0) - origin_ns) * 1.0e-9f;
+    const float t_max_rel = static_cast<float>(
+        (is_preview ? ctx.t_available_max : ctx.t1) - origin_ns) * 1.0e-9f;
+    view_block.t_min = t_min_rel;
+    view_block.t_max = t_max_rel;
+    view_block.v_min = is_preview ? ctx.preview_v0 : ctx.v0;
+    view_block.v_max = is_preview ? ctx.preview_v1 : ctx.v1;
+
+    if (is_preview) {
+        const double preview_top =
+            layout.usable_height
+            + std::max(0.0, layout.h_bar_height - double(k_scissor_pad_px));
+        view_block.y_offset = static_cast<float>(preview_top);
+        view_block.width    = static_cast<float>(ctx.win_w);
+        view_block.height   = static_cast<float>(ctx.adjusted_preview_height);
+    }
+    else {
+        view_block.y_offset = 0.0f;
+        view_block.width    = static_cast<float>(layout.usable_width);
+        view_block.height   = static_cast<float>(layout.usable_height);
+    }
+    view_block.win_h = static_cast<float>(ctx.win_h);
+
+    if (is_dots) {
+        Dot_block_std140 block{};
+        block.view              = view_block;
+        block.point_diameter_px = point_diameter_px;
+        if (updates) {
+            updates->updateDynamicBuffer(
+                view_state.rhi->ubo.get(), 0, sizeof(block), &block);
+        }
+    }
+    else {
+        Line_block_std140 block{};
+        block.view = view_block;
+        block.line_px        = line_width_px;
+        block.snap_to_pixels = (ctx.config && ctx.config->snap_lines_to_pixels)
+            ? 1 : 0;
+        if (updates) {
+            updates->updateDynamicBuffer(
+                view_state.rhi->ubo.get(), 0, sizeof(block), &block);
+        }
+    }
+}
+
+void Series_renderer::rhi_record_line_or_dots(
+    const frame_context_t& ctx,
+    Display_style primitive_style,
+    vbo_view_state_t& view_state,
+    const view_render_result_t& view_result,
+    bool is_preview)
+{
+    QRhiCommandBuffer* cb = ctx.cb;
+    if (!cb) {
+        return;
+    }
+
+    const bool is_dots = (primitive_style == Display_style::DOTS);
+    const GLsizei count = view_result.count;
+    if (count <= 0) {
+        return;
+    }
+    if (!is_dots && count < 2) {
+        return;
+    }
+    if (!view_state.rhi || !view_state.rhi->ubo) {
+        return;
+    }
+
+    rhi_state_t::pipeline_key_t key{
+        is_dots ? rhi_state_t::pipeline_kind_t::DOTS
+                : rhi_state_t::pipeline_kind_t::LINE
+    };
+    auto pipe_it = m_rhi_state->pipelines.find(key);
+    if (pipe_it == m_rhi_state->pipelines.end() || !pipe_it->second.pipeline) {
+        return;
+    }
+    auto& cached = pipe_it->second;
+
+    auto& srb_entry = is_dots
+        ? view_state.rhi->dots_srb
+        : view_state.rhi->line_srb;
+    if (!srb_entry.srb) {
+        return;
+    }
+
+    cb->setGraphicsPipeline(cached.pipeline.get());
+    cb->setShaderResources(srb_entry.srb.get());
+
+    const auto& layout = ctx.layout;
+    const auto to_scissor_y = [&](double top, double height) -> int {
+        return static_cast<int>(std::lround(double(ctx.win_h) - (top + height)));
+    };
+    QRhiScissor scissor;
+    if (is_preview) {
+        const double preview_top =
+            layout.usable_height
+            + std::max(0.0, layout.h_bar_height - double(k_scissor_pad_px));
+        scissor = QRhiScissor(
+            0,
+            to_scissor_y(preview_top, ctx.adjusted_preview_height),
+            ctx.win_w,
+            static_cast<int>(std::max(1.0, ctx.adjusted_preview_height)));
+    }
+    else {
+        scissor = QRhiScissor(
+            0,
+            to_scissor_y(0.0, layout.usable_height),
+            static_cast<int>(std::max(1.0, layout.usable_width)),
+            static_cast<int>(std::max(1.0, layout.usable_height)));
+    }
+    cb->setScissor(scissor);
+
+    if (is_dots) {
+        if (view_state.rhi->vbo) {
+            // Encode the per-instance "skip first N samples" by offsetting the
+            // vertex-buffer binding rather than passing a non-zero
+            // firstInstance. D3D11 does not support firstInstance > 0 without
+            // BaseInstance semantics, and emulating it on other backends can
+            // be slow. The buffer itself is bound at sample[first], and the
+            // shader reads samples relative to that origin.
+            const quint32 vbo_offset =
+                static_cast<quint32>(view_result.first) *
+                static_cast<quint32>(sizeof(gpu_sample_t));
+            QRhiCommandBuffer::VertexInput input{
+                view_state.rhi->vbo.get(), vbo_offset};
+            cb->setVertexInput(0, 1, &input);
+        }
+        cb->draw(4, static_cast<quint32>(count));
+    }
+    else {
+        // LINE: triangle-strip quads per segment, one instance per segment.
+        // The four vertex inputs all reference the line_window_vbo at
+        // increasing element offsets so each instance reads a sliding
+        // (prev, p0, p1, next) window across the padded sample array.
+        const quint32 instance_count = static_cast<quint32>(count - 1);
+        if (instance_count > 0 && view_state.rhi->line_window_vbo) {
+            const quint32 stride =
+                static_cast<quint32>(sizeof(gpu_sample_t));
+            QRhiBuffer* const win = view_state.rhi->line_window_vbo.get();
+            const QRhiCommandBuffer::VertexInput inputs[4] = {
+                { win, 0u },
+                { win, 1u * stride },
+                { win, 2u * stride },
+                { win, 3u * stride }
+            };
+            cb->setVertexInput(0, 4, inputs);
+            cb->draw(4, instance_count);
+        }
+    }
+}
+#endif // VNM_PLOT_HAS_QRHI
 
 } // namespace vnm::plot
