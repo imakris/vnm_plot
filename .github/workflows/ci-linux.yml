@@ -12,11 +12,9 @@ defaults:
 
 env:
   CMAKE_BUILD_TYPE: Release
-  LINUX_QT_DEPS: >-
+  LINUX_SYSTEM_DEPS: >-
     libgl-dev libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev
     libxi-dev libxext-dev libwayland-dev libxkbcommon-dev libvulkan-dev
-    qt6-base-dev qt6-base-private-dev qt6-declarative-dev
-    qt6-shadertools-dev
 
 jobs:
   build-rhi:
@@ -39,7 +37,16 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ${LINUX_QT_DEPS}
+          sudo apt-get install -y ${LINUX_SYSTEM_DEPS}
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4.3.1
+        with:
+          version: '6.10.1'
+          arch: 'linux_gcc_64'
+          archives: 'qtbase qtdeclarative'
+          modules: 'qtshadertools'
+          cache: 'true'
 
       - name: Configure CMake
         run: |
