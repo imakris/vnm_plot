@@ -177,11 +177,23 @@ void Plot_time_axis::clear_shared_vbar_width(const QObject* owner)
 
 void Plot_time_axis::set_t_min(qint64 v)
 {
-    // Single-sided setter only makes sense once the paired bound is known;
-    // otherwise we cannot compute a span to slide. The QML property bindings
-    // for t_min/t_max go through this; if the user wants to seed the axis
-    // they should call set_t_range with both ends.
+    // While uninitialized, treat this as a seed: store the value but leave
+    // the paired bound at sentinel. QML property bindings can only call
+    // single-side setters, so without this they could never bring the axis
+    // online; downstream consumers (sync_time_axis_state) gate on
+    // view_initialized() and ignore half-seeded state. Once both sides are
+    // real values the slide-on-overshoot logic below kicks in.
     if (!view_initialized()) {
+        if (v == m_t_min) {
+            return;
+        }
+        // If this seed would complete initialization (paired bound is real),
+        // enforce ordering so the axis never goes online with an inverted
+        // range. Matches set_t_range's silent-refusal contract.
+        if (m_t_max != k_t_unset && !(v < m_t_max)) {
+            return;
+        }
+        set_limits_if_changed(v, m_t_max, m_t_available_min, m_t_available_max);
         return;
     }
     qint64 new_min = v;
@@ -199,6 +211,13 @@ void Plot_time_axis::set_t_min(qint64 v)
 void Plot_time_axis::set_t_max(qint64 v)
 {
     if (!view_initialized()) {
+        if (v == m_t_max) {
+            return;
+        }
+        if (m_t_min != k_t_unset && !(v > m_t_min)) {
+            return;
+        }
+        set_limits_if_changed(m_t_min, v, m_t_available_min, m_t_available_max);
         return;
     }
     qint64 new_min = m_t_min;
@@ -215,20 +234,33 @@ void Plot_time_axis::set_t_max(qint64 v)
 
 void Plot_time_axis::set_t_available_min(qint64 v)
 {
-    // Same single-sided constraint as set_t_min: without the paired bound
-    // the available range is half-defined.
-    if (!available_initialized()) {
+    // First-bound seed: paired bound still sentinel, no range to validate or
+    // clamp against. Once the paired bound arrives, delegate to the atomic
+    // setter so ordering, view-clamp, and view auto-init from available all
+    // live in one place — applying both to a "completing seed" update and to
+    // any post-init change. Without delegation a QML write that shrinks the
+    // available range below the current view leaves the view dangling
+    // outside available, which sync_time_axis_state would propagate.
+    if (m_t_available_max == k_t_unset) {
+        if (v == m_t_available_min) {
+            return;
+        }
+        set_limits_if_changed(m_t_min, m_t_max, v, m_t_available_max);
         return;
     }
-    set_limits_if_changed(m_t_min, m_t_max, v, m_t_available_max);
+    set_available_t_range(v, m_t_available_max);
 }
 
 void Plot_time_axis::set_t_available_max(qint64 v)
 {
-    if (!available_initialized()) {
+    if (m_t_available_min == k_t_unset) {
+        if (v == m_t_available_max) {
+            return;
+        }
+        set_limits_if_changed(m_t_min, m_t_max, m_t_available_min, v);
         return;
     }
-    set_limits_if_changed(m_t_min, m_t_max, m_t_available_min, v);
+    set_available_t_range(m_t_available_min, v);
 }
 
 void Plot_time_axis::set_t_range(qint64 t_min_ns, qint64 t_max_ns)
@@ -259,12 +291,22 @@ void Plot_time_axis::set_available_t_range(qint64 t_available_min_ns, qint64 t_a
 
     qint64 new_t_min;
     qint64 new_t_max;
-    if (!view_initialized()) {
-        // No view yet; adopt the entire available range as the initial view.
-        // Without this, the clamp logic below would read the sentinel as a
-        // real bound and collapse new_t_min/new_t_max onto t_available_min.
+    const bool view_unset = (m_t_min == k_t_unset && m_t_max == k_t_unset);
+    if (view_unset) {
+        // No view at all; adopt the entire available range as the initial
+        // view. Without this, the clamp logic below would read the sentinel
+        // as a real bound and collapse new_t_min/new_t_max onto t_available_min.
         new_t_min = t_available_min_ns;
         new_t_max = t_available_max_ns;
+    }
+    else if (!view_initialized()) {
+        // Half-seeded view (one bound real, one sentinel). Preserve as-is:
+        // adopting available would clobber the user's half-seeded value, and
+        // running the clamp logic on a sentinel bound would produce garbage.
+        // The next set_t_min / set_t_max seed completes the view, at which
+        // point any subsequent set_available_t_range hits the clamp branch.
+        new_t_min = m_t_min;
+        new_t_max = m_t_max;
     }
     else {
         new_t_min = m_t_min;

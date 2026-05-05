@@ -77,11 +77,11 @@ public:
     void set_available_t_range(qint64 t_available_min_ns, qint64 t_available_max_ns);
     void adjust_t_to_target(qint64 target_min_ns, qint64 target_max_ns);
 
-    // QML-facing seeders. Atomic two-sided range setters; needed because
-    // the property-style single-side setters (set_t_min_qml_ms et al.) gate
-    // on view_initialized() / available_initialized() and silently no-op
-    // until a paired bound is known. A QML caller seeds the axis through
-    // these once, then the property bindings can update individual sides.
+    // QML-facing atomic two-sided range setters. The single-side property
+    // setters (set_t_min_qml_ms et al.) can also seed an uninitialized axis
+    // one side at a time, but these atomic setters validate ordering in one
+    // shot and skip the seed/slide branching, which is the right shape when
+    // a caller already has both bounds in hand.
     Q_INVOKABLE void set_t_range_qml_ms(qint64 t_min_ms, qint64 t_max_ms);
     Q_INVOKABLE void set_available_t_range_qml_ms(qint64 t_available_min_ms, qint64 t_available_max_ms);
 
