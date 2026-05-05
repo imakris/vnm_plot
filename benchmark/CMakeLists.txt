@@ -5,7 +5,10 @@
 # Note: This file is included as a subdirectory from the root CMakeLists.txt
 # and inherits cmake_minimum_required and project settings from parent.
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui GuiPrivate Quick)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick)
+if(NOT TARGET Qt6::GuiPrivate)
+    find_package(Qt6 REQUIRED COMPONENTS GuiPrivate)
+endif()
 
 # Find vnm_plot_core (should be available from parent)
 if(NOT TARGET vnm_plot::core)
@@ -54,6 +57,9 @@ target_include_directories(vnm_plot_benchmark
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${PROJECT_SOURCE_DIR}/include
 )
+if(VNM_PLOT_QT_RHI_INCLUDE_DIRS)
+    target_include_directories(vnm_plot_benchmark PRIVATE ${VNM_PLOT_QT_RHI_INCLUDE_DIRS})
+endif()
 
 target_compile_features(vnm_plot_benchmark PRIVATE cxx_std_20)
 

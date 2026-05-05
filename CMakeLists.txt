@@ -40,6 +40,27 @@ if(NOT TARGET Qt6::GuiPrivate)
         "vnm_plot: Qt6::GuiPrivate is required for QRhi headers. "
         "Install Qt GUI private development files on the build machine.")
 endif()
+set(VNM_PLOT_QT_RHI_INCLUDE_DIRS)
+foreach(_qt_private_include_dir IN LISTS Qt6Gui_PRIVATE_INCLUDE_DIRS Qt6GuiPrivate_INCLUDE_DIRS)
+    list(APPEND VNM_PLOT_QT_RHI_INCLUDE_DIRS "${_qt_private_include_dir}")
+endforeach()
+get_target_property(_vnm_plot_qt_gui_include_dirs Qt6::Gui INTERFACE_INCLUDE_DIRECTORIES)
+if(_vnm_plot_qt_gui_include_dirs)
+    foreach(_qt_gui_include_dir IN LISTS _vnm_plot_qt_gui_include_dirs)
+        foreach(_qt_version IN ITEMS "${Qt6Gui_VERSION}" "${Qt6_VERSION}")
+            if(_qt_version AND EXISTS "${_qt_gui_include_dir}/${_qt_version}/QtGui/rhi/qrhi.h")
+                list(APPEND VNM_PLOT_QT_RHI_INCLUDE_DIRS "${_qt_gui_include_dir}/${_qt_version}/QtGui")
+            endif()
+        endforeach()
+    endforeach()
+endif()
+if(VNM_PLOT_QT_RHI_INCLUDE_DIRS)
+    list(REMOVE_DUPLICATES VNM_PLOT_QT_RHI_INCLUDE_DIRS)
+endif()
+unset(_vnm_plot_qt_gui_include_dirs)
+unset(_qt_private_include_dir)
+unset(_qt_gui_include_dir)
+unset(_qt_version)
 find_package(Qt6ShaderTools QUIET)
 if(NOT Qt6ShaderTools_FOUND)
     message(FATAL_ERROR
@@ -368,6 +389,9 @@ message(STATUS "vnm_plot: Building QRhi core library")
 # Qt6::GuiPrivate. Keep it PRIVATE so consumers do not inherit Qt private
 # include paths through the public interface.
 target_link_libraries(vnm_plot_core PRIVATE Qt6::GuiPrivate Qt6::Gui)
+if(VNM_PLOT_QT_RHI_INCLUDE_DIRS)
+    target_include_directories(vnm_plot_core PRIVATE ${VNM_PLOT_QT_RHI_INCLUDE_DIRS})
+endif()
 
 # -----------------------------------------------------------------------------
 # Qt Resources (only if building Qt wrapper)
@@ -445,6 +469,9 @@ endif()
         PRIVATE
             Qt6::GuiPrivate
     )
+    if(VNM_PLOT_QT_RHI_INCLUDE_DIRS)
+        target_include_directories(vnm_plot PRIVATE ${VNM_PLOT_QT_RHI_INCLUDE_DIRS})
+    endif()
 
     # Link MSDF text rendering dependencies if enabled
     # (VNM_PLOT_ENABLE_TEXT compile definition is inherited from vnm_plot_core)
