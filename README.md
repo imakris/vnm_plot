@@ -212,10 +212,6 @@ target_link_libraries(your_app PRIVATE vnm_plot::vnm_plot)
 
 - Qt 6.7+ with Qt Shader Tools
 
-## Scope
-
-vnm_plot is a time-series plotter. It does not support 3D, scatter plots, pie charts, bar charts, histograms, or built-in legends/annotations.
-
 ## License
 
 BSD-2-Clause
