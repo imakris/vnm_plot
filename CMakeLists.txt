@@ -31,7 +31,15 @@ endif()
 # -----------------------------------------------------------------------------
 
 # QRhi is the only renderer backend.
-find_package(Qt6 REQUIRED COMPONENTS Core Gui GuiPrivate Quick)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick)
+if(NOT TARGET Qt6::GuiPrivate)
+    find_package(Qt6 REQUIRED COMPONENTS GuiPrivate)
+endif()
+if(NOT TARGET Qt6::GuiPrivate)
+    message(FATAL_ERROR
+        "vnm_plot: Qt6::GuiPrivate is required for QRhi headers. "
+        "Install Qt GUI private development files on the build machine.")
+endif()
 find_package(Qt6ShaderTools QUIET)
 if(NOT Qt6ShaderTools_FOUND)
     message(FATAL_ERROR

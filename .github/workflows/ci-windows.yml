@@ -34,34 +34,31 @@ jobs:
       - name: Install Qt
         uses: jurplel/install-qt-action@v4.3.1
         with:
-          version: '6.8.3'
+          version: '6.10.1'
           arch: 'win64_msvc2022_64'
+          archives: 'qtbase qtdeclarative'
+          modules: 'qtshadertools'
           cache: 'true'
 
       - name: Configure CMake
         run: |
-          cmake -B build -S . `
-            -DCMAKE_BUILD_TYPE="$env:CMAKE_BUILD_TYPE" `
-            -DVNM_PLOT_ENABLE_TEXT=${{ matrix.text }} `
-            -DVNM_PLOT_BUILD_TESTS=ON `
-            -DVNM_PLOT_BUILD_BENCHMARK=${{ matrix.benchmark }} `
+          cmake -B build -S . \
+            -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
+            -DVNM_PLOT_ENABLE_TEXT=${{ matrix.text }} \
+            -DVNM_PLOT_BUILD_TESTS=ON \
+            -DVNM_PLOT_BUILD_BENCHMARK=${{ matrix.benchmark }} \
             -DVNM_PLOT_BUILD_EXAMPLES=OFF
 
       - name: Build
-        run: cmake --build build --config "$env:CMAKE_BUILD_TYPE"
+        run: cmake --build build --config ${CMAKE_BUILD_TYPE}
 
       - name: Run tests
         working-directory: build
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ctest --output-on-failure -C "$env:CMAKE_BUILD_TYPE"
+        run: ctest --output-on-failure -C ${CMAKE_BUILD_TYPE}
 
       - name: Build summary
         run: |
           echo "=== ${{ matrix.name }} completed ==="
-          $libs = Get-ChildItem -Path build -Filter *.lib -Recurse -ErrorAction SilentlyContinue
-          if ($libs) {
-            $libs | Select-Object -ExpandProperty FullName
-          } else {
-            echo "Libraries built successfully"
-          }
+          find build -name '*.lib' -print || echo "Libraries built successfully"
