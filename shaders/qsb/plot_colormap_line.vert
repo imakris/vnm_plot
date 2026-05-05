@@ -15,6 +15,10 @@ struct gpu_sample_t
     float y;
     float y_min;
     float y_max;
+    float aux_metric;
+    float _pad0;
+    float _pad1;
+    float _pad2;
 };
 
 // UBO layout must be byte-identical to plot_colormap_line.frag's Block;

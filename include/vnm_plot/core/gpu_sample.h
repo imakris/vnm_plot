@@ -11,7 +11,7 @@
 
 namespace vnm::plot {
 
-// 16-byte fp32 sample shared between the renderer's upload path and the
+// 32-byte fp32 sample shared between the renderer's upload path and the
 // series shaders. Time is stored as seconds relative to a per-view origin
 // chosen so the rebased value stays inside fp32's usable precision range.
 struct gpu_sample_t
@@ -20,10 +20,14 @@ struct gpu_sample_t
     float y;
     float y_min;
     float y_max;
+    float aux_metric;
+    float _pad0;
+    float _pad1;
+    float _pad2;
 };
 
-static_assert(sizeof(gpu_sample_t) == 16,
-    "gpu_sample_t must be exactly 16 bytes for the fixed VBO layout");
+static_assert(sizeof(gpu_sample_t) == 32,
+    "gpu_sample_t must be exactly 32 bytes for the fixed VBO layout");
 static_assert(alignof(gpu_sample_t) == 4,
     "gpu_sample_t must be 4-byte aligned to match the GL fp32 attribute layout");
 static_assert(std::is_standard_layout_v<gpu_sample_t>,

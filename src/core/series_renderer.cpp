@@ -9,6 +9,8 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <rhi/qrhi.h>
 
+#include <QImage>
+#include <QSize>
 
 #include <algorithm>
 #include <array>
@@ -16,6 +18,7 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <optional>
 #include <string_view>
 #include <unordered_set>
 
@@ -61,7 +64,7 @@ bool compute_aux_metric_range(
         !data_source->aux_metric_range_needs_rescan())
     {
         const auto [ds_min, ds_max] = data_source->aux_metric_range();
-        if (std::isfinite(ds_min) && std::isfinite(ds_max) && ds_min <= ds_max) {
+        if (std::isfinite(ds_min) && std::isfinite(ds_max) && ds_min < ds_max) {
             out_min = ds_min;
             out_max = ds_max;
             out_used_data_source_range = true;
@@ -87,6 +90,18 @@ bool compute_aux_metric_range(
     }
 
     if (!have_any) {
+        if (data_source &&
+            data_source->has_aux_metric_range() &&
+            !data_source->aux_metric_range_needs_rescan())
+        {
+            const auto [ds_min, ds_max] = data_source->aux_metric_range();
+            if (std::isfinite(ds_min) && std::isfinite(ds_max) && ds_min <= ds_max) {
+                out_min = ds_min;
+                out_max = ds_max;
+                out_used_data_source_range = true;
+                return true;
+            }
+        }
         return false;
     }
 
@@ -128,12 +143,19 @@ struct Series_renderer::vbo_view_state_t::rhi_buffers_t
         std::unique_ptr<QRhiBuffer> ubo;
         std::unique_ptr<QRhiShaderResourceBindings> srb;
         QRhiBuffer* last_ubo = nullptr;
+        QRhiTexture* last_texture = nullptr;
+        QRhiSampler* last_sampler = nullptr;
         std::size_t ubo_capacity_bytes = 0;
     };
     srb_entry_t dots_srb;
     srb_entry_t line_srb;
     srb_entry_t area_fill_srb;
     srb_entry_t area_axis_srb;
+
+    std::unique_ptr<QRhiTexture> area_colormap_texture;
+    std::unique_ptr<QRhiSampler> area_colormap_sampler;
+    std::uint64_t area_colormap_revision = std::numeric_limits<std::uint64_t>::max();
+    std::size_t area_colormap_size = 0;
 };
 
 Series_renderer::vbo_view_state_t::vbo_view_state_t() = default;
@@ -238,12 +260,15 @@ struct Series_renderer::rhi_state_t
 // The shaders declare:
 //
 //     layout(std140, binding = 0) uniform Block {
-//         Series_view_t view;        // 128 bytes
-//         float         line_px;     // for LINE
-//         int           snap;        // for LINE
-//         float         dot_px;      // for DOTS
-//         vec4          axis_color;  // for AREA
-//         int           axis_pass;   // for AREA
+//         Series_view_t view;             // 128 bytes
+//         float         line_px;          // for LINE
+//         int           snap;             // for LINE
+//         float         dot_px;           // for DOTS
+//         vec4          axis_color;       // for AREA
+//         float         aux_metric_min;   // for COLORMAP_AREA
+//         float         aux_metric_span;  // for COLORMAP_AREA
+//         int           has_colormap;     // for COLORMAP_AREA
+//         int           axis_pass;        // for AREA
 //     } u;
 //
 // std140 requires:
@@ -326,20 +351,23 @@ struct Dot_block_std140
 static_assert(sizeof(Dot_block_std140) == 144, "Dot_block_std140 must be a multiple of 16");
 static_assert(offsetof(Dot_block_std140, point_diameter_px) == 128, "Dot_block point_diameter_px offset");
 
-// Whole-block layout: Series_view + AREA trailing (zero_axis_color,
-// axis_pass). Padded out to a 16-byte multiple.
+// Whole-block layout: Series_view + AREA trailing values. Padded out to a
+// 16-byte multiple.
 struct Area_block_std140
 {
     Series_view_std140 view;                // offset 0
     float              zero_axis_color[4];  // offset 128
-    int                axis_pass;           // offset 144
-    float              _pad0;               // offset 148
-    float              _pad1;               // offset 152
-    float              _pad2;               // offset 156
+    float              aux_metric_min;      // offset 144
+    float              aux_metric_inv_span; // offset 148
+    int                has_colormap;        // offset 152
+    int                axis_pass;           // offset 156
 };
 static_assert(sizeof(Area_block_std140) == 160, "Area_block_std140 must be a multiple of 16");
 static_assert(offsetof(Area_block_std140, zero_axis_color) == 128, "Area_block zero_axis_color offset");
-static_assert(offsetof(Area_block_std140, axis_pass)       == 144, "Area_block axis_pass offset");
+static_assert(offsetof(Area_block_std140, aux_metric_min)      == 144, "Area_block aux_metric_min offset");
+static_assert(offsetof(Area_block_std140, aux_metric_inv_span) == 148, "Area_block aux_metric_inv_span offset");
+static_assert(offsetof(Area_block_std140, has_colormap)        == 152, "Area_block has_colormap offset");
+static_assert(offsetof(Area_block_std140, axis_pass)           == 156, "Area_block axis_pass offset");
 
 constexpr std::uint32_t k_series_ubo_bytes = 160;
 static_assert(sizeof(Line_block_std140) <= k_series_ubo_bytes, "ubo bytes fit LINE block");
@@ -702,6 +730,9 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
                     : std::make_pair(dst.y, dst.y);
                 dst.y_min = range.first;
                 dst.y_max = range.second;
+                dst.aux_metric = access.get_aux_metric
+                    ? static_cast<float>(access.get_aux_metric(src))
+                    : 0.0f;
             };
 
             // The staging vector is a CPU-side rebased copy of the snapshot;
@@ -1028,71 +1059,119 @@ void Series_renderer::prepare(
             ctx.config->log_debug(message);
         }
 
-        if (!!(main_style & Display_style::COLORMAP_AREA) &&
-            main_access.get_aux_metric &&
-            main_result.can_draw &&
-            main_result.applied_level < vbo_state.cached_aux_metric_levels.size())
+        const auto resolve_aux_metric_range =
+            [&](Data_source* source,
+                const Data_access_policy& access,
+                const view_render_result_t& view_result,
+                std::vector<vbo_state_t::aux_metric_cache_t>& cache_entries)
+                -> std::optional<std::pair<double, double>>
         {
-            auto& aux_cache_entry =
-                vbo_state.cached_aux_metric_levels[main_result.applied_level];
-            data_snapshot_t snapshot = main_result.cached_snapshot;
-            if (snapshot) {
-                const bool can_reuse =
-                    aux_cache_entry.valid &&
-                    aux_cache_entry.sequence == snapshot.sequence;
-                if (!can_reuse) {
-                    double aux_min = 0.0;
-                    double aux_max = 1.0;
-                    bool used_data_source_range = false;
-                    if (compute_aux_metric_range(
-                            main_source,
-                            main_access,
-                            snapshot,
-                            aux_min,
-                            aux_max,
-                            used_data_source_range))
-                    {
-                        std::size_t cache_level = main_result.applied_level;
-                        uint64_t cache_sequence = snapshot.sequence;
-                        if (used_data_source_range) {
-                            cache_level = 0;
-                            cache_sequence = main_source->current_sequence(0);
-                            if (cache_sequence == 0) {
-                                if (main_result.applied_level == 0) {
-                                    cache_sequence = snapshot.sequence;
+            if (!access.get_aux_metric ||
+                !view_result.can_draw ||
+                view_result.applied_level >= cache_entries.size())
+            {
+                return std::nullopt;
+            }
+
+            auto& aux_cache_entry = cache_entries[view_result.applied_level];
+            data_snapshot_t snapshot = view_result.cached_snapshot;
+            if (!snapshot) {
+                if (source &&
+                    source->has_aux_metric_range() &&
+                    !source->aux_metric_range_needs_rescan())
+                {
+                    const auto [ds_min, ds_max] = source->aux_metric_range();
+                    if (std::isfinite(ds_min) && std::isfinite(ds_max) && ds_min <= ds_max) {
+                        aux_cache_entry.min = ds_min;
+                        aux_cache_entry.max = ds_max;
+                        aux_cache_entry.valid = true;
+                        aux_cache_entry.sequence = source->current_sequence(0);
+                    }
+                }
+                if (aux_cache_entry.valid) {
+                    return std::make_pair(aux_cache_entry.min, aux_cache_entry.max);
+                }
+                return std::nullopt;
+            }
+
+            const bool range_is_external =
+                source &&
+                source->has_aux_metric_range() &&
+                !source->aux_metric_range_needs_rescan();
+            const bool can_reuse =
+                !range_is_external &&
+                aux_cache_entry.valid &&
+                aux_cache_entry.sequence == snapshot.sequence;
+            if (!can_reuse) {
+                double aux_min = 0.0;
+                double aux_max = 1.0;
+                bool used_data_source_range = false;
+                if (compute_aux_metric_range(
+                        source,
+                        access,
+                        snapshot,
+                        aux_min,
+                        aux_max,
+                        used_data_source_range))
+                {
+                    std::size_t cache_level = view_result.applied_level;
+                    uint64_t cache_sequence = snapshot.sequence;
+                    if (used_data_source_range) {
+                        cache_level = 0;
+                        cache_sequence = source->current_sequence(0);
+                        if (cache_sequence == 0) {
+                            if (view_result.applied_level == 0) {
+                                cache_sequence = snapshot.sequence;
+                            }
+                            else {
+                                auto lod0_snapshot = source->try_snapshot(0);
+                                if (lod0_snapshot) {
+                                    cache_sequence = lod0_snapshot.snapshot.sequence;
                                 }
                                 else {
-                                    auto lod0_snapshot = main_source->try_snapshot(0);
-                                    if (lod0_snapshot) {
-                                        cache_sequence = lod0_snapshot.snapshot.sequence;
-                                    }
-                                    else {
-                                        cache_level = main_result.applied_level;
-                                        cache_sequence = snapshot.sequence;
-                                    }
+                                    cache_level = view_result.applied_level;
+                                    cache_sequence = snapshot.sequence;
                                 }
                             }
                         }
-                        auto& target_entry = vbo_state.cached_aux_metric_levels[cache_level];
-                        target_entry.min = aux_min;
-                        target_entry.max = aux_max;
-                        target_entry.valid = true;
-                        target_entry.sequence = cache_sequence;
-                        if (used_data_source_range && cache_level != main_result.applied_level) {
-                            aux_cache_entry.min = aux_min;
-                            aux_cache_entry.max = aux_max;
-                            aux_cache_entry.valid = true;
-                            aux_cache_entry.sequence = snapshot.sequence;
-                        }
                     }
-                    else
-                    if (!aux_cache_entry.valid) {
-                        aux_cache_entry.min = 0.0;
-                        aux_cache_entry.max = 1.0;
+                    auto& target_entry = cache_entries[cache_level];
+                    target_entry.min = aux_min;
+                    target_entry.max = aux_max;
+                    target_entry.valid = true;
+                    target_entry.sequence = cache_sequence;
+                    if (used_data_source_range && cache_level != view_result.applied_level) {
+                        aux_cache_entry.min = aux_min;
+                        aux_cache_entry.max = aux_max;
                         aux_cache_entry.valid = true;
                         aux_cache_entry.sequence = snapshot.sequence;
                     }
                 }
+                else
+                if (!aux_cache_entry.valid) {
+                    aux_cache_entry.min = 0.0;
+                    aux_cache_entry.max = 1.0;
+                    aux_cache_entry.valid = true;
+                    aux_cache_entry.sequence = snapshot.sequence;
+                }
+            }
+
+            if (!aux_cache_entry.valid) {
+                return std::nullopt;
+            }
+            return std::make_pair(aux_cache_entry.min, aux_cache_entry.max);
+        };
+
+        if (!!(main_style & Display_style::COLORMAP_AREA)) {
+            if (auto range = resolve_aux_metric_range(
+                    main_source,
+                    main_access,
+                    main_result,
+                    vbo_state.cached_aux_metric_levels))
+            {
+                main_result.aux_metric_min = range->first;
+                main_result.aux_metric_max = range->second;
+                main_result.aux_metric_valid = true;
             }
         }
 
@@ -1104,6 +1183,21 @@ void Series_renderer::prepare(
                 ctx.t_available_min, ctx.t_available_max, preview_origin_ns,
                 ctx.win_w, s->empty_window_behavior, profiler,
                 rhi, rhi_updates);
+            if (!!(preview_style & Display_style::COLORMAP_AREA) && preview_access) {
+                auto& cache_entries = preview_matches_main
+                    ? vbo_state.cached_aux_metric_levels
+                    : vbo_state.cached_aux_metric_levels_preview;
+                if (auto range = resolve_aux_metric_range(
+                        preview_source,
+                        *preview_access,
+                        preview_result,
+                        cache_entries))
+                {
+                    preview_result.aux_metric_min = range->first;
+                    preview_result.aux_metric_max = range->second;
+                    preview_result.aux_metric_valid = true;
+                }
+            }
         }
 
         series_draw_state_t draw_state;
@@ -1132,8 +1226,7 @@ void Series_renderer::prepare(
 
     // Iterate the plan and run rhi_prepare_series_primitive for every
     // RHI-capable view that will be drawn. This fills the per-primitive UBOs
-    // and (for LINE) the per-frame line_window_vbo. COLORMAP_* don't reach a
-    // draw yet, so no prepare call is needed for them.
+    // and (for LINE) the per-frame line_window_vbo.
     for (auto& draw_state : draw_states) {
         if (!draw_state.series || !draw_state.vbo_state) {
             continue;
@@ -1154,7 +1247,9 @@ void Series_renderer::prepare(
                 is_preview ? preview_origin_ns : main_origin_ns);
         };
 
-        if (!!(draw_state.main_style & Display_style::AREA)) {
+        if (!!(draw_state.main_style & Display_style::AREA) ||
+            !!(draw_state.main_style & Display_style::COLORMAP_AREA))
+        {
             run_prepare(Display_style::AREA,
                 draw_state.vbo_state->main_view, draw_state.main_result,
                 false);
@@ -1170,7 +1265,9 @@ void Series_renderer::prepare(
                 false);
         }
         if (draw_state.has_preview) {
-            if (!!(draw_state.preview_style & Display_style::AREA)) {
+            if (!!(draw_state.preview_style & Display_style::AREA) ||
+                !!(draw_state.preview_style & Display_style::COLORMAP_AREA))
+            {
                 run_prepare(Display_style::AREA,
                     draw_state.vbo_state->preview_view,
                     draw_state.preview_result, true);
@@ -1222,7 +1319,9 @@ void Series_renderer::render(
         if (!draw_state.series || !draw_state.vbo_state) {
             continue;
         }
-        if (!!(draw_state.main_style & Display_style::AREA)) {
+        if (!!(draw_state.main_style & Display_style::AREA) ||
+            !!(draw_state.main_style & Display_style::COLORMAP_AREA))
+        {
             record_one(Display_style::AREA, draw_state.vbo_state->main_view, draw_state.main_result, false);
         }
         if (!!(draw_state.main_style & Display_style::LINE)) {
@@ -1238,7 +1337,9 @@ void Series_renderer::render(
             if (!draw_state.series || !draw_state.vbo_state || !draw_state.has_preview) {
                 continue;
             }
-            if (!!(draw_state.preview_style & Display_style::AREA)) {
+            if (!!(draw_state.preview_style & Display_style::AREA) ||
+                !!(draw_state.preview_style & Display_style::COLORMAP_AREA))
+            {
                 record_one(Display_style::AREA, draw_state.vbo_state->preview_view, draw_state.preview_result, true);
             }
             if (!!(draw_state.preview_style & Display_style::LINE)) {
@@ -1321,6 +1422,8 @@ void Series_renderer::rhi_prepare_series_primitive(
                 entry.ubo_capacity_bytes = k_series_ubo_bytes;
                 entry.srb.reset();
                 entry.last_ubo = nullptr;
+                entry.last_texture = nullptr;
+                entry.last_sampler = nullptr;
             }
             else {
                 return false;
@@ -1339,12 +1442,87 @@ void Series_renderer::rhi_prepare_series_primitive(
         return;
     }
 
+    const bool has_area_colormap =
+        is_area &&
+        !!((is_preview ? series->effective_preview_style() : series->style) &
+            Display_style::COLORMAP_AREA) &&
+        (is_preview ? series->preview_access() : series->access).get_aux_metric &&
+        view_result.aux_metric_valid &&
+        !series->colormap_area.samples.empty();
+
+    if (is_area) {
+        const auto& colormap = series->colormap_area;
+        const std::size_t target_size = has_area_colormap
+            ? colormap.samples.size()
+            : std::size_t{1};
+        const std::uint64_t target_revision = has_area_colormap
+            ? colormap.revision
+            : std::uint64_t{0};
+
+        if (!view_state.rhi->area_colormap_texture ||
+            view_state.rhi->area_colormap_size != target_size ||
+            view_state.rhi->area_colormap_revision != target_revision)
+        {
+            const int texture_width = static_cast<int>(std::max<std::size_t>(1, target_size));
+            view_state.rhi->area_colormap_texture.reset(rhi->newTexture(
+                QRhiTexture::RGBA8,
+                QSize(texture_width, 1)));
+            if (!view_state.rhi->area_colormap_texture ||
+                !view_state.rhi->area_colormap_texture->create())
+            {
+                view_state.rhi->area_colormap_texture.reset();
+                return;
+            }
+
+            QImage image(texture_width, 1, QImage::Format_RGBA8888);
+            for (int x = 0; x < texture_width; ++x) {
+                glm::vec4 sample(1.0f, 1.0f, 1.0f, 1.0f);
+                if (has_area_colormap) {
+                    sample = colormap.samples[static_cast<std::size_t>(x)];
+                }
+                auto* pixel = image.scanLine(0) + x * 4;
+                pixel[0] = static_cast<uchar>(
+                    std::lround(std::clamp(sample.r, 0.0f, 1.0f) * 255.0f));
+                pixel[1] = static_cast<uchar>(
+                    std::lround(std::clamp(sample.g, 0.0f, 1.0f) * 255.0f));
+                pixel[2] = static_cast<uchar>(
+                    std::lround(std::clamp(sample.b, 0.0f, 1.0f) * 255.0f));
+                pixel[3] = static_cast<uchar>(
+                    std::lround(std::clamp(sample.a, 0.0f, 1.0f) * 255.0f));
+            }
+            if (updates) {
+                updates->uploadTexture(view_state.rhi->area_colormap_texture.get(), image);
+            }
+            view_state.rhi->area_colormap_size = target_size;
+            view_state.rhi->area_colormap_revision = target_revision;
+            view_state.rhi->area_fill_srb.srb.reset();
+            view_state.rhi->area_axis_srb.srb.reset();
+            view_state.rhi->area_fill_srb.last_texture = nullptr;
+            view_state.rhi->area_axis_srb.last_texture = nullptr;
+        }
+
+        if (!view_state.rhi->area_colormap_sampler) {
+            view_state.rhi->area_colormap_sampler.reset(rhi->newSampler(
+                QRhiSampler::Linear,
+                QRhiSampler::Linear,
+                QRhiSampler::None,
+                QRhiSampler::ClampToEdge,
+                QRhiSampler::ClampToEdge));
+            if (!view_state.rhi->area_colormap_sampler ||
+                !view_state.rhi->area_colormap_sampler->create())
+            {
+                view_state.rhi->area_colormap_sampler.reset();
+                return;
+            }
+        }
+    }
+
     // LINE under RHI feeds the vertex shader through four per-instance
     // vertex attributes (prev, p0, p1, next) sourced from a dedicated
     // per-frame buffer with the active sample window padded by leading and
     // trailing duplicates: [s[first], s[first], s[first+1], ..., s[last],
-    // s[last]]. The buffer is bound four times at offsets 0, 16, 32, 48
-    // with stride 16, so instance i sees (padded[i], padded[i+1],
+    // s[last]]. The buffer is bound four times at element offsets 0, 1, 2, 3,
+    // so instance i sees (padded[i], padded[i+1],
     // padded[i+2], padded[i+3]) which collapses to the desired clamping at
     // the window edges. SSBOs are unusable here because SPIRV-Cross emits
     // them as RWByteAddressBuffer UAVs and D3D11 SM 5.0 vertex shaders
@@ -1435,7 +1613,18 @@ void Series_renderer::rhi_prepare_series_primitive(
         // RHI series primitives bind only a UBO through the SRB. Sample data
         // rides vertex attributes instead of SSBOs so the D3D11 backend's
         // SM 5.0 vertex shader has zero UAVs.
-        layout_srb->setBindings({ubo_binding});
+        if (is_area) {
+            QRhiShaderResourceBinding texture_binding =
+                QRhiShaderResourceBinding::sampledTexture(
+                    1,
+                    QRhiShaderResourceBinding::FragmentStage,
+                    view_state.rhi->area_colormap_texture.get(),
+                    view_state.rhi->area_colormap_sampler.get());
+            layout_srb->setBindings({ubo_binding, texture_binding});
+        }
+        else {
+            layout_srb->setBindings({ubo_binding});
+        }
         layout_srb->create();
 
         cached.pipeline.reset(rhi->newGraphicsPipeline());
@@ -1472,17 +1661,23 @@ void Series_renderer::rhi_prepare_series_primitive(
                 static_cast<quint32>(offsetof(gpu_sample_t, y));
             QRhiVertexInputAttribute a_x0(0, 0, QRhiVertexInputAttribute::Float, t_offset);
             QRhiVertexInputAttribute a_y0(0, 1, QRhiVertexInputAttribute::Float, y_offset);
+            QRhiVertexInputAttribute a_aux0(
+                0, 2, QRhiVertexInputAttribute::Float,
+                static_cast<quint32>(offsetof(gpu_sample_t, aux_metric)));
             QRhiVertexInputAttribute a_x1(1, 4, QRhiVertexInputAttribute::Float, t_offset);
             QRhiVertexInputAttribute a_y1(1, 5, QRhiVertexInputAttribute::Float, y_offset);
-            vlayout.setAttributes({a_x0, a_y0, a_x1, a_y1});
+            QRhiVertexInputAttribute a_aux1(
+                1, 6, QRhiVertexInputAttribute::Float,
+                static_cast<quint32>(offsetof(gpu_sample_t, aux_metric)));
+            vlayout.setAttributes({a_x0, a_y0, a_aux0, a_x1, a_y1, a_aux1});
         }
         else {
-            // LINE binds the line_window_vbo four times at offsets 0,
-            // 16, 32, 48. Each binding has stride sizeof(gpu_sample_t)
+            // LINE binds the line_window_vbo four times at element offsets 0,
+            // 1, 2, 3. Each binding has stride sizeof(gpu_sample_t)
             // and steps once per instance, so the bindings form a
             // sliding (prev, p0, p1, next) window over the padded
             // sample array. Only the (t_rel, y) pair is consumed by
-            // the LINE vertex shader; the (y_min, y_max) lanes are
+            // the LINE vertex shader; the range and auxiliary lanes are
             // left unbound.
             const quint32 line_stride =
                 static_cast<quint32>(sizeof(gpu_sample_t));
@@ -1538,8 +1733,16 @@ void Series_renderer::rhi_prepare_series_primitive(
     // use-after-free.
     auto ensure_srb = [&](vbo_view_state_t::rhi_buffers_t::srb_entry_t& entry) {
         QRhiBuffer* current_ubo = entry.ubo.get();
+        QRhiTexture* current_texture = is_area
+            ? view_state.rhi->area_colormap_texture.get()
+            : nullptr;
+        QRhiSampler* current_sampler = is_area
+            ? view_state.rhi->area_colormap_sampler.get()
+            : nullptr;
         const bool srb_handles_match = entry.srb
-            && entry.last_ubo == current_ubo;
+            && entry.last_ubo == current_ubo
+            && entry.last_texture == current_texture
+            && entry.last_sampler == current_sampler;
         if (srb_handles_match) {
             return;
         }
@@ -1553,9 +1756,22 @@ void Series_renderer::rhi_prepare_series_primitive(
                 current_ubo,
                 0,
                 k_series_ubo_bytes);
-        entry.srb->setBindings({ubo_binding});
+        if (is_area) {
+            QRhiShaderResourceBinding texture_binding =
+                QRhiShaderResourceBinding::sampledTexture(
+                    1,
+                    QRhiShaderResourceBinding::FragmentStage,
+                    current_texture,
+                    current_sampler);
+            entry.srb->setBindings({ubo_binding, texture_binding});
+        }
+        else {
+            entry.srb->setBindings({ubo_binding});
+        }
         entry.srb->create();
         entry.last_ubo = current_ubo;
+        entry.last_texture = current_texture;
+        entry.last_sampler = current_sampler;
     };
 
     ensure_srb(primary_srb_entry);
@@ -1631,6 +1847,12 @@ void Series_renderer::rhi_prepare_series_primitive(
         fill_block.zero_axis_color[1] = palette.grid_line.g;
         fill_block.zero_axis_color[2] = palette.grid_line.b;
         fill_block.zero_axis_color[3] = palette.grid_line.a;
+        fill_block.aux_metric_min = static_cast<float>(view_result.aux_metric_min);
+        const double aux_span = view_result.aux_metric_max - view_result.aux_metric_min;
+        fill_block.aux_metric_inv_span = (aux_span > 0.0)
+            ? static_cast<float>(1.0 / aux_span)
+            : 0.0f;
+        fill_block.has_colormap = has_area_colormap ? 1 : 0;
         fill_block.axis_pass = 0;
 
         Area_block_std140 axis_block = fill_block;

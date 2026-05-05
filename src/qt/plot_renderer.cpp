@@ -26,6 +26,7 @@
 #include <memory>
 #include <shared_mutex>
 #include <tuple>
+#include <utility>
 
 namespace vnm::plot {
 
@@ -37,7 +38,7 @@ glm::mat4 to_glm_mat4(const QMatrix4x4& matrix)
 }
 
 bool include_sample_range(
-    const series_data_t& series,
+    const Data_access_policy& access,
     const void* sample,
     float& out_min,
     float& out_max)
@@ -48,12 +49,12 @@ bool include_sample_range(
 
     float low = 0.0f;
     float high = 0.0f;
-    if (series.access.get_range) {
-        std::tie(low, high) = series.get_range(sample);
+    if (access.get_range) {
+        std::tie(low, high) = access.get_range(sample);
     }
     else
-    if (series.access.get_value) {
-        low = series.get_value(sample);
+    if (access.get_value) {
+        low = access.get_value(sample);
         high = low;
     }
     else {
@@ -70,8 +71,8 @@ bool include_sample_range(
 }
 
 bool scan_series_range(
-    const series_data_t& series,
     Data_source& source,
+    const Data_access_policy& access,
     std::size_t level,
     bool visible_only,
     std::int64_t t_min,
@@ -88,15 +89,15 @@ bool scan_series_range(
     for (std::size_t i = 0; i < snapshot.count; ++i) {
         const void* sample = snapshot.at(i);
         if (visible_only) {
-            if (!sample || !series.access.get_timestamp) {
+            if (!sample || !access.get_timestamp) {
                 continue;
             }
-            const std::int64_t t = series.get_timestamp(sample);
+            const std::int64_t t = access.get_timestamp(sample);
             if (t < t_min || t > t_max) {
                 continue;
             }
         }
-        have_any = include_sample_range(series, sample, out_min, out_max) || have_any;
+        have_any = include_sample_range(access, sample, out_min, out_max) || have_any;
     }
     return have_any;
 }
@@ -151,12 +152,99 @@ std::pair<float, float> resolve_v_range(
                     ? levels - 1
                     : 0;
             got_range = scan_series_range(
-                *item,
                 *source,
+                item->main_access(),
                 level,
                 visible_only,
                 data_cfg.t_min,
                 data_cfg.t_max,
+                series_min,
+                series_max);
+        }
+
+        if (!got_range) {
+            continue;
+        }
+
+        v_min = std::min(v_min, series_min);
+        v_max = std::max(v_max, series_max);
+        have_any = true;
+    }
+
+    if (!have_any || !std::isfinite(v_min) || !std::isfinite(v_max) || v_max < v_min) {
+        return {data_cfg.v_min, data_cfg.v_max};
+    }
+
+    if (v_max == v_min) {
+        const float pad = std::max(std::abs(v_min) * 0.01f, 0.5f);
+        v_min -= pad;
+        v_max += pad;
+    }
+
+    if (config.auto_v_range_extra_scale > 0.0) {
+        const double span = double(v_max) - double(v_min);
+        if (span > 0.0) {
+            const double center = 0.5 * (double(v_min) + double(v_max));
+            const double padded_span = span * (1.0 + config.auto_v_range_extra_scale);
+            v_min = static_cast<float>(center - padded_span * 0.5);
+            v_max = static_cast<float>(center + padded_span * 0.5);
+        }
+    }
+
+    return {v_min, v_max};
+}
+
+std::pair<float, float> resolve_preview_v_range(
+    const std::map<int, std::shared_ptr<const series_data_t>>& series,
+    const data_config_t& data_cfg,
+    const Plot_config& config)
+{
+    float v_min = std::numeric_limits<float>::max();
+    float v_max = std::numeric_limits<float>::lowest();
+    bool have_any = false;
+
+    for (const auto& [_, item] : series) {
+        if (!item || !item->enabled) {
+            continue;
+        }
+
+        Data_source* source = item->preview_source();
+        if (!source) {
+            continue;
+        }
+        const Data_access_policy& access = item->preview_access();
+        if (!access.get_value && !access.get_range) {
+            continue;
+        }
+
+        float series_min = 0.0f;
+        float series_max = 0.0f;
+        bool got_range = false;
+        if (source->has_value_range() && !source->value_range_needs_rescan()) {
+            auto [ds_min, ds_max] = source->value_range();
+            if (std::isfinite(ds_min) && std::isfinite(ds_max) && ds_min <= ds_max) {
+                series_min = ds_min;
+                series_max = ds_max;
+                got_range = true;
+            }
+        }
+
+        if (!got_range) {
+            const std::size_t levels = source->lod_levels();
+            if (levels == 0) {
+                continue;
+            }
+            const std::size_t level =
+                config.auto_v_range_mode == Auto_v_range_mode::GLOBAL_LOD
+                    ? levels - 1
+                    : 0;
+            got_range = scan_series_range(
+                *source,
+                access,
+                level,
+                false,
+                data_cfg.t_available_min,
+                data_cfg.t_available_max,
                 series_min,
                 series_max);
         }
@@ -385,6 +473,11 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
         snapshot.data_cfg,
         config,
         snapshot.v_auto);
+    const bool preview_enabled =
+        snapshot.adjusted_preview_height > 0.0 && config.preview_visibility > 0.0;
+    const auto [preview_v_min, preview_v_max] = preview_enabled
+        ? resolve_preview_v_range(snapshot.series, snapshot.data_cfg, config)
+        : std::make_pair(v_min, v_max);
 
 #if defined(VNM_PLOT_ENABLE_TEXT)
     if (m_impl->fonts) {
@@ -502,8 +595,8 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
     frame_context_t ctx{*layout_ptr};
     ctx.v0 = v_min;
     ctx.v1 = v_max;
-    ctx.preview_v0 = ctx.v0;
-    ctx.preview_v1 = ctx.v1;
+    ctx.preview_v0 = preview_v_min;
+    ctx.preview_v1 = preview_v_max;
     if (m_impl->owner) {
         m_impl->owner->set_rendered_v_range(ctx.v0, ctx.v1);
     }

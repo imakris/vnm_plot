@@ -151,6 +151,9 @@ private:
         std::int32_t count = 0;
         std::size_t applied_level = 0;
         double applied_pps = 0.0;
+        double aux_metric_min = 0.0;
+        double aux_metric_max = 1.0;
+        bool aux_metric_valid = false;
         data_snapshot_t cached_snapshot;              // Reused in draw_pass for aux metric
         std::shared_ptr<void> cached_snapshot_hold;   // Keep snapshot alive
     };
