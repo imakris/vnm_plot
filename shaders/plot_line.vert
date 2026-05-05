@@ -1,22 +1,27 @@
 #version 430
-#extension GL_ARB_gpu_shader_int64 : require
 
 // Instance = one segment of the line strip.
 // Per instance, the four triangle-strip corners (gl_VertexID 0..3) form a
 // thickened screen-space quad spanning samples p0 -> p1, with prev and next
 // passed flat to the fragment shader for rounded segment joins.
 //
-// Sample data is pulled from an SSBO. The host describes the in-buffer
-// layout via three uniforms (stride and field offsets, all in 4-byte units),
-// so any sample type whose timestamp is a 64-bit double and value is a
-// 32-bit float can be rendered without a CPU-side repack.
+// Sample data is pulled from an SSBO with a fixed fp32 layout that mirrors
+// the renderer's gpu_sample_t (t_rel in seconds-from-origin, y, y_min, y_max).
 // The neighbour-index buffer mirrors the adjacency EBO produced on the host:
 // it contains [first, first, first+1, ..., first+count-1, first+count-1] so
 // boundary segments naturally clamp prev/next to the endpoint sample.
 
+struct GpuSample
+{
+    float t_rel;
+    float y;
+    float y_min;
+    float y_max;
+};
+
 layout(std430, binding = 0) readonly buffer Sample_buffer
 {
-    uint raw[];
+    GpuSample samples[];
 } u_samples;
 
 layout(std430, binding = 1) readonly buffer Adjacency_index_buffer
@@ -25,12 +30,12 @@ layout(std430, binding = 1) readonly buffer Adjacency_index_buffer
 } u_adjacency;
 
 layout(location =  0) uniform mat4    pmv;
-layout(location =  1) uniform double  t_min;
-layout(location =  2) uniform double  t_max;
+layout(location =  1) uniform float   t_min;
+layout(location =  2) uniform float   t_max;
 layout(location =  3) uniform float   v_min;
 layout(location =  4) uniform float   v_max;
-layout(location =  5) uniform double  width;
-layout(location =  6) uniform double  height;
+layout(location =  5) uniform float   width;
+layout(location =  6) uniform float   height;
 layout(location =  7) uniform float   y_offset;
 layout(location =  9) uniform bool    snap_to_pixels;
 layout(location = 21) uniform float   u_line_px;
@@ -40,34 +45,19 @@ flat out vec2 fs_p0;
 flat out vec2 fs_p1;
 flat out vec2 fs_p_next;
 
-uniform uint u_sample_stride_uints;
-uniform uint u_sample_x_offset_uints;
-uniform uint u_sample_y_offset_uints;
-
-double sample_x(uint idx)
-{
-    uint base = idx * u_sample_stride_uints + u_sample_x_offset_uints;
-    return packDouble2x32(uvec2(u_samples.raw[base], u_samples.raw[base + 1u]));
-}
-
-float sample_y(uint idx)
-{
-    return uintBitsToFloat(u_samples.raw[idx * u_sample_stride_uints + u_sample_y_offset_uints]);
-}
-
 vec2 sample_to_pos(uint idx)
 {
-    double rt = max(t_max - t_min, 1e-30lf);
-    double rv = max(double(v_max - v_min), 1e-30lf);
+    float rt = max(t_max - t_min, 1e-30);
+    float rv = max(v_max - v_min, 1e-30);
 
-    double x = width  *       (sample_x(idx) - t_min) / rt;
-    double y = height * (1.0lf - (double(sample_y(idx)) - double(v_min)) / rv) + double(y_offset);
+    float x = width  *       (u_samples.samples[idx].t_rel - t_min) / rt;
+    float y = height * (1.0 - (u_samples.samples[idx].y - v_min) / rv) + y_offset;
 
     if (snap_to_pixels) {
-        x = floor(x) + 0.5lf;
-        y = floor(y) + 0.5lf;
+        x = floor(x) + 0.5;
+        y = floor(y) + 0.5;
     }
-    return vec2(float(x), float(y));
+    return vec2(x, y);
 }
 
 void main()

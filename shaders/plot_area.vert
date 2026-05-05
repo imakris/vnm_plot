@@ -1,5 +1,4 @@
 #version 430
-#extension GL_ARB_gpu_shader_int64 : require
 
 // One instance = one segment (samples p0 -> p1) of an area fill. The host
 // runs this shader twice per AREA pipe:
@@ -15,23 +14,24 @@
 // instead of stitching them together with a degenerate-connector chain.
 //
 // Sample data is fed via instanced vertex attributes: locations 0/1 hold
-// p0 (sample i), locations 4/5 hold p1 (sample i+1). Both bindings point
-// at the same points VBO with location 4/5's offset shifted by one stride,
-// so the GPU's attribute fetcher does the next-sample lookup with no
-// shader-side indexing.
+// p0 (sample i), locations 4/5 hold p1 (sample i+1). Both bindings point at
+// the same gpu_sample_t VBO with location 4/5's offset shifted by one
+// sizeof(gpu_sample_t), so the GPU's attribute fetcher does the next-sample
+// lookup with no shader-side indexing. Time attributes carry fp32 seconds
+// relative to the per-view origin chosen on upload.
 
-layout(location = 0) in double in_x0;
-layout(location = 1) in float  in_y0;
-layout(location = 4) in double in_x1;
-layout(location = 5) in float  in_y1;
+layout(location = 0) in float in_x0_rel;
+layout(location = 1) in float in_y0;
+layout(location = 4) in float in_x1_rel;
+layout(location = 5) in float in_y1;
 
 layout(location =  0) uniform mat4    pmv;
-layout(location =  1) uniform double  t_min;
-layout(location =  2) uniform double  t_max;
+layout(location =  1) uniform float   t_min;
+layout(location =  2) uniform float   t_max;
 layout(location =  3) uniform float   v_min;
 layout(location =  4) uniform float   v_max;
-layout(location =  5) uniform double  width;
-layout(location =  6) uniform double  height;
+layout(location =  5) uniform float   width;
+layout(location =  6) uniform float   height;
 layout(location =  7) uniform float   y_offset;
 layout(location =  8) uniform vec4    color;
 
@@ -46,13 +46,13 @@ out GS_out
 
 void main()
 {
-    double rt = max(t_max - t_min, 1e-30lf);
-    float  rv = max(v_max - v_min, 1e-30);
+    float rt = max(t_max - t_min, 1e-30);
+    float rv = max(v_max - v_min, 1e-30);
 
-    float x0 = float(width * (in_x0 - t_min) / rt);
-    float x1 = float(width * (in_x1 - t_min) / rt);
+    float x0 = width * (in_x0_rel - t_min) / rt;
+    float x1 = width * (in_x1_rel - t_min) / rt;
 
-    float y_axis = float(height * (1.0lf - (0.0lf - double(v_min)) / double(rv))) + y_offset;
+    float y_axis = height * (1.0 - (0.0 - v_min) / rv) + y_offset;
 
     // Axis emphasis offset: matches the original geometry shader, which
     // inverts the band when the pass is rendering a preview row.
@@ -90,13 +90,13 @@ void main()
         if (cv0 < 0) { v0_color = v0_color.zyxw; axis_color0 = axis_color0.zyxw; }
         if (cv1 < 0) { v1_color = v1_color.zyxw; axis_color1 = axis_color1.zyxw; }
 
-        float y0 = float(height * (1.0lf - (double(cv0) - double(v_min)) / double(rv))) + y_offset;
-        float y1 = float(height * (1.0lf - (double(cv1) - double(v_min)) / double(rv))) + y_offset;
+        float y0 = height * (1.0 - (cv0 - v_min) / rv) + y_offset;
+        float y1 = height * (1.0 - (cv1 - v_min) / rv) + y_offset;
 
         bool  sign_flip = (cv0 * cv1) < 0.0;
         float mid       = (cv0 - cv1) != 0.0 ? cv0 / (cv0 - cv1) : 0.0;
-        double t_mid    = in_x0 + (in_x1 - in_x0) * double(mid);
-        float x_mid     = float(width * (t_mid - t_min) / rt);
+        float t_mid     = in_x0_rel + (in_x1_rel - in_x0_rel) * mid;
+        float x_mid     = width * (t_mid - t_min) / rt;
         float am        = abs(mid);
 
         if (sign_flip) {

@@ -2,7 +2,7 @@
 
 layout(location =  3) uniform float   v_min;
 layout(location =  4) uniform float   v_max;
-layout(location =  6) uniform double  height;
+layout(location =  6) uniform float   height;
 layout(location =  7) uniform float   y_offset;
 uniform float win_h;
 
@@ -20,7 +20,7 @@ void main(void)
 
     float vmin = v_min;
     float vmax = v_max;
-    float h    = float(height);
+    float h    = height;
 
     float vy = (1.0-(y / h)) * (vmax-vmin) + vmin;
     if (vy > vmax || vy < vmin) {

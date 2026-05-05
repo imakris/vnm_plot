@@ -4,6 +4,7 @@
 // Qt-free series data rendering with LOD support.
 
 #include "gl_program.h"
+#include "gpu_sample.h"
 #include "types.h"
 
 #include <cstddef>
@@ -74,13 +75,15 @@ private:
         Empty_window_behavior last_empty_window_behavior = Empty_window_behavior::DRAW_NOTHING;
         double last_applied_pps = 0.0;
         bool last_hold_last_forward = false;
-        // Renderer-owned scratch buffer for VBO uploads. Holds the raw
-        // bytes assembled before each glBufferSubData call: the full
-        // snapshot (segmented or contiguous) with an optional appended
-        // hold-last-forward sample, or just the synthetic sample when
-        // only its timestamp moved. Reused across uploads to avoid
-        // reallocation.
-        std::vector<unsigned char> upload_staging;
+        // Origin (ns) that produced the bytes currently in the VBO. Used to
+        // invalidate the upload when the view's chosen origin moves to a new
+        // snap bucket. SENTINEL_NONE forces the first frame to upload.
+        std::int64_t uploaded_t_origin_ns = SENTINEL_NONE;
+        // Renderer-owned scratch buffer for VBO uploads. Holds gpu_sample_t
+        // values rebased against the active origin: the full snapshot followed
+        // by an optional hold-last-forward synthetic sample. Reused across
+        // uploads to avoid reallocation.
+        std::vector<gpu_sample_t> staging;
 
         void reset() { *this = vbo_view_state_t{}; }
     };
@@ -166,7 +169,7 @@ private:
         const shader_set_t& shader_set,
         const Plot_config* config);
     series_pipe_t& pipe_for(Display_style style);
-    GLuint ensure_series_vao(Display_style style, GLuint vbo, const Data_access_policy& access);
+    GLuint ensure_series_vao(Display_style style, GLuint vbo);
     GLuint ensure_colormap_texture(const series_data_t& series, Display_style style);
 
     view_render_result_t process_view(
@@ -178,13 +181,21 @@ private:
         const std::vector<std::size_t>& scales,
         std::int64_t t_min_ns,
         std::int64_t t_max_ns,
+        std::int64_t t_origin_ns,
         double width_px,
         Empty_window_behavior empty_window_behavior,
         vnm::plot::Profiler* profiler,
         bool skip_gl);
 
-    void set_common_uniforms(GL_program& program, const glm::mat4& pmv, const frame_context_t& ctx);
-    void modify_uniforms_for_preview(GL_program& program, const frame_context_t& ctx);
+    void set_common_uniforms(
+        GL_program& program,
+        const glm::mat4& pmv,
+        const frame_context_t& ctx,
+        std::int64_t origin_ns);
+    void modify_uniforms_for_preview(
+        GL_program& program,
+        const frame_context_t& ctx,
+        std::int64_t origin_ns);
 };
 
 } // namespace vnm::plot

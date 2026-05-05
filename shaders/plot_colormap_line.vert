@@ -1,5 +1,4 @@
 #version 430
-#extension GL_ARB_gpu_shader_int64 : require
 
 // Mirror of plot_line.vert with an additional per-sample signal channel
 // pulled from binding 2. The host sets u_has_signal to indicate whether
@@ -8,9 +7,17 @@
 // be triggered (length() and indexed reads on an unbound SSBO are both
 // UB per the spec).
 
+struct GpuSample
+{
+    float t_rel;
+    float y;
+    float y_min;
+    float y_max;
+};
+
 layout(std430, binding = 0) readonly buffer Sample_buffer
 {
-    uint raw[];
+    GpuSample samples[];
 } u_samples;
 
 layout(std430, binding = 1) readonly buffer Adjacency_index_buffer
@@ -24,12 +31,12 @@ layout(std430, binding = 2) readonly buffer Signal_buffer
 } u_signal;
 
 layout(location =  0) uniform mat4    pmv;
-layout(location =  1) uniform double  t_min;
-layout(location =  2) uniform double  t_max;
+layout(location =  1) uniform float   t_min;
+layout(location =  2) uniform float   t_max;
 layout(location =  3) uniform float   v_min;
 layout(location =  4) uniform float   v_max;
-layout(location =  5) uniform double  width;
-layout(location =  6) uniform double  height;
+layout(location =  5) uniform float   width;
+layout(location =  6) uniform float   height;
 layout(location =  7) uniform float   y_offset;
 layout(location =  9) uniform bool    snap_to_pixels;
 layout(location = 21) uniform float   u_line_px;
@@ -41,21 +48,7 @@ flat out vec2  fs_p_next;
 flat out float fs_signal_0;
 flat out float fs_signal_1;
 
-uniform uint u_sample_stride_uints;
-uniform uint u_sample_x_offset_uints;
-uniform uint u_sample_y_offset_uints;
 uniform bool u_has_signal;
-
-double sample_x(uint idx)
-{
-    uint base = idx * u_sample_stride_uints + u_sample_x_offset_uints;
-    return packDouble2x32(uvec2(u_samples.raw[base], u_samples.raw[base + 1u]));
-}
-
-float sample_y(uint idx)
-{
-    return uintBitsToFloat(u_samples.raw[idx * u_sample_stride_uints + u_sample_y_offset_uints]);
-}
 
 float sample_signal(uint idx)
 {
@@ -67,17 +60,17 @@ float sample_signal(uint idx)
 
 vec2 sample_to_pos(uint idx)
 {
-    double rt = max(t_max - t_min, 1e-30lf);
-    double rv = max(double(v_max - v_min), 1e-30lf);
+    float rt = max(t_max - t_min, 1e-30);
+    float rv = max(v_max - v_min, 1e-30);
 
-    double x = width  *       (sample_x(idx) - t_min) / rt;
-    double y = height * (1.0lf - (double(sample_y(idx)) - double(v_min)) / rv) + double(y_offset);
+    float x = width  *       (u_samples.samples[idx].t_rel - t_min) / rt;
+    float y = height * (1.0 - (u_samples.samples[idx].y - v_min) / rv) + y_offset;
 
     if (snap_to_pixels) {
-        x = floor(x) + 0.5lf;
-        y = floor(y) + 0.5lf;
+        x = floor(x) + 0.5;
+        y = floor(y) + 0.5;
     }
-    return vec2(float(x), float(y));
+    return vec2(x, y);
 }
 
 void main()

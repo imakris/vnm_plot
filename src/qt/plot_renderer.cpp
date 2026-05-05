@@ -156,11 +156,6 @@ bool has_required_opengl()
         return false;
     }
 
-    if (!glatter_GL_ARB_gpu_shader_int64) {
-        qWarning() << "vnm_plot: GL_ARB_gpu_shader_int64 is required.";
-        return false;
-    }
-
     return true;
 }
 

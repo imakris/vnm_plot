@@ -19,6 +19,7 @@
 
 namespace vnm::plot {
 using detail::choose_lod_level;
+using detail::choose_origin_ns;
 using detail::compute_lod_scales;
 using detail::k_scissor_pad_px;
 using detail::lower_bound_timestamp;
@@ -297,11 +298,12 @@ GLuint Series_renderer::ensure_colormap_texture(const series_data_t& series, Dis
 
 GLuint Series_renderer::ensure_series_vao(
     Display_style style,
-    GLuint vbo,
-    const Data_access_policy& access)
+    GLuint vbo)
 {
     auto& pipe = pipe_for(style);
-    auto& entry = pipe.by_layout[access.layout_key];
+    // The VBO holds a fixed gpu_sample_t layout, so a single VAO per pipe is
+    // enough; key 0 is reserved as the canonical entry for that layout.
+    auto& entry = pipe.by_layout[0];
 
     if (entry.vao != 0 && entry.vbo == vbo) {
         return entry.vao;
@@ -313,42 +315,60 @@ GLuint Series_renderer::ensure_series_vao(
 
     glBindVertexArray(entry.vao);
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    if (access.setup_vertex_attributes) {
-        access.setup_vertex_attributes();
-    }
+
+    constexpr GLsizei k_stride            = static_cast<GLsizei>(sizeof(gpu_sample_t));
+    constexpr std::size_t k_offset_t_rel  = offsetof(gpu_sample_t, t_rel);
+    constexpr std::size_t k_offset_y      = offsetof(gpu_sample_t, y);
+
     // DOTS expands each sample into a four-vertex quad via instancing. AREA
     // needs sample i and sample i+1 per instance, fed through two attribute
-    // bindings on the same VBO with location 4/5's offset shifted by one
+    // bindings on the same VBO with location 4/5 offset by one gpu_sample_t
     // stride. Both styles set divisor=1 so the GPU's attribute fetcher does
-    // the per-instance lookup. LINE and the colormap styles still pull
-    // samples through an SSBO and ignore vertex attributes entirely.
+    // the per-instance lookup. LINE and the colormap styles pull samples
+    // through an SSBO and ignore the vertex attributes.
     if (!!(style & Display_style::DOTS)) {
-        constexpr GLuint k_dot_attrib_locations[] = {0u, 1u, 2u, 3u};
+        glVertexAttribPointer(
+            0, 1, GL_FLOAT, GL_FALSE, k_stride,
+            reinterpret_cast<void*>(k_offset_t_rel));
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(
+            1, 1, GL_FLOAT, GL_FALSE, k_stride,
+            reinterpret_cast<void*>(k_offset_y));
+        glEnableVertexAttribArray(1);
+        // The DOTS shader does not consume locations 2/3 (y_min/y_max).
+        glDisableVertexAttribArray(2);
+        glDisableVertexAttribArray(3);
+
+        constexpr GLuint k_dot_attrib_locations[] = {0u, 1u};
         for (GLuint loc : k_dot_attrib_locations) {
             glVertexAttribDivisor(loc, 1u);
         }
     }
     else
     if (!!(style & Display_style::AREA)) {
-        const std::size_t stride = access.sample_stride_bytes;
-        const std::size_t ts_off = access.timestamp_offset_bytes;
-        const std::size_t v_off  = access.value_offset_bytes;
-        if (stride > 0) {
-            glVertexAttribLPointer(
-                4, 1, GL_DOUBLE,
-                static_cast<GLsizei>(stride),
-                reinterpret_cast<void*>(stride + ts_off));
-            glEnableVertexAttribArray(4);
-            glVertexAttribPointer(
-                5, 1, GL_FLOAT, GL_FALSE,
-                static_cast<GLsizei>(stride),
-                reinterpret_cast<void*>(stride + v_off));
-            glEnableVertexAttribArray(5);
-        }
-        // The shader does not consume locations 2/3 (y_min/y_max). Disable
-        // them so the GPU does not fetch them per vertex on every instance.
+        // p0 = sample i, p1 = sample i+1. Same VBO, locations 4/5 shifted
+        // by one gpu_sample_t so the per-instance fetch reads the next
+        // sample without shader-side indexing.
+        glVertexAttribPointer(
+            0, 1, GL_FLOAT, GL_FALSE, k_stride,
+            reinterpret_cast<void*>(k_offset_t_rel));
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(
+            1, 1, GL_FLOAT, GL_FALSE, k_stride,
+            reinterpret_cast<void*>(k_offset_y));
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(
+            4, 1, GL_FLOAT, GL_FALSE, k_stride,
+            reinterpret_cast<void*>(sizeof(gpu_sample_t) + k_offset_t_rel));
+        glEnableVertexAttribArray(4);
+        glVertexAttribPointer(
+            5, 1, GL_FLOAT, GL_FALSE, k_stride,
+            reinterpret_cast<void*>(sizeof(gpu_sample_t) + k_offset_y));
+        glEnableVertexAttribArray(5);
+        // The AREA shader does not consume locations 2/3 (y_min/y_max).
         glDisableVertexAttribArray(2);
         glDisableVertexAttribArray(3);
+
         constexpr GLuint k_area_attrib_locations[] = {0u, 1u, 4u, 5u};
         for (GLuint loc : k_area_attrib_locations) {
             glVertexAttribDivisor(loc, 1u);
@@ -417,6 +437,7 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
     const std::vector<std::size_t>& scales,
     std::int64_t t_min_ns,
     std::int64_t t_max_ns,
+    std::int64_t t_origin_ns,
     double width_px,
     Empty_window_behavior empty_window_behavior,
     vnm::plot::Profiler* profiler,
@@ -472,12 +493,16 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
     };
     const auto try_stale_fallback = [&](view_render_result_t& r) -> bool {
         const void* current_identity = data_source.identity();
+        // The cached VBO holds samples rebased against uploaded_t_origin_ns;
+        // reusing it under a moved origin would draw at the wrong x positions
+        // because set_common_uniforms feeds the new view_origin_ns regardless.
         const bool identity_ok =
             (view_state.cached_data_identity != nullptr) &&
             (view_state.cached_data_identity == current_identity) &&
             (view_state.active_vbo != UINT_MAX) &&
             (view_state.last_count > 0) &&
-            (view_state.last_empty_window_behavior == empty_window_behavior);
+            (view_state.last_empty_window_behavior == empty_window_behavior) &&
+            (view_state.uploaded_t_origin_ns == t_origin_ns);
         if (!identity_ok) {
             return false;
         }
@@ -506,7 +531,8 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
             view_state.last_t_min == t_min_ns &&
             view_state.last_t_max == t_max_ns &&
             view_state.last_width_px == width_px &&
-            view_state.last_empty_window_behavior == empty_window_behavior)
+            view_state.last_empty_window_behavior == empty_window_behavior &&
+            view_state.uploaded_t_origin_ns == t_origin_ns)
         {
             load_cached_result(result, applied_level);
             return result;
@@ -683,104 +709,69 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
             }
 
             const std::size_t needed_elements = snapshot.count + (hold_last_forward ? 1 : 0);
-            const std::size_t needed_bytes = needed_elements * snapshot.stride;
+            const std::size_t needed_bytes = needed_elements * sizeof(gpu_sample_t);
             const void* current_identity = data_source.identity();
             const bool region_changed = (view_state.last_ring_size < needed_bytes);
+            const bool origin_changed = (view_state.uploaded_t_origin_ns != t_origin_ns);
             const bool hold_changed =
                 (view_state.last_hold_last_forward != hold_last_forward) ||
                 (hold_last_forward && view_state.last_t_max != t_max_ns);
             const bool must_upload = region_changed
+                || origin_changed
                 || (snapshot.sequence != view_state.last_sequence)
                 || (applied_level != view_state.last_lod_level)
-                || (current_identity != view_state.cached_data_identity);
+                || (current_identity != view_state.cached_data_identity)
+                || (snapshot.count != view_state.last_snapshot_elements);
             const bool needs_hold_upload = hold_last_forward && (must_upload || hold_changed);
 
-            // VBO uploads go through view_state.upload_staging so that
-            // both the full snapshot and any appended hold-last-forward
-            // sample land in a single glBufferSubData call. The hold-only
-            // path below patches just the trailing sample when the
-            // synthetic timestamp moved without the data changing.
-            //
-            // Per-sample staging conversion: user samples carry an int64
-            // nanosecond timestamp at access.timestamp_offset_bytes. The GPU
-            // path still consumes a 64-bit fp64 timestamp at that same byte
-            // offset (8 bytes wide, identical layout, different
-            // interpretation), so the staging step rewrites the timestamp
-            // slot from int64 ns to fp64 seconds and copies the rest of the
-            // sample bytes verbatim. This int64 -> double bridge is
-            // temporary scaffolding owned by this commit; the fp32
-            // GPU pipeline replaces it.
-            const std::size_t ts_off_bytes  = access.timestamp_offset_bytes;
-            const bool has_layout_metadata =
-                access.sample_stride_bytes > 0
-                && access.sample_stride_bytes == snapshot.stride
-                && ts_off_bytes + sizeof(double) <= snapshot.stride;
-
-            const auto stage_one_sample = [&](unsigned char* dst, const void* src) {
-                if (has_layout_metadata) {
-                    // Copy everything, then overwrite the timestamp slot
-                    // with the seconds-domain double. The canonical
-                    // timestamp value comes from access.get_timestamp() so
-                    // sample types whose timestamp member is fp64 (e.g.
-                    // function_sample_t::x) work correctly: reading the
-                    // source bytes directly as int64 would corrupt them
-                    // because the bytes are already a double. The renderer
-                    // unconditionally calls access.get_timestamp() in
-                    // monotonicity scans and binary searches above, so it
-                    // is guaranteed to be set by the time we get here.
-                    // memcpy keeps everything UB-free under the strict
-                    // aliasing rule and respects the packed layout used by
-                    // benchmark sample structs.
-                    std::memcpy(dst, src, snapshot.stride);
-                    const std::int64_t ts_ns = access.get_timestamp(src);
-                    const double ts_seconds = static_cast<double>(ts_ns) * 1.0e-9;
-                    std::memcpy(dst + ts_off_bytes, &ts_seconds, sizeof(double));
-                }
-                else {
-                    // No timestamp metadata exposed (DOTS-only series, or a
-                    // hand-rolled access policy that left layout bytes
-                    // zeroed). Copy bytes through unchanged; non-DOTS draws
-                    // are rejected upstream by the layout-validation guard.
-                    std::memcpy(dst, src, snapshot.stride);
-                }
+            // Per-sample staging produces a fixed gpu_sample_t value rebased
+            // against t_origin_ns so the GPU never sees absolute nanosecond
+            // timestamps. The renderer reads each sample through
+            // access.get_timestamp / get_value / get_range (fp32 boundary)
+            // and emits one gpu_sample_t per snapshot entry plus an optional
+            // hold-last-forward synthetic sample.
+            const auto stage_one_sample = [&](gpu_sample_t& dst, const void* src) {
+                const std::int64_t ts_ns = access.get_timestamp(src);
+                dst.t_rel = static_cast<float>(ts_ns - t_origin_ns) * 1.0e-9f;
+                dst.y     = access.get_value ? access.get_value(src) : 0.0f;
+                const auto range = access.get_range
+                    ? access.get_range(src)
+                    : std::make_pair(dst.y, dst.y);
+                dst.y_min = range.first;
+                dst.y_max = range.second;
             };
 
             if (must_upload && !skip_gl) {
-                const std::size_t snapshot_bytes = snapshot.count * snapshot.stride;
-                const std::size_t hold_bytes = hold_last_forward ? snapshot.stride : 0;
-                auto& staging = view_state.upload_staging;
-                staging.resize(snapshot_bytes + hold_bytes);
+                auto& staging = view_state.staging;
+                staging.resize(snapshot.count + (hold_last_forward ? 1 : 0));
 
-                if (snapshot_bytes > 0) {
-                    for (std::size_t i = 0; i < snapshot.count; ++i) {
-                        const void* src = snapshot.at(i);
-                        if (!src) {
-                            std::memset(staging.data() + i * snapshot.stride,
-                                        0, snapshot.stride);
-                            continue;
-                        }
-                        stage_one_sample(staging.data() + i * snapshot.stride, src);
+                for (std::size_t i = 0; i < snapshot.count; ++i) {
+                    const void* src = snapshot.at(i);
+                    if (!src) {
+                        staging[i] = gpu_sample_t{};
+                        continue;
                     }
+                    stage_one_sample(staging[i], src);
                 }
 
                 if (hold_last_forward) {
                     const void* source_sample = (snapshot.count > 0)
                         ? snapshot.at(snapshot.count - 1) : nullptr;
                     if (source_sample) {
-                        // Build the synthetic sample in the user struct
-                        // layout first, then run it through the staging
-                        // converter so the timestamp slot ends up in
-                        // seconds-domain fp64 like the rest of the upload.
+                        // Build the synthetic sample in the user struct layout
+                        // first so types whose timestamp is stored as a float
+                        // (function_sample_t::x) round-trip through the
+                        // float-seconds <-> ns conversion the access policy
+                        // already encodes.
                         std::vector<unsigned char> user_sample(snapshot.stride);
                         access.clone_with_timestamp(
                             user_sample.data(),
                             source_sample,
                             t_max_ns);
-                        stage_one_sample(staging.data() + snapshot_bytes,
-                                         user_sample.data());
+                        stage_one_sample(staging.back(), user_sample.data());
                     }
                     else {
-                        std::memset(staging.data() + snapshot_bytes, 0, snapshot.stride);
+                        staging.back() = gpu_sample_t{};
                     }
                 }
 
@@ -792,35 +783,34 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
                     view_state.last_ring_size = alloc_size;
                 }
                 glBufferSubData(GL_ARRAY_BUFFER, 0,
-                    static_cast<GLsizeiptr>(staging.size()), staging.data());
+                    static_cast<GLsizeiptr>(staging.size() * sizeof(gpu_sample_t)),
+                    staging.data());
             }
             else
             if (needs_hold_upload && !skip_gl) {
                 // Data unchanged, only the synthetic last sample's timestamp
-                // moved with t_max_ns. Stage just that one sample (built in
-                // user-struct layout, then run through the staging converter
-                // so the GPU sees seconds-domain fp64) and patch the VBO at
-                // its trailing offset.
+                // moved with t_max_ns. Stage just that one gpu_sample_t and
+                // patch the VBO at its trailing offset.
                 const void* source_sample = (snapshot.count > 0)
                     ? snapshot.at(snapshot.count - 1) : nullptr;
                 if (source_sample) {
-                    auto& staging = view_state.upload_staging;
-                    staging.resize(snapshot.stride);
                     std::vector<unsigned char> user_sample(snapshot.stride);
                     access.clone_with_timestamp(
                         user_sample.data(), source_sample, t_max_ns);
-                    stage_one_sample(staging.data(), user_sample.data());
+                    gpu_sample_t hold_sample{};
+                    stage_one_sample(hold_sample, user_sample.data());
                     glBindBuffer(GL_ARRAY_BUFFER, view_state.id);
                     glBufferSubData(
                         GL_ARRAY_BUFFER,
-                        static_cast<GLintptr>(snapshot.count * snapshot.stride),
-                        static_cast<GLsizeiptr>(snapshot.stride),
-                        staging.data());
+                        static_cast<GLintptr>(snapshot.count * sizeof(gpu_sample_t)),
+                        static_cast<GLsizeiptr>(sizeof(gpu_sample_t)),
+                        &hold_sample);
                 }
             }
             if (must_upload) {
                 view_state.last_sequence = snapshot.sequence;
                 view_state.cached_data_identity = current_identity;
+                view_state.uploaded_t_origin_ns = t_origin_ns;
             }
             view_state.last_snapshot_elements = snapshot.count;
         }
@@ -854,20 +844,23 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
 void Series_renderer::set_common_uniforms(
     GL_program& program,
     const glm::mat4& pmv,
-    const frame_context_t& ctx)
+    const frame_context_t& ctx,
+    std::int64_t origin_ns)
 {
     glUniformMatrix4fv(program.uniform_location("pmv"), 1, GL_FALSE, glm::value_ptr(pmv));
 
     const auto& layout = ctx.layout;
-    glUniform1d(program.uniform_location("width"), layout.usable_width);
-    glUniform1d(program.uniform_location("height"), layout.usable_height);
+    glUniform1f(program.uniform_location("width"),  static_cast<float>(layout.usable_width));
+    glUniform1f(program.uniform_location("height"), static_cast<float>(layout.usable_height));
     glUniform1f(program.uniform_location("y_offset"), 0.0f);
     glUniform1f(program.uniform_location("win_h"), static_cast<float>(ctx.win_h));
-    // Time uniforms still travel as fp64 seconds; the staging step rebases the
-    // sample timestamps the same way before upload, so axes and samples agree
-    // on a single fp64-seconds domain.
-    glUniform1d(program.uniform_location("t_min"), static_cast<double>(ctx.t0) * 1.0e-9);
-    glUniform1d(program.uniform_location("t_max"), static_cast<double>(ctx.t1) * 1.0e-9);
+    // Sample timestamps are rebased against origin_ns on upload; the time
+    // window uniforms must use the same origin so axes and samples agree on
+    // one fp32 seconds-from-origin domain.
+    const float t_min_rel = static_cast<float>(ctx.t0 - origin_ns) * 1.0e-9f;
+    const float t_max_rel = static_cast<float>(ctx.t1 - origin_ns) * 1.0e-9f;
+    glUniform1f(program.uniform_location("t_min"), t_min_rel);
+    glUniform1f(program.uniform_location("t_max"), t_max_rel);
     glUniform1f(program.uniform_location("v_min"), ctx.v0);
     glUniform1f(program.uniform_location("v_max"), ctx.v1);
 
@@ -883,7 +876,8 @@ void Series_renderer::set_common_uniforms(
 
 void Series_renderer::modify_uniforms_for_preview(
     GL_program& program,
-    const frame_context_t& ctx)
+    const frame_context_t& ctx,
+    std::int64_t origin_ns)
 {
     const auto& layout = ctx.layout;
     const double preview_top =
@@ -892,14 +886,14 @@ void Series_renderer::modify_uniforms_for_preview(
     const float preview_height = static_cast<float>(ctx.adjusted_preview_height);
 
     glUniform1f(program.uniform_location("y_offset"), preview_y);
-    glUniform1d(program.uniform_location("width"), static_cast<double>(ctx.win_w));
-    glUniform1d(program.uniform_location("height"), static_cast<double>(preview_height));
+    glUniform1f(program.uniform_location("width"),  static_cast<float>(ctx.win_w));
+    glUniform1f(program.uniform_location("height"), preview_height);
     glUniform1f(program.uniform_location("v_min"), ctx.preview_v0);
     glUniform1f(program.uniform_location("v_max"), ctx.preview_v1);
-    glUniform1d(program.uniform_location("t_min"),
-        static_cast<double>(ctx.t_available_min) * 1.0e-9);
-    glUniform1d(program.uniform_location("t_max"),
-        static_cast<double>(ctx.t_available_max) * 1.0e-9);
+    const float t_min_rel = static_cast<float>(ctx.t_available_min - origin_ns) * 1.0e-9f;
+    const float t_max_rel = static_cast<float>(ctx.t_available_max - origin_ns) * 1.0e-9f;
+    glUniform1f(program.uniform_location("t_min"), t_min_rel);
+    glUniform1f(program.uniform_location("t_max"), t_max_rel);
 }
 
 void Series_renderer::render(
@@ -1017,11 +1011,18 @@ void Series_renderer::render(
     const double preview_visibility = ctx.config ? ctx.config->preview_visibility : 1.0;
     const bool preview_visible = ctx.adjusted_preview_height > 0.0 && preview_visibility > 0.0;
 
+    // Per-view fp32 rebase origins. Main and preview cover different visible
+    // windows, so each gets its own snap-aligned origin; uniforms and
+    // staging for that view all see the same origin.
+    const std::int64_t main_origin_ns = choose_origin_ns(ctx.t0, ctx.t1 - ctx.t0);
+    const std::int64_t preview_origin_ns = preview_visible
+        ? choose_origin_ns(ctx.t_available_min, ctx.t_available_max - ctx.t_available_min)
+        : main_origin_ns;
+
       enum class Error_cat : uint32_t {
           MISSING_SIGNAL, MISSING_SIGNAL_PREVIEW,
           PREVIEW_MISSING_SOURCE,
           MISSING_SHADER,
-          INVALID_SAMPLE_LAYOUT,
           COLORMAP_LINE_DEFAULT_NOT_SUPPORTED,
           COLORMAP_LINE_DEFAULT_NOT_SUPPORTED_PREVIEW
       };
@@ -1180,7 +1181,8 @@ void Series_renderer::render(
         auto main_result = process_view(
             vbo_state.main_view, vbo_state, m_frame_id, *main_source,
             main_access, main_scales,
-            ctx.t0, ctx.t1, layout.usable_width, s->empty_window_behavior, profiler, skip_gl);
+            ctx.t0, ctx.t1, main_origin_ns,
+            layout.usable_width, s->empty_window_behavior, profiler, skip_gl);
         if (ctx.config && ctx.config->log_debug &&
             main_result.can_draw &&
             main_result.applied_level != prev_lod_level)
@@ -1196,8 +1198,8 @@ void Series_renderer::render(
             preview_result = process_view(
                 vbo_state.preview_view, vbo_state, m_frame_id, *preview_source,
                 *preview_access, preview_scales,
-                ctx.t_available_min, ctx.t_available_max, ctx.win_w,
-                s->empty_window_behavior, profiler, skip_gl);
+                ctx.t_available_min, ctx.t_available_max, preview_origin_ns,
+                ctx.win_w, s->empty_window_behavior, profiler, skip_gl);
         }
 
         Series_draw_state draw_state;
@@ -1268,46 +1270,6 @@ void Series_renderer::render(
 
         if (!data_source || !access) {
             return;
-        }
-
-        // AREA, LINE, and the colormap styles read sample data from the
-        // VBO using the layout described by access->sample_stride_bytes,
-        // timestamp_offset_bytes and value_offset_bytes. A manually
-        // constructed Data_access_policy that forgot to populate those
-        // fields would draw silently broken geometry: every sample read
-        // collapses to sample[0] under stride=0, and AREA's p1 attribute
-        // bindings would fall back to packed reads of the wrong field.
-        // Skip the draw and surface a one-time error instead.
-        //
-        // The check is gated on !skip_gl because it validates the SSBO
-        // upload layout, which only matters when we are actually issuing
-        // GL draws. CPU-only paths (skip_gl_calls = true, e.g. aux-metric
-        // range computation in tests) only need the value/timestamp
-        // accessors and must not be blocked by a missing layout.
-        //
-        // Slice 2c removes this entire block when Vertex_layout
-        // infrastructure goes away; the gate is a temporary measure.
-        if (!skip_gl && primitive_style != Display_style::DOTS) {
-            const std::size_t stride = access->sample_stride_bytes;
-            const std::size_t ts_off = access->timestamp_offset_bytes;
-            const std::size_t v_off  = access->value_offset_bytes;
-            const bool layout_ok =
-                stride > 0
-                && stride % sizeof(GLuint) == 0
-                && ts_off % sizeof(GLuint) == 0
-                && v_off  % sizeof(GLuint) == 0
-                && ts_off + sizeof(double) <= stride
-                && v_off  + sizeof(float)  <= stride;
-            if (!layout_ok) {
-                log_error_once(Error_cat::INVALID_SAMPLE_LAYOUT, draw_state.id,
-                    "Series " + std::to_string(draw_state.id)
-                        + ": Data_access_policy is missing or has invalid sample"
-                          " layout fields (stride=" + std::to_string(stride)
-                        + ", t_offset=" + std::to_string(ts_off)
-                        + ", v_offset=" + std::to_string(v_off)
-                        + "); skipping non-DOTS draws.");
-                return;
-            }
         }
 
         // CPU-side color/uniform preparation (no GL calls)
@@ -1492,9 +1454,10 @@ void Series_renderer::render(
         }
 
         glUseProgram(pass_shader->program_id());
-        set_common_uniforms(*pass_shader, ctx.pmv, ctx);
+        const std::int64_t view_origin_ns = is_preview ? preview_origin_ns : main_origin_ns;
+        set_common_uniforms(*pass_shader, ctx.pmv, ctx, view_origin_ns);
         if (is_preview) {
-            modify_uniforms_for_preview(*pass_shader, ctx);
+            modify_uniforms_for_preview(*pass_shader, ctx, view_origin_ns);
         }
 
         glUniform4fv(pass_shader->uniform_location("color"), 1, glm::value_ptr(draw_color));
@@ -1565,7 +1528,7 @@ void Series_renderer::render(
             }
         }
 
-        glBindVertexArray(ensure_series_vao(primitive_style, view_state.active_vbo, *access));
+        glBindVertexArray(ensure_series_vao(primitive_style, view_state.active_vbo));
 
         if (use_adjacency) {
             const std::size_t required_indices = static_cast<std::size_t>(count) + 2;
@@ -1614,25 +1577,6 @@ void Series_renderer::render(
 
             glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, view_state.adjacency_ebo);
             glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, view_state.active_vbo);
-
-            // Pass the SSBO sample layout so the shader can index any sample
-            // type whose timestamp is fp64 and value is fp32. All offsets are
-            // in 4-byte units; sample stride must be a multiple of 4.
-            const GLuint stride_uints =
-                static_cast<GLuint>(access->sample_stride_bytes / sizeof(GLuint));
-            const GLuint x_offset_uints =
-                static_cast<GLuint>(access->timestamp_offset_bytes / sizeof(GLuint));
-            const GLuint y_offset_uints =
-                static_cast<GLuint>(access->value_offset_bytes / sizeof(GLuint));
-            if (const GLint loc = pass_shader->uniform_location("u_sample_stride_uints"); loc >= 0) {
-                glUniform1ui(loc, stride_uints);
-            }
-            if (const GLint loc = pass_shader->uniform_location("u_sample_x_offset_uints"); loc >= 0) {
-                glUniform1ui(loc, x_offset_uints);
-            }
-            if (const GLint loc = pass_shader->uniform_location("u_sample_y_offset_uints"); loc >= 0) {
-                glUniform1ui(loc, y_offset_uints);
-            }
 
             // SSBO binding 2 is reserved for the colormap-line shader's
             // optional per-sample signal channel. The renderer does not
