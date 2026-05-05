@@ -4,7 +4,6 @@
 // Provides typed access policies to avoid void* casts in user code.
 
 #include <vnm_plot/core/types.h>
-#include <vnm_plot/core/vertex_layout.h>
 
 #include <cstring>
 #include <cstddef>
@@ -19,38 +18,16 @@ namespace detail {
 template<typename>
 struct always_false : std::false_type {};
 
-template<typename T>
-constexpr Vertex_attrib_type vertex_attrib_type_for()
+constexpr std::uint64_t k_fnv_offset_basis = 1469598103934665603ULL;
+constexpr std::uint64_t k_fnv_prime = 1099511628211ULL;
+
+inline std::uint64_t fnv1a_mix(std::uint64_t h, std::uint64_t value)
 {
-    using U = std::remove_cv_t<T>;
-    if constexpr (std::is_same_v<U, float>) {
-        return Vertex_attrib_type::FLOAT32;
+    for (int i = 0; i < 8; ++i) {
+        h ^= (value >> (i * 8)) & 0xFFu;
+        h *= k_fnv_prime;
     }
-    else
-    if constexpr (std::is_same_v<U, double>) {
-        return Vertex_attrib_type::FLOAT64;
-    }
-    else
-    if constexpr (std::is_same_v<U, std::int64_t>) {
-        // The user-visible timestamp type is int64 nanoseconds, but the
-        // renderer's upload-staging layout reinterprets that 8-byte slot as
-        // fp64 seconds (the staging step rebases int64 ns -> double s before
-        // upload). The vertex layout description therefore declares FLOAT64
-        // at the timestamp slot to match what the GPU actually sees.
-        return Vertex_attrib_type::FLOAT64;
-    }
-    else
-    if constexpr (std::is_same_v<U, std::int32_t> || std::is_same_v<U, int>) {
-        return Vertex_attrib_type::INT32;
-    }
-    else
-    if constexpr (std::is_same_v<U, std::uint32_t> || std::is_same_v<U, unsigned int>) {
-        return Vertex_attrib_type::UINT32;
-    }
-    else {
-        static_assert(always_false<U>::value, "Unsupported vertex attribute type");
-        return Vertex_attrib_type::FLOAT32;
-    }
+    return h;
 }
 
 template<typename Sample, typename Member>
@@ -86,6 +63,29 @@ auto make_clone_with_timestamp(Timestamp_member Sample::* timestamp_member)
     };
 }
 
+// Produces a stable cache key from the byte-level identity of a Sample type's
+// timestamp/value layout. Used by the renderer to key VAO and shader-selection
+// caches; the renderer no longer reads sample bytes directly, but the key still
+// distinguishes user sample types so caches stay correct across mixed-type
+// series.
+inline std::uint64_t compute_sample_layout_key(
+    std::size_t sample_stride,
+    std::size_t timestamp_offset,
+    std::size_t value_offset,
+    bool has_range,
+    std::size_t range_min_offset,
+    std::size_t range_max_offset)
+{
+    std::uint64_t h = k_fnv_offset_basis;
+    h = fnv1a_mix(h, sample_stride);
+    h = fnv1a_mix(h, timestamp_offset);
+    h = fnv1a_mix(h, value_offset);
+    h = fnv1a_mix(h, has_range ? 1ULL : 0ULL);
+    h = fnv1a_mix(h, range_min_offset);
+    h = fnv1a_mix(h, range_max_offset);
+    return h;
+}
+
 } // namespace detail
 
 template<typename Sample>
@@ -100,13 +100,8 @@ struct Data_access_policy_typed
     std::function<float(const Sample&)> get_signal;
     std::function<void(Sample& dst_sample, const Sample& src_sample, std::int64_t timestamp_ns)> clone_with_timestamp;
 
-    std::function<void()> setup_vertex_attributes;
     std::function<void(unsigned int)> bind_uniforms;
     uint64_t layout_key = 0;
-
-    size_t sample_stride_bytes    = 0;
-    size_t timestamp_offset_bytes = 0;
-    size_t value_offset_bytes     = 0;
 
     bool is_valid() const
     {
@@ -156,105 +151,11 @@ struct Data_access_policy_typed
                 std::memcpy(dst_sample, &tmp_sample, sizeof(Sample));
             };
         }
-        policy.setup_vertex_attributes = setup_vertex_attributes;
         policy.bind_uniforms = bind_uniforms;
         policy.layout_key = layout_key;
-        policy.sample_stride_bytes    = sample_stride_bytes;
-        policy.timestamp_offset_bytes = timestamp_offset_bytes;
-        policy.value_offset_bytes     = value_offset_bytes;
         return policy;
     }
 };
-
-template<typename Sample, typename Timestamp_member, typename Value_member>
-inline Vertex_layout make_standard_layout(
-    Timestamp_member Sample::* timestamp_member,
-    Value_member Sample::* value_member)
-{
-    Vertex_layout layout;
-    layout.stride = sizeof(Sample);
-    layout.attributes = {
-        {
-            0,
-            detail::vertex_attrib_type_for<Timestamp_member>(),
-            1,
-            detail::member_offset(timestamp_member),
-            false
-        },
-        {
-            1,
-            detail::vertex_attrib_type_for<Value_member>(),
-            1,
-            detail::member_offset(value_member),
-            false
-        }
-    };
-    return layout;
-}
-
-template<typename Sample, typename Timestamp_member, typename Value_member,
-         typename Range_min_member, typename Range_max_member>
-inline Vertex_layout make_standard_layout(
-    Timestamp_member Sample::* timestamp_member,
-    Value_member Sample::* value_member,
-    Range_min_member Sample::* range_min_member,
-    Range_max_member Sample::* range_max_member)
-{
-    Vertex_layout layout;
-    layout.stride = sizeof(Sample);
-    layout.attributes = {
-        {
-            0,
-            detail::vertex_attrib_type_for<Timestamp_member>(),
-            1,
-            detail::member_offset(timestamp_member),
-            false
-        },
-        {
-            1,
-            detail::vertex_attrib_type_for<Value_member>(),
-            1,
-            detail::member_offset(value_member),
-            false
-        },
-        {
-            2,
-            detail::vertex_attrib_type_for<Range_min_member>(),
-            1,
-            detail::member_offset(range_min_member),
-            false
-        },
-        {
-            3,
-            detail::vertex_attrib_type_for<Range_max_member>(),
-            1,
-            detail::member_offset(range_max_member),
-            false
-        }
-    };
-    return layout;
-}
-
-template<typename Sample>
-inline void apply_layout(
-    Data_access_policy_typed<Sample>& policy,
-    const Vertex_layout& layout)
-{
-    policy.layout_key = layout_key_for(layout);
-    policy.setup_vertex_attributes = [layout]() {
-        setup_vertex_attributes_for_layout(layout);
-    };
-    policy.sample_stride_bytes = layout.stride;
-    for (const auto& attr : layout.attributes) {
-        if (attr.location == 0) {
-            policy.timestamp_offset_bytes = attr.offset;
-        }
-        else
-        if (attr.location == 1) {
-            policy.value_offset_bytes = attr.offset;
-        }
-    }
-}
 
 template<typename Sample, typename Timestamp_member, typename Value_member>
 inline void assign_standard_accessors(
@@ -290,10 +191,13 @@ inline Data_access_policy_typed<Sample> make_access_policy(
 {
     Data_access_policy_typed<Sample> policy;
     assign_standard_accessors(policy, timestamp_member, value_member);
-
-    const Vertex_layout layout =
-        make_standard_layout<Sample>(timestamp_member, value_member);
-    apply_layout(policy, layout);
+    policy.layout_key = detail::compute_sample_layout_key(
+        sizeof(Sample),
+        detail::member_offset(timestamp_member),
+        detail::member_offset(value_member),
+        false,
+        0,
+        0);
     return policy;
 }
 
@@ -312,10 +216,13 @@ inline Data_access_policy_typed<Sample> make_access_policy(
         const float high = static_cast<float>(sample.*range_max_member);
         return std::make_pair(low, high);
     };
-
-    const Vertex_layout layout =
-        make_standard_layout<Sample>(timestamp_member, value_member, range_min_member, range_max_member);
-    apply_layout(policy, layout);
+    policy.layout_key = detail::compute_sample_layout_key(
+        sizeof(Sample),
+        detail::member_offset(timestamp_member),
+        detail::member_offset(value_member),
+        true,
+        detail::member_offset(range_min_member),
+        detail::member_offset(range_max_member));
     return policy;
 }
 

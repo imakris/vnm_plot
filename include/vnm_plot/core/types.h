@@ -293,16 +293,8 @@ struct Data_access_policy
     std::function<void(void* dst_sample, const void* src_sample, std::int64_t timestamp_ns)> clone_with_timestamp;
 
     // --- GPU rendering configuration ---
-    std::function<void()> setup_vertex_attributes;              ///< Configures VAO for custom shaders
     std::function<void(unsigned int program_id)> bind_uniforms; ///< Binds custom uniforms
-    uint64_t layout_key = 0;  ///< Cache key for vertex attribute layout
-
-    // SSBO layout (used by line/area/colormap_line shaders that pull samples
-    // through a shader-storage buffer). All values in bytes; must be multiples
-    // of 4 so the shader can index `uint raw[]` without bit-twiddling.
-    size_t sample_stride_bytes    = 0;  ///< Byte stride between consecutive samples
-    size_t timestamp_offset_bytes = 0;  ///< Offset of the timestamp/x field within a sample
-    size_t value_offset_bytes     = 0;  ///< Offset of the primary value/y field within a sample
+    uint64_t layout_key = 0;  ///< Cache key distinguishing user sample types in renderer-internal caches
 
     bool is_valid() const
     {

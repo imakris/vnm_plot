@@ -9,8 +9,6 @@
 
 #include <vnm_plot/core/types.h>
 
-#include <glatter/glatter.h>
-
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
@@ -152,10 +150,9 @@ inline std::pair<float, float> Benchmark_data_source<Trade_sample>::get_sample_r
     return {sample.price, sample.price};
 }
 
-/// Create a Data_access_policy for Bar_sample.
-/// Sets up vertex attributes (locations 0/1 = timestamp/close, 2/3 = low/high)
-/// and the sample_stride / field offset metadata that the AREA pipe uses to
-/// locate the next-sample attribute slot.
+/// Create a Data_access_policy for Bar_sample. The renderer owns the GPU-side
+/// sample layout (gpu_sample_t) and rebases timestamps on upload, so the
+/// policy only exposes value extractors plus a stable layout_key for caching.
 inline vnm::plot::Data_access_policy make_bar_access_policy() {
     vnm::plot::Data_access_policy policy;
 
@@ -178,44 +175,12 @@ inline vnm::plot::Data_access_policy make_bar_access_policy() {
 
     policy.layout_key = k_bar_sample_layout_key;
 
-    policy.sample_stride_bytes    = sizeof(Bar_sample);
-    policy.timestamp_offset_bytes = offsetof(Bar_sample, timestamp);
-    policy.value_offset_bytes     = offsetof(Bar_sample, close);
-
-    // Setup vertex attributes matching plot_dot_quad.vert:
-    // layout(location = 0) in double in_x;      -> timestamp
-    // layout(location = 1) in float  in_y;      -> close
-    // layout(location = 2) in float  in_y_min;  -> low
-    // layout(location = 3) in float  in_y_max;  -> high
-    policy.setup_vertex_attributes = []() {
-        // Attribute 0: double timestamp (64-bit, uses glVertexAttribLPointer)
-        glVertexAttribLPointer(0, 1, GL_DOUBLE, sizeof(Bar_sample),
-            reinterpret_cast<void*>(offsetof(Bar_sample, timestamp)));
-        glEnableVertexAttribArray(0);
-
-        // Attribute 1: float close (primary value)
-        glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, sizeof(Bar_sample),
-            reinterpret_cast<void*>(offsetof(Bar_sample, close)));
-        glEnableVertexAttribArray(1);
-
-        // Attribute 2: float low (range min)
-        glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, sizeof(Bar_sample),
-            reinterpret_cast<void*>(offsetof(Bar_sample, low)));
-        glEnableVertexAttribArray(2);
-
-        // Attribute 3: float high (range max)
-        glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, sizeof(Bar_sample),
-            reinterpret_cast<void*>(offsetof(Bar_sample, high)));
-        glEnableVertexAttribArray(3);
-    };
-
     return policy;
 }
 
-/// Create a Data_access_policy for Trade_sample.
-/// Sets up vertex attributes (location 0 = timestamp, locations 1/2/3 all
-/// pointing at price for parity with the bar layout) and the sample_stride
-/// / field offset metadata.
+/// Create a Data_access_policy for Trade_sample. The renderer owns the GPU-side
+/// sample layout (gpu_sample_t) and rebases timestamps on upload, so the
+/// policy only exposes value extractors plus a stable layout_key for caching.
 inline vnm::plot::Data_access_policy make_trade_access_policy() {
     vnm::plot::Data_access_policy policy;
 
@@ -237,37 +202,6 @@ inline vnm::plot::Data_access_policy make_trade_access_policy() {
     };
 
     policy.layout_key = k_trade_sample_layout_key;
-
-    policy.sample_stride_bytes    = sizeof(Trade_sample);
-    policy.timestamp_offset_bytes = offsetof(Trade_sample, timestamp);
-    policy.value_offset_bytes     = offsetof(Trade_sample, price);
-
-    // Setup vertex attributes matching plot_dot_quad.vert:
-    // layout(location = 0) in double in_x;      -> timestamp
-    // layout(location = 1) in float  in_y;      -> price
-    // layout(location = 2) in float  in_y_min;  -> price (same as y for point data)
-    // layout(location = 3) in float  in_y_max;  -> price (same as y for point data)
-    policy.setup_vertex_attributes = []() {
-        // Attribute 0: double timestamp (64-bit, uses glVertexAttribLPointer)
-        glVertexAttribLPointer(0, 1, GL_DOUBLE, sizeof(Trade_sample),
-            reinterpret_cast<void*>(offsetof(Trade_sample, timestamp)));
-        glEnableVertexAttribArray(0);
-
-        // Attribute 1: float price (primary value)
-        glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, sizeof(Trade_sample),
-            reinterpret_cast<void*>(offsetof(Trade_sample, price)));
-        glEnableVertexAttribArray(1);
-
-        // Attribute 2: float price (range min = price for point data)
-        glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, sizeof(Trade_sample),
-            reinterpret_cast<void*>(offsetof(Trade_sample, price)));
-        glEnableVertexAttribArray(2);
-
-        // Attribute 3: float price (range max = price for point data)
-        glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, sizeof(Trade_sample),
-            reinterpret_cast<void*>(offsetof(Trade_sample, price)));
-        glEnableVertexAttribArray(3);
-    };
 
     return policy;
 }

@@ -60,15 +60,14 @@ profiling report format for reproducible comparisons.
 
 ## Data Access Policies
 Bar_sample and Trade_sample are packed structs. Each Data_access_policy defines:
-- Timestamp extraction (double)
+- Timestamp extraction (int64 nanoseconds)
 - Primary value (close or price)
 - Range (low/high for Bars, price/price for Trades)
 - Optional aux metric (volume or size)
-- Vertex attribute setup binding location 0 to the timestamp (double)
-  and location 1 to the primary value (float), with sample_stride_bytes,
-  timestamp_offset_bytes and value_offset_bytes set so the AREA shader
-  can locate sample i+1 via a stride-shifted attribute view.
-- A stable layout_key for VAO caching
+- A stable layout_key for renderer-internal cache identity. The renderer
+  owns the GPU sample layout (gpu_sample_t) and rebases timestamps on
+  upload, so policies do not describe vertex attributes or sample byte
+  offsets.
 
 ## Profiling and Report Output
 Benchmark_profiler produces a stable benchmark report:

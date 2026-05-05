@@ -5,9 +5,10 @@
 
 #include <vnm_plot/core/access_policy.h>
 #include <vnm_plot/core/types.h>
-#include <vnm_plot/core/vertex_layout.h>
 
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <vector>
 
@@ -79,20 +80,19 @@ public:
 // -----------------------------------------------------------------------------
 // Create Data_access_policy for function_sample_t
 // -----------------------------------------------------------------------------
-inline const Vertex_layout& function_sample_layout()
-{
-    static const Vertex_layout layout =
-        make_standard_layout<function_sample_t>(
-            &function_sample_t::x,
-            &function_sample_t::y,
-            &function_sample_t::y_min,
-            &function_sample_t::y_max);
-    return layout;
-}
-
+// Cache key shared by every function-sample policy. default_shader_for_layout
+// uses it to recognize the function-sample type and select the built-in
+// shaders; matching this against the key produced by make_access_policy below
+// is the contract that lets the typed factory's policies hit those defaults.
 inline uint64_t function_sample_layout_key()
 {
-    static const uint64_t key = layout_key_for(function_sample_layout());
+    static const uint64_t key = detail::compute_sample_layout_key(
+        sizeof(function_sample_t),
+        offsetof(function_sample_t, x),
+        offsetof(function_sample_t, y),
+        true,
+        offsetof(function_sample_t, y_min),
+        offsetof(function_sample_t, y_max));
     return key;
 }
 

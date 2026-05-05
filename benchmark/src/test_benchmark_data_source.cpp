@@ -386,24 +386,16 @@ bool test_sequence_short_circuit() {
     return true;
 }
 
-// Test: Access policies have setup_vertex_attributes and layout_key
-bool test_access_policy_vertex_setup() {
+// Test: Access policies expose stable, distinct layout_keys for cache identity
+bool test_access_policy_layout_keys() {
     auto bar_policy = make_bar_access_policy();
     auto trade_policy = make_trade_access_policy();
 
-    // Check that setup_vertex_attributes is set
-    TEST_ASSERT(bar_policy.setup_vertex_attributes != nullptr,
-                "bar policy should have setup_vertex_attributes");
-    TEST_ASSERT(trade_policy.setup_vertex_attributes != nullptr,
-                "trade policy should have setup_vertex_attributes");
-
-    // Check that layout_key is set and unique
     TEST_ASSERT(bar_policy.layout_key != 0, "bar policy should have non-zero layout_key");
     TEST_ASSERT(trade_policy.layout_key != 0, "trade policy should have non-zero layout_key");
     TEST_ASSERT(bar_policy.layout_key != trade_policy.layout_key,
                 "bar and trade policies should have different layout_keys");
 
-    // Verify expected layout key values
     TEST_ASSERT(bar_policy.layout_key == k_bar_sample_layout_key,
                 "bar policy layout_key should match constant");
     TEST_ASSERT(trade_policy.layout_key == k_trade_sample_layout_key,
@@ -432,7 +424,7 @@ int main() {
     RUN_TEST(test_brownian_integration);
     RUN_TEST(test_unsupported_lod);
     RUN_TEST(test_sequence_short_circuit);
-    RUN_TEST(test_access_policy_vertex_setup);
+    RUN_TEST(test_access_policy_layout_keys);
 
     std::cout << "\n=================================\n";
     std::cout << "Results: " << passed << " passed, " << failed << " failed\n";
