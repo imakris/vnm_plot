@@ -5,10 +5,11 @@ A GPU-accelerated 2D time-series plotting library using Qt RHI and Qt Quick.
 ## CI Status
 | Job | Status | Notes |
 | :-- | :-- | :-- |
-| Linux (GitHub Actions) | [![CI Linux](https://github.com/imakris/vnm_plot/actions/workflows/ci-linux.yml/badge.svg?branch=master)](https://github.com/imakris/vnm_plot/actions/workflows/ci-linux.yml) | QRhi + Core+Text |
-| Windows (GitHub Actions) | [![CI Windows](https://github.com/imakris/vnm_plot/actions/workflows/ci-windows.yml/badge.svg?branch=master)](https://github.com/imakris/vnm_plot/actions/workflows/ci-windows.yml) | QRhi + Core+Text |
-| FreeBSD Core (Cirrus) | [![Core](https://api.cirrus-ci.com/github/imakris/vnm_plot.svg?task=FreeBSD%20Core%20Build)](https://cirrus-ci.com/github/imakris/vnm_plot?task=FreeBSD%20Core%20Build) | Core build |
-| FreeBSD Core+Text (Cirrus) | [![Core+Text](https://api.cirrus-ci.com/github/imakris/vnm_plot.svg?task=FreeBSD%20Core%2BText%20Build)](https://cirrus-ci.com/github/imakris/vnm_plot?task=FreeBSD%20Core%2BText%20Build) | Text enabled |
+| Linux (GitHub Actions) | [![CI Linux](https://github.com/imakris/vnm_plot/actions/workflows/ci-linux.yml/badge.svg?branch=master)](https://github.com/imakris/vnm_plot/actions/workflows/ci-linux.yml) | QRhi and QRhi+Text |
+| macOS (GitHub Actions) | [![CI macOS](https://github.com/imakris/vnm_plot/actions/workflows/ci-macos.yml/badge.svg?branch=master)](https://github.com/imakris/vnm_plot/actions/workflows/ci-macos.yml) | QRhi and QRhi+Text |
+| Windows (GitHub Actions) | [![CI Windows](https://github.com/imakris/vnm_plot/actions/workflows/ci-windows.yml/badge.svg?branch=master)](https://github.com/imakris/vnm_plot/actions/workflows/ci-windows.yml) | QRhi and QRhi+Text |
+| FreeBSD QRhi (Cirrus) | [![FreeBSD QRhi](https://api.cirrus-ci.com/github/imakris/vnm_plot.svg?task=FreeBSD%20QRhi%20Build)](https://cirrus-ci.com/github/imakris/vnm_plot?task=FreeBSD%20QRhi%20Build) | QRhi |
+| FreeBSD QRhi+Text (Cirrus) | [![FreeBSD QRhi+Text](https://api.cirrus-ci.com/github/imakris/vnm_plot.svg?task=FreeBSD%20QRhi%2BText%20Build)](https://cirrus-ci.com/github/imakris/vnm_plot?task=FreeBSD%20QRhi%2BText%20Build) | QRhi with text enabled |
 
 ## Overview
 
@@ -142,8 +143,12 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ```
 
-Qt 6 (Core, Gui, Quick, ShaderTools) is required. The build fetches glm,
-FreeType, and msdfgen if they are not already available as targets.
+Qt 6 (Core, Gui, Quick, GuiPrivate, ShaderTools) is required. The build fetches
+glm, FreeType, and msdfgen if they are not already available as targets.
+
+CI currently builds QRhi and QRhi+Text on Linux, macOS, Windows, and FreeBSD.
+The GitHub Actions jobs use the Qt 6.10.1 SDK on Linux, macOS, and Windows so
+the QRhi private headers and `qsb` shader compiler are available consistently.
 
 To disable text rendering (skips FreeType + msdfgen):
 
