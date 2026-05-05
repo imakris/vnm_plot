@@ -276,58 +276,26 @@ ApplicationWindow {
                     }
 
                     // Samples spinbox for this function
-                    SpinBox {
+                    ValidatingSpinBox {
                         id: samplesSpin
                         from: 10
                         to: 1000000
                         value: functionDelegate.numSamples
-                        stepSize: 10000
-                        editable: true
+                        stepSize: 1
                         Layout.preferredWidth: 90
                         Layout.preferredHeight: controlHeight
                         font.pixelSize: fontSize - 2
+                        textColor: window.textColor
+                        surfaceBright: window.surfaceBright
+                        surfaceLight: window.surfaceLight
+                        buttonHover: window.buttonHover
+                        buttonPressed: window.buttonPressed
+                        indicatorWidth: 18
+                        indicatorFontPixelSize: 9
 
                         ToolTip.visible: hovered
                         ToolTip.delay: 500
                         ToolTip.text: "Number of samples"
-
-                        contentItem: TextInput {
-                            text: samplesSpin.textFromValue(samplesSpin.value, samplesSpin.locale)
-                            font: samplesSpin.font
-                            color: textColor
-                            horizontalAlignment: Qt.AlignHCenter
-                            verticalAlignment: Qt.AlignVCenter
-                            readOnly: !samplesSpin.editable
-                            validator: samplesSpin.validator
-                            inputMethodHints: Qt.ImhFormattedNumbersOnly
-                            selectByMouse: true
-                        }
-
-                        up.indicator: Rectangle {
-                            x: parent.width - width
-                            width: 18
-                            height: parent.height / 2
-                            color: samplesSpin.up.pressed ? buttonPressed : samplesSpin.up.hovered ? buttonHover : surfaceBright
-                            border.color: surfaceLight
-                            Text { anchors.centerIn: parent; text: "+"; color: textColor; font.pixelSize: 9 }
-                        }
-
-                        down.indicator: Rectangle {
-                            x: parent.width - width
-                            y: parent.height / 2
-                            width: 18
-                            height: parent.height / 2
-                            color: samplesSpin.down.pressed ? buttonPressed : samplesSpin.down.hovered ? buttonHover : surfaceBright
-                            border.color: surfaceLight
-                            Text { anchors.centerIn: parent; text: "-"; color: textColor; font.pixelSize: 9 }
-                        }
-
-                        background: Rectangle {
-                            color: surfaceBright
-                            border.color: surfaceLight
-                            border.width: 1
-                            radius: 2
-                        }
 
                         onValueModified: {
                             if (functionDelegate.entry) {
@@ -440,53 +408,19 @@ ApplicationWindow {
                 Layout.alignment: Qt.AlignVCenter
             }
 
-            SpinBox {
+            ValidatingSpinBox {
                 id: xMinSpin
                 from: -1000
                 to: 1000
                 value: functionPlotter.xMin
-                editable: true
                 Layout.preferredWidth: 90
                 Layout.preferredHeight: controlHeight
                 font.pixelSize: fontSize
-
-                contentItem: TextInput {
-                    text: xMinSpin.textFromValue(xMinSpin.value, xMinSpin.locale)
-                    font: xMinSpin.font
-                    color: textColor
-                    horizontalAlignment: Qt.AlignHCenter
-                    verticalAlignment: Qt.AlignVCenter
-                    readOnly: !xMinSpin.editable
-                    validator: xMinSpin.validator
-                    inputMethodHints: Qt.ImhFormattedNumbersOnly
-                    selectByMouse: true
-                }
-
-                up.indicator: Rectangle {
-                    x: parent.width - width
-                    width: 20
-                    height: parent.height / 2
-                    color: xMinSpin.up.pressed ? buttonPressed : xMinSpin.up.hovered ? buttonHover : surfaceBright
-                    border.color: surfaceLight
-                    Text { anchors.centerIn: parent; text: "+"; color: textColor; font.pixelSize: 10 }
-                }
-
-                down.indicator: Rectangle {
-                    x: parent.width - width
-                    y: parent.height / 2
-                    width: 20
-                    height: parent.height / 2
-                    color: xMinSpin.down.pressed ? buttonPressed : xMinSpin.down.hovered ? buttonHover : surfaceBright
-                    border.color: surfaceLight
-                    Text { anchors.centerIn: parent; text: "-"; color: textColor; font.pixelSize: 10 }
-                }
-
-                background: Rectangle {
-                    color: surfaceBright
-                    border.color: surfaceLight
-                    border.width: 1
-                    radius: 2
-                }
+                textColor: window.textColor
+                surfaceBright: window.surfaceBright
+                surfaceLight: window.surfaceLight
+                buttonHover: window.buttonHover
+                buttonPressed: window.buttonPressed
 
                 onValueChanged: functionPlotter.xMin = value
             }
@@ -498,53 +432,19 @@ ApplicationWindow {
                 Layout.alignment: Qt.AlignVCenter
             }
 
-            SpinBox {
+            ValidatingSpinBox {
                 id: xMaxSpin
                 from: -1000
                 to: 1000
                 value: functionPlotter.xMax
-                editable: true
                 Layout.preferredWidth: 90
                 Layout.preferredHeight: controlHeight
                 font.pixelSize: fontSize
-
-                contentItem: TextInput {
-                    text: xMaxSpin.textFromValue(xMaxSpin.value, xMaxSpin.locale)
-                    font: xMaxSpin.font
-                    color: textColor
-                    horizontalAlignment: Qt.AlignHCenter
-                    verticalAlignment: Qt.AlignVCenter
-                    readOnly: !xMaxSpin.editable
-                    validator: xMaxSpin.validator
-                    inputMethodHints: Qt.ImhFormattedNumbersOnly
-                    selectByMouse: true
-                }
-
-                up.indicator: Rectangle {
-                    x: parent.width - width
-                    width: 20
-                    height: parent.height / 2
-                    color: xMaxSpin.up.pressed ? buttonPressed : xMaxSpin.up.hovered ? buttonHover : surfaceBright
-                    border.color: surfaceLight
-                    Text { anchors.centerIn: parent; text: "+"; color: textColor; font.pixelSize: 10 }
-                }
-
-                down.indicator: Rectangle {
-                    x: parent.width - width
-                    y: parent.height / 2
-                    width: 20
-                    height: parent.height / 2
-                    color: xMaxSpin.down.pressed ? buttonPressed : xMaxSpin.down.hovered ? buttonHover : surfaceBright
-                    border.color: surfaceLight
-                    Text { anchors.centerIn: parent; text: "-"; color: textColor; font.pixelSize: 10 }
-                }
-
-                background: Rectangle {
-                    color: surfaceBright
-                    border.color: surfaceLight
-                    border.width: 1
-                    radius: 2
-                }
+                textColor: window.textColor
+                surfaceBright: window.surfaceBright
+                surfaceLight: window.surfaceLight
+                buttonHover: window.buttonHover
+                buttonPressed: window.buttonPressed
 
                 onValueChanged: functionPlotter.xMax = value
             }
