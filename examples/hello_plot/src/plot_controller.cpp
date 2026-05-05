@@ -1,6 +1,8 @@
 #include "plot_controller.h"
 #include <vnm_plot/core/series_builder.h>
 
+#include <QtCore/QtGlobal>
+
 #include <cmath>
 #include <utility>
 
@@ -8,6 +10,13 @@ namespace {
 
 constexpr double k_x_min = -10.0;
 constexpr double k_x_max = 10.0;
+// vnm_plot's view-range API works in int64 nanoseconds (the access policy
+// for function_sample_t auto-converts the fp seconds member at the data
+// boundary, but Plot_view::t_range is on the C++ qint64 surface and has
+// to be set explicitly).
+constexpr qint64 k_ns_per_second = 1'000'000'000;
+constexpr qint64 k_t_min_ns = static_cast<qint64>(k_x_min * static_cast<double>(k_ns_per_second));
+constexpr qint64 k_t_max_ns = static_cast<qint64>(k_x_max * static_cast<double>(k_ns_per_second));
 constexpr std::size_t k_num_samples = 2000;
 constexpr double k_auto_v_scale = 0.4;
 constexpr int k_series_id = 1;
@@ -41,8 +50,8 @@ void Plot_controller::set_plot_widget(vnm::plot::Plot_widget* widget)
             m_plot_widget->add_series(k_series_id, m_series);
         }
         vnm::plot::Plot_view view;
-        view.t_range = std::make_pair(k_x_min, k_x_max);
-        view.t_available_range = std::make_pair(k_x_min, k_x_max);
+        view.t_range = std::make_pair(k_t_min_ns, k_t_max_ns);
+        view.t_available_range = std::make_pair(k_t_min_ns, k_t_max_ns);
         view.v_auto = false;
         view.v_range = std::make_pair(-1.3f, 1.3f);
         m_plot_widget->set_view(view);
@@ -85,7 +94,9 @@ void Plot_controller::generate_samples()
 {
     m_data_source.generate(
         [](double x) {
-            return static_cast<float>(std::sin(x));
+            const double shoulder = 0.34 * std::exp(-0.55 * (x - 3.2) * (x - 3.2));
+            const double trough   = 0.27 * std::exp(-0.42 * (x + 4.8) * (x + 4.8));
+            return static_cast<float>(0.0012 * x * x * x - 0.04 * x + shoulder - trough);
         },
         k_x_min,
         k_x_max,

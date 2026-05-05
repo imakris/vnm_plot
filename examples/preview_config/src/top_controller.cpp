@@ -1,4 +1,7 @@
 #include "top_controller.h"
+
+#include <QtCore/QtGlobal>
+
 #include <cmath>
 #include <cstddef>
 #include <utility>
@@ -7,6 +10,12 @@ namespace {
 
 constexpr double k_x_min = -20.0;
 constexpr double k_x_max = 20.0;
+// Plot_view::t_range expects int64 nanoseconds. The function-domain
+// constants stay in seconds for sample generation, then convert at the
+// view-API boundary.
+constexpr qint64 k_ns_per_second = 1'000'000'000;
+constexpr qint64 k_t_min_ns = static_cast<qint64>(k_x_min * static_cast<double>(k_ns_per_second));
+constexpr qint64 k_t_max_ns = static_cast<qint64>(k_x_max * static_cast<double>(k_ns_per_second));
 constexpr std::size_t k_samples = 1800;
 constexpr float k_signal_scale = 250.0f;
 constexpr int k_series_id = 2;
@@ -46,8 +55,8 @@ void Top_controller::set_plot_widget(vnm::plot::Plot_widget* widget)
         configure_plot_widget();
         if (m_series) m_plot_widget->add_series(k_series_id, m_series);
         vnm::plot::Plot_view view;
-        view.t_range = std::make_pair(k_x_min, k_x_max);
-        view.t_available_range = std::make_pair(k_x_min, k_x_max);
+        view.t_range = std::make_pair(k_t_min_ns, k_t_max_ns);
+        view.t_available_range = std::make_pair(k_t_min_ns, k_t_max_ns);
         view.v_auto = false;
         view.v_range = std::make_pair(-800.0f, 800.0f);
         m_plot_widget->set_view(view);
@@ -57,8 +66,8 @@ void Top_controller::set_plot_widget(vnm::plot::Plot_widget* widget)
             [this]() {
                 if (!m_plot_widget) return;
                 vnm::plot::Plot_view view;
-                view.t_range = std::make_pair(k_x_min, k_x_max);
-                view.t_available_range = std::make_pair(k_x_min, k_x_max);
+                view.t_range = std::make_pair(k_t_min_ns, k_t_max_ns);
+                view.t_available_range = std::make_pair(k_t_min_ns, k_t_max_ns);
                 m_plot_widget->set_view(view);
             });
     }

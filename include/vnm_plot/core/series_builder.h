@@ -74,18 +74,6 @@ public:
         return *this;
     }
 
-    Series_builder& shader_set(const shader_set_t& shader)
-    {
-        m_series.shader_set = shader;
-        return *this;
-    }
-
-    Series_builder& shader(Display_style style, const shader_set_t& shader)
-    {
-        m_series.shaders[style] = shader;
-        return *this;
-    }
-
     Series_builder& colormap_area(const colormap_config_t& colormap)
     {
         m_series.colormap_area = colormap;

@@ -3,7 +3,6 @@
 #include <vnm_plot/core/plot_config.h>
 #include <vnm_plot/core/font_renderer.h>
 
-#include <glatter/glatter.h>
 #include <glm/glm.hpp>
 
 #include <algorithm>
@@ -24,17 +23,17 @@ using detail::k_value_decimals;
 
 namespace {
 
-bool to_glint_rounded(double value, GLint& out)
+bool to_int_rounded(double value, int& out)
 {
     if (!std::isfinite(value)) {
         return false;
     }
 
-    out = static_cast<GLint>(lround(value));
+    out = static_cast<int>(lround(value));
     return true;
 }
 
-bool to_positive_glsizei(double value, GLsizei& out)
+bool to_positive_int(double value, int& out)
 {
     if (!std::isfinite(value)) {
         return false;
@@ -45,7 +44,7 @@ bool to_positive_glsizei(double value, GLsizei& out)
         return false;
     }
 
-    out = static_cast<GLsizei>(rounded);
+    out = static_cast<int>(rounded);
     return true;
 }
 
@@ -72,7 +71,11 @@ bool update_and_draw_faded_labels(
     current_values.reserve(labels.size());
 
     for (const auto& label : labels) {
-        const double v = label.value;
+        // Tracker key is double; v_label_t::value is double already, h_label_t::
+        // value is int64 ns and round-trips through double here. Within one
+        // session the same int64 always maps to the same double, which is what
+        // the fade tracker needs.
+        const double v = static_cast<double>(label.value);
         current_values.insert(v);
 
         auto it = tracker.states.find(v);
@@ -150,22 +153,31 @@ bool Text_renderer::render(const frame_context_t& ctx, bool fade_v_labels, bool 
         return false;
     }
 
-    // Skip GL calls if configured (for pure CPU profiling)
-    const bool skip_gl = ctx.skip_gl;
-
-    if (!skip_gl) {
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    }
-
     bool any_active = false;
     any_active |= render_axis_labels(ctx, fade_v_labels);
     any_active |= render_info_overlay(ctx, fade_h_labels);
-
-    if (!skip_gl) {
-        glDisable(GL_BLEND);
-    }
     return any_active;
+}
+
+bool Text_renderer::prepare(const frame_context_t& ctx, bool fade_v_labels, bool fade_h_labels)
+{
+    if (!m_fonts) {
+        return false;
+    }
+
+    m_fonts->rhi_begin_frame();
+    bool any_active = false;
+    any_active |= render_axis_labels(ctx, fade_v_labels);
+    any_active |= render_info_overlay(ctx, fade_h_labels);
+    m_fonts->rhi_finalize_frame(ctx);
+    return any_active;
+}
+
+void Text_renderer::record(const frame_context_t& ctx)
+{
+    if (m_fonts) {
+        m_fonts->rhi_record_frame(ctx);
+    }
 }
 
 bool Text_renderer::render_axis_labels(const frame_context_t& ctx, bool fade_labels)
@@ -174,28 +186,28 @@ bool Text_renderer::render_axis_labels(const frame_context_t& ctx, bool fade_lab
     const bool dark_mode = ctx.dark_mode;
     const glm::vec4 font_color = dark_mode ? glm::vec4(1.f, 1.f, 1.f, 1.f) : glm::vec4(0.f, 0.f, 0.f, 1.f);
 
-    // Skip GL calls if configured (for pure CPU profiling)
-    const bool skip_gl = ctx.skip_gl;
-
     const float right_edge_x = static_cast<float>(pl.usable_width + pl.v_bar_width - k_v_label_horizontal_padding_px);
     const float min_x = static_cast<float>(pl.usable_width + k_text_margin_px);
     const float baseline_off = m_fonts->baseline_offset_px();
     const double v_span = double(ctx.v1) - double(ctx.v0);
 
-    if (!skip_gl) {
-        GLint scissor_x = 0;
-        GLint scissor_y = 0;
-        GLsizei scissor_w = 0;
-        GLsizei scissor_h = 0;
-        if (!to_glint_rounded(pl.usable_width, scissor_x) ||
-            !to_glint_rounded(double(ctx.win_h) - double(pl.usable_height), scissor_y) ||
-            !to_positive_glsizei(pl.v_bar_width, scissor_w) ||
-            !to_positive_glsizei(pl.usable_height, scissor_h)) {
+    text_scissor_t rhi_scissor;
+    if (ctx.rhi) {
+        int scissor_x = 0;
+        int scissor_y = 0;
+        int scissor_w = 0;
+        int scissor_h = 0;
+        if (!to_int_rounded(pl.usable_width, scissor_x) ||
+            !to_int_rounded(double(ctx.win_h) - double(pl.usable_height), scissor_y) ||
+            !to_positive_int(pl.v_bar_width, scissor_w) ||
+            !to_positive_int(pl.usable_height, scissor_h)) {
             return true;
         }
-
-        glEnable(GL_SCISSOR_TEST);
-        glScissor(scissor_x, scissor_y, scissor_w, scissor_h);
+        rhi_scissor.enabled = true;
+        rhi_scissor.x      = scissor_x;
+        rhi_scissor.y      = scissor_y;
+        rhi_scissor.width  = scissor_w;
+        rhi_scissor.height = scissor_h;
     }
 
     const auto draw_label = [&](double value, const label_fade_state_t& state) {
@@ -222,13 +234,10 @@ bool Text_renderer::render_axis_labels(const frame_context_t& ctx, bool fade_lab
 
         m_fonts->batch_text(snapped_x, snapped_y, state.text.c_str());
         if (fade_labels) {
-            if (skip_gl) {
-                m_fonts->clear_buffer();
-            }
-            else {
+            if (ctx.rhi) {
                 glm::vec4 color = font_color;
                 color.a *= state.alpha;
-                m_fonts->draw_and_flush(ctx.pmv, color);
+                m_fonts->rhi_queue_draw(ctx, ctx.pmv, color, rhi_scissor);
             }
         }
     };
@@ -257,16 +266,9 @@ bool Text_renderer::render_axis_labels(const frame_context_t& ctx, bool fade_lab
     }
 
     if (!fade_labels) {
-        if (skip_gl) {
-            m_fonts->clear_buffer();
+        if (ctx.rhi) {
+            m_fonts->rhi_queue_draw(ctx, ctx.pmv, font_color, rhi_scissor);
         }
-        else {
-            m_fonts->draw_and_flush(ctx.pmv, font_color);
-        }
-    }
-
-    if (!skip_gl) {
-        glDisable(GL_SCISSOR_TEST);
     }
     return any_active;
 }
@@ -276,30 +278,29 @@ bool Text_renderer::render_info_overlay(const frame_context_t& ctx, bool fade_la
     const auto& pl = ctx.layout;
     const bool dark_mode = ctx.dark_mode;
     const glm::vec4 font_color = dark_mode ? glm::vec4(1.f, 1.f, 1.f, 1.f) : glm::vec4(0.f, 0.f, 0.f, 1.f);
-    const double t_span = ctx.t1 - ctx.t0;
+    // Subtract first, then convert: keeps sub-ms precision near modern epochs.
+    const std::int64_t t_span_ns = ctx.t1 - ctx.t0;
+    const double t_span = static_cast<double>(t_span_ns);
 
-    // Skip GL calls if configured (for pure CPU profiling)
-    const bool skip_gl = ctx.skip_gl;
-
-    const auto draw_label = [&](double t, const label_fade_state_t& state) {
+    const auto draw_label = [&](double t_ns_as_double, const label_fade_state_t& state) {
         if (!(t_span > 0.0) || !(pl.usable_width > 0.0)) {
             return;
         }
 
+        // The fade tracker keys labels by their double-cast value; treat that
+        // as the int64-nanosecond domain it came from when computing pixels.
         const double px_per_unit = pl.usable_width / t_span;
-        const float x_anchor = static_cast<float>((t - ctx.t0) * px_per_unit);
+        const float x_anchor = static_cast<float>(
+            (t_ns_as_double - static_cast<double>(ctx.t0)) * px_per_unit);
         const float pen_x = x_anchor + k_text_margin_px;
         const float pen_y = static_cast<float>(pl.usable_height + k_h_label_vertical_nudge_px * ctx.adjusted_font_px);
 
         m_fonts->batch_text(pen_x, pen_y, state.text.c_str());
         if (fade_labels) {
-            if (skip_gl) {
-                m_fonts->clear_buffer();
-            }
-            else {
+            if (ctx.rhi) {
                 glm::vec4 color = font_color;
                 color.a *= state.alpha;
-                m_fonts->draw_and_flush(ctx.pmv, color);
+                m_fonts->rhi_queue_draw(ctx, ctx.pmv, color);
             }
         }
     };
@@ -320,8 +321,10 @@ bool Text_renderer::render_info_overlay(const frame_context_t& ctx, bool fade_la
             state.alpha = 1.0f;
             state.direction = 0;
             state.text = label.text;
-            m_horizontal_fade.states.emplace(label.value, state);
-            draw_label(label.value, state);
+            // Tracker key is double; cast int64 ns once at the boundary.
+            const double key = static_cast<double>(label.value);
+            m_horizontal_fade.states.emplace(key, state);
+            draw_label(key, state);
         }
         m_horizontal_fade.last_update = now;
         m_horizontal_fade.initialized = true;
@@ -353,14 +356,14 @@ bool Text_renderer::render_info_overlay(const frame_context_t& ctx, bool fade_la
 
         const bool timestamp_style_changed = (pl.h_labels_subsecond != m_last_subsecond);
         const bool timestamp_values_changed =
-            (std::abs(ctx.t0 - m_last_t0) > 1e-9) || (std::abs(ctx.t1 - m_last_t1) > 1e-9);
+            (ctx.t0 != m_last_t0) || (ctx.t1 != m_last_t1);
 
         if (timestamp_style_changed || timestamp_values_changed || m_cached_from_ts.empty() || m_cached_to_ts.empty()) {
             const auto format_ts = (ctx.config && ctx.config->format_timestamp)
                 ? ctx.config->format_timestamp
                 : default_format_timestamp;
-            m_cached_from_ts = format_ts(ctx.t0, t_span);
-            m_cached_to_ts = format_ts(ctx.t1, t_span);
+            m_cached_from_ts = format_ts(ctx.t0, t_span_ns);
+            m_cached_to_ts = format_ts(ctx.t1, t_span_ns);
             m_last_t0 = ctx.t0;
             m_last_t1 = ctx.t1;
             m_last_subsecond = pl.h_labels_subsecond;
@@ -376,11 +379,8 @@ bool Text_renderer::render_info_overlay(const frame_context_t& ctx, bool fade_la
     }
 
     if (!fade_labels || ctx.show_info) {
-        if (skip_gl) {
-            m_fonts->clear_buffer();
-        }
-        else {
-            m_fonts->draw_and_flush(ctx.pmv, font_color);
+        if (ctx.rhi) {
+            m_fonts->rhi_queue_draw(ctx, ctx.pmv, font_color);
         }
     }
     return any_active;

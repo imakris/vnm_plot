@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -28,6 +29,7 @@ struct Report_metadata {
     std::string session = "benchmark_run";
     std::string stream = "SIM";
     std::string data_type = "Bars";      // "Bars" or "Trades"
+    std::string backend = "qrhi-offscreen";
     double target_duration = 30.0;
     std::string filename_prefix = "inspector_benchmark";
     std::filesystem::path output_directory;
@@ -99,6 +101,50 @@ public:
         }
     }
 
+    void record_observation(const char* name, double value_ms) override
+    {
+        if (!name || !std::isfinite(value_ms)) {
+            return;
+        }
+
+        std::lock_guard<std::mutex> lock(m_mutex);
+        record_observation_locked(name, 1, value_ms, value_ms, value_ms);
+    }
+
+    void record_observation_summary(
+        const char* name,
+        uint64_t call_count,
+        double total_ms,
+        double min_ms,
+        double max_ms)
+    {
+        if (!name || call_count == 0 ||
+            !std::isfinite(total_ms) || !std::isfinite(min_ms) || !std::isfinite(max_ms))
+        {
+            return;
+        }
+
+        std::lock_guard<std::mutex> lock(m_mutex);
+        record_observation_locked(name, call_count, total_ms, min_ms, max_ms);
+    }
+
+private:
+    void record_observation_locked(
+        const char* name,
+        uint64_t call_count,
+        double total_ms,
+        double min_ms,
+        double max_ms)
+    {
+        auto& stats = m_observations[name];
+        stats.name = name;
+        stats.call_count += call_count;
+        stats.total_ms += total_ms;
+        stats.min_ms = std::min(stats.min_ms, min_ms);
+        stats.max_ms = std::max(stats.max_ms, max_ms);
+    }
+
+public:
     /// Generate benchmark report string
     std::string generate_report(const Report_metadata& meta) const
     {
@@ -118,6 +164,8 @@ public:
         oss << "Metadata:\n";
         write_metadata(oss, meta);
         oss << "\n";
+
+        write_observations(oss);
 
         // Table header (108 characters total)
         // Column widths: Section=58, Calls=5, Total=9, Avg=10, Min=6, Max=6, Percent=8 (+6 spaces)
@@ -186,6 +234,7 @@ public:
         m_root.min_ms = std::numeric_limits<double>::max();
         m_root.max_ms = 0.0;
         m_thread_contexts.clear();
+        m_observations.clear();
     }
 
     /// Get root scope for inspection
@@ -202,12 +251,21 @@ private:
         Scope_stats* parent = nullptr;
     };
 
+    struct Observation_stats {
+        std::string name;
+        uint64_t call_count = 0;
+        double total_ms = 0.0;
+        double min_ms = std::numeric_limits<double>::max();
+        double max_ms = 0.0;
+    };
+
     struct Thread_context {
         Scope_stats* current = nullptr;
         std::stack<std::chrono::steady_clock::time_point> start_times;
     };
 
     Scope_stats m_root;
+    std::map<std::string, Observation_stats> m_observations;
     mutable std::mutex m_mutex;
     std::map<std::thread::id, Thread_context> m_thread_contexts;
 
@@ -265,6 +323,7 @@ private:
     static void write_metadata(std::ostream& os, const Report_metadata& meta)
     {
         // Standard metadata
+        os << "  - backend: " << meta.backend << "\n";
         os << "  - data_type: " << meta.data_type << "\n";
         os << "  - duration_seconds: " << static_cast<int>(meta.target_duration) << "\n";
         os << "  - output_directory: " << meta.output_directory.generic_string() << "\n";
@@ -283,6 +342,37 @@ private:
         if (meta.include_extended) {
             os << "  - volatility: " << std::fixed << std::setprecision(4) << meta.volatility << "\n";
         }
+    }
+
+    void write_observations(std::ostream& os) const
+    {
+        if (m_observations.empty()) {
+            return;
+        }
+
+        os << "Observations:\n";
+        os << std::left << std::setw(46) << "Name" << " "
+            << std::right << std::setw(5) << "Calls" << " "
+            << std::setw(9) << "Total ms" << " "
+            << std::setw(10) << "Average ms" << " "
+            << std::setw(6) << "Min ms" << " "
+            << std::setw(6) << "Max ms" << "\n";
+        os << std::string(88, '-') << "\n";
+
+        for (const auto& [name, stats] : m_observations) {
+            const double avg_ms = stats.call_count > 0
+                ? stats.total_ms / static_cast<double>(stats.call_count)
+                : 0.0;
+            os << std::left << std::setw(46) << name << " "
+                << std::right << std::setw(5) << stats.call_count << " "
+                << std::fixed << std::setprecision(3)
+                << std::setw(9) << stats.total_ms << " "
+                << std::setw(10) << avg_ms << " "
+                << std::setw(6) << stats.min_ms << " "
+                << std::setw(6) << stats.max_ms << "\n";
+        }
+
+        os << "\n";
     }
 
     // Generate filename

@@ -5,9 +5,10 @@
 
 #include <vnm_plot/core/access_policy.h>
 #include <vnm_plot/core/types.h>
-#include <vnm_plot/core/vertex_layout.h>
 
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <vector>
 
@@ -79,31 +80,31 @@ public:
 // -----------------------------------------------------------------------------
 // Create Data_access_policy for function_sample_t
 // -----------------------------------------------------------------------------
-inline const Vertex_layout& function_sample_layout()
-{
-    static const Vertex_layout layout =
-        make_standard_layout<function_sample_t>(
-            &function_sample_t::x,
-            &function_sample_t::y,
-            &function_sample_t::y_min,
-            &function_sample_t::y_max);
-    return layout;
-}
-
+// Cache key shared by every function-sample policy.
 inline uint64_t function_sample_layout_key()
 {
-    static const uint64_t key = layout_key_for(function_sample_layout());
+    static const uint64_t key = detail::compute_sample_layout_key(
+        sizeof(function_sample_t),
+        offsetof(function_sample_t, x),
+        offsetof(function_sample_t, y),
+        true,
+        offsetof(function_sample_t, y_min),
+        offsetof(function_sample_t, y_max));
     return key;
 }
 
 inline Data_access_policy_typed<function_sample_t> make_function_sample_policy_typed()
 {
-    auto policy = make_access_policy<function_sample_t>(
+    // function_sample_t::x is a synthetic-data convenience expressed in
+    // seconds. The vnm_plot API works in int64 nanoseconds; the generic
+    // make_access_policy / make_clone_with_timestamp helpers detect a
+    // floating-point timestamp member and convert seconds <-> ns at the
+    // boundary, so no override is needed here.
+    return make_access_policy<function_sample_t>(
         &function_sample_t::x,
         &function_sample_t::y,
         &function_sample_t::y_min,
         &function_sample_t::y_max);
-    return policy;
 }
 
 } // namespace vnm::plot

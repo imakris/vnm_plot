@@ -3,14 +3,16 @@
 #include "test_macros.h"
 
 #include <vnm_plot/core/access_policy.h>
+#include <vnm_plot/core/function_sample.h>
 #include <vnm_plot/core/series_builder.h>
 #include <vnm_plot/core/types.h>
-#include <vnm_plot/core/vertex_layout.h>
 
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
 #include <memory>
+#include <string>
 
 namespace plot = vnm::plot;
 
@@ -18,29 +20,13 @@ namespace {
 
 struct sample_t
 {
-    double t = 0.0;
+    // Timestamps are int64 nanoseconds (API convention).
+    std::int64_t t = 0;
     float v = 0.0f;
     std::int32_t pad = 0;
     float v_min = 0.0f;
     float v_max = 0.0f;
 };
-
-bool test_vertex_attrib_type_for_mappings()
-{
-    TEST_ASSERT(plot::detail::vertex_attrib_type_for<float>() == plot::Vertex_attrib_type::FLOAT32,
-        "expected float to map to FLOAT32");
-    TEST_ASSERT(plot::detail::vertex_attrib_type_for<double>() == plot::Vertex_attrib_type::FLOAT64,
-        "expected double to map to FLOAT64");
-    TEST_ASSERT(plot::detail::vertex_attrib_type_for<std::int32_t>() == plot::Vertex_attrib_type::INT32,
-        "expected int32_t to map to INT32");
-    TEST_ASSERT(plot::detail::vertex_attrib_type_for<int>() == plot::Vertex_attrib_type::INT32,
-        "expected int to map to INT32");
-    TEST_ASSERT(plot::detail::vertex_attrib_type_for<std::uint32_t>() == plot::Vertex_attrib_type::UINT32,
-        "expected uint32_t to map to UINT32");
-    TEST_ASSERT(plot::detail::vertex_attrib_type_for<unsigned int>() == plot::Vertex_attrib_type::UINT32,
-        "expected unsigned int to map to UINT32");
-    return true;
-}
 
 bool test_member_offset_matches_offsetof()
 {
@@ -55,23 +41,32 @@ bool test_member_offset_matches_offsetof()
     return true;
 }
 
-bool test_layout_key_for_variations()
+bool test_layout_key_distinguishes_sample_types()
 {
-    plot::Vertex_layout layout;
-    layout.stride = sizeof(sample_t);
-    layout.attributes = {
-        {0, plot::Vertex_attrib_type::FLOAT64, 1, 0, false},
-        {1, plot::Vertex_attrib_type::FLOAT32, 1, 8, false}
+    // Cache key is the only renderer-visible identifier of a user sample
+    // type now that the byte-level layout is no longer surfaced. Two
+    // structurally different sample shapes must produce distinct, non-zero
+    // keys so the renderer's caches do not collide across types.
+    struct other_sample_t
+    {
+        std::int64_t t = 0;
+        float v = 0.0f;
     };
 
-    const uint64_t key_a = plot::layout_key_for(layout);
-    const uint64_t key_b = plot::layout_key_for(layout);
-    TEST_ASSERT(key_a == key_b, "layout_key should be deterministic");
+    const auto policy_a = plot::make_access_policy<sample_t>(
+        &sample_t::t, &sample_t::v, &sample_t::v_min, &sample_t::v_max);
+    const auto policy_b = plot::make_access_policy<other_sample_t>(
+        &other_sample_t::t, &other_sample_t::v);
 
-    plot::Vertex_layout layout_changed = layout;
-    layout_changed.attributes[1].offset = 12;
-    const uint64_t key_c = plot::layout_key_for(layout_changed);
-    TEST_ASSERT(key_a != key_c, "layout_key should change when offsets change");
+    TEST_ASSERT(policy_a.layout_key != 0, "layout_key should be non-zero");
+    TEST_ASSERT(policy_b.layout_key != 0, "layout_key should be non-zero");
+    TEST_ASSERT(policy_a.layout_key != policy_b.layout_key,
+        "layout_key should differ for differently shaped sample types");
+
+    const auto policy_a2 = plot::make_access_policy<sample_t>(
+        &sample_t::t, &sample_t::v, &sample_t::v_min, &sample_t::v_max);
+    TEST_ASSERT(policy_a.layout_key == policy_a2.layout_key,
+        "layout_key should be deterministic for the same sample shape");
 
     return true;
 }
@@ -87,23 +82,27 @@ bool test_make_access_policy_and_erase()
     TEST_ASSERT(policy.is_valid(), "expected typed policy to be valid");
 
     sample_t s{};
-    s.t = 12.5;
+    // 12.5 seconds in nanoseconds. The typed API works in int64 ns; this
+    // single literal stands for what the previous double-keyed test wrote
+    // as 12.5.
+    constexpr std::int64_t k_test_ts_ns = 12'500'000'000;
+    s.t = k_test_ts_ns;
     s.v = 3.5f;
     s.v_min = 1.0f;
     s.v_max = 6.0f;
 
-    TEST_ASSERT(policy.get_timestamp(s) == 12.5, "timestamp accessor mismatch");
+    TEST_ASSERT(policy.get_timestamp(s) == k_test_ts_ns, "timestamp accessor mismatch");
     TEST_ASSERT(policy.get_value(s) == 3.5f, "value accessor mismatch");
     const auto range = policy.get_range(s);
     TEST_ASSERT(range.first == 1.0f && range.second == 6.0f, "range accessor mismatch");
 
-    const plot::Vertex_layout expected_layout =
-        plot::make_standard_layout<sample_t>(&sample_t::t, &sample_t::v, &sample_t::v_min, &sample_t::v_max);
-    TEST_ASSERT(policy.layout_key == plot::layout_key_for(expected_layout),
-        "layout_key mismatch for typed policy");
+    TEST_ASSERT(policy.layout_key != 0,
+        "make_access_policy should populate a non-zero layout_key");
 
     const plot::Data_access_policy erased = policy.erase();
-    TEST_ASSERT(erased.get_timestamp(&s) == 12.5, "erased timestamp accessor mismatch");
+    TEST_ASSERT(erased.layout_key == policy.layout_key,
+        "erase() should propagate layout_key");
+    TEST_ASSERT(erased.get_timestamp(&s) == k_test_ts_ns, "erased timestamp accessor mismatch");
     TEST_ASSERT(erased.get_value(&s) == 3.5f, "erased value accessor mismatch");
     const auto erased_range = erased.get_range(&s);
     TEST_ASSERT(erased_range.first == 1.0f && erased_range.second == 6.0f,
@@ -117,7 +116,9 @@ bool test_make_access_policy_and_erase()
 bool test_clone_with_timestamp_for_both_overloads()
 {
     sample_t src{};
-    src.t = 100.25;
+    // Source timestamp == 100.25 s in nanoseconds.
+    constexpr std::int64_t k_src_ts_ns = 100'250'000'000;
+    src.t = k_src_ts_ns;
     src.v = 7.0f;
     src.v_min = 6.5f;
     src.v_max = 7.5f;
@@ -129,8 +130,10 @@ bool test_clone_with_timestamp_for_both_overloads()
             "value-only overload should set clone_with_timestamp");
 
         sample_t dst{};
-        value_only.clone_with_timestamp(dst, src, 130.5);
-        TEST_ASSERT(dst.t == 130.5, "value-only clone should overwrite timestamp");
+        // 130.5 s in nanoseconds.
+        constexpr std::int64_t k_value_only_ts_ns = 130'500'000'000;
+        value_only.clone_with_timestamp(dst, src, k_value_only_ts_ns);
+        TEST_ASSERT(dst.t == k_value_only_ts_ns, "value-only clone should overwrite timestamp");
         TEST_ASSERT(dst.v == src.v, "value-only clone should copy value");
         TEST_ASSERT(dst.pad == src.pad, "value-only clone should copy pad");
         TEST_ASSERT(dst.v_min == src.v_min && dst.v_max == src.v_max,
@@ -147,8 +150,10 @@ bool test_clone_with_timestamp_for_both_overloads()
             "range overload should set clone_with_timestamp");
 
         sample_t dst{};
-        with_range.clone_with_timestamp(dst, src, 222.0);
-        TEST_ASSERT(dst.t == 222.0, "range clone should overwrite timestamp");
+        // 222.0 s in nanoseconds.
+        constexpr std::int64_t k_range_ts_ns = 222'000'000'000;
+        with_range.clone_with_timestamp(dst, src, k_range_ts_ns);
+        TEST_ASSERT(dst.t == k_range_ts_ns, "range clone should overwrite timestamp");
         TEST_ASSERT(dst.v == src.v, "range clone should copy value");
         TEST_ASSERT(dst.pad == src.pad, "range clone should copy pad");
         TEST_ASSERT(dst.v_min == src.v_min && dst.v_max == src.v_max,
@@ -158,65 +163,67 @@ bool test_clone_with_timestamp_for_both_overloads()
     return true;
 }
 
-bool test_ssbo_sample_layout_metadata()
+bool test_typed_api_floating_point_timestamp_member()
 {
-    // Series_renderer trusts sample_stride_bytes / timestamp_offset_bytes /
-    // value_offset_bytes for every non-DOTS draw: AREA needs them to set
-    // up the next-sample attribute binding, and the SSBO-backed line and
-    // colormap-line shaders use them as uniform indices into the points
-    // VBO. A default-constructed policy must read as "missing" so the
-    // renderer's runtime validation can reject it instead of silently
-    // collapsing every sample to the first record.
+    // Some legacy / convenience sample types store the timestamp as a
+    // floating-point value in seconds. The vnm_plot API works in int64
+    // nanoseconds, so the typed API must auto-convert at the boundary
+    // instead of silently truncating with static_cast<int64_t>(double).
+    //
+    // The original failure mode this test guards against: a Sample with
+    // double t = 12.5 (seconds) used to produce get_timestamp() == 12 (ns)
+    // because of a blind static_cast. Anything that constructed a view
+    // window in seconds (-10 .. 10) ended up with a 20-ns view instead.
 
-    plot::Data_access_policy empty;
-    TEST_ASSERT(empty.sample_stride_bytes == 0,
-        "default Data_access_policy::sample_stride_bytes should be zero");
-    TEST_ASSERT(empty.timestamp_offset_bytes == 0,
-        "default Data_access_policy::timestamp_offset_bytes should be zero");
-    TEST_ASSERT(empty.value_offset_bytes == 0,
-        "default Data_access_policy::value_offset_bytes should be zero");
-
-    // make_access_policy goes through apply_layout, which is the canonical
-    // path for users that follow the typed API. The metadata must mirror
-    // the underlying Vertex_layout so the renderer can locate sample i+1.
-    auto policy = plot::make_access_policy<sample_t>(
-        &sample_t::t,
-        &sample_t::v,
-        &sample_t::v_min,
-        &sample_t::v_max);
-
-    TEST_ASSERT(policy.sample_stride_bytes == sizeof(sample_t),
-        "typed policy stride should match sizeof(sample_t)");
-    TEST_ASSERT(policy.timestamp_offset_bytes == offsetof(sample_t, t),
-        "typed policy timestamp offset should match offsetof(t)");
-    TEST_ASSERT(policy.value_offset_bytes == offsetof(sample_t, v),
-        "typed policy value offset should match offsetof(v)");
-
-    const plot::Data_access_policy erased = policy.erase();
-    TEST_ASSERT(erased.sample_stride_bytes == policy.sample_stride_bytes,
-        "erase() should propagate sample_stride_bytes");
-    TEST_ASSERT(erased.timestamp_offset_bytes == policy.timestamp_offset_bytes,
-        "erase() should propagate timestamp_offset_bytes");
-    TEST_ASSERT(erased.value_offset_bytes == policy.value_offset_bytes,
-        "erase() should propagate value_offset_bytes");
-
-    // Apply a hand-built Vertex_layout to verify apply_layout reads the
-    // location-0 timestamp slot and location-1 value slot, not whichever
-    // attribute happens to come first.
-    plot::Vertex_layout custom_layout;
-    custom_layout.stride = 32;
-    custom_layout.attributes = {
-        {1, plot::Vertex_attrib_type::FLOAT32, 1, 16, false},
-        {0, plot::Vertex_attrib_type::FLOAT64, 1, 4,  false}
+    struct fp_sample_t
+    {
+        double t_seconds = 0.0;
+        float  v = 0.0f;
     };
-    plot::Data_access_policy_typed<sample_t> custom_policy;
-    plot::apply_layout(custom_policy, custom_layout);
-    TEST_ASSERT(custom_policy.sample_stride_bytes == 32,
-        "apply_layout should set stride from Vertex_layout::stride");
-    TEST_ASSERT(custom_policy.timestamp_offset_bytes == 4,
-        "apply_layout should pull timestamp offset from location 0");
-    TEST_ASSERT(custom_policy.value_offset_bytes == 16,
-        "apply_layout should pull value offset from location 1");
+
+    auto policy = plot::make_access_policy<fp_sample_t>(
+        &fp_sample_t::t_seconds,
+        &fp_sample_t::v);
+
+    fp_sample_t s{};
+    s.t_seconds = 12.5;
+    s.v = 3.5f;
+
+    // Forward direction: seconds -> int64 ns.
+    constexpr std::int64_t k_expected_ns = 12'500'000'000;
+    TEST_ASSERT(policy.get_timestamp(s) == k_expected_ns,
+        std::string("expected fp timestamp seconds to convert to ns; got ") +
+            std::to_string(policy.get_timestamp(s)));
+
+    // Reverse direction: int64 ns written through clone_with_timestamp
+    // lands back in the floating-point member as seconds.
+    fp_sample_t dst{};
+    constexpr std::int64_t k_clone_ns = -7'250'000'000;
+    policy.clone_with_timestamp(dst, s, k_clone_ns);
+    const double k_expected_seconds = -7.25;
+    TEST_ASSERT(std::abs(dst.t_seconds - k_expected_seconds) < 1e-9,
+        std::string("expected ns -> fp seconds round-trip; got ") +
+            std::to_string(dst.t_seconds));
+
+    // Erased policy must propagate the same conversion.
+    const plot::Data_access_policy erased = policy.erase();
+    TEST_ASSERT(erased.get_timestamp(&s) == k_expected_ns,
+        "erased fp timestamp accessor mismatch");
+
+    return true;
+}
+
+bool test_function_sample_layout_key_matches_typed_factory()
+{
+    // Contract: make_function_sample_policy_typed().layout_key must equal
+    // function_sample_layout_key() so renderer-internal caches recognize the
+    // typed factory consistently.
+    const auto policy = plot::make_function_sample_policy_typed();
+    TEST_ASSERT(policy.layout_key == plot::function_sample_layout_key(),
+        "make_function_sample_policy_typed().layout_key must equal "
+        "function_sample_layout_key()");
+    TEST_ASSERT(policy.layout_key != 0,
+        "function_sample layout_key should be non-zero");
 
     return true;
 }
@@ -261,12 +268,12 @@ int main()
     int passed = 0;
     int failed = 0;
 
-    RUN_TEST(test_vertex_attrib_type_for_mappings);
     RUN_TEST(test_member_offset_matches_offsetof);
-    RUN_TEST(test_layout_key_for_variations);
+    RUN_TEST(test_layout_key_distinguishes_sample_types);
     RUN_TEST(test_make_access_policy_and_erase);
     RUN_TEST(test_clone_with_timestamp_for_both_overloads);
-    RUN_TEST(test_ssbo_sample_layout_metadata);
+    RUN_TEST(test_typed_api_floating_point_timestamp_member);
+    RUN_TEST(test_function_sample_layout_key_matches_typed_factory);
     RUN_TEST(test_series_builder_preview_config);
 
     std::cout << "Results: " << passed << " passed, " << failed << " failed" << std::endl;

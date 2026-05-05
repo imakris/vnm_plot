@@ -43,6 +43,11 @@ void Font_renderer::initialize(Asset_loader&, int, bool)
     // No-op in stub.
 }
 
+void Font_renderer::initialize_metrics(Asset_loader&, int, bool)
+{
+    // No-op in stub.
+}
+
 void Font_renderer::deinitialize()
 {
     // No-op in stub.
@@ -90,7 +95,31 @@ void Font_renderer::batch_text(float, float, const char*)
     // No-op in stub.
 }
 
-void Font_renderer::draw_and_flush(const glm::mat4&, const glm::vec4&)
+void Font_renderer::rhi_begin_frame()
+{
+    // No-op in stub.
+}
+
+void Font_renderer::rhi_queue_draw(
+    const frame_context_t&,
+    const glm::mat4&,
+    const glm::vec4&,
+    const text_scissor_t&)
+{
+    // No-op in stub.
+}
+
+void Font_renderer::rhi_finalize_frame(const frame_context_t&)
+{
+    // No-op in stub.
+}
+
+void Font_renderer::rhi_record_frame(const frame_context_t&)
+{
+    // No-op in stub.
+}
+
+void Font_renderer::rhi_reset_frame()
 {
     // No-op in stub.
 }

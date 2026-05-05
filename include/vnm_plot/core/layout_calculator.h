@@ -1,7 +1,7 @@
 #pragma once
 // VNM Plot Library - Core Layout Calculator
 // Computes axis labels, grid positions, and layout metrics.
-// This is pure computational logic with no OpenGL dependencies.
+// This is pure computational logic with no renderer-backend dependencies.
 
 #include "types.h"
 
@@ -27,10 +27,11 @@ public:
     struct parameters_t
     {
         // Data ranges
-        float  v_min;
-        float  v_max;
-        double t_min;
-        double t_max;
+        float        v_min;
+        float        v_max;
+        // Timestamps are int64_t nanoseconds (API convention).
+        std::int64_t t_min;
+        std::int64_t t_max;
 
         // Viewport dimensions
         double usable_width;
@@ -46,9 +47,10 @@ public:
         bool      monospace_advance_is_reliable = false;
 
         // Callbacks for metrics and formatting
-        std::function<int(double)>                 get_required_fixed_digits_func;
-        std::function<std::string(double, double)> format_timestamp_func;
-        std::function<float(const char*)>          measure_text_func;
+        std::function<int(double)>                                get_required_fixed_digits_func;
+        // Both arguments are int64 nanoseconds (API convention).
+        std::function<std::string(std::int64_t, std::int64_t)>    format_timestamp_func;
+        std::function<float(const char*)>                         measure_text_func;
 
         // Optional profiler (from Plot_config)
         vnm::plot::Profiler* profiler = nullptr;

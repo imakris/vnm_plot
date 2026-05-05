@@ -6,6 +6,8 @@
 #include "types.h"
 
 #include <chrono>
+#include <cstdint>
+#include <limits>
 #include <map>
 #include <string>
 
@@ -25,6 +27,12 @@ public:
     // Returns true while label fade animations are in progress.
     bool render(const frame_context_t& ctx, bool fade_v_labels, bool fade_h_labels);
 
+    // QRhi path: build all text draw batches and upload resources before beginPass().
+    bool prepare(const frame_context_t& ctx, bool fade_v_labels, bool fade_h_labels);
+
+    // QRhi path: record the prepared text draw calls inside the active pass.
+    void record(const frame_context_t& ctx);
+
     struct label_fade_state_t
     {
         float alpha = 0.0f;
@@ -42,9 +50,10 @@ public:
 private:
     [[maybe_unused]] Font_renderer* m_fonts = nullptr;
 
-    // Cached timestamps to avoid repeated allocation/formatting
-    [[maybe_unused]] double m_last_t0 = -1.0;
-    [[maybe_unused]] double m_last_t1 = -1.0;
+    // Cached timestamps to avoid repeated allocation/formatting (int64 ns).
+    static constexpr std::int64_t k_invalid_cached_ts = std::numeric_limits<std::int64_t>::min();
+    [[maybe_unused]] std::int64_t m_last_t0 = k_invalid_cached_ts;
+    [[maybe_unused]] std::int64_t m_last_t1 = k_invalid_cached_ts;
     [[maybe_unused]] bool m_last_subsecond = false;
     std::string m_cached_from_ts;
     std::string m_cached_to_ts;

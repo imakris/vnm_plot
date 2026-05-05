@@ -174,9 +174,6 @@ void Chrome_renderer::render_grid_and_backgrounds(
         profiler,
         "renderer.frame.chrome.grid_and_backgrounds");
 
-    // Skip GL calls if configured (for pure CPU profiling)
-    const bool skip_gl = ctx.skip_gl;
-
     const auto& pl = ctx.layout;
     const bool dark_mode = ctx.dark_mode;
     const Color_palette palette = dark_mode ? Color_palette::dark() : Color_palette::light();
@@ -210,12 +207,7 @@ void Chrome_renderer::render_grid_and_backgrounds(
         glm::vec4(0.f, float(ctx.win_h) - float(ctx.adjusted_preview_height + 1.0),
                   float(ctx.win_w), float(ctx.win_h) - float(ctx.adjusted_preview_height)));
 
-    if (!skip_gl) {
-        prims.flush_rects(ctx.pmv);
-    }
-    else {
-        prims.clear_rect_batch();
-    }
+    prims.flush_rects(ctx, ctx.pmv);
 
     // Grid - CPU calculations
     const glm::vec2 main_top_left{0.0f, 0.0f};
@@ -224,17 +216,22 @@ void Chrome_renderer::render_grid_and_backgrounds(
 
     const grid_layer_params_t vertical_levels = calculate_grid_params(
         double(ctx.v0), double(ctx.v1), pl.usable_height, ctx.adjusted_font_px);
+    // Grid spacing math runs in fp64 seconds; the shift origin is the
+    // (rebased) seconds-domain t_min that the axis uniforms already use.
+    constexpr double k_seconds_per_ns = 1.0e-9;
+    const double t0_seconds = static_cast<double>(ctx.t0) * k_seconds_per_ns;
+    const double t1_seconds = static_cast<double>(ctx.t1) * k_seconds_per_ns;
     const grid_layer_params_t horizontal_levels = build_time_grid(
-        ctx.t0,
-        ctx.t1,
+        t0_seconds,
+        t1_seconds,
         pl.usable_width,
         ctx.adjusted_font_px,
         ctx.config ? ctx.config->log_debug : std::function<void(const std::string&)>());
 
     const grid_layer_params_t vertical_levels_gl = flip_grid_levels_y(vertical_levels, main_size.y);
 
-    if (!skip_gl && grid_visibility > 0.0) {
-        prims.draw_grid_shader(main_origin, main_size, grid_rgb, vertical_levels_gl, horizontal_levels);
+    if (grid_visibility > 0.0) {
+        prims.draw_grid_shader(ctx, main_origin, main_size, grid_rgb, vertical_levels_gl, horizontal_levels);
     }
 
     const auto match_level_properties = [](float pos, const grid_layer_params_t& levels) -> std::pair<float, float> {
@@ -283,18 +280,18 @@ void Chrome_renderer::render_grid_and_backgrounds(
         [](const h_label_t& l) { return l.position.x; }, pl.h_labels, horizontal_levels);
     const grid_layer_params_t vertical_tick_levels_gl = flip_grid_levels_y(vertical_tick_levels, main_size.y);
 
-    if (!skip_gl && pl.v_bar_width > 0.5 && vertical_tick_levels_gl.count > 0) {
+    if (pl.v_bar_width > 0.5 && vertical_tick_levels_gl.count > 0) {
         const glm::vec2 top_left{float(pl.usable_width), 0.0f};
         const glm::vec2 size{float(pl.v_bar_width), float(pl.usable_height)};
         const glm::vec2 origin = to_gl_origin(ctx, top_left, size);
-        prims.draw_grid_shader(origin, size, tick_rgb, vertical_tick_levels_gl, empty_levels);
+        prims.draw_grid_shader(ctx, origin, size, tick_rgb, vertical_tick_levels_gl, empty_levels);
     }
 
-    if (!skip_gl && ctx.base_label_height_px > 0.5 && horizontal_tick_levels.count > 0) {
+    if (ctx.base_label_height_px > 0.5 && horizontal_tick_levels.count > 0) {
         const glm::vec2 top_left{0.0f, float(pl.usable_height)};
         const glm::vec2 size{float(pl.usable_width), float(ctx.base_label_height_px)};
         const glm::vec2 origin = to_gl_origin(ctx, top_left, size);
-        prims.draw_grid_shader(origin, size, tick_rgb, empty_levels, horizontal_tick_levels);
+        prims.draw_grid_shader(ctx, origin, size, tick_rgb, empty_levels, horizontal_tick_levels);
     }
 }
 
@@ -302,11 +299,6 @@ void Chrome_renderer::render_zero_line(
     const frame_context_t& ctx,
     Primitive_renderer& prims)
 {
-    const bool skip_gl = ctx.skip_gl;
-    if (skip_gl) {
-        return;
-    }
-
     const double range_v = double(ctx.v1) - double(ctx.v0);
     if (!(range_v > 0.0)) {
         return;
@@ -337,7 +329,7 @@ void Chrome_renderer::render_zero_line(
     zero_level.thickness_px[0] = 1.2f;
 
     grid_layer_params_t empty_levels;
-    prims.draw_grid_shader(main_origin, main_size, color, zero_level, empty_levels);
+    prims.draw_grid_shader(ctx, main_origin, main_size, color, zero_level, empty_levels);
 }
 
 void Chrome_renderer::render_preview_overlay(
@@ -349,17 +341,18 @@ void Chrome_renderer::render_preview_overlay(
         profiler,
         "renderer.frame.chrome.preview_overlay");
 
-    // Skip GL calls if configured (for pure CPU profiling)
-    const bool skip_gl = ctx.skip_gl;
-
     if (ctx.adjusted_preview_height <= 0.) {
         return;
     }
 
-    const double t_avail_span = ctx.t_available_max - ctx.t_available_min;
-    if (t_avail_span <= 0) {
+    // Subtract nearby int64 nanoseconds first, then convert to fp64 once for
+    // the proportional math below. Going straight to double on each operand
+    // would lose sub-ms precision near modern wall-clock epochs.
+    const std::int64_t t_avail_span_ns = ctx.t_available_max - ctx.t_available_min;
+    if (t_avail_span_ns <= 0) {
         return;
     }
+    const double t_avail_span = static_cast<double>(t_avail_span_ns);
 
     const bool dark_mode = ctx.dark_mode;
     const Color_palette palette = dark_mode ? Color_palette::dark() : Color_palette::light();
@@ -368,13 +361,21 @@ void Chrome_renderer::render_preview_overlay(
     const glm::vec4 separator_color = palette.separator;
 
     // CPU calculations
-    const double x0 = ctx.win_w * (ctx.t0 - ctx.t_available_min) / t_avail_span;
-    const double x1 = ctx.win_w * (1.0 - (ctx.t_available_max - ctx.t1) / t_avail_span);
+    const double x0 = ctx.win_w *
+        static_cast<double>(ctx.t0 - ctx.t_available_min) / t_avail_span;
+    const double x1 = ctx.win_w * (1.0 -
+        static_cast<double>(ctx.t_available_max - ctx.t1) / t_avail_span);
 
     const double dd = x1 - x0;
-    const double blh = ctx.base_label_height_px;
     const double win_w = ctx.win_w;
-    const double ptop = ctx.layout.usable_height + blh;
+    // Top of the preview band, derived directly from win_h and the band's
+    // own height. The earlier formulation went via usable_height + label
+    // height, which only matches when the label band is rendered into the
+    // strip between data and preview; with the label band currently empty
+    // on the RHI path that path leaves usable_height pointing higher than
+    // the preview band's top. Anchoring on the band itself stays correct
+    // either way.
+    const double ptop = ctx.win_h - ctx.adjusted_preview_height;
     const double pbtm = ctx.win_h;
 
     const double pband_h = std::min(k_preview_band_max_px, ctx.adjusted_preview_height);
@@ -400,12 +401,12 @@ void Chrome_renderer::render_preview_overlay(
     prims.batch_rect(separator_color, {float(x0 - 1), float(ptop + pband_h), float(x0), float(pbtm - pband_h)});
     prims.batch_rect(separator_color, {float(x1), float(ptop + pband_h), float(x1 + 1), float(pbtm - pband_h)});
 
-    // Note: flush_rects is called by the caller (benchmark) when skip_gl is false.
-    // When skip_gl is true, the caller will not call flush_rects and we leave the batch
-    // to be cleared later.
-    if (skip_gl) {
-        prims.clear_rect_batch();
-    }
+    // The overlay must paint after the series so it dims any out-of-window
+    // samples. Closing the rect batch here keeps the API self-contained: the
+    // caller doesn't have to flush_rects after every chrome step. Under RHI
+    // this enqueues a draw op into the renderer-owned plan; under GL it
+    // dispatches the draw immediately.
+    prims.flush_rects(ctx, ctx.pmv);
 }
 
 } // namespace vnm::plot

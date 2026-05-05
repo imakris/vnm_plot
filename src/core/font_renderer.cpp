@@ -1,19 +1,17 @@
 #include <vnm_plot/core/font_renderer.h>
 #include <vnm_plot/core/asset_loader.h>
-#include <vnm_plot/core/gl_program.h>
 #include "platform_paths.h"
 #include "sha256.h"
 #include "utf8_utils.h"
 #include "tls_registry.h"
 
-#ifdef GL_GLEXT_VERSION
-#undef GL_GLEXT_VERSION
-#endif
-
-#include <glatter/glatter.h>
 #include <glm/gtc/type_ptr.hpp>
 #include <msdfgen.h>
 #include <msdfgen-ext.h>
+
+#include <QFile>
+#include <QImage>
+#include <rhi/qrhi.h>
 
 #include <algorithm>
 #include <array>
@@ -64,38 +62,25 @@ namespace {
 
 struct vertex_buffer_t
 {
-    GLuint vao = 0;
-    GLuint vbo = 0;
-    GLuint ebo = 0;
     std::vector<float> vertex_data; // 8 floats per vertex: position, tex coord, tex bounds
-    std::vector<GLuint> index_data;
+    std::vector<std::uint32_t> index_data;
+};
+
+struct text_vertex_t
+{
+    float x;
+    float y;
+    float s;
+    float t;
+    float s_min;
+    float t_min;
+    float s_max;
+    float t_max;
 };
 
 vertex_buffer_t* vertex_buffer_new(const char*)
 {
-    auto* buffer = new vertex_buffer_t();
-    glGenVertexArrays(1, &buffer->vao);
-    glGenBuffers(1, &buffer->vbo);
-    glGenBuffers(1, &buffer->ebo);
-
-    glBindVertexArray(buffer->vao);
-
-    glBindBuffer(GL_ARRAY_BUFFER, buffer->vbo);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, buffer->ebo);
-
-    const GLsizei stride = sizeof(float) * 8;
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void*>(0));
-
-    glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void*>(sizeof(float) * 2));
-
-    glEnableVertexAttribArray(2);
-    glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void*>(sizeof(float) * 4));
-
-    glBindVertexArray(0);
-
-    return buffer;
+    return new vertex_buffer_t();
 }
 
 void vertex_buffer_delete(vertex_buffer_t* buffer)
@@ -104,69 +89,7 @@ void vertex_buffer_delete(vertex_buffer_t* buffer)
         return;
     }
 
-    if (buffer->vao) {
-        glDeleteVertexArrays(1, &buffer->vao);
-    }
-    if (buffer->vbo) {
-        glDeleteBuffers(1, &buffer->vbo);
-    }
-    if (buffer->ebo) {
-        glDeleteBuffers(1, &buffer->ebo);
-    }
-
     delete buffer;
-}
-
-std::size_t vertex_buffer_vertex_count(const vertex_buffer_t* buffer)
-{
-    return buffer ? buffer->vertex_data.size() / 8 : 0;
-}
-
-void vertex_buffer_push_back_vertices(vertex_buffer_t* buffer, const void* vertices, std::size_t count)
-{
-    if (!buffer || !vertices || count == 0) {
-        return;
-    }
-
-    const float* data = static_cast<const float*>(vertices);
-    buffer->vertex_data.insert(buffer->vertex_data.end(), data, data + (count * 8));
-}
-
-void vertex_buffer_push_back_indices(vertex_buffer_t* buffer, const GLuint* indices, std::size_t count)
-{
-    if (!buffer || !indices || count == 0) {
-        return;
-    }
-
-    buffer->index_data.insert(buffer->index_data.end(), indices, indices + count);
-}
-
-void vertex_buffer_render(vertex_buffer_t* buffer, GLenum mode)
-{
-    if (!buffer || buffer->index_data.empty() || buffer->vertex_data.empty()) {
-        return;
-    }
-
-    glBindVertexArray(buffer->vao);
-
-    glBindBuffer(GL_ARRAY_BUFFER, buffer->vbo);
-    glBufferData(GL_ARRAY_BUFFER,
-                 static_cast<GLsizeiptr>(buffer->vertex_data.size() * sizeof(float)),
-                 buffer->vertex_data.data(),
-                 GL_DYNAMIC_DRAW);
-
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, buffer->ebo);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER,
-                 static_cast<GLsizeiptr>(buffer->index_data.size() * sizeof(GLuint)),
-                 buffer->index_data.data(),
-                 GL_DYNAMIC_DRAW);
-
-    glDrawElements(mode,
-                   static_cast<GLsizei>(buffer->index_data.size()),
-                   GL_UNSIGNED_INT,
-                   nullptr);
-
-    glBindVertexArray(0);
 }
 
 void vertex_buffer_clear(vertex_buffer_t* buffer)
@@ -219,18 +142,10 @@ struct msdf_kerning_key_eq_t
     }
 };
 
-// --- Thread-Local OpenGL Resources ---
-// This struct holds the GL resources that must be unique per-thread.
 struct thread_local_font_resources_t
 {
-    GLuint m_texture = 0;
     vertex_buffer_t* m_buffer = nullptr;
-    std::unique_ptr<GL_program> m_shader_program;
     int m_pixel_height = 0;
-    GLint m_tex_uniform_location = -1;
-    GLint m_color_uniform_location = -1;
-    GLint m_pmv_uniform_location = -1;
-    GLint m_range_uniform_location = -1;
     std::uint64_t m_cache_epoch = 0;
     float m_monospace_advance_px = 0.f;
     bool m_monospace_advance_reliable = false;
@@ -242,21 +157,12 @@ struct thread_local_font_resources_t
 
     ~thread_local_font_resources_t() = default;
 
-    void destroy_gl()
+    void destroy_resources()
     {
-        if (m_texture) {
-            glDeleteTextures(1, &m_texture);
-            m_texture = 0;
-        }
         if (m_buffer) {
             vertex_buffer_delete(m_buffer);
             m_buffer = nullptr;
         }
-        m_shader_program.reset();
-        m_tex_uniform_location = -1;
-        m_color_uniform_location = -1;
-        m_pmv_uniform_location = -1;
-        m_range_uniform_location = -1;
     }
 };
 
@@ -398,20 +304,27 @@ std::string glyph_seed_string()
     return codepoints_to_utf8(glyph_codepoints());
 }
 
-void add_text_to_buffer(const char* text, glm::vec2* pen, thread_local_font_resources_t* res)
+template <typename GlyphMap, typename KerningMap>
+void add_text_to_vectors(
+    const char* text,
+    glm::vec2* pen,
+    const GlyphMap& glyphs,
+    const KerningMap& kerning_px,
+    std::vector<float>& vertex_data,
+    std::vector<std::uint32_t>& index_data)
 {
     const auto codepoints = utf8_to_codepoints(text);
     char32_t previous = 0;
     for (const auto codepoint : codepoints) {
-        const auto g_it = res->m_glyphs.find(codepoint);
-        if (g_it == res->m_glyphs.end()) {
+        const auto g_it = glyphs.find(codepoint);
+        if (g_it == glyphs.end()) {
             continue;
         }
 
         if (previous != 0) {
             const msdf_kerning_key_t key{previous, codepoint};
-            const auto k_it = res->m_kerning_px.find(key);
-            if (k_it != res->m_kerning_px.end()) {
+            const auto k_it = kerning_px.find(key);
+            if (k_it != kerning_px.end()) {
                 pen->x += k_it->second;
             }
         }
@@ -426,28 +339,38 @@ void add_text_to_buffer(const char* text, glm::vec2* pen, thread_local_font_reso
         const float t_min = std::min(glyph.uv_top, glyph.uv_bottom);
         const float t_max = std::max(glyph.uv_top, glyph.uv_bottom);
 
-        const auto vertex_count = vertex_buffer_vertex_count(res->m_buffer);
-        const GLuint index = static_cast<GLuint>(vertex_count);
-        const GLuint indices[] = {index, index + 1, index + 2, index, index + 2, index + 3};
+        const auto vertex_count = vertex_data.size() / 8;
+        const auto index = static_cast<std::uint32_t>(vertex_count);
+        const std::uint32_t indices[] = {index, index + 1, index + 2, index, index + 2, index + 3};
 
-        struct vertex_t
-        {
-            float x, y;
-            float s, t;
-            float s_min, t_min, s_max, t_max;
-        };
-
-        const vertex_t vertices[] = {
+        const text_vertex_t vertices[] = {
             {x0, y0, glyph.uv_left,  glyph.uv_bottom, s_min, t_min, s_max, t_max},
             {x0, y1, glyph.uv_left,  glyph.uv_top,    s_min, t_min, s_max, t_max},
             {x1, y1, glyph.uv_right, glyph.uv_top,    s_min, t_min, s_max, t_max},
             {x1, y0, glyph.uv_right, glyph.uv_bottom, s_min, t_min, s_max, t_max}
         };
-        vertex_buffer_push_back_indices(res->m_buffer, indices, 6);
-        vertex_buffer_push_back_vertices(res->m_buffer, vertices, 4);
+
+        index_data.insert(index_data.end(), indices, indices + 6);
+        const auto* first = reinterpret_cast<const float*>(vertices);
+        vertex_data.insert(vertex_data.end(), first, first + 4 * 8);
+
         pen->x += glyph.advance_x;
         previous = codepoint;
     }
+}
+
+void add_text_to_buffer(const char* text, glm::vec2* pen, thread_local_font_resources_t* res)
+{
+    if (!res || !res->m_buffer) {
+        return;
+    }
+    add_text_to_vectors(
+        text,
+        pen,
+        res->m_glyphs,
+        res->m_kerning_px,
+        res->m_buffer->vertex_data,
+        res->m_buffer->index_data);
 }
 
 Sha256::Digest compute_font_digest()
@@ -839,14 +762,143 @@ std::shared_ptr<cached_font_data_t> build_font_cache(
     return font;
 }
 
+std::shared_ptr<cached_font_data_t> load_or_build_font_cache(
+    Asset_loader& asset_loader,
+    int pixel_height,
+    const std::function<void(const std::string&)>& log_error,
+    const std::function<void(const std::string&)>& log_debug)
+{
+    if (s_font_storage.empty()) {
+        std::lock_guard<std::mutex> locker(s_font_storage_mutex);
+        if (s_font_storage.empty()) {
+            auto font_data = asset_loader.load("fonts/monospace.ttf");
+            if (font_data) {
+                s_font_storage.assign(font_data->begin(), font_data->end());
+            }
+        }
+    }
+
+    if (s_font_storage.empty()) {
+        if (log_error) {
+            log_error("Failed to load MSDF font asset fonts/monospace.ttf");
+        }
+        return nullptr;
+    }
+
+    const auto font_digest = compute_font_digest();
+    const bool disk_cache = s_disk_cache_enabled.load(std::memory_order_relaxed);
+
+    auto cached = get_cached_font(pixel_height);
+    if (!cached && disk_cache) {
+        const auto cache_path = cache_file_path(pixel_height, font_digest);
+        cached = load_cached_font_from_disk(cache_path, font_digest, pixel_height);
+        if (cached) {
+            store_cached_font(cached);
+        }
+    }
+    if (!cached) {
+        cached = build_font_cache(pixel_height, font_digest, log_error, log_debug);
+        if (cached) {
+            store_cached_font(cached);
+            if (disk_cache) {
+                const auto cache_path = cache_file_path(pixel_height, font_digest);
+                save_cached_font_to_disk(cache_path, *cached);
+            }
+        }
+    }
+
+    return cached;
+}
+
+} // anonymous namespace
+
+namespace {
+
+struct Text_block_std140
+{
+    float pmv[16] = {};
+    float color[4] = {};
+    float px_range = 0.f;
+    float padding[3] = {};
+};
+
+static_assert(offsetof(Text_block_std140, pmv)      ==  0, "Text UBO pmv offset");
+static_assert(offsetof(Text_block_std140, color)    == 64, "Text UBO color offset");
+static_assert(offsetof(Text_block_std140, px_range) == 80, "Text UBO px_range offset");
+static_assert(sizeof(Text_block_std140)             == 96, "Text UBO std140 size");
+
+constexpr std::uint32_t k_text_ubo_bytes = sizeof(Text_block_std140);
+
+QShader load_qsb(const char* alias)
+{
+    QFile file(QStringLiteral(":/vnm_plot/shaders/qsb/") + QString::fromLatin1(alias));
+    if (!file.open(QIODevice::ReadOnly)) {
+        return {};
+    }
+    return QShader::fromSerialized(file.readAll());
+}
+
+struct rhi_text_call_t
+{
+    std::unique_ptr<QRhiBuffer> ubo;
+    std::unique_ptr<QRhiShaderResourceBindings> srb;
+    QRhiBuffer*      srb_last_ubo     = nullptr;
+    QRhiTexture*     srb_last_texture = nullptr;
+    QRhiSampler*     srb_last_sampler = nullptr;
+};
+
+struct rhi_text_draw_op_t
+{
+    std::uint32_t call_index  = 0;
+    std::uint32_t index_start = 0;
+    std::uint32_t index_count = 0;
+    text_scissor_t scissor;
+};
+
+struct rhi_text_state_t
+{
+    QRhi* last_rhi = nullptr;
+
+    std::unique_ptr<QRhiTexture> atlas_texture;
+    std::unique_ptr<QRhiSampler> sampler;
+    int atlas_size = 0;
+    std::uint64_t uploaded_cache_epoch = 0;
+
+    std::unique_ptr<QRhiBuffer> vbo;
+    std::unique_ptr<QRhiBuffer> ibo;
+    std::size_t vbo_capacity_bytes = 0;
+    std::size_t ibo_capacity_bytes = 0;
+
+    std::vector<rhi_text_call_t> calls;
+    std::vector<rhi_text_draw_op_t> ops;
+    std::size_t call_used = 0;
+
+    std::unique_ptr<QRhiGraphicsPipeline> pipeline;
+    QRhiRenderPassDescriptor* pipeline_rpd = nullptr;
+    int pipeline_samples = 0;
+
+    QShader vert;
+    QShader frag;
+    bool shaders_loaded = false;
+};
+
 } // anonymous namespace
 
 // --- PIMPL Definition ---
 struct Font_renderer::impl_t
 {
     thread_local_font_resources_t* m_resources = nullptr;
+    std::shared_ptr<cached_font_data_t> m_font_cache;
+    int m_metric_pixel_height = 0;
     std::function<void(const std::string&)> m_log_error;
     std::function<void(const std::string&)> m_log_debug;
+    bool m_rhi_batch_active = false;
+    std::vector<float> m_rhi_vertex_data;
+    std::vector<std::uint32_t> m_rhi_index_data;
+    std::vector<float> m_rhi_frame_vertex_data;
+    std::vector<std::uint32_t> m_rhi_frame_index_data;
+
+    rhi_text_state_t m_rhi;
 };
 
 // --- Public API Implementation ---
@@ -868,98 +920,49 @@ void Font_renderer::set_log_callbacks(
 
 void Font_renderer::initialize(Asset_loader& asset_loader, int pixel_height, bool force_rebuild)
 {
+    initialize_metrics(asset_loader, pixel_height, force_rebuild);
     auto& resources = thread_local_resources();
-    const bool tls_ready = (resources.m_pixel_height == pixel_height) &&
-                           (resources.m_texture != 0) &&
-                           (resources.m_shader_program != nullptr);
-    if (!force_rebuild && tls_ready) {
-        m_impl->m_resources = &resources;
+    if (force_rebuild || resources.m_pixel_height != pixel_height) {
+        resources.destroy_resources();
+        resources.m_buffer = vertex_buffer_new("vertex:2f,tex_coord:2f,tex_bounds:4f");
+    }
+    if (!m_impl->m_font_cache) {
+        m_impl->m_resources = nullptr;
         return;
     }
 
-    if (s_font_storage.empty()) {
-        std::lock_guard<std::mutex> locker(s_font_storage_mutex);
-        if (s_font_storage.empty()) {
-            auto font_data = asset_loader.load("fonts/monospace.ttf");
-            if (font_data) {
-                s_font_storage.assign(font_data->begin(), font_data->end());
-            }
-        }
+    const auto& cached = *m_impl->m_font_cache;
+    resources.m_pixel_height = pixel_height;
+    resources.m_cache_epoch = cached.cache_epoch;
+    resources.m_monospace_advance_px = cached.monospace_advance_px;
+    resources.m_monospace_advance_reliable = cached.monospace_advance_reliable;
+    resources.m_px_range = cached.px_range;
+    resources.m_baseline_offset_px = cached.baseline_offset_px;
+    resources.m_glyphs = cached.glyphs;
+    resources.m_kerning_px = cached.kerning_px;
+    m_impl->m_resources = &resources;
+}
+
+void Font_renderer::initialize_metrics(Asset_loader& asset_loader, int pixel_height, bool force_rebuild)
+{
+    if (!force_rebuild &&
+        m_impl->m_font_cache &&
+        m_impl->m_metric_pixel_height == pixel_height)
+    {
+        return;
     }
 
-    resources.destroy_gl();
-
-    const auto font_digest = compute_font_digest();
-    const bool disk_cache = s_disk_cache_enabled.load(std::memory_order_relaxed);
-
-    auto cached = get_cached_font(pixel_height);
-    if (!cached && disk_cache) {
-        const auto cache_path = cache_file_path(pixel_height, font_digest);
-        cached = load_cached_font_from_disk(cache_path, font_digest, pixel_height);
-        if (cached) {
-            store_cached_font(cached);
-        }
-    }
-    if (!cached) {
-        cached = build_font_cache(pixel_height, font_digest, m_impl->m_log_error, m_impl->m_log_debug);
-        if (cached) {
-            store_cached_font(cached);
-            if (disk_cache) {
-                const auto cache_path = cache_file_path(pixel_height, font_digest);
-                save_cached_font_to_disk(cache_path, *cached);
-            }
-        }
-    }
+    auto cached = load_or_build_font_cache(
+        asset_loader,
+        pixel_height,
+        m_impl->m_log_error,
+        m_impl->m_log_debug);
     if (!cached) {
         return;
     }
 
-    auto* const res = &resources;
-    res->m_pixel_height = pixel_height;
-    res->m_cache_epoch = cached->cache_epoch;
-
-    res->m_buffer = vertex_buffer_new("vertex:2f,tex_coord:2f,tex_bounds:4f");
-    res->m_monospace_advance_px = cached->monospace_advance_px;
-    res->m_monospace_advance_reliable = cached->monospace_advance_reliable;
-    res->m_px_range = cached->px_range;
-    res->m_baseline_offset_px = cached->baseline_offset_px;
-    res->m_glyphs = cached->glyphs;
-    res->m_kerning_px = cached->kerning_px;
-    res->m_texture = 0;
-
-    glGenTextures(1, &res->m_texture);
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, res->m_texture);
-
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-
-    glTexImage2D(
-        GL_TEXTURE_2D, 0, GL_RGBA,
-        cached->atlas_size, cached->atlas_size, 0,
-        GL_RGBA, GL_UNSIGNED_BYTE, cached->atlas_rgba.data()
-    );
-
-    // Load and compile MSDF text shader
-    auto shader_sources = asset_loader.load_shader("shaders/msdf_text");
-    if (shader_sources) {
-        std::string vert_src(shader_sources->vertex.begin(), shader_sources->vertex.end());
-        std::string frag_src(shader_sources->fragment.begin(), shader_sources->fragment.end());
-
-        auto sp = create_gl_program(vert_src, frag_src, m_impl->m_log_error);
-        if (sp) {
-            res->m_shader_program = std::move(sp);
-            const GLuint program_id = res->m_shader_program->program_id();
-            res->m_tex_uniform_location = glGetUniformLocation(program_id, "tex");
-            res->m_color_uniform_location = glGetUniformLocation(program_id, "color");
-            res->m_pmv_uniform_location = glGetUniformLocation(program_id, "pmv");
-            res->m_range_uniform_location = glGetUniformLocation(program_id, "px_range");
-        }
-    }
-
-    m_impl->m_resources = &thread_local_resources();
+    m_impl->m_font_cache = std::move(cached);
+    m_impl->m_metric_pixel_height = pixel_height;
 }
 
 void Font_renderer::deinitialize()
@@ -972,21 +975,24 @@ void Font_renderer::deinitialize()
 float Font_renderer::measure_text_px(const char* text) const
 {
     const auto* res = m_impl->m_resources;
-    if (!res || !text) {
+    const auto* cached = m_impl->m_font_cache.get();
+    if (!text || (!res && !cached)) {
         return 0.0f;
     }
+    const auto& glyphs = res ? res->m_glyphs : cached->glyphs;
+    const auto& kerning_px = res ? res->m_kerning_px : cached->kerning_px;
     float x = 0.0f;
     char32_t previous = 0;
     const auto codepoints = utf8_to_codepoints(text);
     for (const auto codepoint : codepoints) {
-        const auto g_it = res->m_glyphs.find(codepoint);
-        if (g_it == res->m_glyphs.end()) {
+        const auto g_it = glyphs.find(codepoint);
+        if (g_it == glyphs.end()) {
             continue;
         }
         if (previous != 0) {
             const msdf_kerning_key_t key{previous, codepoint};
-            const auto k_it = res->m_kerning_px.find(key);
-            if (k_it != res->m_kerning_px.end()) {
+            const auto k_it = kerning_px.find(key);
+            if (k_it != kerning_px.end()) {
                 x += k_it->second;
             }
         }
@@ -999,32 +1005,46 @@ float Font_renderer::measure_text_px(const char* text) const
 std::uint64_t Font_renderer::text_measure_cache_key() const
 {
     const auto* res = m_impl->m_resources;
-    return res ? res->m_cache_epoch : 0;
+    if (res) {
+        return res->m_cache_epoch;
+    }
+    const auto* cached = m_impl->m_font_cache.get();
+    return cached ? cached->cache_epoch : 0;
 }
 
 float Font_renderer::monospace_advance_px() const
 {
     const auto* res = m_impl->m_resources;
-    return res ? res->m_monospace_advance_px : 0.f;
+    if (res) {
+        return res->m_monospace_advance_px;
+    }
+    const auto* cached = m_impl->m_font_cache.get();
+    return cached ? cached->monospace_advance_px : 0.f;
 }
 
 bool Font_renderer::monospace_advance_is_reliable() const
 {
     const auto* res = m_impl->m_resources;
-    return res ? res->m_monospace_advance_reliable : false;
+    if (res) {
+        return res->m_monospace_advance_reliable;
+    }
+    const auto* cached = m_impl->m_font_cache.get();
+    return cached ? cached->monospace_advance_reliable : false;
 }
 
 float Font_renderer::compute_numeric_bottom() const
 {
     const auto* res = m_impl->m_resources;
-    if (!res) {
+    const auto* cached = m_impl->m_font_cache.get();
+    if (!res && !cached) {
         return 0.0f;
     }
+    const auto& glyphs = res ? res->m_glyphs : cached->glyphs;
     static const char* k_sample = "0123456789-+.,";
     float max_bottom = -std::numeric_limits<float>::infinity();
     for (const char* p = k_sample; *p; ++p) {
-        const auto it = res->m_glyphs.find(static_cast<unsigned char>(*p));
-        if (it != res->m_glyphs.end()) {
+        const auto it = glyphs.find(static_cast<unsigned char>(*p));
+        if (it != glyphs.end()) {
             const float neg_bottom = -(it->second.plane_bottom);
             if (neg_bottom > max_bottom) {
                 max_bottom = neg_bottom;
@@ -1037,11 +1057,31 @@ float Font_renderer::compute_numeric_bottom() const
 float Font_renderer::baseline_offset_px() const
 {
     const auto* res = m_impl->m_resources;
-    return res ? res->m_baseline_offset_px : 0.f;
+    if (res) {
+        return res->m_baseline_offset_px;
+    }
+    const auto* cached = m_impl->m_font_cache.get();
+    return cached ? cached->baseline_offset_px : 0.f;
 }
 
 void Font_renderer::batch_text(float x, float y, const char* text)
 {
+    if (m_impl->m_rhi_batch_active) {
+        const auto* cached = m_impl->m_font_cache.get();
+        if (!cached) {
+            return;
+        }
+        glm::vec2 pen{x, y};
+        add_text_to_vectors(
+            text,
+            &pen,
+            cached->glyphs,
+            cached->kerning_px,
+            m_impl->m_rhi_vertex_data,
+            m_impl->m_rhi_index_data);
+        return;
+    }
+
     auto* res = m_impl->m_resources;
     if (!res) {
         return;
@@ -1050,37 +1090,379 @@ void Font_renderer::batch_text(float x, float y, const char* text)
     add_text_to_buffer(text, &pen, res);
 }
 
-void Font_renderer::draw_and_flush(const glm::mat4& pmv, const glm::vec4& color)
+void Font_renderer::rhi_begin_frame()
 {
-    auto* res = m_impl->m_resources;
-    if (!res || !res->m_shader_program) {
+    m_impl->m_rhi_batch_active = true;
+    m_impl->m_rhi_vertex_data.clear();
+    m_impl->m_rhi_index_data.clear();
+    m_impl->m_rhi_frame_vertex_data.clear();
+    m_impl->m_rhi_frame_index_data.clear();
+    m_impl->m_rhi.ops.clear();
+    m_impl->m_rhi.call_used = 0;
+}
+
+void Font_renderer::rhi_queue_draw(
+    const frame_context_t& ctx,
+    const glm::mat4& pmv,
+    const glm::vec4& color,
+    const text_scissor_t& scissor)
+{
+    if (!ctx.rhi || !ctx.rhi_updates || !ctx.render_target || !m_impl->m_font_cache) {
+        m_impl->m_rhi_vertex_data.clear();
+        m_impl->m_rhi_index_data.clear();
+        return;
+    }
+    if (m_impl->m_rhi_index_data.empty() || m_impl->m_rhi_vertex_data.empty()) {
         return;
     }
 
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, res->m_texture);
-    res->m_shader_program->bind();
-
-    if (res->m_tex_uniform_location >= 0) {
-        glUniform1i(res->m_tex_uniform_location, 0);
+    const std::size_t vertex_start_float_count =
+        m_impl->m_rhi_frame_vertex_data.size();
+    const std::uint32_t index_start =
+        static_cast<std::uint32_t>(m_impl->m_rhi_frame_index_data.size());
+    const std::uint32_t base_vertex =
+        static_cast<std::uint32_t>(vertex_start_float_count / 8);
+    m_impl->m_rhi_frame_vertex_data.insert(
+        m_impl->m_rhi_frame_vertex_data.end(),
+        m_impl->m_rhi_vertex_data.begin(),
+        m_impl->m_rhi_vertex_data.end());
+    m_impl->m_rhi_frame_index_data.reserve(
+        m_impl->m_rhi_frame_index_data.size() + m_impl->m_rhi_index_data.size());
+    for (std::uint32_t index : m_impl->m_rhi_index_data) {
+        m_impl->m_rhi_frame_index_data.push_back(index + base_vertex);
     }
 
-    if (res->m_color_uniform_location < 0 || res->m_pmv_uniform_location < 0) {
+    auto& rhi_state = m_impl->m_rhi;
+    QRhi* rhi = ctx.rhi;
+    QRhiResourceUpdateBatch* updates = ctx.rhi_updates;
+
+    if (rhi_state.last_rhi != rhi) {
+        rhi_state = rhi_text_state_t{};
+        rhi_state.last_rhi = rhi;
+    }
+
+    if (!rhi_state.shaders_loaded) {
+        rhi_state.vert = load_qsb("msdf_text.vert.qsb");
+        rhi_state.frag = load_qsb("msdf_text.frag.qsb");
+        rhi_state.shaders_loaded = true;
+    }
+
+    const auto& cached = *m_impl->m_font_cache;
+    if (!rhi_state.atlas_texture ||
+        rhi_state.atlas_size != cached.atlas_size ||
+        rhi_state.uploaded_cache_epoch != cached.cache_epoch)
+    {
+        rhi_state.atlas_texture.reset(rhi->newTexture(
+            QRhiTexture::RGBA8,
+            QSize(cached.atlas_size, cached.atlas_size)));
+        if (!rhi_state.atlas_texture || !rhi_state.atlas_texture->create()) {
+            rhi_state.atlas_texture.reset();
+            m_impl->m_rhi_vertex_data.clear();
+            m_impl->m_rhi_index_data.clear();
+            return;
+        }
+        QImage image(
+            cached.atlas_rgba.data(),
+            cached.atlas_size,
+            cached.atlas_size,
+            cached.atlas_size * 4,
+            QImage::Format_RGBA8888);
+        updates->uploadTexture(rhi_state.atlas_texture.get(), image);
+        rhi_state.atlas_size = cached.atlas_size;
+        rhi_state.uploaded_cache_epoch = cached.cache_epoch;
+        for (auto& call : rhi_state.calls) {
+            call.srb.reset();
+            call.srb_last_texture = nullptr;
+        }
+    }
+
+    if (!rhi_state.sampler) {
+        rhi_state.sampler.reset(rhi->newSampler(
+            QRhiSampler::Linear,
+            QRhiSampler::Linear,
+            QRhiSampler::None,
+            QRhiSampler::ClampToEdge,
+            QRhiSampler::ClampToEdge));
+        if (!rhi_state.sampler || !rhi_state.sampler->create()) {
+            rhi_state.sampler.reset();
+            m_impl->m_rhi_vertex_data.clear();
+            m_impl->m_rhi_index_data.clear();
+            return;
+        }
+    }
+
+    if (rhi_state.call_used == rhi_state.calls.size()) {
+        rhi_state.calls.emplace_back();
+    }
+    const std::size_t call_index = rhi_state.call_used++;
+    auto& call = rhi_state.calls[call_index];
+
+    if (!call.ubo) {
+        call.ubo.reset(rhi->newBuffer(
+            QRhiBuffer::Dynamic,
+            QRhiBuffer::UniformBuffer,
+            k_text_ubo_bytes));
+        if (!call.ubo || !call.ubo->create()) {
+            call.ubo.reset();
+            --rhi_state.call_used;
+            m_impl->m_rhi_vertex_data.clear();
+            m_impl->m_rhi_index_data.clear();
+            return;
+        }
+    }
+
+    if (!call.srb ||
+        call.srb_last_ubo != call.ubo.get() ||
+        call.srb_last_texture != rhi_state.atlas_texture.get() ||
+        call.srb_last_sampler != rhi_state.sampler.get())
+    {
+        call.srb.reset(rhi->newShaderResourceBindings());
+        call.srb->setBindings({
+            QRhiShaderResourceBinding::uniformBuffer(
+                0,
+                QRhiShaderResourceBinding::VertexStage
+                    | QRhiShaderResourceBinding::FragmentStage,
+                call.ubo.get(),
+                0,
+                k_text_ubo_bytes),
+            QRhiShaderResourceBinding::sampledTexture(
+                1,
+                QRhiShaderResourceBinding::FragmentStage,
+                rhi_state.atlas_texture.get(),
+                rhi_state.sampler.get())
+        });
+        if (!call.srb->create()) {
+            call.srb.reset();
+            --rhi_state.call_used;
+            m_impl->m_rhi_vertex_data.clear();
+            m_impl->m_rhi_index_data.clear();
+            return;
+        }
+        call.srb_last_ubo     = call.ubo.get();
+        call.srb_last_texture = rhi_state.atlas_texture.get();
+        call.srb_last_sampler = rhi_state.sampler.get();
+    }
+
+    QRhiRenderPassDescriptor* current_rpd = ctx.render_target->renderPassDescriptor();
+    const int current_samples = ctx.render_target->sampleCount();
+    if (rhi_state.pipeline &&
+        (rhi_state.pipeline_rpd != current_rpd ||
+         rhi_state.pipeline_samples != current_samples))
+    {
+        rhi_state.pipeline.reset();
+    }
+
+    if (!rhi_state.pipeline) {
+        std::unique_ptr<QRhiShaderResourceBindings> layout_srb(
+            rhi->newShaderResourceBindings());
+        layout_srb->setBindings({
+            QRhiShaderResourceBinding::uniformBuffer(
+                0,
+                QRhiShaderResourceBinding::VertexStage
+                    | QRhiShaderResourceBinding::FragmentStage,
+                call.ubo.get(),
+                0,
+                k_text_ubo_bytes),
+            QRhiShaderResourceBinding::sampledTexture(
+                1,
+                QRhiShaderResourceBinding::FragmentStage,
+                rhi_state.atlas_texture.get(),
+                rhi_state.sampler.get())
+        });
+        if (!layout_srb->create()) {
+            m_impl->m_rhi_vertex_data.clear();
+            m_impl->m_rhi_index_data.clear();
+            return;
+        }
+
+        QRhiVertexInputLayout vlayout;
+        QRhiVertexInputBinding binding(
+            static_cast<quint32>(sizeof(text_vertex_t)));
+        QRhiVertexInputAttribute position(
+            0, 0, QRhiVertexInputAttribute::Float2,
+            static_cast<quint32>(offsetof(text_vertex_t, x)));
+        QRhiVertexInputAttribute tex_coord(
+            0, 1, QRhiVertexInputAttribute::Float2,
+            static_cast<quint32>(offsetof(text_vertex_t, s)));
+        QRhiVertexInputAttribute tex_bounds(
+            0, 2, QRhiVertexInputAttribute::Float4,
+            static_cast<quint32>(offsetof(text_vertex_t, s_min)));
+        vlayout.setBindings({binding});
+        vlayout.setAttributes({position, tex_coord, tex_bounds});
+
+        rhi_state.pipeline.reset(rhi->newGraphicsPipeline());
+        rhi_state.pipeline->setShaderStages({
+            { QRhiShaderStage::Vertex,   rhi_state.vert },
+            { QRhiShaderStage::Fragment, rhi_state.frag }
+        });
+        rhi_state.pipeline->setVertexInputLayout(vlayout);
+        rhi_state.pipeline->setShaderResourceBindings(layout_srb.get());
+        rhi_state.pipeline->setTopology(QRhiGraphicsPipeline::Triangles);
+
+        QRhiGraphicsPipeline::TargetBlend blend;
+        blend.enable = true;
+        blend.srcColor = QRhiGraphicsPipeline::SrcAlpha;
+        blend.dstColor = QRhiGraphicsPipeline::OneMinusSrcAlpha;
+        blend.srcAlpha = QRhiGraphicsPipeline::One;
+        blend.dstAlpha = QRhiGraphicsPipeline::OneMinusSrcAlpha;
+        rhi_state.pipeline->setTargetBlends({blend});
+        rhi_state.pipeline->setFlags(QRhiGraphicsPipeline::UsesScissor);
+        rhi_state.pipeline->setRenderPassDescriptor(current_rpd);
+        rhi_state.pipeline->setSampleCount(current_samples);
+
+        if (!rhi_state.pipeline->create()) {
+            rhi_state.pipeline.reset();
+            m_impl->m_rhi_vertex_data.clear();
+            m_impl->m_rhi_index_data.clear();
+            return;
+        }
+        rhi_state.pipeline_rpd = current_rpd;
+        rhi_state.pipeline_samples = current_samples;
+    }
+
+    Text_block_std140 block{};
+    std::memcpy(block.pmv, glm::value_ptr(pmv), sizeof(block.pmv));
+    block.color[0] = color.r;
+    block.color[1] = color.g;
+    block.color[2] = color.b;
+    block.color[3] = color.a;
+    block.px_range = cached.px_range;
+    updates->updateDynamicBuffer(call.ubo.get(), 0, sizeof(block), &block);
+
+    rhi_text_draw_op_t op{};
+    op.call_index  = static_cast<std::uint32_t>(call_index);
+    op.index_start = index_start;
+    op.index_count = static_cast<std::uint32_t>(m_impl->m_rhi_index_data.size());
+    op.scissor     = scissor;
+    rhi_state.ops.push_back(op);
+
+    m_impl->m_rhi_vertex_data.clear();
+    m_impl->m_rhi_index_data.clear();
+}
+
+void Font_renderer::rhi_finalize_frame(const frame_context_t& ctx)
+{
+    auto& rhi_state = m_impl->m_rhi;
+    if (!ctx.rhi || !ctx.rhi_updates ||
+        m_impl->m_rhi_frame_vertex_data.empty() ||
+        m_impl->m_rhi_frame_index_data.empty())
+    {
         return;
     }
 
-    if (res->m_range_uniform_location >= 0) {
-        glUniform1f(res->m_range_uniform_location, res->m_px_range);
+    QRhi* rhi = ctx.rhi;
+    QRhiResourceUpdateBatch* updates = ctx.rhi_updates;
+
+    const std::size_t vertex_bytes =
+        m_impl->m_rhi_frame_vertex_data.size() * sizeof(float);
+    const std::size_t index_bytes =
+        m_impl->m_rhi_frame_index_data.size() * sizeof(std::uint32_t);
+
+    if (!rhi_state.vbo || rhi_state.vbo_capacity_bytes < vertex_bytes) {
+        const std::size_t alloc = vertex_bytes + vertex_bytes / 4;
+        rhi_state.vbo.reset(rhi->newBuffer(
+            QRhiBuffer::Dynamic,
+            QRhiBuffer::VertexBuffer,
+            static_cast<quint32>(alloc)));
+        if (!rhi_state.vbo || !rhi_state.vbo->create()) {
+            rhi_state.vbo.reset();
+            rhi_reset_frame();
+            return;
+        }
+        rhi_state.vbo_capacity_bytes = alloc;
     }
-    glUniform4fv(res->m_color_uniform_location, 1, glm::value_ptr(color));
-    glUniformMatrix4fv(res->m_pmv_uniform_location, 1, GL_FALSE, glm::value_ptr(pmv));
-    vertex_buffer_render(res->m_buffer, GL_TRIANGLES);
-    vertex_buffer_clear(res->m_buffer);
+
+    if (!rhi_state.ibo || rhi_state.ibo_capacity_bytes < index_bytes) {
+        const std::size_t alloc = index_bytes + index_bytes / 4;
+        rhi_state.ibo.reset(rhi->newBuffer(
+            QRhiBuffer::Dynamic,
+            QRhiBuffer::IndexBuffer,
+            static_cast<quint32>(alloc)));
+        if (!rhi_state.ibo || !rhi_state.ibo->create()) {
+            rhi_state.ibo.reset();
+            rhi_reset_frame();
+            return;
+        }
+        rhi_state.ibo_capacity_bytes = alloc;
+    }
+
+    updates->updateDynamicBuffer(
+        rhi_state.vbo.get(),
+        0,
+        static_cast<quint32>(vertex_bytes),
+        m_impl->m_rhi_frame_vertex_data.data());
+    updates->updateDynamicBuffer(
+        rhi_state.ibo.get(),
+        0,
+        static_cast<quint32>(index_bytes),
+        m_impl->m_rhi_frame_index_data.data());
+}
+
+void Font_renderer::rhi_record_frame(const frame_context_t& ctx)
+{
+    auto& rhi_state = m_impl->m_rhi;
+    if (!ctx.cb || !rhi_state.pipeline || !rhi_state.vbo || !rhi_state.ibo) {
+        rhi_reset_frame();
+        return;
+    }
+
+    QRhiCommandBuffer* cb = ctx.cb;
+    cb->setGraphicsPipeline(rhi_state.pipeline.get());
+
+    QRhiCommandBuffer::VertexInput vertex_input{rhi_state.vbo.get(), 0u};
+    for (const auto& op : rhi_state.ops) {
+        if (op.call_index >= rhi_state.calls.size() || op.index_count == 0) {
+            continue;
+        }
+        const auto& call = rhi_state.calls[op.call_index];
+        if (!call.srb) {
+            continue;
+        }
+
+        cb->setShaderResources(call.srb.get());
+        cb->setVertexInput(
+            0,
+            1,
+            &vertex_input,
+            rhi_state.ibo.get(),
+            0,
+            QRhiCommandBuffer::IndexUInt32);
+        if (op.scissor.enabled) {
+            cb->setScissor(QRhiScissor(
+                op.scissor.x,
+                op.scissor.y,
+                op.scissor.width,
+                op.scissor.height));
+        }
+        else {
+            cb->setScissor(QRhiScissor(0, 0, ctx.win_w, ctx.win_h));
+        }
+        cb->drawIndexed(op.index_count, 1, op.index_start, 0, 0);
+    }
+
+    rhi_reset_frame();
+}
+
+void Font_renderer::rhi_reset_frame()
+{
+    m_impl->m_rhi_batch_active = false;
+    m_impl->m_rhi_vertex_data.clear();
+    m_impl->m_rhi_index_data.clear();
+    m_impl->m_rhi_frame_vertex_data.clear();
+    m_impl->m_rhi_frame_index_data.clear();
+    m_impl->m_rhi.ops.clear();
+    m_impl->m_rhi.call_used = 0;
 }
 
 void Font_renderer::clear_buffer()
 {
-    const auto* res = m_impl->m_resources;
+    if (m_impl->m_rhi_batch_active) {
+        m_impl->m_rhi_vertex_data.clear();
+        m_impl->m_rhi_index_data.clear();
+        return;
+    }
+
+    auto* res = m_impl->m_resources;
     if (res && res->m_buffer) {
         vertex_buffer_clear(res->m_buffer);
     }

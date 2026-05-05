@@ -2,7 +2,7 @@
 #define VNM_PLOT_BENCHMARK_CONSTANTS_H
 
 // Shared layout constants for vnm_plot benchmarks
-// Used by both Qt and headless GLFW benchmarks to ensure identical render paths
+// Used by benchmark render paths to ensure identical geometry and timing setup.
 
 namespace vnm::benchmark {
 

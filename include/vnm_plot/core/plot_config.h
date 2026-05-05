@@ -40,6 +40,7 @@ public:
     virtual ~Profiler() = default;
     virtual void begin_scope(const char* name) = 0;
     virtual void end_scope() = 0;
+    virtual void record_observation(const char* name, double value_ms) { (void) name; (void) value_ms; }
 };
 
 // RAII scope guard for profiling
@@ -92,10 +93,12 @@ struct Plot_config
 
     // --- Timestamp Formatting ---
     // Callback to format timestamps for axis labels.
-    // Parameters: timestamp (unix seconds), step (tick interval in seconds)
+    // Parameters: timestamp_ns (int64 nanoseconds), step_ns (tick interval in
+    // nanoseconds). Both are in the API's int64 nanosecond unit; converters to
+    // seconds (or any other unit) live inside the formatter implementation.
     // Returns: formatted string for display
     // If null, a default formatter is used.
-    std::function<std::string(double timestamp, double step)> format_timestamp;
+    std::function<std::string(std::int64_t timestamp_ns, std::int64_t step_ns)> format_timestamp;
     // Revision for formatter behavior. Caller contract: increment when the
     // effective output of format_timestamp changes without replacing the
     // callback identity (e.g. captured/stateful data updates).
@@ -133,12 +136,12 @@ struct Plot_config
     bool snap_lines_to_pixels = false;
     // Line width in pixels (may be clamped by the driver).
     double line_width_px = 1.0;
+    // Dot diameter in pixels for DOTS rendering. The shader floors at 1 px,
+    // so values below 1.0 still render as a 1-pixel dot.
+    double point_diameter_px = 1.0;
     // Area fill alpha multiplier (0..1).
     double area_fill_alpha = 0.3;
 
-    // When true, skip all GL calls (VBO creation, shader usage, draws, etc.).
-    // Useful for profiling pure CPU overhead without any GL interaction.
-    bool skip_gl_calls = false;
     // When true, renderer may request additional frames for smooth animations.
     // When false, renderer suppresses self-posted updates and may skip unchanged
     // frames based on a render signature to minimize idle CPU usage.
@@ -160,12 +163,19 @@ struct Plot_config
 // -----------------------------------------------------------------------------
 // Simple formatter when no custom one is provided.
 // For full formatting with timezone support, applications should provide
-// their own formatter via Plot_config::format_timestamp.
-inline std::string default_format_timestamp(double timestamp, double step)
+// their own formatter via Plot_config::format_timestamp. Both inputs are in
+// nanoseconds (API convention).
+inline std::string default_format_timestamp(std::int64_t timestamp_ns, std::int64_t step_ns)
 {
     // Simple formatting with step-appropriate precision.
     // Applications should override for timezone-aware formatting.
-    time_t t = static_cast<time_t>(timestamp);
+    constexpr std::int64_t k_ns_per_second = 1'000'000'000;
+    constexpr std::int64_t k_ns_per_minute = 60 * k_ns_per_second;
+    // Floor-divide so negative timestamps map to the matching second-of-epoch.
+    const std::int64_t whole_seconds = (timestamp_ns >= 0)
+        ? (timestamp_ns / k_ns_per_second)
+        : -((-timestamp_ns + k_ns_per_second - 1) / k_ns_per_second);
+    time_t t = static_cast<time_t>(whole_seconds);
     struct tm tm_buf;
 
 #ifdef _WIN32
@@ -175,7 +185,7 @@ inline std::string default_format_timestamp(double timestamp, double step)
 #endif
 
     char buf[32];
-    if (step >= 60.0) {
+    if (step_ns >= k_ns_per_minute) {
         std::strftime(buf, sizeof(buf), "%H:%M", &tm_buf);
     }
     else {

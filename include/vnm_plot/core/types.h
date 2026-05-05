@@ -15,6 +15,15 @@
 #include <glm/vec2.hpp>
 #include <glm/vec4.hpp>
 
+// Forward declarations for the RHI types frame_context_t carries. These
+// live behind Qt6::GuiPrivate; consumers of this public header see only
+// the names so the core renderer code can route uploads and draws through
+// QRhi without leaking Qt private headers.
+class QRhi;
+class QRhiCommandBuffer;
+class QRhiRenderTarget;
+class QRhiResourceUpdateBatch;
+
 namespace vnm::plot {
 struct Plot_config;
 // -----------------------------------------------------------------------------
@@ -149,19 +158,20 @@ public:
     virtual bool has_aux_metric_range() const { return false; }
     virtual std::pair<double, double> aux_metric_range() const { return {0.0, 0.0}; }
     virtual bool aux_metric_range_needs_rescan() const { return false; }
-    /// Query v-range for samples within [t_min, t_max].
+    /// Query v-range for samples within [t_min_ns, t_max_ns]. Timestamps
+    /// are int64_t nanoseconds (by API convention).
     /// Returns false if unsupported, no samples are in range, or a consistent snapshot
     /// cannot be obtained without blocking.
     /// Thread-safe; called from the render thread.
     virtual bool query_v_range_for_t_window(
-        double t_min,
-        double t_max,
+        std::int64_t t_min_ns,
+        std::int64_t t_max_ns,
         float& v_min_out,
         float& v_max_out,
         uint64_t* out_sequence = nullptr) const
     {
-        (void)t_min;
-        (void)t_max;
+        (void)t_min_ns;
+        (void)t_max_ns;
         (void)v_min_out;
         (void)v_max_out;
         (void)out_sequence;
@@ -278,7 +288,9 @@ struct Data_access_policy
     // --- Sample value extraction ---
     // Values narrow to float before upload. For large-biased signals, subtract
     // the bias inside the accessor so the remaining dynamic range survives.
-    std::function<double(const void* sample)>                   get_timestamp;  ///< Extract timestamp
+    // Timestamps are int64_t nanoseconds (by API convention; the unit is the
+    // accessor's contract with vnm_plot).
+    std::function<std::int64_t(const void* sample)>             get_timestamp;  ///< Extract timestamp (ns)
     std::function<float(const void* sample)>                    get_value;      ///< Extract primary value
     std::function<std::pair<float, float>(const void* sample)>  get_range;      ///< Extract min/max range
 
@@ -287,19 +299,9 @@ struct Data_access_policy
 
     // Optional sample cloning with timestamp rewrite, used for render-only hold-forward paths.
     // Caller owns dst_sample storage; implementation writes one full sample there.
-    std::function<void(void* dst_sample, const void* src_sample, double timestamp)> clone_with_timestamp;
+    std::function<void(void* dst_sample, const void* src_sample, std::int64_t timestamp_ns)> clone_with_timestamp;
 
-    // --- GPU rendering configuration ---
-    std::function<void()> setup_vertex_attributes;              ///< Configures VAO for custom shaders
-    std::function<void(unsigned int program_id)> bind_uniforms; ///< Binds custom uniforms
-    uint64_t layout_key = 0;  ///< Cache key for vertex attribute layout
-
-    // SSBO layout (used by line/area/colormap_line shaders that pull samples
-    // through a shader-storage buffer). All values in bytes; must be multiples
-    // of 4 so the shader can index `uint raw[]` without bit-twiddling.
-    size_t sample_stride_bytes    = 0;  ///< Byte stride between consecutive samples
-    size_t timestamp_offset_bytes = 0;  ///< Offset of the timestamp/x field within a sample
-    size_t value_offset_bytes     = 0;  ///< Offset of the primary value/y field within a sample
+    uint64_t layout_key = 0;  ///< Cache key distinguishing user sample types in renderer-internal caches
 
     bool is_valid() const
     {
@@ -355,32 +357,6 @@ struct preview_config_t
 };
 
 // -----------------------------------------------------------------------------
-// Shader Set: identifies a shader program by asset names
-// -----------------------------------------------------------------------------
-// Identifies a shader program by the asset names of its shader stages.
-// Used as a key for shader program caching.
-struct shader_set_t
-{
-    std::string vert;  ///< Vertex shader asset name
-    std::string frag;  ///< Fragment shader asset name
-
-    bool operator<(const shader_set_t& other) const
-    {
-        if (vert != other.vert) {
-            return vert < other.vert;
-        }
-        return frag < other.frag;
-    }
-
-    bool operator==(const shader_set_t& other) const
-    {
-        return vert == other.vert && frag == other.frag;
-    }
-
-    bool empty() const { return vert.empty() && frag.empty(); }
-};
-
-// -----------------------------------------------------------------------------
 // Colormap Configuration
 // -----------------------------------------------------------------------------
 // Defines a colormap as a list of RGBA samples for gradient-based rendering.
@@ -400,10 +376,17 @@ struct data_config_t
     float  v_manual_min    = 0.f;
     float  v_manual_max    = 5.f;
 
-    double t_min           = 5000.;
-    double t_max           = 10000.;
-    double t_available_min = 0.;
-    double t_available_max = 10000.;
+    // Timestamps are int64_t nanoseconds (API convention). The defaults
+    // describe a 10-second view starting at 0 ns; every Plot_widget user
+    // is expected to call set_view (or attach a configured Plot_time_axis)
+    // before the first paint, but if neither happens the widget renders a
+    // sane 10-second window instead of a 5-microsecond one. The previous
+    // 5000 / 10000 / 0 / 10000 literals were carried over from a pre-int64
+    // era when the unit was seconds and described a 10000-second view.
+    std::int64_t t_min           = 0;
+    std::int64_t t_max           = std::int64_t{10} * 1'000'000'000;
+    std::int64_t t_available_min = 0;
+    std::int64_t t_available_max = std::int64_t{10} * 1'000'000'000;
 
     double vbar_width      = 150.;
 };
@@ -428,12 +411,9 @@ struct series_data_t
     colormap_config_t colormap_area;
     colormap_config_t colormap_line;
 
-    shader_set_t shader_set;
-    std::map<Display_style, shader_set_t> shaders;
-
-    double get_timestamp(const void* sample) const
+    std::int64_t get_timestamp(const void* sample) const
     {
-        return access.get_timestamp ? access.get_timestamp(sample) : 0.0;
+        return access.get_timestamp ? access.get_timestamp(sample) : std::int64_t{0};
     }
 
     float get_value(const void* sample) const
@@ -535,9 +515,9 @@ struct v_label_t
 /// Horizontal axis label (time bar below plot)
 struct h_label_t
 {
-    double      value;     ///< Timestamp this label represents
-    glm::vec2   position;  ///< Position in pixels (x, y from bottom-left)
-    std::string text;      ///< Formatted label text
+    std::int64_t value;     ///< Timestamp this label represents (nanoseconds)
+    glm::vec2    position;  ///< Position in pixels (x, y from bottom-left)
+    std::string  text;      ///< Formatted label text
 };
 
 /// Result of layout calculation for a single frame.
@@ -566,10 +546,10 @@ struct frame_layout_result_t
 /// Key for layout caching. Layout is recomputed only when this key changes.
 struct layout_cache_key_t
 {
-    float     v0                           = 0.0f;
-    float     v1                           = 0.0f;
-    double    t0                           = 0.0;
-    double    t1                           = 0.0;
+    float        v0                           = 0.0f;
+    float        v1                           = 0.0f;
+    std::int64_t t0                           = 0;  // nanoseconds
+    std::int64_t t1                           = 0;  // nanoseconds
     Size_2i    viewport_size;
     double    adjusted_reserved_height     = 0.0;
     double    adjusted_preview_height      = 0.0;
@@ -632,11 +612,12 @@ struct frame_context_t
     float preview_v0 = 0.0f;
     float preview_v1 = 0.0f;
 
-    double t0 = 0.0;
-    double t1 = 1.0;
+    // Timestamps are int64_t nanoseconds (API convention).
+    std::int64_t t0 = 0;
+    std::int64_t t1 = 1;
 
-    double t_available_min = 0.0;
-    double t_available_max = 1.0;
+    std::int64_t t_available_min = 0;
+    std::int64_t t_available_max = 1;
 
     int win_w = 0;
     int win_h = 0;
@@ -649,10 +630,23 @@ struct frame_context_t
     double adjusted_preview_height  = 0.0;
 
     bool show_info = false;
-    bool skip_gl   = false;
     bool dark_mode = false;
 
     const Plot_config* config = nullptr;
+
+    // RHI handles for the active frame. The renderer routes uploads through
+    // the RHI resource-update batch and records draws through `cb`.
+    QRhi*              rhi = nullptr;
+    QRhiCommandBuffer* cb  = nullptr;
+    // Render target the host already opened a pass on. The renderer reads
+    // the render-pass descriptor and sample count off it when building
+    // graphics-pipeline state objects.
+    QRhiRenderTarget*  render_target = nullptr;
+    // Resource-update batch the host hands the renderer to fill. The host
+    // owns its lifetime and submits it via beginPass's 4th argument; the
+    // renderer must NOT call cb->resourceUpdate(batch) itself, because that
+    // call is illegal once the host's render pass is open.
+    QRhiResourceUpdateBatch* rhi_updates = nullptr;
 };
 
 } // namespace vnm::plot

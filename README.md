@@ -1,19 +1,19 @@
 # vnm_plot
-A GPU-accelerated 2D time-series plotting library using OpenGL, with optional Qt Quick integration.
+A GPU-accelerated 2D time-series plotting library using Qt RHI and Qt Quick.
 ![Function Plotter](function_plotter_example.png)
 <sub>function_plotter example</sub>
 ## CI Status
 | Job | Status | Notes |
 | :-- | :-- | :-- |
-| Linux (GitHub Actions) | [![CI Linux](https://github.com/imakris/vnm_plot/actions/workflows/ci-linux.yml/badge.svg?branch=master)](https://github.com/imakris/vnm_plot/actions/workflows/ci-linux.yml) | Core + GLFW + Core+Text |
-| Windows (GitHub Actions) | [![CI Windows](https://github.com/imakris/vnm_plot/actions/workflows/ci-windows.yml/badge.svg?branch=master)](https://github.com/imakris/vnm_plot/actions/workflows/ci-windows.yml) | Core + GLFW + Core+Text |
-| FreeBSD Core (Cirrus) | [![Core](https://api.cirrus-ci.com/github/imakris/vnm_plot.svg?task=FreeBSD%20Core%20Build)](https://cirrus-ci.com/github/imakris/vnm_plot?task=FreeBSD%20Core%20Build) | Core only |
-| FreeBSD GLFW Example (Cirrus) | [![GLFW Example](https://api.cirrus-ci.com/github/imakris/vnm_plot.svg?task=FreeBSD%20GLFW%20Example)](https://cirrus-ci.com/github/imakris/vnm_plot?task=FreeBSD%20GLFW%20Example) | standalone_glfw |
-| FreeBSD Core+Text (Cirrus) | [![Core+Text](https://api.cirrus-ci.com/github/imakris/vnm_plot.svg?task=FreeBSD%20Core%2BText%20Build)](https://cirrus-ci.com/github/imakris/vnm_plot?task=FreeBSD%20Core%2BText%20Build) | Text enabled |
+| Linux (GitHub Actions) | [![CI Linux](https://github.com/imakris/vnm_plot/actions/workflows/ci-linux.yml/badge.svg?branch=master)](https://github.com/imakris/vnm_plot/actions/workflows/ci-linux.yml) | QRhi and QRhi+Text |
+| macOS (GitHub Actions) | [![CI macOS](https://github.com/imakris/vnm_plot/actions/workflows/ci-macos.yml/badge.svg?branch=master)](https://github.com/imakris/vnm_plot/actions/workflows/ci-macos.yml) | QRhi and QRhi+Text |
+| Windows (GitHub Actions) | [![CI Windows](https://github.com/imakris/vnm_plot/actions/workflows/ci-windows.yml/badge.svg?branch=master)](https://github.com/imakris/vnm_plot/actions/workflows/ci-windows.yml) | QRhi and QRhi+Text |
+| FreeBSD QRhi (Cirrus) | [![FreeBSD QRhi](https://api.cirrus-ci.com/github/imakris/vnm_plot.svg?task=FreeBSD%20QRhi%20Build)](https://cirrus-ci.com/github/imakris/vnm_plot?task=FreeBSD%20QRhi%20Build) | QRhi |
+| FreeBSD QRhi+Text (Cirrus) | [![FreeBSD QRhi+Text](https://api.cirrus-ci.com/github/imakris/vnm_plot.svg?task=FreeBSD%20QRhi%2BText%20Build)](https://cirrus-ci.com/github/imakris/vnm_plot?task=FreeBSD%20QRhi%2BText%20Build) | QRhi with text enabled |
 
 ## Overview
 
-vnm_plot renders time-series data using OpenGL geometry shaders. It supports Level-of-Detail (LOD) for handling large datasets. The renderer automatically selects an appropriate resolution based on the current zoom level.
+vnm_plot renders time-series data through Qt RHI. It supports Level-of-Detail (LOD) for handling large datasets. The renderer automatically selects an appropriate resolution based on the current zoom level.
 
 The library uses a type-erased data interface (`vnm::plot::Data_source` + `vnm::plot::Data_access_policy`) so it can work with any sample type without templates in the rendering code.
 Data sources decide whether snapshots are copies or direct views; buffering, if needed, lives in the data source.
@@ -31,14 +31,14 @@ vnm_plot_core (standalone core library)
   -> Font_renderer (MSDF glyphs)
 
 vnm_plot (Qt wrapper)
-  -> Plot_widget (QQuickFramebufferObject)
-     -> Plot_renderer (GL thread)
+  -> Plot_widget (QQuickRhiItem)
+     -> Plot_renderer (RHI render thread)
         -> vnm_plot_core
 ```
 
 - `vnm_plot_core` is the standalone rendering and data logic
 - `vnm_plot` is the Qt Quick wrapper (QML-friendly Plot_widget)
-- `Plot_renderer` runs on the GL thread and coordinates the sub-renderers
+- `Plot_renderer` runs on the Qt RHI render thread and coordinates the sub-renderers
 - `Series_renderer` handles lines, dots, and area fills with VBO management
 - `Chrome_renderer` draws the grid and axes
 - `Font_renderer` generates MSDF glyph atlases from FreeType
@@ -68,7 +68,7 @@ plot_widget->add_series(0, series);
 ```
 
 **Thread Safety**
-`Plot_widget` renders on a separate GL thread. Treat `series_data_t` as immutable once added. To change series config (style, shaders, access policy, preview config, color), update a copy and call `add_series` again with the same id to replace it. Make sure your `Data_source` implementation is safe to read from the render thread.
+`Plot_widget` renders on a separate RHI render thread. Treat `series_data_t` as immutable once added. To change series config (style, access policy, preview config, color), update a copy and call `add_series` again with the same id to replace it. Make sure your `Data_source` implementation is safe to read from the render thread.
 
 ### QML Quickstart
 
@@ -128,9 +128,6 @@ auto series = std::make_shared<vnm::plot::series_data_t>();
 series->access = policy.erase();
 ```
 
-If you leave `shader_set` and `shaders` empty, vnm_plot selects defaults based on the
-access policy layout key for built-in layouts (for example `function_sample_t`).
-
 ### Display Styles
 
 - `DOTS` - points
@@ -146,15 +143,12 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ```
 
-Qt 6 (Core, Gui, Quick, OpenGL) is optional. The build fetches glm, glatter,
-FreeType, and msdfgen if they are not already available as targets.
+Qt 6 (Core, Gui, Quick, GuiPrivate, ShaderTools) is required. The build fetches
+glm, FreeType, and msdfgen if they are not already available as targets.
 
-To build the standalone core library only:
-
-```bash
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DVNM_PLOT_BUILD_QT=OFF
-cmake --build build
-```
+CI currently builds QRhi and QRhi+Text on Linux, macOS, Windows, and FreeBSD.
+The GitHub Actions jobs use the Qt 6.10.1 SDK on Linux, macOS, and Windows so
+the QRhi private headers and `qsb` shader compiler are available consistently.
 
 To disable text rendering (skips FreeType + msdfgen):
 
@@ -175,7 +169,6 @@ cmake --build build
 - `vnm_plot_hello` - renders a sine wave using `Function_data_source`
 - `vnm_plot_preview_config` - preview uses a separate data source and AREA style via `preview_config`
 - `function_plotter` - multiple functions, per-series styles, expression evaluation via mexce
-- `standalone_glfw` - standalone core validation example using GLFW
 
 `function_plotter` depends on `mexce`. You can point at a local checkout by
 configuring with `-DMEXCE_LOCAL_PATH=...`.
@@ -201,8 +194,7 @@ As a subdirectory:
 
 ```cmake
 add_subdirectory(vnm_plot)
-target_link_libraries(your_app PRIVATE vnm_plot::core)      # standalone core library
-# target_link_libraries(your_app PRIVATE vnm_plot::vnm_plot) # Qt wrapper
+target_link_libraries(your_app PRIVATE vnm_plot::vnm_plot)
 ```
 
 Via FetchContent:
@@ -214,14 +206,12 @@ FetchContent_Declare(vnm_plot
     GIT_TAG        1.0.4
 )
 FetchContent_MakeAvailable(vnm_plot)
-target_link_libraries(your_app PRIVATE vnm_plot::core)      # standalone core library
-# target_link_libraries(your_app PRIVATE vnm_plot::vnm_plot) # Qt wrapper
+target_link_libraries(your_app PRIVATE vnm_plot::vnm_plot)
 ```
 
 ## Requirements
 
-- OpenGL 4.3+ with geometry shader support and `GL_ARB_gpu_shader_int64`
-- Qt 6.2+ (only required for the Qt wrapper target)
+- Qt 6.2+ with Qt Shader Tools
 
 ## Scope
 

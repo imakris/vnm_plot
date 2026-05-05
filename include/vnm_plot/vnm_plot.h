@@ -5,7 +5,7 @@
 // This library provides:
 // - Generic data source interface (Data_source)
 // - Support for streaming data with LOD (Level of Detail)
-// - GPU-accelerated rendering via OpenGL
+// - GPU-accelerated rendering via QRhi
 // - Qt Quick integration for interactive plots
 //
 // Usage:

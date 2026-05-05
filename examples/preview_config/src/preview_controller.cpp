@@ -1,4 +1,7 @@
 #include "preview_controller.h"
+
+#include <QtCore/QtGlobal>
+
 #include <cmath>
 #include <cstddef>
 #include <utility>
@@ -7,6 +10,13 @@ namespace {
 
 constexpr double k_x_min = -20.0;
 constexpr double k_x_max = 20.0;
+// Plot_view::t_range / t_available_range are int64 nanoseconds; sample x
+// values from Function_data_source come in as fp seconds and the access
+// policy auto-converts at the data boundary, but the view-range setters
+// take qint64 directly and need explicit conversion here.
+constexpr qint64 k_ns_per_second = 1'000'000'000;
+constexpr qint64 k_t_min_ns = static_cast<qint64>(k_x_min * static_cast<double>(k_ns_per_second));
+constexpr qint64 k_t_max_ns = static_cast<qint64>(k_x_max * static_cast<double>(k_ns_per_second));
 constexpr std::size_t k_main_samples = 4000;
 constexpr std::size_t k_preview_samples = 320;
 constexpr double k_auto_v_scale = 0.2;
@@ -47,8 +57,8 @@ void Preview_controller::set_plot_widget(vnm::plot::Plot_widget* widget)
         configure_plot_widget();
         if (m_series) m_plot_widget->add_series(k_series_id, m_series);
         vnm::plot::Plot_view view;
-        view.t_range = std::make_pair(k_x_min, k_x_max);
-        view.t_available_range = std::make_pair(k_x_min, k_x_max);
+        view.t_range = std::make_pair(k_t_min_ns, k_t_max_ns);
+        view.t_available_range = std::make_pair(k_t_min_ns, k_t_max_ns);
         view.v_auto = true;
         m_plot_widget->set_view(view);
         m_plot_widget->update();
@@ -57,8 +67,8 @@ void Preview_controller::set_plot_widget(vnm::plot::Plot_widget* widget)
             [this]() {
                 if (!m_plot_widget) return;
                 vnm::plot::Plot_view view;
-                view.t_range = std::make_pair(k_x_min, k_x_max);
-                view.t_available_range = std::make_pair(k_x_min, k_x_max);
+                view.t_range = std::make_pair(k_t_min_ns, k_t_max_ns);
+                view.t_available_range = std::make_pair(k_t_min_ns, k_t_max_ns);
                 m_plot_widget->set_view(view);
             });
     }

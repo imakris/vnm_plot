@@ -31,9 +31,6 @@ int main(int argc, char* argv[])
     app.setOrganizationName("VNM");
     app.setWindowIcon(QIcon("qrc:/rc/varinomics.ico"));
 
-    // Request OpenGL for rendering
-    QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
-
     // Register QML types
     qmlRegisterType<vnm::plot::Plot_widget>("VnmPlot", 1, 0, "PlotWidget");
     qmlRegisterType<vnm::plot::Plot_interaction_item>("VnmPlot", 1, 0, "PlotInteractionItem");

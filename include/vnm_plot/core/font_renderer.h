@@ -1,7 +1,9 @@
 #pragma once
 
 // VNM Plot Library - Core Font Renderer
-// Qt-free MSDF text rendering with font loading, measurement, and GPU rendering.
+// MSDF text rendering with font loading, measurement, and QRhi rendering.
+
+#include "types.h"
 
 #include <glm/glm.hpp>
 
@@ -13,6 +15,15 @@
 namespace vnm::plot {
 
 class Asset_loader;
+
+struct text_scissor_t
+{
+    bool enabled = false;
+    int  x       = 0;
+    int  y       = 0;
+    int  width   = 0;
+    int  height  = 0;
+};
 
 // -----------------------------------------------------------------------------
 // Font Cache Configuration
@@ -37,17 +48,19 @@ public:
     Font_renderer();
     ~Font_renderer();
 
-    // Non-copyable and non-movable due to GL resource ownership.
+    // Non-copyable and non-movable due to renderer resource ownership.
     Font_renderer(const Font_renderer&) = delete;
     Font_renderer& operator=(const Font_renderer&) = delete;
     Font_renderer(Font_renderer&&) = delete;
     Font_renderer& operator=(Font_renderer&&) = delete;
 
-    // Initializes the font system and ensures the thread-local resources are ready.
-    // Must be called on a thread with an active OpenGL context before use.
+    // Initializes the font system and ensures the thread-local CPU resources are ready.
     // asset_loader: Provider for font and shader assets
     // force_rebuild recreates GL resources even if the pixel height matches.
     void initialize(Asset_loader& asset_loader, int pixel_height, bool force_rebuild = false);
+
+    // Initializes CPU font metrics/cache for layout calculation before the render pass.
+    void initialize_metrics(Asset_loader& asset_loader, int pixel_height, bool force_rebuild = false);
 
     // Releases this instance's weak reference to the shared resources.
     void deinitialize();
@@ -81,10 +94,27 @@ public:
     // Adds a string to an internal vertex buffer to be drawn in a batch.
     void batch_text(float x, float y, const char* text);
 
-    // Renders all text currently in the batch buffer to the screen and clears the buffer.
-    void draw_and_flush(const glm::mat4& pmv, const glm::vec4& color);
+    // Starts a QRhi text frame. Subsequent batch_text() calls append to the
+    // QRhi CPU batch until rhi_record_frame() resets the frame state.
+    void rhi_begin_frame();
 
-    // Clears the batch buffer without rendering (for skip_gl mode).
+    // Uploads the current QRhi CPU batch into this frame's draw plan and clears it.
+    void rhi_queue_draw(
+        const frame_context_t& ctx,
+        const glm::mat4& pmv,
+        const glm::vec4& color,
+        const text_scissor_t& scissor = {});
+
+    // Uploads the accumulated QRhi text geometry after all draw batches are queued.
+    void rhi_finalize_frame(const frame_context_t& ctx);
+
+    // Records all queued QRhi text draws. Must be called inside the render pass.
+    void rhi_record_frame(const frame_context_t& ctx);
+
+    // Clears QRhi per-frame CPU/draw state without touching persistent resources.
+    void rhi_reset_frame();
+
+    // Clears the batch buffer without rendering.
     void clear_buffer();
 
 private:

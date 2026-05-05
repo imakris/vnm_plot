@@ -1,11 +1,9 @@
 #pragma once
 // VNM Plot Library - Core Public Header
 //
-// Pulls in the user-facing core API. Renderer-internal headers
-// (default_shaders.h, vertex_layout.h, gl_program.h, primitive_renderer.h,
-// chrome_renderer.h, series_renderer.h, layout_calculator.h, range_cache.h,
-// font_renderer.h, text_renderer.h) are reachable individually but are not
-// surfaced through this umbrella because applications should not need them.
+// Pulls in the user-facing core API. Renderer-internal headers are reachable
+// individually but are not surfaced through this umbrella because applications
+// should not need them.
 
 #include <vnm_plot/core/access_policy.h>
 #include <vnm_plot/core/algo.h>
@@ -14,6 +12,5 @@
 #include <vnm_plot/core/constants.h>
 #include <vnm_plot/core/function_sample.h>
 #include <vnm_plot/core/plot_config.h>
-#include <vnm_plot/core/plot_core.h>
 #include <vnm_plot/core/series_builder.h>
 #include <vnm_plot/core/types.h>

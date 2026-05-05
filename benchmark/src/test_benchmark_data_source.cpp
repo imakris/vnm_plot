@@ -59,9 +59,9 @@ bool test_snapshot_with_data() {
     Ring_buffer<Bar_sample> buffer(100);
     Benchmark_data_source<Bar_sample> source(buffer);
 
-    // Push some data
+    // Push some data. Timestamps are int64 nanoseconds (API convention).
     Bar_sample bar{};
-    bar.timestamp = 1.0;
+    bar.timestamp = 1'000'000'000;  // 1.0 s
     bar.open = 100.0f;
     bar.high = 105.0f;
     bar.low = 95.0f;
@@ -85,9 +85,10 @@ bool test_snapshot_data_correctness() {
     Ring_buffer<Bar_sample> buffer(100);
     Benchmark_data_source<Bar_sample> source(buffer);
 
-    // Push specific data
+    // Push specific data. Timestamps are int64 nanoseconds (API convention).
+    constexpr int64_t k_test_ts_ns = 123'456'000'000;  // 123.456 s in ns
     Bar_sample bar{};
-    bar.timestamp = 123.456;
+    bar.timestamp = k_test_ts_ns;
     bar.open = 100.0f;
     bar.high = 110.0f;
     bar.low = 90.0f;
@@ -98,7 +99,7 @@ bool test_snapshot_data_correctness() {
     auto result = source.try_snapshot();
     const auto* sample = static_cast<const Bar_sample*>(result.snapshot.at(0));
     TEST_ASSERT(sample != nullptr, "sample should be available");
-    TEST_ASSERT(sample->timestamp == 123.456, "timestamp should match");
+    TEST_ASSERT(sample->timestamp == k_test_ts_ns, "timestamp should match");
     TEST_ASSERT(sample->close == 105.0f, "close should match");
 
     return true;
@@ -203,14 +204,15 @@ bool test_bar_access_policy() {
 
     TEST_ASSERT(policy.is_valid(), "policy should be valid");
 
+    constexpr int64_t k_bar_ts_ns = 1'000'000'000'000;  // 1000.0 s in ns
     Bar_sample bar{};
-    bar.timestamp = 1000.0;
+    bar.timestamp = k_bar_ts_ns;
     bar.close = 105.5f;
     bar.low = 100.0f;
     bar.high = 110.0f;
     bar.volume = 5000.0f;
 
-    TEST_ASSERT(policy.get_timestamp(&bar) == 1000.0, "timestamp extraction");
+    TEST_ASSERT(policy.get_timestamp(&bar) == k_bar_ts_ns, "timestamp extraction");
     TEST_ASSERT(policy.get_value(&bar) == 105.5f, "value extraction (close)");
 
     auto [lo, hi] = policy.get_range(&bar);
@@ -228,12 +230,13 @@ bool test_trade_access_policy() {
 
     TEST_ASSERT(policy.is_valid(), "policy should be valid");
 
+    constexpr int64_t k_trade_ts_ns = 2'000'000'000'000;  // 2000.0 s in ns
     Trade_sample trade{};
-    trade.timestamp = 2000.0;
+    trade.timestamp = k_trade_ts_ns;
     trade.price = 99.5f;
     trade.size = 100.0f;
 
-    TEST_ASSERT(policy.get_timestamp(&trade) == 2000.0, "timestamp extraction");
+    TEST_ASSERT(policy.get_timestamp(&trade) == k_trade_ts_ns, "timestamp extraction");
     TEST_ASSERT(policy.get_value(&trade) == 99.5f, "value extraction (price)");
 
     auto [lo, hi] = policy.get_range(&trade);
@@ -341,22 +344,34 @@ bool test_sequence_short_circuit() {
     bar.close = 100.0f;
     buffer.push(bar);
 
-    // First snapshot
-    auto result1 = source.try_snapshot();
-    TEST_ASSERT(result1.status == vnm::plot::snapshot_result_t::Snapshot_status::READY,
-                "first snapshot should be READY");
-    uint64_t seq1 = source.sequence();
+    // First and second snapshots: same data, same cached pointer expected.
+    // Each snapshot holds a shared_lock on the ring buffer for its
+    // lifetime, so a subsequent push() would block on the writer lock
+    // until every outstanding snapshot is released. Capture the
+    // identity bits we need to assert on, then drop the snapshots
+    // before pushing further data.
+    std::size_t result1_count = 0;
+    const void* result1_data = nullptr;
+    uint64_t seq1 = 0;
+    {
+        auto result1 = source.try_snapshot();
+        TEST_ASSERT(result1.status == vnm::plot::snapshot_result_t::Snapshot_status::READY,
+                    "first snapshot should be READY");
+        result1_count = result1.snapshot.count;
+        result1_data = result1.snapshot.data;
+        seq1 = source.sequence();
 
-    // Second snapshot without any new data should return cached result
-    auto result2 = source.try_snapshot();
-    TEST_ASSERT(result2.status == vnm::plot::snapshot_result_t::Snapshot_status::READY,
-                "cached snapshot should be READY");
-    TEST_ASSERT(result2.snapshot.count == result1.snapshot.count,
-                "cached snapshot should have same count");
-    TEST_ASSERT(result2.snapshot.data == result1.snapshot.data,
-                "cached snapshot should return same pointer");
+        auto result2 = source.try_snapshot();
+        TEST_ASSERT(result2.status == vnm::plot::snapshot_result_t::Snapshot_status::READY,
+                    "cached snapshot should be READY");
+        TEST_ASSERT(result2.snapshot.count == result1_count,
+                    "cached snapshot should have same count");
+        TEST_ASSERT(result2.snapshot.data == result1_data,
+                    "cached snapshot should return same pointer");
+    }
 
-    // Push new data
+    // Push new data. Snapshot locks released above; push acquires the
+    // writer lock cleanly.
     Bar_sample bar2{};
     bar2.close = 200.0f;
     buffer.push(bar2);
@@ -371,24 +386,16 @@ bool test_sequence_short_circuit() {
     return true;
 }
 
-// Test: Access policies have setup_vertex_attributes and layout_key
-bool test_access_policy_vertex_setup() {
+// Test: Access policies expose stable, distinct layout_keys for cache identity
+bool test_access_policy_layout_keys() {
     auto bar_policy = make_bar_access_policy();
     auto trade_policy = make_trade_access_policy();
 
-    // Check that setup_vertex_attributes is set
-    TEST_ASSERT(bar_policy.setup_vertex_attributes != nullptr,
-                "bar policy should have setup_vertex_attributes");
-    TEST_ASSERT(trade_policy.setup_vertex_attributes != nullptr,
-                "trade policy should have setup_vertex_attributes");
-
-    // Check that layout_key is set and unique
     TEST_ASSERT(bar_policy.layout_key != 0, "bar policy should have non-zero layout_key");
     TEST_ASSERT(trade_policy.layout_key != 0, "trade policy should have non-zero layout_key");
     TEST_ASSERT(bar_policy.layout_key != trade_policy.layout_key,
                 "bar and trade policies should have different layout_keys");
 
-    // Verify expected layout key values
     TEST_ASSERT(bar_policy.layout_key == k_bar_sample_layout_key,
                 "bar policy layout_key should match constant");
     TEST_ASSERT(trade_policy.layout_key == k_trade_sample_layout_key,
@@ -417,7 +424,7 @@ int main() {
     RUN_TEST(test_brownian_integration);
     RUN_TEST(test_unsupported_lod);
     RUN_TEST(test_sequence_short_circuit);
-    RUN_TEST(test_access_policy_vertex_setup);
+    RUN_TEST(test_access_policy_layout_keys);
 
     std::cout << "\n=================================\n";
     std::cout << "Results: " << passed << " passed, " << failed << " failed\n";

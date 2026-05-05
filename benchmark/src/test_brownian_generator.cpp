@@ -58,7 +58,7 @@ bool test_default_config() {
     Brownian_generator gen(config);
 
     TEST_ASSERT(gen.current_price() == 100.0, "initial price should be 100.0");
-    TEST_ASSERT(gen.current_time() == 0.0, "initial time should be 0.0");
+    TEST_ASSERT(gen.current_time_ns() == 0, "initial time should be 0 ns");
 
     return true;
 }
@@ -71,7 +71,7 @@ bool test_bar_generation() {
 
     Bar_sample bar = gen.next_bar();
 
-    TEST_ASSERT(bar.timestamp == 0.0, "first bar timestamp should be 0.0");
+    TEST_ASSERT(bar.timestamp == 0, "first bar timestamp should be 0 ns");
     TEST_ASSERT(bar.open > 0.0f, "open should be positive");
     TEST_ASSERT(bar.high >= bar.open, "high should be >= open");
     TEST_ASSERT(bar.high >= bar.close, "high should be >= close");
@@ -91,7 +91,7 @@ bool test_trade_generation() {
 
     Trade_sample trade = gen.next_trade();
 
-    TEST_ASSERT(trade.timestamp == 0.0, "first trade timestamp should be 0.0");
+    TEST_ASSERT(trade.timestamp == 0, "first trade timestamp should be 0 ns");
     TEST_ASSERT(trade.price > 0.0f, "price should be positive");
     TEST_ASSERT(trade.size > 0.0f, "size should be positive");
 
@@ -104,11 +104,16 @@ bool test_time_advancement() {
     config.time_step = 0.01;
     Brownian_generator gen(config);
 
+    // 0.01 s = 10_000_000 ns. The constructor rounds time_step * 1e9 to the
+    // nearest int64; 0.01 s is one of the exact values it produces.
+    constexpr int64_t k_step_ns = 10'000'000;
     gen.next_bar();
-    TEST_ASSERT(std::abs(gen.current_time() - 0.01) < 1e-9, "time should advance by time_step");
+    TEST_ASSERT(gen.current_time_ns() == k_step_ns,
+        "time should advance by time_step");
 
     gen.next_bar();
-    TEST_ASSERT(std::abs(gen.current_time() - 0.02) < 1e-9, "time should advance by time_step");
+    TEST_ASSERT(gen.current_time_ns() == 2 * k_step_ns,
+        "time should advance by time_step");
 
     return true;
 }
@@ -122,7 +127,7 @@ bool test_batch_generation() {
     std::vector<Bar_sample> bars(100);
     gen.generate_bars(bars.data(), bars.size());
 
-    TEST_ASSERT(bars[0].timestamp == 0.0, "first bar timestamp should be 0.0");
+    TEST_ASSERT(bars[0].timestamp == 0, "first bar timestamp should be 0 ns");
     TEST_ASSERT(bars[99].timestamp > bars[0].timestamp, "timestamps should increase");
 
     // Check all bars are valid
@@ -168,7 +173,12 @@ bool test_reset() {
     Bar_sample bar_after_reset = gen.next_bar();
 
     TEST_ASSERT(float_eq(bar1.close, bar_after_reset.close), "reset should reproduce same sequence");
-    TEST_ASSERT(double_eq(gen.current_time(), config.time_step), "time should be reset");
+    // After reset+next_bar, current_time_ns should equal one step (time_step
+    // converted to nanoseconds).
+    const int64_t expected_step_ns =
+        static_cast<int64_t>(std::llround(config.time_step * 1.0e9));
+    TEST_ASSERT(gen.current_time_ns() == expected_step_ns,
+        "time should be reset to one step after first sample");
 
     return true;
 }

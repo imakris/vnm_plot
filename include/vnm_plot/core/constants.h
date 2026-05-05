@@ -6,7 +6,7 @@
 namespace vnm::plot {
 
 // Public constants - safe for external use
-constexpr int    k_msaa_samples                   = 8;  ///< Recommended MSAA sample count for OpenGL contexts
+constexpr int    k_msaa_samples                   = 8;  ///< Recommended MSAA sample count
 
 namespace detail {
 // Internal implementation details - do not use directly
