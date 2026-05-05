@@ -18,6 +18,17 @@ bool Text_renderer::render(const frame_context_t& /*ctx*/, bool /*fade_v_labels*
     return false;
 }
 
+bool Text_renderer::prepare(const frame_context_t& /*ctx*/, bool /*fade_v_labels*/, bool /*fade_h_labels*/)
+{
+    // No-op in stub - return false to indicate no animations in progress
+    return false;
+}
+
+void Text_renderer::record(const frame_context_t& /*ctx*/)
+{
+    // No-op in stub.
+}
+
 bool Text_renderer::render_axis_labels(const frame_context_t& /*ctx*/, bool /*fade_labels*/)
 {
     // No-op in stub

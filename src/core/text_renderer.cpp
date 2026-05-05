@@ -172,6 +172,27 @@ bool Text_renderer::render(const frame_context_t& ctx, bool fade_v_labels, bool 
     return any_active;
 }
 
+bool Text_renderer::prepare(const frame_context_t& ctx, bool fade_v_labels, bool fade_h_labels)
+{
+    if (!m_fonts) {
+        return false;
+    }
+
+    m_fonts->rhi_begin_frame();
+    bool any_active = false;
+    any_active |= render_axis_labels(ctx, fade_v_labels);
+    any_active |= render_info_overlay(ctx, fade_h_labels);
+    m_fonts->rhi_finalize_frame(ctx);
+    return any_active;
+}
+
+void Text_renderer::record(const frame_context_t& ctx)
+{
+    if (m_fonts) {
+        m_fonts->rhi_record_frame(ctx);
+    }
+}
+
 bool Text_renderer::render_axis_labels(const frame_context_t& ctx, bool fade_labels)
 {
     const auto& pl = ctx.layout;
@@ -186,6 +207,7 @@ bool Text_renderer::render_axis_labels(const frame_context_t& ctx, bool fade_lab
     const float baseline_off = m_fonts->baseline_offset_px();
     const double v_span = double(ctx.v1) - double(ctx.v0);
 
+    text_scissor_t rhi_scissor;
     if (!skip_gl) {
         GLint scissor_x = 0;
         GLint scissor_y = 0;
@@ -200,6 +222,24 @@ bool Text_renderer::render_axis_labels(const frame_context_t& ctx, bool fade_lab
 
         glEnable(GL_SCISSOR_TEST);
         glScissor(scissor_x, scissor_y, scissor_w, scissor_h);
+    }
+    else
+    if (ctx.rhi) {
+        GLint scissor_x = 0;
+        GLint scissor_y = 0;
+        GLsizei scissor_w = 0;
+        GLsizei scissor_h = 0;
+        if (!to_glint_rounded(pl.usable_width, scissor_x) ||
+            !to_glint_rounded(double(ctx.win_h) - double(pl.usable_height), scissor_y) ||
+            !to_positive_glsizei(pl.v_bar_width, scissor_w) ||
+            !to_positive_glsizei(pl.usable_height, scissor_h)) {
+            return true;
+        }
+        rhi_scissor.enabled = true;
+        rhi_scissor.x      = scissor_x;
+        rhi_scissor.y      = scissor_y;
+        rhi_scissor.width  = scissor_w;
+        rhi_scissor.height = scissor_h;
     }
 
     const auto draw_label = [&](double value, const label_fade_state_t& state) {
@@ -226,6 +266,12 @@ bool Text_renderer::render_axis_labels(const frame_context_t& ctx, bool fade_lab
 
         m_fonts->batch_text(snapped_x, snapped_y, state.text.c_str());
         if (fade_labels) {
+            if (ctx.rhi) {
+                glm::vec4 color = font_color;
+                color.a *= state.alpha;
+                m_fonts->rhi_queue_draw(ctx, ctx.pmv, color, rhi_scissor);
+            }
+            else
             if (skip_gl) {
                 m_fonts->clear_buffer();
             }
@@ -261,6 +307,10 @@ bool Text_renderer::render_axis_labels(const frame_context_t& ctx, bool fade_lab
     }
 
     if (!fade_labels) {
+        if (ctx.rhi) {
+            m_fonts->rhi_queue_draw(ctx, ctx.pmv, font_color, rhi_scissor);
+        }
+        else
         if (skip_gl) {
             m_fonts->clear_buffer();
         }
@@ -302,6 +352,12 @@ bool Text_renderer::render_info_overlay(const frame_context_t& ctx, bool fade_la
 
         m_fonts->batch_text(pen_x, pen_y, state.text.c_str());
         if (fade_labels) {
+            if (ctx.rhi) {
+                glm::vec4 color = font_color;
+                color.a *= state.alpha;
+                m_fonts->rhi_queue_draw(ctx, ctx.pmv, color);
+            }
+            else
             if (skip_gl) {
                 m_fonts->clear_buffer();
             }
@@ -387,6 +443,10 @@ bool Text_renderer::render_info_overlay(const frame_context_t& ctx, bool fade_la
     }
 
     if (!fade_labels || ctx.show_info) {
+        if (ctx.rhi) {
+            m_fonts->rhi_queue_draw(ctx, ctx.pmv, font_color);
+        }
+        else
         if (skip_gl) {
             m_fonts->clear_buffer();
         }

@@ -83,6 +83,8 @@ struct Headless_config {
     bool quiet = false;
     bool show_text = true;  // Text rendering enabled by default (like Qt benchmark)
     bool no_gl = false;     // Skip all GL calls to measure pure CPU time
+    bool no_swap = false;   // Do not present the hidden GLFW window after FBO rendering
+    bool finish = false;    // Wait for GL completion after each frame
     int width = k_default_width;
     int height = k_default_height;
     bool legacy_fps_set = false;
@@ -121,6 +123,8 @@ void print_usage(const char* program_name)
               << "  --quiet                 Suppress progress output (report still written)\n"
               << "  --no-text               Disable text/font rendering\n"
               << "  --no-gl                 Skip all GL calls to measure pure CPU time\n"
+              << "  --no-swap               Do not swap the hidden window after FBO rendering\n"
+              << "  --finish                Call glFinish after each rendered frame\n"
               << "  --version               Show version information\n"
               << "  --help                  Show this help message\n"
               << "\n"
@@ -219,6 +223,12 @@ Parse_result parse_args(int argc, char* argv[])
             }
             else if (arg == "--no-gl") {
                 config.no_gl = true;
+            }
+            else if (arg == "--no-swap") {
+                config.no_swap = true;
+            }
+            else if (arg == "--finish") {
+                config.finish = true;
             }
             else if (arg == "--help" || arg == "-h" || arg == "--version" || arg == "-v") {
                 // Handled separately in main
@@ -746,8 +756,6 @@ int main(int argc, char* argv[])
     }
 
     std::size_t frame_count = 0;
-    const int fb_w = fbo.width();
-    const int fb_h = fbo.height();
 
     // Main render loop
     while (!glfwWindowShouldClose(window)) {
@@ -820,9 +828,13 @@ int main(int argc, char* argv[])
         }
 
         // Swap buffers (skip in no-GL mode)
-        if (!config.no_gl) {
+        if (!config.no_gl && !config.no_swap) {
             BENCHMARK_SCOPE(profiler, "renderer.frame.swap_buffers");
             glfwSwapBuffers(window);
+        }
+        if (!config.no_gl && config.finish) {
+            BENCHMARK_SCOPE(profiler, "renderer.frame.finish");
+            glFinish();
         }
         ++frame_count;
 

@@ -27,6 +27,12 @@ public:
     // Returns true while label fade animations are in progress.
     bool render(const frame_context_t& ctx, bool fade_v_labels, bool fade_h_labels);
 
+    // QRhi path: build all text draw batches and upload resources before beginPass().
+    bool prepare(const frame_context_t& ctx, bool fade_v_labels, bool fade_h_labels);
+
+    // QRhi path: record the prepared text draw calls inside the active pass.
+    void record(const frame_context_t& ctx);
+
     struct label_fade_state_t
     {
         float alpha = 0.0f;

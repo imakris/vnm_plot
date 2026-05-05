@@ -13,6 +13,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
+#include <memory>
 #include <string>
 
 namespace {
@@ -41,6 +42,7 @@ void print_usage(const char* program_name)
               << "  --session <name>        Session name for report header (default: benchmark_run)\n"
               << "  --stream <name>         Stream name for report (default: SIM)\n"
               << "  --data-type <type>      bars|trades (default: bars)\n"
+              << "  --backend <backend>     opengl|qrhi|qrhi-offscreen (default: opengl)\n"
               << "  --render-style <style>  dots|line|area (default: dots for trades, area for bars)\n"
               << "  --static                Skip the generator and render a fixed 4-segment line (visual-diff mode)\n"
               << "  --line-px <pixels>      Line thickness for line/area rendering (default: 1.5)\n"
@@ -53,6 +55,7 @@ void print_usage(const char* program_name)
               << "  --extended-metadata     Include benchmark-specific metadata in report\n"
               << "  --quiet                 Suppress progress output (report still written)\n"
               << "  --no-text               Disable text/font rendering\n"
+              << "  --finish                Wait for GPU completion after offscreen frames\n"
               << "  --version               Show version information\n"
               << "  --help                  Show this help message\n"
               << "\n"
@@ -79,6 +82,29 @@ Parse_result parse_args(int argc, char* argv[])
         try {
             if (arg == "--duration" && i + 1 < argc) {
                 config.duration_seconds = std::stod(argv[++i]);
+            }
+            else
+            if (arg == "--backend" && i + 1 < argc) {
+                std::string backend = argv[++i];
+                if (backend == "opengl" || backend == "OpenGL") {
+                    config.backend = "opengl";
+                }
+                else
+                if (backend == "qrhi" || backend == "QRhi" || backend == "QRHI") {
+                    config.backend = "qrhi";
+                }
+                else
+                if (backend == "qrhi-offscreen" || backend == "qrhi_offscreen" ||
+                    backend == "QRhiOffscreen" || backend == "QRHIOffscreen")
+                {
+                    config.backend = "qrhi-offscreen";
+                }
+                else {
+                    result.success = false;
+                    result.error_message =
+                        "Invalid backend '" + backend + "'. Use 'opengl', 'qrhi', or 'qrhi-offscreen'.";
+                    return result;
+                }
             }
             else
             if (arg == "--session" && i + 1 < argc) {
@@ -169,6 +195,10 @@ Parse_result parse_args(int argc, char* argv[])
                 config.show_text = false;
             }
             else
+            if (arg == "--finish") {
+                config.finish = true;
+            }
+            else
             if (arg == "--help" || arg == "-h" || arg == "--version" || arg == "-v") {
                 // Handled separately in main
             }
@@ -206,6 +236,9 @@ std::string validate_config(const vnm::benchmark::Benchmark_config& config)
         return "Duration must be at least 1 second (got " +
                std::to_string(config.duration_seconds) + ")";
     }
+    if (config.backend != "opengl" && config.backend != "qrhi" && config.backend != "qrhi-offscreen") {
+        return "Backend must be 'opengl', 'qrhi', or 'qrhi-offscreen'";
+    }
     if (config.duration_seconds > 3600.0) {
         return "Duration cannot exceed 3600 seconds (1 hour)";
     }
@@ -240,6 +273,7 @@ void print_config_summary(const vnm::benchmark::Benchmark_config& config, std::o
 {
     os << "Configuration:\n"
        << "  Duration:     " << config.duration_seconds << "s\n"
+       << "  Backend:      " << config.backend << "\n"
        << "  Data type:    " << config.data_type << "\n"
        << "  Style:        " << (config.style.empty() ? "default" : config.style) << "\n"
        << "  Rate:         " << config.rate << " samples/sec\n"
@@ -297,15 +331,14 @@ int main(int argc, char* argv[])
         return k_exit_invalid_args;
     }
 
-    // Set OpenGL version before QApplication
+    // Set the requested presentation format before QApplication. Qt Quick's
+    // QRhi render loop maps swapInterval(0) to QRhiSwapChain::NoVSync.
     QSurfaceFormat format;
     format.setVersion(4, 3);
     format.setProfile(QSurfaceFormat::CoreProfile);
     format.setDepthBufferSize(24);
     format.setSamples(4);  // MSAA
     format.setSwapBehavior(QSurfaceFormat::DoubleBuffer);
-    // Disable vsync so the benchmark measures actual rendering throughput
-    // rather than the display refresh rate.
     format.setSwapInterval(0);
     QSurfaceFormat::setDefaultFormat(format);
 
@@ -318,19 +351,16 @@ int main(int argc, char* argv[])
         std::cout << "\nStarting benchmark...\n";
     }
 
-    // Create benchmark window
-    vnm::benchmark::Benchmark_window window(config);
-
     // Track exit code
     int exit_code = k_exit_success;
 
-    // Connect finish signal to generate report and quit
-    QObject::connect(&window, &vnm::benchmark::Benchmark_window::benchmark_finished, [&]() {
+    auto finish_benchmark = [&](auto& window) {
         // Build report metadata
         vnm::benchmark::Report_metadata meta;
         meta.session = config.session;
         meta.stream = config.stream;
         meta.data_type = config.data_type;
+        meta.backend = config.backend;
         meta.target_duration = config.duration_seconds;
         meta.output_directory = config.output_directory;
         meta.started_at = window.started_at();
@@ -356,8 +386,9 @@ int main(int argc, char* argv[])
                 std::cout << report_path.string() << "\n";
             }
 
-            // Open the report file in default text editor
-            QDesktopServices::openUrl(QUrl::fromLocalFile(QString::fromStdString(report_path.string())));
+            if (!config.quiet) {
+                QDesktopServices::openUrl(QUrl::fromLocalFile(QString::fromStdString(report_path.string())));
+            }
         }
         catch (const std::exception& e) {
             std::cerr << "Error writing report: " << e.what() << "\n";
@@ -365,9 +396,79 @@ int main(int argc, char* argv[])
         }
 
         app.quit();
-    });
+    };
 
-    window.show();
+    auto write_benchmark_report = [&](auto& benchmark) {
+        vnm::benchmark::Report_metadata meta;
+        meta.session = config.session;
+        meta.stream = config.stream;
+        meta.data_type = config.data_type;
+        meta.backend = config.backend;
+        meta.target_duration = config.duration_seconds;
+        meta.output_directory = config.output_directory;
+        meta.started_at = benchmark.started_at();
+        meta.generated_at = std::chrono::system_clock::now();
+        meta.include_extended = config.extended_metadata;
+        meta.seed = config.seed;
+        meta.volatility = config.volatility;
+        meta.ring_capacity = config.ring_capacity;
+        meta.samples_generated = benchmark.samples_generated();
+
+        try {
+            auto report_path = benchmark.profiler().write_report(meta);
+            if (!config.quiet) {
+                std::cout << "\nBenchmark completed.\n"
+                          << "  Samples generated: " << benchmark.samples_generated() << "\n"
+                          << "  Report written to: " << report_path.string() << "\n";
+                std::cout << "\n" << benchmark.profiler().generate_report(meta);
+            }
+            else {
+                std::cout << report_path.string() << "\n";
+            }
+        }
+        catch (const std::exception& e) {
+            std::cerr << "Error writing report: " << e.what() << "\n";
+            return k_exit_runtime_error;
+        }
+
+        return k_exit_success;
+    };
+
+    if (config.backend == "qrhi-offscreen") {
+        vnm::benchmark::Benchmark_rhi_offscreen_runner runner(config);
+        std::string error_message;
+        if (!runner.run(error_message)) {
+            std::cerr << "Error: " << error_message << "\n";
+            return k_exit_runtime_error;
+        }
+        return write_benchmark_report(runner);
+    }
+
+    std::unique_ptr<vnm::benchmark::Benchmark_window> gl_window;
+    std::unique_ptr<vnm::benchmark::Benchmark_rhi_window> rhi_window;
+
+    if (config.backend == "qrhi") {
+        rhi_window = std::make_unique<vnm::benchmark::Benchmark_rhi_window>(config);
+        rhi_window->setFormat(format);
+        QObject::connect(
+            rhi_window.get(),
+            &vnm::benchmark::Benchmark_rhi_window::benchmark_finished,
+            [&]() {
+                finish_benchmark(*rhi_window);
+            });
+        rhi_window->show();
+    }
+    else {
+        gl_window = std::make_unique<vnm::benchmark::Benchmark_window>(config);
+        gl_window->setFormat(format);
+        QObject::connect(
+            gl_window.get(),
+            &vnm::benchmark::Benchmark_window::benchmark_finished,
+            [&]() {
+                finish_benchmark(*gl_window);
+            });
+        gl_window->show();
+    }
 
     int app_result = app.exec();
     return (app_result != 0) ? k_exit_runtime_error : exit_code;

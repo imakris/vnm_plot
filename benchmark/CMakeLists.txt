@@ -5,12 +5,16 @@
 # Note: This file is included as a subdirectory from the root CMakeLists.txt
 # and inherits cmake_minimum_required and project settings from parent.
 
-# Find Qt6 (required for window management and OpenGL context)
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets OpenGL OpenGLWidgets)
+# Find Qt6 (required for window management and OpenGL/QRhi presentation)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui GuiPrivate Widgets Quick OpenGL OpenGLWidgets)
 
 # Find vnm_plot_core (should be available from parent)
 if(NOT TARGET vnm_plot::core)
     message(FATAL_ERROR "vnm_plot_core target not found. Build benchmark from vnm_plot root.")
+endif()
+
+if(NOT TARGET vnm_plot::vnm_plot)
+    message(FATAL_ERROR "vnm_plot Qt target not found. Build benchmark with VNM_PLOT_BUILD_QT=ON.")
 endif()
 
 # Benchmark should include text rendering by default.
@@ -59,10 +63,13 @@ target_compile_features(vnm_plot_benchmark PRIVATE cxx_std_20)
 # Link dependencies
 target_link_libraries(vnm_plot_benchmark
     PRIVATE
+        vnm_plot::vnm_plot
         vnm_plot::core
         Qt6::Core
         Qt6::Gui
+        Qt6::GuiPrivate
         Qt6::Widgets
+        Qt6::Quick
         Qt6::OpenGL
         Qt6::OpenGLWidgets
 )

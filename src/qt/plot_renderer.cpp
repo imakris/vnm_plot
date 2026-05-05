@@ -4,8 +4,11 @@
 #include <vnm_plot/core/chrome_renderer.h>
 #include <vnm_plot/core/color_palette.h>
 #include <vnm_plot/core/constants.h>
+#include <vnm_plot/core/font_renderer.h>
+#include <vnm_plot/core/layout_calculator.h>
 #include <vnm_plot/core/primitive_renderer.h>
 #include <vnm_plot/core/series_renderer.h>
+#include <vnm_plot/core/text_renderer.h>
 
 #include <QColor>
 #include <QMatrix4x4>
@@ -16,6 +19,8 @@
 #include <rhi/qrhi.h>
 
 #include <algorithm>
+#include <cmath>
+#include <chrono>
 #include <limits>
 #include <map>
 #include <memory>
@@ -188,6 +193,52 @@ std::pair<float, float> resolve_v_range(
     return {v_min, v_max};
 }
 
+Layout_calculator::parameters_t build_layout_params(
+    float v_min,
+    float v_max,
+    std::int64_t t_min_ns,
+    std::int64_t t_max_ns,
+    int win_w,
+    double usable_height,
+    double vbar_width,
+    double preview_height,
+    double font_px,
+    const Plot_config& config,
+    const Font_renderer* fonts)
+{
+    Layout_calculator::parameters_t params;
+    params.v_min = v_min;
+    params.v_max = v_max;
+    params.t_min = t_min_ns;
+    params.t_max = t_max_ns;
+    params.usable_width = std::max(0.0, double(win_w) - vbar_width);
+    params.usable_height = usable_height;
+    params.vbar_width = vbar_width;
+    params.label_visible_height = usable_height + preview_height;
+    params.adjusted_font_size_in_pixels = font_px;
+    params.h_label_vertical_nudge_factor = detail::k_h_label_vertical_nudge_px;
+
+    if (fonts) {
+        params.monospace_char_advance_px = fonts->monospace_advance_px();
+        params.monospace_advance_is_reliable = fonts->monospace_advance_is_reliable();
+        params.measure_text_cache_key = fonts->text_measure_cache_key();
+        params.measure_text_func = [fonts](const char* text) {
+            return fonts->measure_text_px(text);
+        };
+    }
+
+    params.get_required_fixed_digits_func = [](double) { return 2; };
+    const Plot_config* config_ptr = &config;
+    params.format_timestamp_func = [config_ptr](std::int64_t ts_ns, std::int64_t step_ns) -> std::string {
+        if (config_ptr->format_timestamp) {
+            return config_ptr->format_timestamp(ts_ns, step_ns);
+        }
+        return default_format_timestamp(ts_ns, step_ns);
+    };
+    params.profiler = config.profiler.get();
+    return params;
+}
+
 } // anonymous namespace
 
 struct Plot_renderer::impl_t
@@ -215,6 +266,15 @@ struct Plot_renderer::impl_t
     Series_renderer     series;
     Primitive_renderer  primitives;
     Chrome_renderer     chrome;
+    Layout_calculator   layout_calc;
+    Layout_cache        layout_cache;
+    double              last_vbar_width_pixels = detail::k_vbar_min_width_px_d;
+#if defined(VNM_PLOT_ENABLE_TEXT)
+    std::unique_ptr<Font_renderer> fonts;
+    std::unique_ptr<Text_renderer> text;
+    int                            last_font_px = 0;
+#endif
+    std::chrono::steady_clock::time_point last_render_callback;
     bool                series_initialized   = false;
 };
 
@@ -233,6 +293,12 @@ void Plot_renderer::initialize(QRhiCommandBuffer* /*cb*/)
         m_impl->series.initialize(m_impl->asset_loader);
         m_impl->series_initialized = true;
     }
+#if defined(VNM_PLOT_ENABLE_TEXT)
+    if (!m_impl->fonts) {
+        m_impl->fonts = std::make_unique<Font_renderer>();
+        m_impl->text = std::make_unique<Text_renderer>(m_impl->fonts.get());
+    }
+#endif
     // Primitive_renderer needs no eager GL initialization on the RHI path:
     // its GL programs only feed the raw-GL flush used by the headless
     // benchmark and standalone tests, and the RHI path loads its own QSB
@@ -278,6 +344,19 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
 
     const auto& snapshot = m_impl->snapshot;
     const Plot_config& config = snapshot.config;
+    vnm::plot::Profiler* profiler = config.profiler.get();
+    const auto callback_now = std::chrono::steady_clock::now();
+    if (profiler && m_impl->last_render_callback.time_since_epoch().count() != 0) {
+        const double elapsed_ms =
+            std::chrono::duration<double, std::milli>(
+                callback_now - m_impl->last_render_callback).count();
+        profiler->record_observation("qrhi.renderer.callback_interval", elapsed_ms);
+    }
+    m_impl->last_render_callback = callback_now;
+
+    VNM_PLOT_PROFILE_SCOPE(profiler, "renderer");
+    VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame");
+
     const Color_palette palette =
         config.dark_mode ? Color_palette::dark() : Color_palette::light();
 
@@ -293,35 +372,143 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
             palette.background.a);
     }
 
-    const QSize pixel_size = rt->pixelSize();
+    QSize pixel_size;
+    {
+        VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.fb_size");
+        pixel_size = rt->pixelSize();
+    }
     const int win_w = pixel_size.width();
     const int win_h = pixel_size.height();
 
-    // Frame layout for chrome + series. QRhi does not draw text yet, but the
-    // panes themselves still need to match the OpenGL layout so the plot area,
-    // gutters, and preview strip scale consistently.
+    m_impl->primitives.set_profiler(profiler);
+    const auto log_error = config.log_error;
+    const auto log_debug = config.log_debug;
+    m_impl->asset_loader.set_log_callback(log_error);
+    m_impl->primitives.set_log_callback(log_error);
+
     const double reserved_h = snapshot.base_label_height_px + snapshot.adjusted_preview_height;
-    double vbar_width = snapshot.vbar_width_pixels;
-    if (!std::isfinite(vbar_width) || vbar_width <= detail::k_vbar_min_width_px_d) {
-        vbar_width =
-            double(detail::k_v_label_horizontal_padding_px) + snapshot.adjusted_font_px * 5.0;
-    }
-    vbar_width = std::clamp(vbar_width, 0.0, std::max(0.0, double(win_w) * 0.5));
-
-    frame_layout_result_t layout;
-    layout.usable_width  = std::max(0.0, double(win_w) - vbar_width);
-    layout.usable_height = static_cast<double>(
-        std::max(0.0, double(win_h) - reserved_h));
-    layout.v_bar_width   = vbar_width;
-    layout.h_bar_height  = snapshot.base_label_height_px;
-    layout.max_v_label_text_width = 0.0f;
-
-    frame_context_t ctx{layout};
     const auto [v_min, v_max] = resolve_v_range(
         snapshot.series,
         snapshot.data_cfg,
         config,
         snapshot.v_auto);
+
+#if defined(VNM_PLOT_ENABLE_TEXT)
+    if (m_impl->fonts) {
+        m_impl->fonts->set_log_callbacks(log_error, log_debug);
+    }
+    if (m_impl->fonts && config.show_text) {
+        const int font_px_int = static_cast<int>(std::lround(snapshot.adjusted_font_px));
+        if (font_px_int > 0) {
+            const bool force_rebuild = (font_px_int != m_impl->last_font_px);
+            m_impl->fonts->initialize_metrics(m_impl->asset_loader, font_px_int, force_rebuild);
+            m_impl->last_font_px = font_px_int;
+        }
+    }
+    const Font_renderer* layout_fonts =
+        (config.show_text && m_impl->fonts && m_impl->fonts->text_measure_cache_key() != 0)
+            ? m_impl->fonts.get()
+            : nullptr;
+#else
+    const Font_renderer* layout_fonts = nullptr;
+#endif
+
+    const double usable_height = std::max(0.0, double(win_h) - reserved_h);
+    const double max_vbar_width = std::max(
+        detail::k_vbar_min_width_px_d,
+        std::max(0.0, double(win_w) * 0.5));
+    double vbar_width = snapshot.vbar_width_pixels;
+    if (!std::isfinite(vbar_width) || vbar_width <= detail::k_vbar_min_width_px_d) {
+        vbar_width = m_impl->last_vbar_width_pixels;
+    }
+    if (!std::isfinite(vbar_width) || vbar_width <= detail::k_vbar_min_width_px_d) {
+        vbar_width = detail::k_vbar_min_width_px_d;
+    }
+    vbar_width = std::clamp(vbar_width, detail::k_vbar_min_width_px_d, max_vbar_width);
+
+    const auto make_cache_key = [&](double width_px) {
+        layout_cache_key_t key;
+        key.v0 = v_min;
+        key.v1 = v_max;
+        key.t0 = snapshot.data_cfg.t_min;
+        key.t1 = snapshot.data_cfg.t_max;
+        key.viewport_size = Size_2i{win_w, win_h};
+        key.adjusted_reserved_height = reserved_h;
+        key.adjusted_preview_height = snapshot.adjusted_preview_height;
+        key.adjusted_font_size_in_pixels = snapshot.adjusted_font_px;
+        key.vbar_width_pixels = width_px;
+        key.font_metrics_key = layout_fonts ? layout_fonts->text_measure_cache_key() : 0;
+        return key;
+    };
+
+    const auto calculate_layout = [&](double width_px) {
+        const auto params = build_layout_params(
+            v_min,
+            v_max,
+            snapshot.data_cfg.t_min,
+            snapshot.data_cfg.t_max,
+            win_w,
+            usable_height,
+            width_px,
+            snapshot.adjusted_preview_height,
+            snapshot.adjusted_font_px,
+            config,
+            layout_fonts);
+        return m_impl->layout_calc.calculate(params);
+    };
+
+    const frame_layout_result_t* layout_ptr =
+        m_impl->layout_cache.try_get(make_cache_key(vbar_width));
+
+    if (!layout_ptr) {
+        auto layout_result = calculate_layout(vbar_width);
+
+        double measured_vbar_width = std::max(
+            detail::k_vbar_min_width_px_d,
+            double(layout_result.max_v_label_text_width) + detail::k_v_label_horizontal_padding_px);
+        if (!std::isfinite(measured_vbar_width) || measured_vbar_width <= 0.0) {
+            measured_vbar_width = detail::k_vbar_min_width_px_d;
+        }
+        measured_vbar_width = std::clamp(
+            measured_vbar_width,
+            detail::k_vbar_min_width_px_d,
+            max_vbar_width);
+
+        if (std::abs(measured_vbar_width - vbar_width) > detail::k_vbar_width_change_threshold_d) {
+            vbar_width = measured_vbar_width;
+            layout_ptr = m_impl->layout_cache.try_get(make_cache_key(vbar_width));
+            if (!layout_ptr) {
+                layout_result = calculate_layout(vbar_width);
+            }
+        }
+        else {
+            vbar_width = measured_vbar_width;
+        }
+
+        if (!layout_ptr) {
+            frame_layout_result_t cached_layout;
+            cached_layout.usable_width = std::max(0.0, double(win_w) - vbar_width);
+            cached_layout.usable_height = usable_height;
+            cached_layout.v_bar_width = vbar_width;
+            cached_layout.h_bar_height = snapshot.base_label_height_px + detail::k_scissor_pad_px;
+            cached_layout.max_v_label_text_width = layout_result.max_v_label_text_width;
+            cached_layout.v_labels = std::move(layout_result.v_labels);
+            cached_layout.h_labels = std::move(layout_result.h_labels);
+            cached_layout.v_label_fixed_digits = layout_result.v_label_fixed_digits;
+            cached_layout.h_labels_subsecond = layout_result.h_labels_subsecond;
+            cached_layout.vertical_seed_index = layout_result.vertical_seed_index;
+            cached_layout.vertical_seed_step = layout_result.vertical_seed_step;
+            cached_layout.vertical_finest_step = layout_result.vertical_finest_step;
+            cached_layout.horizontal_seed_index = layout_result.horizontal_seed_index;
+            cached_layout.horizontal_seed_step = layout_result.horizontal_seed_step;
+            layout_ptr = &m_impl->layout_cache.store(make_cache_key(vbar_width), std::move(cached_layout));
+        }
+    }
+
+    vbar_width = layout_ptr->v_bar_width;
+    m_impl->last_vbar_width_pixels = vbar_width;
+
+    frame_context_t ctx{*layout_ptr};
     ctx.v0 = v_min;
     ctx.v1 = v_max;
     ctx.preview_v0 = ctx.v0;
@@ -331,6 +518,9 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
     }
     ctx.t0 = snapshot.data_cfg.t_min;
     ctx.t1 = snapshot.data_cfg.t_max;
+    if (m_impl->owner) {
+        m_impl->owner->set_rendered_t_range(ctx.t0, ctx.t1);
+    }
     ctx.t_available_min = snapshot.data_cfg.t_available_min;
     ctx.t_available_max = snapshot.data_cfg.t_available_max;
     ctx.win_w = win_w;
@@ -372,37 +562,52 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
     // (recordingPass != NoPass asserts), so the upload work has to be over
     // by the time beginPass runs. record_draws() and series.render()
     // afterwards record draw commands only.
-    QRhiResourceUpdateBatch* rhi_updates =
-        rhi_ptr ? rhi_ptr->nextResourceUpdateBatch() : nullptr;
-    ctx.rhi_updates = rhi_updates;
+    {
+        VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.render_passes");
 
-    if (m_impl->series_initialized) {
-        m_impl->series.prepare(ctx, snapshot.series);
-    }
-    // Chrome runs in two queueing phases so the depth order matches the
-    // GL flow: backgrounds + main grid behind the series, zero line +
-    // preview overlay in front. Both phases write to ctx.rhi_updates
-    // before beginPass so all uploads are submitted atomically; the
-    // checkpoint between them lets record_draws() replay the back-layer
-    // slice, then the series renders, then record_draws() replays the
-    // front-layer slice.
-    m_impl->chrome.render_grid_and_backgrounds(ctx, m_impl->primitives);
-    const std::size_t back_layer_end = m_impl->primitives.queued_op_count();
-    m_impl->chrome.render_zero_line(ctx, m_impl->primitives);
-    if (snapshot.adjusted_preview_height > 0.0) {
-        m_impl->chrome.render_preview_overlay(ctx, m_impl->primitives);
-    }
-    const std::size_t front_layer_end = m_impl->primitives.queued_op_count();
+        QRhiResourceUpdateBatch* rhi_updates =
+            rhi_ptr ? rhi_ptr->nextResourceUpdateBatch() : nullptr;
+        ctx.rhi_updates = rhi_updates;
 
-    cb->beginPass(rt, clear_color, QRhiDepthStencilClearValue(1.0f, 0), rhi_updates);
-    cb->setViewport(QRhiViewport(0, 0, win_w, win_h));
-    m_impl->primitives.record_draws(ctx, back_layer_end);
-    if (m_impl->series_initialized) {
-        m_impl->series.render(ctx, snapshot.series);
+        if (m_impl->series_initialized) {
+            m_impl->series.prepare(ctx, snapshot.series);
+        }
+        // Chrome runs in two queueing phases so the depth order matches the
+        // GL flow: backgrounds + main grid behind the series, zero line +
+        // preview overlay in front. Both phases write to ctx.rhi_updates
+        // before beginPass so all uploads are submitted atomically; the
+        // checkpoint between them lets record_draws() replay the back-layer
+        // slice, then the series renders, then record_draws() replays the
+        // front-layer slice.
+        m_impl->chrome.render_grid_and_backgrounds(ctx, m_impl->primitives);
+        const std::size_t back_layer_end = m_impl->primitives.queued_op_count();
+        m_impl->chrome.render_zero_line(ctx, m_impl->primitives);
+        if (snapshot.adjusted_preview_height > 0.0) {
+            m_impl->chrome.render_preview_overlay(ctx, m_impl->primitives);
+        }
+        const std::size_t front_layer_end = m_impl->primitives.queued_op_count();
+
+#if defined(VNM_PLOT_ENABLE_TEXT)
+        if (m_impl->text && config.show_text) {
+            m_impl->text->prepare(ctx, false, false);
+        }
+#endif
+
+        cb->beginPass(rt, clear_color, QRhiDepthStencilClearValue(1.0f, 0), rhi_updates);
+        cb->setViewport(QRhiViewport(0, 0, win_w, win_h));
+        m_impl->primitives.record_draws(ctx, back_layer_end);
+        if (m_impl->series_initialized) {
+            m_impl->series.render(ctx, snapshot.series);
+        }
+        m_impl->primitives.record_draws(ctx, front_layer_end);
+#if defined(VNM_PLOT_ENABLE_TEXT)
+        if (m_impl->text && config.show_text) {
+            m_impl->text->record(ctx);
+        }
+#endif
+        cb->endPass();
+        m_impl->primitives.reset_frame();
     }
-    m_impl->primitives.record_draws(ctx, front_layer_end);
-    cb->endPass();
-    m_impl->primitives.reset_frame();
 }
 
 } // namespace vnm::plot
