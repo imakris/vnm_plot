@@ -83,6 +83,31 @@ else()
     target_compile_options(vnm_plot_benchmark PRIVATE -Wall -Wextra)
 endif()
 
+# Deploy Qt runtime DLLs next to the benchmark so it can be launched by
+# double-clicking from Explorer (no manual PATH or vcvarsall shell needed).
+if(WIN32 AND NOT CMAKE_CROSSCOMPILING)
+    get_target_property(_qt_qmake_executable Qt6::qmake IMPORTED_LOCATION)
+    get_filename_component(_qt_bin_dir "${_qt_qmake_executable}" DIRECTORY)
+    find_program(WINDEPLOYQT_EXECUTABLE windeployqt HINTS "${_qt_bin_dir}")
+
+    if(WINDEPLOYQT_EXECUTABLE)
+        add_custom_command(TARGET vnm_plot_benchmark POST_BUILD
+            COMMAND "${WINDEPLOYQT_EXECUTABLE}"
+                    --no-translations
+                    --no-system-d3d-compiler
+                    --no-opengl-sw
+                    "$<TARGET_FILE:vnm_plot_benchmark>"
+            COMMENT "Deploying Qt runtime for vnm_plot_benchmark"
+            VERBATIM
+        )
+    else()
+        message(WARNING
+            "windeployqt not found near Qt6::qmake (${_qt_bin_dir}); "
+            "vnm_plot_benchmark.exe will not have Qt runtime DLLs alongside "
+            "it and will fail to launch from Explorer.")
+    endif()
+endif()
+
 message(STATUS "vnm_plot: Building benchmark executable")
 
 # -----------------------------------------------------------------------------

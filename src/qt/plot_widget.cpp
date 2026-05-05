@@ -150,6 +150,7 @@ Plot_widget::Plot_widget()
     // and framebuffer orientation are handled by the renderer's QRhi
     // projection correction.
     setMirrorVertically(false);
+    setAlphaBlending(true);
 
     // Match the multisample count the GLFW examples and benchmark use so the
     // RHI offscreen color buffer rasterizes with the same anti-aliasing
