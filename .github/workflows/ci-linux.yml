@@ -12,124 +12,54 @@ defaults:
 
 env:
   CMAKE_BUILD_TYPE: Release
-  LINUX_DEPS: >-
-    libgl-dev libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev
-    libxi-dev libxext-dev libwayland-dev libxkbcommon-dev
   LINUX_QT_DEPS: >-
-    qt6-base-dev qt6-declarative-dev libqt6opengl6-dev
+    libgl-dev libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev
+    libxi-dev libxext-dev libwayland-dev libxkbcommon-dev libvulkan-dev
+    qt6-base-dev qt6-base-private-dev qt6-declarative-dev
+    qt6-shadertools-dev
 
 jobs:
-  build-core-variants:
+  build-rhi:
     name: ${{ matrix.name }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
         include:
-          - name: Core (Linux)
-            cmake_args: >-
-              -DVNM_PLOT_CORE_ONLY=ON
-              -DVNM_PLOT_ENABLE_TEXT=OFF
-              -DVNM_PLOT_BUILD_TESTS=ON
-            run_tests: true
-            test_command: ctest --output-on-failure
-            summary_label: Build completed
-          - name: Core+Text (Linux)
-            cmake_args: >-
-              -DVNM_PLOT_CORE_ONLY=ON
-              -DVNM_PLOT_ENABLE_TEXT=ON
-            run_tests: false
-            summary_label: Build completed (with text rendering)
+          - name: QRhi (Linux)
+            text: OFF
+            benchmark: OFF
+          - name: QRhi+Text (Linux)
+            text: ON
+            benchmark: ON
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install dependencies (Linux)
+      - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ${LINUX_DEPS}
+          sudo apt-get install -y ${LINUX_QT_DEPS}
 
       - name: Configure CMake
         run: |
           cmake -B build -S . \
             -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
-            ${{ matrix.cmake_args }}
+            -DVNM_PLOT_ENABLE_TEXT=${{ matrix.text }} \
+            -DVNM_PLOT_BUILD_TESTS=ON \
+            -DVNM_PLOT_BUILD_BENCHMARK=${{ matrix.benchmark }} \
+            -DVNM_PLOT_BUILD_EXAMPLES=OFF
 
       - name: Build
         run: cmake --build build --config ${CMAKE_BUILD_TYPE}
 
       - name: Run tests
-        if: matrix.run_tests
-        working-directory: build
-        run: ${{ matrix.test_command }}
-
-      - name: Build summary
-        run: |
-          echo "=== ${{ matrix.summary_label }} ==="
-          ls -la build/*.a 2>/dev/null || echo "Static libraries in build directory"
-
-  build-qt:
-    name: Qt Wrapper (Linux)
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install dependencies (Linux)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ${LINUX_DEPS} ${LINUX_QT_DEPS}
-
-      - name: Configure CMake (Qt wrapper)
-        run: |
-          cmake -B build -S . \
-            -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
-            -DVNM_PLOT_CORE_ONLY=OFF \
-            -DVNM_PLOT_BUILD_QT=ON \
-            -DVNM_PLOT_ENABLE_TEXT=OFF \
-            -DVNM_PLOT_BUILD_TESTS=ON \
-            -DVNM_PLOT_BUILD_EXAMPLES=OFF
-
-      - name: Build Qt wrapper
-        run: cmake --build build --config ${CMAKE_BUILD_TYPE} --target test_plot_interaction_item
-
-      - name: Run Qt wrapper test
         working-directory: build
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ctest --output-on-failure -R PlotInteractionItem
+        run: ctest --output-on-failure
 
       - name: Build summary
         run: |
-          echo "=== Qt build completed ==="
+          echo "=== ${{ matrix.name }} completed ==="
           ls -la build/*.a 2>/dev/null || echo "Static libraries in build directory"
-
-  build-standalone-example:
-    name: GLFW Example (Linux)
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install dependencies (Linux)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ${LINUX_DEPS}
-
-      - name: Configure CMake (standalone_glfw)
-        working-directory: examples/standalone_glfw
-        run: |
-          cmake -B build -S . \
-            -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
-            -DVNM_PLOT_BUILD_QT=OFF \
-            -DVNM_PLOT_ENABLE_TEXT=OFF
-
-      - name: Build standalone_glfw example
-        working-directory: examples/standalone_glfw
-        run: cmake --build build --config ${CMAKE_BUILD_TYPE}
-
-      - name: Verify executable
-        working-directory: examples/standalone_glfw
-        run: |
-          echo "=== Build completed ==="
-          ls -la build/standalone_glfw 2>/dev/null || echo "Executable built successfully"

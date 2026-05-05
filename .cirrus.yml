@@ -1,69 +1,29 @@
-# Cirrus CI configuration for FreeBSD builds
-# FreeBSD is tested via Cirrus CI since GitHub Actions doesn't support it natively
+# Cirrus CI configuration for FreeBSD builds.
 
 freebsd_instance:
   image_family: freebsd-15-0-amd64-ufs
 
-# =============================================================================
-# Tasks
-# =============================================================================
 task:
   matrix:
-    - name: "FreeBSD Core Build"
-      install_script:
-        - rm -f /var/db/pkg/*.sqlite
-        - rm -rf /var/cache/pkg/*
-        - pkg bootstrap -fy
-        - mkdir -p /usr/local/etc/pkg/repos
-        - "echo 'FreeBSD-ports: { enabled: no }' > /usr/local/etc/pkg/repos/FreeBSD-ports.conf"
-        - "echo 'FreeBSD: { url: https://pkg.FreeBSD.org/${ABI}/latest }' > /usr/local/etc/pkg/repos/FreeBSD.conf"
-        - pkg update -f
-        - pkg install -y git cmake mesa-libs pkgconf freeglut libX11 libXrandr libXinerama libXcursor libXi libXext
-        - if [ ! -e /usr/local/lib/libGL.so ] && [ -e /usr/local/lib/libGL.so.1 ]; then ln -s /usr/local/lib/libGL.so.1 /usr/local/lib/libGL.so; fi
-      configure_script:
-      - cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DVNM_PLOT_CORE_ONLY=ON -DVNM_PLOT_ENABLE_TEXT=OFF -DVNM_PLOT_BUILD_TESTS=ON -DCMAKE_C_FLAGS=-I/usr/local/include -DCMAKE_CXX_FLAGS=-I/usr/local/include
-      build_script:
-        - cmake --build build --config Release
-      test_script:
-        - cd build && ctest --output-on-failure
-      summary_script:
-        - echo "=== FreeBSD Core Build Completed ==="
-        - ls -la build/*.a 2>/dev/null || echo "Static libraries built"
-
-    - name: "FreeBSD GLFW Example"
-      install_script:
-        - rm -f /var/db/pkg/*.sqlite
-        - rm -rf /var/cache/pkg/*
-        - pkg bootstrap -fy
-        - mkdir -p /usr/local/etc/pkg/repos
-        - "echo 'FreeBSD-ports: { enabled: no }' > /usr/local/etc/pkg/repos/FreeBSD-ports.conf"
-        - "echo 'FreeBSD: { url: https://pkg.FreeBSD.org/${ABI}/latest }' > /usr/local/etc/pkg/repos/FreeBSD.conf"
-        - pkg update -f
-        - pkg install -y git cmake mesa-libs pkgconf freeglut libX11 libXrandr libXinerama libXcursor libXi libXext
-        - if [ ! -e /usr/local/lib/libGL.so ] && [ -e /usr/local/lib/libGL.so.1 ]; then ln -s /usr/local/lib/libGL.so.1 /usr/local/lib/libGL.so; fi
-      configure_script:
-      - cd examples/standalone_glfw && cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DVNM_PLOT_BUILD_QT=OFF -DVNM_PLOT_ENABLE_TEXT=OFF -DCMAKE_C_FLAGS=-I/usr/local/include -DCMAKE_CXX_FLAGS=-I/usr/local/include
-      build_script:
-        - cd examples/standalone_glfw && cmake --build build --config Release
-      summary_script:
-        - echo "=== FreeBSD GLFW Example Build Completed ==="
-        - ls -la examples/standalone_glfw/build/standalone_glfw 2>/dev/null || echo "Executable built"
-
-    - name: "FreeBSD Core+Text Build"
-      install_script:
-        - rm -f /var/db/pkg/*.sqlite
-        - rm -rf /var/cache/pkg/*
-        - pkg bootstrap -fy
-        - mkdir -p /usr/local/etc/pkg/repos
-        - "echo 'FreeBSD-ports: { enabled: no }' > /usr/local/etc/pkg/repos/FreeBSD-ports.conf"
-        - "echo 'FreeBSD: { url: https://pkg.FreeBSD.org/${ABI}/latest }' > /usr/local/etc/pkg/repos/FreeBSD.conf"
-        - pkg update -f
-        - pkg install -y git cmake mesa-libs pkgconf freeglut libX11 libXrandr libXinerama libXcursor libXi libXext
-        - if [ ! -e /usr/local/lib/libGL.so ] && [ -e /usr/local/lib/libGL.so.1 ]; then ln -s /usr/local/lib/libGL.so.1 /usr/local/lib/libGL.so; fi
-      configure_script:
-      - cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DVNM_PLOT_CORE_ONLY=ON -DVNM_PLOT_ENABLE_TEXT=ON -DCMAKE_C_FLAGS=-I/usr/local/include -DCMAKE_CXX_FLAGS=-I/usr/local/include
-      build_script:
-        - cmake --build build --config Release
-      summary_script:
-        - echo "=== FreeBSD Core+Text Build Completed ==="
-        - ls -la build/*.a 2>/dev/null || echo "Static libraries built"
+    - name: "FreeBSD QRhi Build"
+      text: "OFF"
+    - name: "FreeBSD QRhi+Text Build"
+      text: "ON"
+  install_script:
+    - rm -f /var/db/pkg/*.sqlite
+    - rm -rf /var/cache/pkg/*
+    - pkg bootstrap -fy
+    - mkdir -p /usr/local/etc/pkg/repos
+    - "echo 'FreeBSD-ports: { enabled: no }' > /usr/local/etc/pkg/repos/FreeBSD-ports.conf"
+    - "echo 'FreeBSD: { url: https://pkg.FreeBSD.org/${ABI}/latest }' > /usr/local/etc/pkg/repos/FreeBSD.conf"
+    - pkg update -f
+    - pkg install -y git cmake pkgconf qt6-base qt6-declarative qt6-shadertools
+  configure_script:
+    - cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DVNM_PLOT_ENABLE_TEXT=${text} -DVNM_PLOT_BUILD_TESTS=ON
+  build_script:
+    - cmake --build build --config Release
+  test_script:
+    - cd build && env QT_QPA_PLATFORM=offscreen ctest --output-on-failure
+  summary_script:
+    - echo "=== ${CIRRUS_TASK_NAME} Completed ==="
+    - ls -la build/*.a 2>/dev/null || echo "Static libraries built"
