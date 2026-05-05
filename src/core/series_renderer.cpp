@@ -186,17 +186,22 @@ struct Series_renderer::vbo_view_state_t::rhi_buffers_t
     // the D3D11 vertex stage.
     std::unique_ptr<QRhiBuffer> line_window_vbo;
 
-    // Per-(view, primitive_style) SRB cache. The SRB only references the
-    // per-view UBO; LINE's per-instance sample window rides vertex
-    // attributes, and DOTS reads the sample VBO through vertex attributes
-    // too, so neither needs a buffer-load entry in the SRB.
+    // Per-(view, primitive_style/pass) UBO + SRB cache. Each drawable primitive
+    // needs an independent UBO because every resource update is submitted
+    // before the render pass starts; combined Display_style values would
+    // otherwise overwrite the previously prepared uniform bytes before the
+    // matching draw records.
     struct srb_entry_t
     {
+        std::unique_ptr<QRhiBuffer> ubo;
         std::unique_ptr<QRhiShaderResourceBindings> srb;
         QRhiBuffer* last_ubo = nullptr;
+        std::size_t ubo_capacity_bytes = 0;
     };
     srb_entry_t dots_srb;
     srb_entry_t line_srb;
+    srb_entry_t area_fill_srb;
+    srb_entry_t area_axis_srb;
 };
 #else
 struct Series_renderer::vbo_view_state_t::rhi_buffers_t {};
@@ -229,7 +234,8 @@ struct Series_renderer::rhi_state_t
     enum class pipeline_kind_t : uint32_t
     {
         DOTS = 0,
-        LINE = 1
+        LINE = 1,
+        AREA = 2
     };
 
     struct pipeline_key_t
@@ -269,6 +275,8 @@ struct Series_renderer::rhi_state_t
     QShader cached_dot_frag;
     QShader cached_line_vert;
     QShader cached_line_frag;
+    QShader cached_area_vert;
+    QShader cached_area_frag;
     bool    shaders_loaded = false;
 
     QRhi*                last_rhi             = nullptr;
@@ -299,17 +307,19 @@ struct Series_renderer::rhi_state_t
 
 // -----------------------------------------------------------------------------
 // std140 UBO mirror for the QSB shader uniform_blocks.glsl::Series_view_t,
-// plus the per-shader trailing scalars consumed by plot_dot_quad and
-// plot_line.
+// plus the per-shader trailing values consumed by plot_dot_quad, plot_line,
+// and plot_area.
 // -----------------------------------------------------------------------------
 //
 // The shaders declare:
 //
 //     layout(std140, binding = 0) uniform Block {
-//         Series_view_t view;     // 96 bytes
-//         float         line_px;  // .vert/.frag for LINE
-//         int           snap;     // for LINE
-//         float         dot_px;   // for DOTS
+//         Series_view_t view;        // 128 bytes
+//         float         line_px;     // for LINE
+//         int           snap;        // for LINE
+//         float         dot_px;      // for DOTS
+//         vec4          axis_color;  // for AREA
+//         int           axis_pass;   // for AREA
 //     } u;
 //
 // std140 requires:
@@ -332,11 +342,10 @@ struct Series_renderer::rhi_state_t
 //   offset 112 framebuffer_y_up (int)
 //   total: 128 bytes
 //
-// Per-shader trailing scalars sit just past the view, padded out to vec4 to
-// satisfy std140's structure-trailing rule. We size the union to fit either
-// the LINE block (line_px + snap, 8 bytes) or the DOTS block (dot_px,
-// 4 bytes) and round to a 16-byte multiple to avoid uniform-buffer
-// alignment surprises across backends.
+// Per-shader trailing fields sit just past the view, padded out to vec4 to
+// satisfy std140's structure-trailing rule. The renderer allocates enough UBO
+// bytes for the largest block and uploads the concrete block size needed by
+// each primitive.
 struct Series_view_std140
 {
     float pmv[16];      // offset   0
@@ -393,11 +402,25 @@ struct Dot_block_std140
 static_assert(sizeof(Dot_block_std140) == 144, "Dot_block_std140 must be a multiple of 16");
 static_assert(offsetof(Dot_block_std140, point_diameter_px) == 128, "Dot_block point_diameter_px offset");
 
-// LINE and DOTS share a single UBO size; the host allocates one buffer per
-// view sized to fit either block.
-constexpr std::uint32_t k_series_ubo_bytes = 144;
-static_assert(sizeof(Line_block_std140) == k_series_ubo_bytes, "ubo bytes match LINE block");
-static_assert(sizeof(Dot_block_std140) == k_series_ubo_bytes,  "ubo bytes match DOTS block");
+// Whole-block layout: Series_view + AREA trailing (zero_axis_color,
+// axis_pass). Padded out to a 16-byte multiple.
+struct Area_block_std140
+{
+    Series_view_std140 view;                // offset 0
+    float              zero_axis_color[4];  // offset 128
+    int                axis_pass;           // offset 144
+    float              _pad0;               // offset 148
+    float              _pad1;               // offset 152
+    float              _pad2;               // offset 156
+};
+static_assert(sizeof(Area_block_std140) == 160, "Area_block_std140 must be a multiple of 16");
+static_assert(offsetof(Area_block_std140, zero_axis_color) == 128, "Area_block zero_axis_color offset");
+static_assert(offsetof(Area_block_std140, axis_pass)       == 144, "Area_block axis_pass offset");
+
+constexpr std::uint32_t k_series_ubo_bytes = 160;
+static_assert(sizeof(Line_block_std140) <= k_series_ubo_bytes, "ubo bytes fit LINE block");
+static_assert(sizeof(Dot_block_std140)  <= k_series_ubo_bytes, "ubo bytes fit DOTS block");
+static_assert(sizeof(Area_block_std140) == k_series_ubo_bytes, "ubo bytes match AREA block");
 
 #ifdef VNM_PLOT_HAS_QRHI
 // Load a baked .qsb artifact from the embedded Qt resource produced by
@@ -484,6 +507,8 @@ void Series_renderer::cleanup_gl_resources()
     m_rhi_state->cached_dot_frag = {};
     m_rhi_state->cached_line_vert = {};
     m_rhi_state->cached_line_frag = {};
+    m_rhi_state->cached_area_vert = {};
+    m_rhi_state->cached_area_frag = {};
     m_rhi_state->last_rhi = nullptr;
     m_rhi_state->pending_updates = nullptr;
     m_rhi_state->frame_draw_states.clear();
@@ -732,7 +757,7 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
     // The RHI upload path runs whenever a QRhi/batch is bound. skip_gl is a
     // "do not issue gl* calls" knob, not a "do not render" knob; under any
     // RHI backend the host sets skip_gl so the GL fallback stays silent, but
-    // the RHI staging upload must still run or LINE/DOTS draw
+    // the RHI staging upload must still run or series primitives draw
     // against an empty vertex buffer.
     const bool use_rhi_uploads = (rhi != nullptr) && (rhi_updates != nullptr);
     view_render_result_t result;
@@ -1044,7 +1069,7 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
             //     for CPU profiling).
             // The staging vector itself is a CPU-side rebased copy of the
             // snapshot; it is always built when either upload path runs and
-            // is consumed downstream by rhi_record_line_or_dots when
+            // is consumed downstream by RHI primitive preparation when
             // building the LINE per-frame window buffer.
             if (must_upload && (use_rhi_uploads || !skip_gl)) {
                 auto& staging = view_state.staging;
@@ -1091,9 +1116,6 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
                     // headroom so subsequent appends do not trigger a
                     // reallocate every frame.
                     //
-                    // Type=Static is required: D3D11/Vulkan/Metal forbid
-                    // Dynamic on a buffer with the StorageBuffer usage flag,
-                    // and the LINE path binds this buffer as an SSBO.
                     // uploadStaticBuffer accepts repeat uploads on Static
                     // buffers; the renderer calls it once per frame.
                     const std::size_t alloc_bytes = needed_bytes + needed_bytes / 4;
@@ -1102,7 +1124,7 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
                     {
                         view_state.rhi->vbo.reset(rhi->newBuffer(
                             QRhiBuffer::Static,
-                            QRhiBuffer::VertexBuffer | QRhiBuffer::StorageBuffer,
+                            QRhiBuffer::VertexBuffer,
                             static_cast<quint32>(alloc_bytes)));
                         if (view_state.rhi->vbo && view_state.rhi->vbo->create()) {
                             view_state.rhi_vbo_capacity_bytes = alloc_bytes;
@@ -1146,9 +1168,8 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
                     gpu_sample_t hold_sample{};
                     stage_one_sample(hold_sample, user_sample.data());
                     // Mirror the patched sample into the CPU-side staging
-                    // vector so the LINE per-frame window buffer (built from
-                    // staging in rhi_record_line_or_dots) sees the updated
-                    // hold value alongside the GPU-side patch.
+                    // vector so the LINE per-frame window buffer sees the
+                    // updated hold value alongside the GPU-side patch.
                     auto& staging = view_state.staging;
                     if (!staging.empty()) {
                         staging.back() = hold_sample;
@@ -1314,6 +1335,8 @@ void Series_renderer::prepare(
     const float line_width = ctx.config ? static_cast<float>(ctx.config->line_width_px) : 1.0f;
     const float point_diameter = ctx.config
         ? static_cast<float>(ctx.config->point_diameter_px) : 1.0f;
+    const float area_fill_alpha = ctx.config
+        ? static_cast<float>(ctx.config->area_fill_alpha) : 0.3f;
 
     // Cleanup stale VBO states for series no longer in the map. Under RHI
     // the GL handles are never allocated (skip_gl is set by the host), so
@@ -1569,11 +1592,10 @@ void Series_renderer::prepare(
         draw_states.push_back(std::move(draw_state));
     }
 
-    // Iterate the plan and run rhi_prepare_line_or_dots for every LINE/DOTS
-    // view that will be drawn. This is what fills the per-view UBO and (for
-    // LINE) the per-frame line_window_vbo. AREA and COLORMAP_* don't reach
-    // a draw under RHI (skip_gl is set), so no prepare call is needed for
-    // them.
+    // Iterate the plan and run rhi_prepare_series_primitive for every
+    // RHI-capable view that will be drawn. This fills the per-primitive UBOs
+    // and (for LINE) the per-frame line_window_vbo. COLORMAP_* don't reach a
+    // draw under RHI (skip_gl is set), so no prepare call is needed for them.
     for (auto& draw_state : draw_states) {
         if (!draw_state.series || !draw_state.vbo_state) {
             continue;
@@ -1587,13 +1609,18 @@ void Series_renderer::prepare(
             if (!view_result.can_draw || view_result.count <= 0) {
                 return;
             }
-            rhi_prepare_line_or_dots(
+            rhi_prepare_series_primitive(
                 ctx, draw_state.series.get(),
                 primitive_style, view_state, view_result, is_preview,
-                line_width, point_diameter,
+                line_width, point_diameter, area_fill_alpha,
                 is_preview ? preview_origin_ns : main_origin_ns);
         };
 
+        if (!!(draw_state.main_style & Display_style::AREA)) {
+            run_prepare(Display_style::AREA,
+                draw_state.vbo_state->main_view, draw_state.main_result,
+                false);
+        }
         if (!!(draw_state.main_style & Display_style::LINE)) {
             run_prepare(Display_style::LINE,
                 draw_state.vbo_state->main_view, draw_state.main_result,
@@ -1605,6 +1632,11 @@ void Series_renderer::prepare(
                 false);
         }
         if (draw_state.has_preview) {
+            if (!!(draw_state.preview_style & Display_style::AREA)) {
+                run_prepare(Display_style::AREA,
+                    draw_state.vbo_state->preview_view,
+                    draw_state.preview_result, true);
+            }
             if (!!(draw_state.preview_style & Display_style::LINE)) {
                 run_prepare(Display_style::LINE,
                     draw_state.vbo_state->preview_view,
@@ -1653,7 +1685,7 @@ void Series_renderer::render(
             if (!view_result.can_draw || view_result.count <= 0) {
                 return;
             }
-            rhi_record_line_or_dots(
+            rhi_record_series_primitive(
                 ctx, primitive_style, view_state, view_result, is_preview);
         };
 
@@ -1662,6 +1694,11 @@ void Series_renderer::render(
         for (auto& draw_state : m_rhi_state->frame_draw_states) {
             if (!draw_state.series || !draw_state.vbo_state) {
                 continue;
+            }
+            if (!!(draw_state.main_style & Display_style::AREA)) {
+                record_one(Display_style::AREA,
+                    draw_state.vbo_state->main_view, draw_state.main_result,
+                    false);
             }
             if (!!(draw_state.main_style & Display_style::LINE)) {
                 record_one(Display_style::LINE,
@@ -1680,6 +1717,11 @@ void Series_renderer::render(
                     !draw_state.has_preview)
                 {
                     continue;
+                }
+                if (!!(draw_state.preview_style & Display_style::AREA)) {
+                    record_one(Display_style::AREA,
+                        draw_state.vbo_state->preview_view,
+                        draw_state.preview_result, true);
                 }
                 if (!!(draw_state.preview_style & Display_style::LINE)) {
                     record_one(Display_style::LINE,
@@ -2037,21 +2079,19 @@ void Series_renderer::render(
             return;
         }
 
-        // LINE and DOTS go through the RHI record helper. AREA and
-        // COLORMAP_* fall through to the GL fallback below, which is gated
-        // by skip_gl; under any RHI backend the host sets skip_gl so those
-        // styles render nothing here. The matching prepare phase that
-        // populates UBO / line_window_vbo for LINE/DOTS already ran before
-        // beginPass when render() was called via prepare()+render() (the
-        // RHI host path); when render() runs standalone (tests + GL
-        // fallback) it falls into the recursive prepare-then-record at the
-        // bottom of this function.
+        // LINE, DOTS, and AREA go through the RHI record helper. COLORMAP_*
+        // fall through to the GL fallback below, which is gated by skip_gl;
+        // under any RHI backend the host sets skip_gl so those styles render
+        // nothing here. The matching prepare phase that populates UBOs /
+        // line_window_vbo already ran before beginPass when render() was
+        // called via prepare()+render() (the RHI host path).
 #ifdef VNM_PLOT_HAS_QRHI
         const bool rhi_capable_style =
             (primitive_style == Display_style::LINE) ||
-            (primitive_style == Display_style::DOTS);
+            (primitive_style == Display_style::DOTS) ||
+            (primitive_style == Display_style::AREA);
         if (rhi && rhi_capable_style) {
-            rhi_record_line_or_dots(
+            rhi_record_series_primitive(
                 ctx, primitive_style, view_state, view_result,
                 is_preview);
             return;
@@ -2578,7 +2618,7 @@ void Series_renderer::render(
 }
 
 #ifdef VNM_PLOT_HAS_QRHI
-void Series_renderer::rhi_prepare_line_or_dots(
+void Series_renderer::rhi_prepare_series_primitive(
     const frame_context_t& ctx,
     const series_data_t* series,
     Display_style primitive_style,
@@ -2587,6 +2627,7 @@ void Series_renderer::rhi_prepare_line_or_dots(
     bool is_preview,
     float line_width_px,
     float point_diameter_px,
+    float area_fill_alpha,
     std::int64_t origin_ns)
 {
     if (!series) {
@@ -2596,6 +2637,7 @@ void Series_renderer::rhi_prepare_line_or_dots(
     QRhiResourceUpdateBatch* updates = ctx.rhi_updates;
 
     const bool is_dots = (primitive_style == Display_style::DOTS);
+    const bool is_area = (primitive_style == Display_style::AREA);
     const GLsizei count = view_result.count;
     if (count <= 0) {
         return;
@@ -2612,15 +2654,17 @@ void Series_renderer::rhi_prepare_line_or_dots(
         m_rhi_state->cached_dot_frag  = load_qsb("plot_dot_quad.frag.qsb");
         m_rhi_state->cached_line_vert = load_qsb("plot_line.vert.qsb");
         m_rhi_state->cached_line_frag = load_qsb("plot_line.frag.qsb");
+        m_rhi_state->cached_area_vert = load_qsb("plot_area.vert.qsb");
+        m_rhi_state->cached_area_frag = load_qsb("plot_area.frag.qsb");
         m_rhi_state->shaders_loaded   = true;
     }
 
     const QShader& vert = is_dots
         ? m_rhi_state->cached_dot_vert
-        : m_rhi_state->cached_line_vert;
+        : (is_area ? m_rhi_state->cached_area_vert : m_rhi_state->cached_line_vert);
     const QShader& frag = is_dots
         ? m_rhi_state->cached_dot_frag
-        : m_rhi_state->cached_line_frag;
+        : (is_area ? m_rhi_state->cached_area_frag : m_rhi_state->cached_line_frag);
     if (!vert.isValid() || !frag.isValid()) {
         return;
     }
@@ -2628,16 +2672,32 @@ void Series_renderer::rhi_prepare_line_or_dots(
     if (!view_state.rhi) {
         view_state.rhi = std::make_unique<vbo_view_state_t::rhi_buffers_t>();
     }
-    // Per-view UBO.
-    if (!view_state.rhi->ubo) {
-        view_state.rhi->ubo.reset(rhi->newBuffer(
-            QRhiBuffer::Dynamic, QRhiBuffer::UniformBuffer,
-            k_series_ubo_bytes));
-        if (view_state.rhi->ubo) {
-            view_state.rhi->ubo->create();
+
+    auto ensure_ubo = [&](vbo_view_state_t::rhi_buffers_t::srb_entry_t& entry) -> bool {
+        if (!entry.ubo || entry.ubo_capacity_bytes < k_series_ubo_bytes) {
+            entry.ubo.reset(rhi->newBuffer(
+                QRhiBuffer::Dynamic,
+                QRhiBuffer::UniformBuffer,
+                k_series_ubo_bytes));
+            if (entry.ubo && entry.ubo->create()) {
+                entry.ubo_capacity_bytes = k_series_ubo_bytes;
+                entry.srb.reset();
+                entry.last_ubo = nullptr;
+            }
+            else {
+                return false;
+            }
         }
+        return true;
+    };
+
+    auto& primary_srb_entry = is_dots
+        ? view_state.rhi->dots_srb
+        : (is_area ? view_state.rhi->area_fill_srb : view_state.rhi->line_srb);
+    if (!ensure_ubo(primary_srb_entry)) {
+        return;
     }
-    if (!view_state.rhi->ubo) {
+    if (is_area && !ensure_ubo(view_state.rhi->area_axis_srb)) {
         return;
     }
 
@@ -2652,7 +2712,7 @@ void Series_renderer::rhi_prepare_line_or_dots(
     // them as RWByteAddressBuffer UAVs and D3D11 SM 5.0 vertex shaders
     // accept zero UAVs; QRhi requires HLSL 5.0 bytecode for D3D11, so any
     // storage-buffer access in the vertex stage fails to compile.
-    if (!is_dots) {
+    if (!is_dots && !is_area) {
         const std::size_t padded_count = static_cast<std::size_t>(count) + 2;
         const std::size_t needed_bytes = padded_count * sizeof(gpu_sample_t);
         const std::size_t alloc_bytes = needed_bytes + needed_bytes / 4;
@@ -2694,8 +2754,10 @@ void Series_renderer::rhi_prepare_line_or_dots(
     // concrete buffer handles. Per-series binding handles ride the SRB,
     // which is rebuilt per view below.
     rhi_state_t::pipeline_key_t key{
-        is_dots ? rhi_state_t::pipeline_kind_t::DOTS
-                : rhi_state_t::pipeline_kind_t::LINE
+        is_dots
+            ? rhi_state_t::pipeline_kind_t::DOTS
+            : (is_area ? rhi_state_t::pipeline_kind_t::AREA
+                       : rhi_state_t::pipeline_kind_t::LINE)
     };
     auto& cached = m_rhi_state->pipelines[key];
 
@@ -2729,13 +2791,12 @@ void Series_renderer::rhi_prepare_line_or_dots(
                 0,
                 QRhiShaderResourceBinding::VertexStage
                     | QRhiShaderResourceBinding::FragmentStage,
-                view_state.rhi->ubo.get(),
+                primary_srb_entry.ubo.get(),
                 0,
                 k_series_ubo_bytes);
-        // LINE and DOTS both bind only the per-view UBO through the SRB.
-        // LINE feeds samples via four per-instance vertex attributes
-        // (set up below) instead of an SSBO so the D3D11 backend's SM 5.0
-        // vertex shader has zero UAVs.
+        // RHI series primitives bind only a UBO through the SRB. Sample data
+        // rides vertex attributes instead of SSBOs so the D3D11 backend's
+        // SM 5.0 vertex shader has zero UAVs.
         layout_srb->setBindings({ubo_binding});
         layout_srb->create();
 
@@ -2759,6 +2820,23 @@ void Series_renderer::rhi_prepare_line_or_dots(
                 0, 1, QRhiVertexInputAttribute::Float,
                 static_cast<quint32>(offsetof(gpu_sample_t, y)));
             vlayout.setAttributes({a0, a1});
+        }
+        else
+        if (is_area) {
+            const quint32 stride = static_cast<quint32>(sizeof(gpu_sample_t));
+            QRhiVertexInputBinding ib_p0(stride, QRhiVertexInputBinding::PerInstance, 1);
+            QRhiVertexInputBinding ib_p1(stride, QRhiVertexInputBinding::PerInstance, 1);
+            vlayout.setBindings({ib_p0, ib_p1});
+
+            const quint32 t_offset =
+                static_cast<quint32>(offsetof(gpu_sample_t, t_rel));
+            const quint32 y_offset =
+                static_cast<quint32>(offsetof(gpu_sample_t, y));
+            QRhiVertexInputAttribute a_x0(0, 0, QRhiVertexInputAttribute::Float, t_offset);
+            QRhiVertexInputAttribute a_y0(0, 1, QRhiVertexInputAttribute::Float, y_offset);
+            QRhiVertexInputAttribute a_x1(1, 4, QRhiVertexInputAttribute::Float, t_offset);
+            QRhiVertexInputAttribute a_y1(1, 5, QRhiVertexInputAttribute::Float, y_offset);
+            vlayout.setAttributes({a_x0, a_y0, a_x1, a_y1});
         }
         else {
             // LINE binds the line_window_vbo four times at offsets 0,
@@ -2816,19 +2894,19 @@ void Series_renderer::rhi_prepare_line_or_dots(
         cached.last_sample_count = current_samples;
     }
 
-    // Per-view SRB. Rebuild whenever the bound UBO pointer has changed
-    // since last frame (capacity grows replace QRhiBuffer outright). The SRB
-    // captures concrete handles, so reusing one whose buffers were freed is
-    // a use-after-free. LINE samples ride vertex attributes, not the SRB,
-    // so only the per-view UBO appears here.
-    auto& srb_entry = is_dots
-        ? view_state.rhi->dots_srb
-        : view_state.rhi->line_srb;
-    QRhiBuffer* current_ubo = view_state.rhi->ubo.get();
-    const bool srb_handles_match = srb_entry.srb
-        && srb_entry.last_ubo == current_ubo;
-    if (!srb_handles_match) {
-        srb_entry.srb.reset(rhi->newShaderResourceBindings());
+    // Per-view SRBs. Rebuild whenever the bound UBO pointer has changed since
+    // last frame (capacity growth replaces QRhiBuffer outright). The SRB
+    // captures concrete handles, so reusing one whose buffers were freed is a
+    // use-after-free.
+    auto ensure_srb = [&](vbo_view_state_t::rhi_buffers_t::srb_entry_t& entry) {
+        QRhiBuffer* current_ubo = entry.ubo.get();
+        const bool srb_handles_match = entry.srb
+            && entry.last_ubo == current_ubo;
+        if (srb_handles_match) {
+            return;
+        }
+
+        entry.srb.reset(rhi->newShaderResourceBindings());
         QRhiShaderResourceBinding ubo_binding =
             QRhiShaderResourceBinding::uniformBuffer(
                 0,
@@ -2837,9 +2915,14 @@ void Series_renderer::rhi_prepare_line_or_dots(
                 current_ubo,
                 0,
                 k_series_ubo_bytes);
-        srb_entry.srb->setBindings({ubo_binding});
-        srb_entry.srb->create();
-        srb_entry.last_ubo = current_ubo;
+        entry.srb->setBindings({ubo_binding});
+        entry.srb->create();
+        entry.last_ubo = current_ubo;
+    };
+
+    ensure_srb(primary_srb_entry);
+    if (is_area) {
+        ensure_srb(view_state.rhi->area_axis_srb);
     }
 
     // Build and upload the per-view UBO.
@@ -2849,6 +2932,12 @@ void Series_renderer::rhi_prepare_line_or_dots(
     std::memcpy(view_block.pmv, glm::value_ptr(ctx.pmv), sizeof(float) * 16);
 
     glm::vec4 draw_color = series->color;
+    if (is_area) {
+        draw_color.w *= area_fill_alpha;
+        if (ctx.dark_mode && is_default_series_color(draw_color)) {
+            draw_color = k_default_series_color_dark;
+        }
+    }
     if (is_preview) {
         draw_color.w *= static_cast<float>(
             ctx.config ? ctx.config->preview_visibility : 1.0);
@@ -2889,7 +2978,33 @@ void Series_renderer::rhi_prepare_line_or_dots(
         block.point_diameter_px = point_diameter_px;
         if (updates) {
             updates->updateDynamicBuffer(
-                view_state.rhi->ubo.get(), 0, sizeof(block), &block);
+                primary_srb_entry.ubo.get(), 0, sizeof(block), &block);
+        }
+    }
+    else
+    if (is_area) {
+        const Color_palette palette = ctx.dark_mode
+            ? Color_palette::dark()
+            : Color_palette::light();
+
+        Area_block_std140 fill_block{};
+        fill_block.view = view_block;
+        fill_block.zero_axis_color[0] = palette.grid_line.r;
+        fill_block.zero_axis_color[1] = palette.grid_line.g;
+        fill_block.zero_axis_color[2] = palette.grid_line.b;
+        fill_block.zero_axis_color[3] = palette.grid_line.a;
+        fill_block.axis_pass = 0;
+
+        Area_block_std140 axis_block = fill_block;
+        axis_block.axis_pass = 1;
+
+        if (updates) {
+            updates->updateDynamicBuffer(
+                view_state.rhi->area_fill_srb.ubo.get(), 0,
+                sizeof(fill_block), &fill_block);
+            updates->updateDynamicBuffer(
+                view_state.rhi->area_axis_srb.ubo.get(), 0,
+                sizeof(axis_block), &axis_block);
         }
     }
     else {
@@ -2900,12 +3015,12 @@ void Series_renderer::rhi_prepare_line_or_dots(
             ? 1 : 0;
         if (updates) {
             updates->updateDynamicBuffer(
-                view_state.rhi->ubo.get(), 0, sizeof(block), &block);
+                primary_srb_entry.ubo.get(), 0, sizeof(block), &block);
         }
     }
 }
 
-void Series_renderer::rhi_record_line_or_dots(
+void Series_renderer::rhi_record_series_primitive(
     const frame_context_t& ctx,
     Display_style primitive_style,
     vbo_view_state_t& view_state,
@@ -2918,6 +3033,7 @@ void Series_renderer::rhi_record_line_or_dots(
     }
 
     const bool is_dots = (primitive_style == Display_style::DOTS);
+    const bool is_area = (primitive_style == Display_style::AREA);
     const GLsizei count = view_result.count;
     if (count <= 0) {
         return;
@@ -2925,13 +3041,15 @@ void Series_renderer::rhi_record_line_or_dots(
     if (!is_dots && count < 2) {
         return;
     }
-    if (!view_state.rhi || !view_state.rhi->ubo) {
+    if (!view_state.rhi) {
         return;
     }
 
     rhi_state_t::pipeline_key_t key{
-        is_dots ? rhi_state_t::pipeline_kind_t::DOTS
-                : rhi_state_t::pipeline_kind_t::LINE
+        is_dots
+            ? rhi_state_t::pipeline_kind_t::DOTS
+            : (is_area ? rhi_state_t::pipeline_kind_t::AREA
+                       : rhi_state_t::pipeline_kind_t::LINE)
     };
     auto pipe_it = m_rhi_state->pipelines.find(key);
     if (pipe_it == m_rhi_state->pipelines.end() || !pipe_it->second.pipeline) {
@@ -2941,13 +3059,15 @@ void Series_renderer::rhi_record_line_or_dots(
 
     auto& srb_entry = is_dots
         ? view_state.rhi->dots_srb
-        : view_state.rhi->line_srb;
+        : (is_area ? view_state.rhi->area_fill_srb : view_state.rhi->line_srb);
     if (!srb_entry.srb) {
+        return;
+    }
+    if (is_area && !view_state.rhi->area_axis_srb.srb) {
         return;
     }
 
     cb->setGraphicsPipeline(cached.pipeline.get());
-    cb->setShaderResources(srb_entry.srb.get());
 
     const auto& layout = ctx.layout;
     const auto to_scissor_y = [&](double top, double height) -> int {
@@ -2973,6 +3093,7 @@ void Series_renderer::rhi_record_line_or_dots(
     cb->setScissor(scissor);
 
     if (is_dots) {
+        cb->setShaderResources(srb_entry.srb.get());
         if (view_state.rhi->vbo) {
             // Encode the per-instance "skip first N samples" by offsetting the
             // vertex-buffer binding rather than passing a non-zero
@@ -2989,7 +3110,30 @@ void Series_renderer::rhi_record_line_or_dots(
         }
         cb->draw(4, static_cast<quint32>(count));
     }
+    else
+    if (is_area) {
+        const quint32 instance_count = static_cast<quint32>(count - 1);
+        if (instance_count > 0 && view_state.rhi->vbo) {
+            const quint32 stride =
+                static_cast<quint32>(sizeof(gpu_sample_t));
+            const quint32 vbo_offset =
+                static_cast<quint32>(view_result.first) * stride;
+            QRhiBuffer* const vbo = view_state.rhi->vbo.get();
+            const QRhiCommandBuffer::VertexInput inputs[2] = {
+                { vbo, vbo_offset },
+                { vbo, vbo_offset + stride }
+            };
+            cb->setVertexInput(0, 2, inputs);
+
+            cb->setShaderResources(srb_entry.srb.get());
+            cb->draw(6, instance_count);
+
+            cb->setShaderResources(view_state.rhi->area_axis_srb.srb.get());
+            cb->draw(4, instance_count);
+        }
+    }
     else {
+        cb->setShaderResources(srb_entry.srb.get());
         // LINE: triangle-strip quads per segment, one instance per segment.
         // The four vertex inputs all reference the line_window_vbo at
         // increasing element offsets so each instance reads a sliding

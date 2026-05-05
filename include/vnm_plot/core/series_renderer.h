@@ -251,11 +251,11 @@ private:
     };
     std::unordered_map<gl_vao_key_t, GLuint, gl_vao_key_hash_t> m_gl_vaos;
 
-    // RHI-side state. The renderer drives LINE and DOTS through this path;
-    // AREA and COLORMAP_* keep using the GL fallback, which is gated by
-    // skip_gl whenever a QRhi is bound. Pipelines are cached per
-    // Display_style. The full implementation sits in series_renderer.cpp
-    // where the QRhi types are complete.
+    // RHI-side state. The renderer drives LINE, DOTS, and solid AREA through
+    // this path; COLORMAP_* keep using the GL fallback, which is gated by
+    // skip_gl whenever a QRhi is bound. Pipelines are cached per Display_style.
+    // The full implementation sits in series_renderer.cpp where the QRhi types
+    // are complete.
     struct rhi_state_t;
     std::unique_ptr<rhi_state_t> m_rhi_state;
 
@@ -300,19 +300,19 @@ private:
         const frame_context_t& ctx,
         std::int64_t origin_ns);
 
-    // RHI helpers for LINE / DOTS. AREA and COLORMAP_* never reach these
+    // RHI helpers for LINE / DOTS / solid AREA. COLORMAP_* never reach these
     // paths (they fall to the GL fallback, which is gated by skip_gl).
     //
-    // rhi_prepare_line_or_dots: writes to ctx.rhi_updates only. Builds the
-    //   per-view UBO and (LINE-only) the per-frame line_window_vbo, and
-    //   ensures the cached pipeline / SRB are valid. No cb->* draw calls.
-    //   Must run before the host calls beginPass(batch) so the upload is
-    //   submitted alongside the rest of ctx.rhi_updates.
+    // rhi_prepare_series_primitive: writes to ctx.rhi_updates only. Builds the
+    //   per-primitive UBO(s) and (LINE-only) the per-frame line_window_vbo, and
+    //   ensures the cached pipeline / SRB are valid. No cb->* draw calls. Must
+    //   run before the host calls beginPass(batch) so the upload is submitted
+    //   alongside the rest of ctx.rhi_updates.
     //
-    // rhi_record_line_or_dots: emits cb->setGraphicsPipeline /
+    // rhi_record_series_primitive: emits cb->setGraphicsPipeline /
     //   setShaderResources / setVertexInput / setScissor / draw only. No
     //   buffer writes; safe to call inside the open render pass.
-    void rhi_prepare_line_or_dots(
+    void rhi_prepare_series_primitive(
         const frame_context_t& ctx,
         const series_data_t* series,
         Display_style primitive_style,
@@ -321,8 +321,9 @@ private:
         bool is_preview,
         float line_width_px,
         float point_diameter_px,
+        float area_fill_alpha,
         std::int64_t origin_ns);
-    void rhi_record_line_or_dots(
+    void rhi_record_series_primitive(
         const frame_context_t& ctx,
         Display_style primitive_style,
         vbo_view_state_t& view_state,
