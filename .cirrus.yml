@@ -7,8 +7,10 @@ task:
   matrix:
     - name: "FreeBSD QRhi Build"
       text: "OFF"
+      examples: "OFF"
     - name: "FreeBSD QRhi+Text Build"
       text: "ON"
+      examples: "ON"
   install_script:
     - rm -f /var/db/pkg/*.sqlite
     - rm -rf /var/cache/pkg/*
@@ -19,7 +21,7 @@ task:
     - pkg update -f
     - pkg install -y git cmake pkgconf qt6-base qt6-declarative qt6-shadertools
   configure_script:
-    - cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DVNM_PLOT_ENABLE_TEXT=${text} -DVNM_PLOT_BUILD_TESTS=ON
+    - cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DVNM_PLOT_ENABLE_TEXT=${text} -DVNM_PLOT_BUILD_TESTS=ON -DVNM_PLOT_BUILD_EXAMPLES=${examples} -DVNM_PLOT_BUILD_FUNCTION_PLOTTER=OFF
   build_script:
     - cmake --build build --config Release
   test_script:

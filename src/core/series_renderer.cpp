@@ -1,13 +1,13 @@
-﻿#include <vnm_plot/core/series_renderer.h>
+#include <vnm_plot/core/series_renderer.h>
 #include <vnm_plot/core/algo.h>
 #include <vnm_plot/core/asset_loader.h>
 #include <vnm_plot/core/color_palette.h>
 #include <vnm_plot/core/constants.h>
 #include <vnm_plot/core/plot_config.h>
+#include "rhi_helpers.h"
 
 #include <glm/gtc/type_ptr.hpp>
 #include <rhi/qrhi.h>
-#include <QFile>
 
 
 #include <algorithm>
@@ -28,6 +28,8 @@ using detail::lower_bound_timestamp;
 using detail::upper_bound_timestamp;
 
 namespace {
+
+using detail::load_qsb;
 
 constexpr glm::vec4 k_default_series_color(0.16f, 0.45f, 0.64f, 1.0f);
 constexpr glm::vec4 k_default_series_color_dark(0.30f, 0.63f, 0.88f, 1.0f);
@@ -213,10 +215,8 @@ struct Series_renderer::rhi_state_t
     // public accessor for it â€” Plot_renderer hands it over instead.
     QRhiRenderTarget*    last_render_target   = nullptr;
 
-    // Per-frame draw plan computed in prepare() (under RHI) and replayed in
-    // render(). Stays empty under the GL fallback path; render() builds it
-    // on the fly in that case so tests that call render() standalone keep
-    // working. The vector lives on the renderer rather than in a stack
+    // Per-frame draw plan computed in prepare() and replayed in render().
+    // The vector lives on the renderer rather than in a stack
     // frame because the prepare() / render() split happens across two host
     // calls, with cb->beginPass(batch) sandwiched in between. The fp32
     // origins computed in prepare() ride inside the per-view UBO/staging
@@ -225,8 +225,7 @@ struct Series_renderer::rhi_state_t
     std::vector<series_draw_state_t> frame_draw_states;
     bool         frame_preview_visible   = false;
     // True if prepare() filled this plan. Reset after render() consumes it
-    // so a stray render() without a matching prepare() is a no-op for the
-    // RHI draws (the GL fallback path runs the plan-build inline).
+    // so a stray render() without a matching prepare() is a no-op.
     bool         frame_plan_ready        = false;
 };
 
@@ -346,18 +345,6 @@ constexpr std::uint32_t k_series_ubo_bytes = 160;
 static_assert(sizeof(Line_block_std140) <= k_series_ubo_bytes, "ubo bytes fit LINE block");
 static_assert(sizeof(Dot_block_std140)  <= k_series_ubo_bytes, "ubo bytes fit DOTS block");
 static_assert(sizeof(Area_block_std140) == k_series_ubo_bytes, "ubo bytes match AREA block");
-
-// qt_add_shaders. The PREFIX is /vnm_plot in CMakeLists.txt; the BASE is
-// the project root, so an input shaders/qsb/foo.vert ends up at
-// :/vnm_plot/shaders/qsb/foo.vert.qsb.
-static QShader load_qsb(const char* alias)
-{
-    QFile file(QStringLiteral(":/vnm_plot/shaders/qsb/") + QString::fromLatin1(alias));
-    if (!file.open(QIODevice::ReadOnly)) {
-        return {};
-    }
-    return QShader::fromSerialized(file.readAll());
-}
 
 Series_renderer::Series_renderer()
 :
@@ -760,9 +747,8 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
                             std::make_unique<vbo_view_state_t::rhi_buffers_t>();
                     }
                     // Allocate or grow the RHI vertex/storage buffer to fit the
-                    // current sample window. Like the GL path we add a 25%
-                    // headroom so subsequent appends do not trigger a
-                    // reallocate every frame.
+                    // current sample window. Add 25% headroom so subsequent
+                    // appends do not trigger a reallocate every frame.
                     //
                     // uploadStaticBuffer accepts repeat uploads on Static
                     // buffers; the renderer calls it once per frame.

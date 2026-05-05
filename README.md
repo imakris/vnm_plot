@@ -211,7 +211,7 @@ target_link_libraries(your_app PRIVATE vnm_plot::vnm_plot)
 
 ## Requirements
 
-- Qt 6.2+ with Qt Shader Tools
+- Qt 6.7+ with Qt Shader Tools
 
 ## Scope
 

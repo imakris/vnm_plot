@@ -4,6 +4,7 @@
 #include "sha256.h"
 #include "utf8_utils.h"
 #include "tls_registry.h"
+#include "rhi_helpers.h"
 
 #include <glm/gtc/type_ptr.hpp>
 #include <msdfgen.h>
@@ -814,6 +815,8 @@ std::shared_ptr<cached_font_data_t> load_or_build_font_cache(
 
 namespace {
 
+using detail::load_qsb;
+
 struct Text_block_std140
 {
     float pmv[16] = {};
@@ -828,15 +831,6 @@ static_assert(offsetof(Text_block_std140, px_range) == 80, "Text UBO px_range of
 static_assert(sizeof(Text_block_std140)             == 96, "Text UBO std140 size");
 
 constexpr std::uint32_t k_text_ubo_bytes = sizeof(Text_block_std140);
-
-QShader load_qsb(const char* alias)
-{
-    QFile file(QStringLiteral(":/vnm_plot/shaders/qsb/") + QString::fromLatin1(alias));
-    if (!file.open(QIODevice::ReadOnly)) {
-        return {};
-    }
-    return QShader::fromSerialized(file.readAll());
-}
 
 struct rhi_text_call_t
 {

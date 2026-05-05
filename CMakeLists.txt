@@ -13,6 +13,7 @@ project(vnm_plot
 
 # Options
 option(VNM_PLOT_BUILD_EXAMPLES "Build example applications" OFF)
+option(VNM_PLOT_BUILD_FUNCTION_PLOTTER "Build the Qt Multimedia function_plotter example" ON)
 option(VNM_PLOT_ENABLE_TEXT "Enable MSDF text rendering (requires FreeType + msdfgen)" ON)
 option(VNM_PLOT_BUILD_TESTS "Build test suite" OFF)
 option(VNM_PLOT_USE_SYSTEM_LIBS "Prefer system/precompiled FreeType and msdfgen over FetchContent" OFF)
@@ -31,36 +32,7 @@ endif()
 # -----------------------------------------------------------------------------
 
 # QRhi is the only renderer backend.
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick)
-if(NOT TARGET Qt6::GuiPrivate)
-    find_package(Qt6 REQUIRED COMPONENTS GuiPrivate)
-endif()
-if(NOT TARGET Qt6::GuiPrivate)
-    message(FATAL_ERROR
-        "vnm_plot: Qt6::GuiPrivate is required for QRhi headers. "
-        "Install Qt GUI private development files on the build machine.")
-endif()
-set(VNM_PLOT_QT_RHI_INCLUDE_DIRS)
-foreach(_qt_private_include_dir IN LISTS Qt6Gui_PRIVATE_INCLUDE_DIRS Qt6GuiPrivate_INCLUDE_DIRS)
-    list(APPEND VNM_PLOT_QT_RHI_INCLUDE_DIRS "${_qt_private_include_dir}")
-endforeach()
-get_target_property(_vnm_plot_qt_gui_include_dirs Qt6::Gui INTERFACE_INCLUDE_DIRECTORIES)
-if(_vnm_plot_qt_gui_include_dirs)
-    foreach(_qt_gui_include_dir IN LISTS _vnm_plot_qt_gui_include_dirs)
-        foreach(_qt_version IN ITEMS "${Qt6Gui_VERSION}" "${Qt6_VERSION}")
-            if(_qt_version AND EXISTS "${_qt_gui_include_dir}/${_qt_version}/QtGui/rhi/qrhi.h")
-                list(APPEND VNM_PLOT_QT_RHI_INCLUDE_DIRS "${_qt_gui_include_dir}/${_qt_version}/QtGui")
-            endif()
-        endforeach()
-    endforeach()
-endif()
-if(VNM_PLOT_QT_RHI_INCLUDE_DIRS)
-    list(REMOVE_DUPLICATES VNM_PLOT_QT_RHI_INCLUDE_DIRS)
-endif()
-unset(_vnm_plot_qt_gui_include_dirs)
-unset(_qt_private_include_dir)
-unset(_qt_gui_include_dir)
-unset(_qt_version)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui GuiPrivate Quick)
 find_package(Qt6ShaderTools QUIET)
 if(NOT Qt6ShaderTools_FOUND)
     message(FATAL_ERROR
@@ -389,9 +361,6 @@ message(STATUS "vnm_plot: Building QRhi core library")
 # Qt6::GuiPrivate. Keep it PRIVATE so consumers do not inherit Qt private
 # include paths through the public interface.
 target_link_libraries(vnm_plot_core PRIVATE Qt6::GuiPrivate Qt6::Gui)
-if(VNM_PLOT_QT_RHI_INCLUDE_DIRS)
-    target_include_directories(vnm_plot_core PRIVATE ${VNM_PLOT_QT_RHI_INCLUDE_DIRS})
-endif()
 
 # -----------------------------------------------------------------------------
 # Qt Resources (only if building Qt wrapper)
@@ -434,83 +403,80 @@ endif()
 # Full Library target (Qt-dependent)
 # -----------------------------------------------------------------------------
 
-    add_library(vnm_plot STATIC
-        ${VNM_PLOT_SOURCES}
-        ${VNM_PLOT_HEADERS}
-        ${VNM_PLOT_QRC_SOURCES}
-    )
+add_library(vnm_plot STATIC
+    ${VNM_PLOT_SOURCES}
+    ${VNM_PLOT_HEADERS}
+    ${VNM_PLOT_QRC_SOURCES}
+)
 
-    add_library(vnm_plot::vnm_plot ALIAS vnm_plot)
+add_library(vnm_plot::vnm_plot ALIAS vnm_plot)
 
-    set_target_properties(vnm_plot PROPERTIES
-        AUTOMOC ON
-    )
+set_target_properties(vnm_plot PROPERTIES
+    AUTOMOC ON
+)
 
-    target_include_directories(vnm_plot
-        PUBLIC
-            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-            $<INSTALL_INTERFACE:include>
-    )
+target_include_directories(vnm_plot
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
+)
 
-    target_compile_features(vnm_plot PUBLIC cxx_std_20)
+target_compile_features(vnm_plot PUBLIC cxx_std_20)
 
-    target_compile_definitions(vnm_plot PUBLIC VNM_PLOT_WITH_QT=1)
+target_compile_definitions(vnm_plot PUBLIC VNM_PLOT_WITH_QT=1)
 
-    # Link dependencies. Qt6::GuiPrivate exposes the rhi/qrhi.h public-by-private
-    # header tree that the QQuickRhiItem renderer uses inside plot_renderer.cpp;
-    # keep it PRIVATE so consumers do not inherit Qt's private headers.
+# Link dependencies. Qt6::GuiPrivate exposes the rhi/qrhi.h public-by-private
+# header tree that the QQuickRhiItem renderer uses inside plot_renderer.cpp;
+# keep it PRIVATE so consumers do not inherit Qt's private headers.
+target_link_libraries(vnm_plot
+    PUBLIC
+        vnm_plot_core
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Quick
+        glm::glm
+    PRIVATE
+        Qt6::GuiPrivate
+)
+
+# Link MSDF text rendering dependencies if enabled
+# (VNM_PLOT_ENABLE_TEXT compile definition is inherited from vnm_plot_core)
+if(VNM_PLOT_ENABLE_TEXT)
     target_link_libraries(vnm_plot
-        PUBLIC
-            vnm_plot_core
-            Qt6::Core
-            Qt6::Gui
-            Qt6::Quick
-            glm::glm
         PRIVATE
-            Qt6::GuiPrivate
+            msdfgen::msdfgen-core
+            msdfgen::msdfgen-ext
     )
-    if(VNM_PLOT_QT_RHI_INCLUDE_DIRS)
-        target_include_directories(vnm_plot PRIVATE ${VNM_PLOT_QT_RHI_INCLUDE_DIRS})
-    endif()
-
-    # Link MSDF text rendering dependencies if enabled
-    # (VNM_PLOT_ENABLE_TEXT compile definition is inherited from vnm_plot_core)
-    if(VNM_PLOT_ENABLE_TEXT)
-        target_link_libraries(vnm_plot
-            PRIVATE
-                msdfgen::msdfgen-core
-                msdfgen::msdfgen-ext
-        )
-    endif()
+endif()
 
 
-    # Platform-specific settings
-    if(WIN32)
-        target_compile_definitions(vnm_plot PRIVATE NOMINMAX)
-    endif()
+# Platform-specific settings
+if(WIN32)
+    target_compile_definitions(vnm_plot PRIVATE NOMINMAX)
+endif()
 
-    # Compiler warnings
-    if(MSVC)
-        target_compile_options(vnm_plot PRIVATE /W4)
-    else()
-        target_compile_options(vnm_plot PRIVATE -Wall -Wextra)
-    endif()
+# Compiler warnings
+if(MSVC)
+    target_compile_options(vnm_plot PRIVATE /W4)
+else()
+    target_compile_options(vnm_plot PRIVATE -Wall -Wextra)
+endif()
 
-    # Each input shader yields :/vnm_plot/shaders/qsb/<name>.<ext>.qsb.
-    # GLSL profile is desktop 410 only; mobile GL ES is out of scope for
-    # The RHI shaders use SSBOs that are unavailable below ES 3.1,
-    # so emitting a 300 ES artifact would compile-fail at runtime on a real
-    # ES 3.0 driver.
-    qt_add_shaders(vnm_plot "vnm_plot_qsb_shaders"
-        PREFIX "/vnm_plot"
-        BASE   "${CMAKE_CURRENT_SOURCE_DIR}"
-        GLSL   "410"
-        HLSL   "50"
-        MSL    "12,21"
-        FILES  ${VNM_PLOT_QSB_SHADERS}
-    )
+# Each input shader yields :/vnm_plot/shaders/qsb/<name>.<ext>.qsb.
+# GLSL profile is desktop 410 only; mobile GL ES is out of scope for
+# The RHI shaders use SSBOs that are unavailable below ES 3.1,
+# so emitting a 300 ES artifact would compile-fail at runtime on a real
+# ES 3.0 driver.
+qt_add_shaders(vnm_plot "vnm_plot_qsb_shaders"
+    PREFIX "/vnm_plot"
+    BASE   "${CMAKE_CURRENT_SOURCE_DIR}"
+    GLSL   "410"
+    HLSL   "50"
+    MSL    "12,21"
+    FILES  ${VNM_PLOT_QSB_SHADERS}
+)
 
-    message(STATUS "vnm_plot: Building Qt wrapper library")
+message(STATUS "vnm_plot: Building Qt wrapper library")
 
 # -----------------------------------------------------------------------------
 # Examples (require Qt)

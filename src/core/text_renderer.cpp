@@ -2,6 +2,7 @@
 #include <vnm_plot/core/constants.h>
 #include <vnm_plot/core/plot_config.h>
 #include <vnm_plot/core/font_renderer.h>
+#include "rhi_helpers.h"
 
 #include <glm/glm.hpp>
 
@@ -23,30 +24,8 @@ using detail::k_value_decimals;
 
 namespace {
 
-bool to_int_rounded(double value, int& out)
-{
-    if (!std::isfinite(value)) {
-        return false;
-    }
-
-    out = static_cast<int>(lround(value));
-    return true;
-}
-
-bool to_positive_int(double value, int& out)
-{
-    if (!std::isfinite(value)) {
-        return false;
-    }
-
-    const long rounded = lround(value);
-    if (rounded <= 0) {
-        return false;
-    }
-
-    out = static_cast<int>(rounded);
-    return true;
-}
+using detail::to_int_rounded;
+using detail::to_positive_int;
 
 template <typename Labels, typename DrawFunc>
 bool update_and_draw_faded_labels(

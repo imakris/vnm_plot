@@ -48,13 +48,13 @@ public:
     };
 
 private:
-    [[maybe_unused]] Font_renderer* m_fonts = nullptr;
+    Font_renderer* m_fonts = nullptr;
 
     // Cached timestamps to avoid repeated allocation/formatting (int64 ns).
     static constexpr std::int64_t k_invalid_cached_ts = std::numeric_limits<std::int64_t>::min();
-    [[maybe_unused]] std::int64_t m_last_t0 = k_invalid_cached_ts;
-    [[maybe_unused]] std::int64_t m_last_t1 = k_invalid_cached_ts;
-    [[maybe_unused]] bool m_last_subsecond = false;
+    std::int64_t m_last_t0 = k_invalid_cached_ts;
+    std::int64_t m_last_t1 = k_invalid_cached_ts;
+    bool m_last_subsecond = false;
     std::string m_cached_from_ts;
     std::string m_cached_to_ts;
 

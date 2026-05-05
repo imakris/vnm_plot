@@ -26,6 +26,7 @@ function(embed_assets)
 
     # Track asset information for registration
     set(_asset_info "")
+    set(_total_byte_count 0)
 
     foreach(_asset ${EMBED_ASSETS})
         # Parse file:name format
@@ -51,6 +52,7 @@ function(embed_assets)
         file(READ "${_file}" _data HEX)
         string(LENGTH "${_data}" _hex_len)
         math(EXPR _byte_count "${_hex_len} / 2")
+        math(EXPR _total_byte_count "${_total_byte_count} + ${_byte_count}")
 
         # Generate C++ variable name from asset name
         string(REGEX REPLACE "[^a-zA-Z0-9]" "_" _var_name "${_name}")
@@ -92,6 +94,10 @@ function(embed_assets)
     string(APPEND _content "void init_embedded_assets(Asset_loader& loader)\n")
     string(APPEND _content "{\n")
 
+    if(NOT _asset_info)
+        string(APPEND _content "    (void)loader;\n")
+    endif()
+
     foreach(_info ${_asset_info})
         string(REPLACE "|" ";" _parts "${_info}")
         list(GET _parts 0 _name)
@@ -106,5 +112,5 @@ function(embed_assets)
     # Write to output file
     file(WRITE "${EMBED_OUTPUT}" "${_content}")
 
-    message(STATUS "Generated ${EMBED_OUTPUT} with ${_byte_count} bytes of embedded assets")
+    message(STATUS "Generated ${EMBED_OUTPUT} with ${_total_byte_count} bytes of embedded assets")
 endfunction()

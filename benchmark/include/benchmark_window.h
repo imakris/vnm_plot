@@ -38,6 +38,7 @@ class QRhi;
 class QRhiRenderBuffer;
 class QRhiRenderPassDescriptor;
 class QRhiTextureRenderTarget;
+class QOffscreenSurface;
 
 namespace vnm::benchmark {
 
@@ -171,6 +172,7 @@ private:
     std::thread m_generator_thread;
     std::atomic<bool> m_stop_generator{false};
 
+    std::unique_ptr<QOffscreenSurface> m_fallback_surface;
     std::unique_ptr<QRhi> m_rhi;
     std::unique_ptr<QRhiRenderBuffer> m_color_buffer;
     std::unique_ptr<QRhiTextureRenderTarget> m_render_target;

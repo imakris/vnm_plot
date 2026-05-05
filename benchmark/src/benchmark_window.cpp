@@ -7,6 +7,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include <QMatrix4x4>
+#include <QOffscreenSurface>
 #include <QQuickItem>
 #include <QSurfaceFormat>
 
@@ -522,8 +523,16 @@ bool Benchmark_rhi_offscreen_runner::initialize_rhi(std::string& error_message)
     QRhiD3D11InitParams params;
     m_rhi.reset(QRhi::create(QRhi::D3D11, &params));
 #else
-    QRhiNullInitParams params;
-    m_rhi.reset(QRhi::create(QRhi::Null, &params));
+#if QT_CONFIG(opengl)
+    m_fallback_surface.reset(QRhiGles2InitParams::newFallbackSurface());
+    QRhiGles2InitParams gl_params;
+    gl_params.fallbackSurface = m_fallback_surface.get();
+    m_rhi.reset(QRhi::create(QRhi::OpenGLES2, &gl_params));
+#endif
+    if (!m_rhi) {
+        QRhiNullInitParams null_params;
+        m_rhi.reset(QRhi::create(QRhi::Null, &null_params));
+    }
 #endif
     if (!m_rhi) {
         error_message = "Failed to create offscreen QRhi";

@@ -31,7 +31,7 @@ struct text_scissor_t
 // Controls whether MSDF font data is persisted to disk for faster startup.
 
 // Enable or disable disk caching of MSDF font data (default: enabled).
-// Call before Font_renderer::initialize() to take effect.
+// Call before Font_renderer::initialize_metrics() to take effect.
 void set_font_disk_cache_enabled(bool enabled);
 
 // Returns true if disk caching is enabled.
@@ -54,9 +54,9 @@ public:
     Font_renderer(Font_renderer&&) = delete;
     Font_renderer& operator=(Font_renderer&&) = delete;
 
-    // Initializes the font system and ensures the thread-local CPU resources are ready.
+    // Initializes the font system and ensures text metrics are ready.
     // asset_loader: Provider for font and shader assets
-    // force_rebuild recreates GL resources even if the pixel height matches.
+    // force_rebuild regenerates cached metrics even if the pixel height matches.
     void initialize(Asset_loader& asset_loader, int pixel_height, bool force_rebuild = false);
 
     // Initializes CPU font metrics/cache for layout calculation before the render pass.

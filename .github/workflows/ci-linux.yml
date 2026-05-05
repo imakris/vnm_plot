@@ -27,9 +27,11 @@ jobs:
           - name: QRhi (Linux)
             text: OFF
             benchmark: OFF
+            examples: OFF
           - name: QRhi+Text (Linux)
             text: ON
             benchmark: ON
+            examples: ON
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -55,7 +57,8 @@ jobs:
             -DVNM_PLOT_ENABLE_TEXT=${{ matrix.text }} \
             -DVNM_PLOT_BUILD_TESTS=ON \
             -DVNM_PLOT_BUILD_BENCHMARK=${{ matrix.benchmark }} \
-            -DVNM_PLOT_BUILD_EXAMPLES=OFF
+            -DVNM_PLOT_BUILD_EXAMPLES=${{ matrix.examples }} \
+            -DVNM_PLOT_BUILD_FUNCTION_PLOTTER=OFF
 
       - name: Build
         run: cmake --build build --config ${CMAKE_BUILD_TYPE}

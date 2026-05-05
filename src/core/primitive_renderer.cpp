@@ -2,11 +2,11 @@
 #include <vnm_plot/core/asset_loader.h>
 #include <vnm_plot/core/constants.h>
 #include <vnm_plot/core/plot_config.h>
+#include "rhi_helpers.h"
 
 #include <glm/gtc/type_ptr.hpp>
 
 #include <rhi/qrhi.h>
-#include <QFile>
 
 #include <algorithm>
 #include <cmath>
@@ -19,30 +19,9 @@ using detail::k_rect_initial_quads;
 
 namespace {
 
-bool to_int_rounded(double value, int& out)
-{
-    if (!std::isfinite(value)) {
-        return false;
-    }
-
-    out = static_cast<int>(lround(value));
-    return true;
-}
-
-bool to_positive_int(double value, int& out)
-{
-    if (!std::isfinite(value)) {
-        return false;
-    }
-
-    const long rounded = lround(value);
-    if (rounded <= 0) {
-        return false;
-    }
-
-    out = static_cast<int>(rounded);
-    return true;
-}
+using detail::load_qsb;
+using detail::to_int_rounded;
+using detail::to_positive_int;
 
 // -----------------------------------------------------------------------------
 // std140 UBO mirrors for the QSB chrome shaders.
@@ -101,15 +80,6 @@ static_assert(sizeof(Grid_block_std140)                     == 1072, "Grid UBO m
 
 constexpr std::uint32_t k_rect_ubo_bytes = sizeof(Rect_block_std140);
 constexpr std::uint32_t k_grid_ubo_bytes = sizeof(Grid_block_std140);
-
-QShader load_qsb(const char* alias)
-{
-    QFile file(QStringLiteral(":/vnm_plot/shaders/qsb/") + QString::fromLatin1(alias));
-    if (!file.open(QIODevice::ReadOnly)) {
-        return {};
-    }
-    return QShader::fromSerialized(file.readAll());
-}
 
 } // namespace
 

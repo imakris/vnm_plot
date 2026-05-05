@@ -304,7 +304,7 @@ void Chrome_renderer::render_zero_line(
         return;
     }
 
-    // Pixel position of value 0.0 measured from bottom of plot area (GL convention)
+    // Pixel position of value 0.0 measured from the bottom of the plot area.
     const float zero_y_gl = static_cast<float>(
         ctx.layout.usable_height * (0.0 - double(ctx.v0)) / range_v);
 
@@ -403,9 +403,7 @@ void Chrome_renderer::render_preview_overlay(
 
     // The overlay must paint after the series so it dims any out-of-window
     // samples. Closing the rect batch here keeps the API self-contained: the
-    // caller doesn't have to flush_rects after every chrome step. Under RHI
-    // this enqueues a draw op into the renderer-owned plan; under GL it
-    // dispatches the draw immediately.
+    // caller doesn't have to flush_rects after every chrome step.
     prims.flush_rects(ctx, ctx.pmv);
 }
 

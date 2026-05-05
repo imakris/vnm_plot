@@ -272,7 +272,6 @@ struct Plot_renderer::impl_t
 #if defined(VNM_PLOT_ENABLE_TEXT)
     std::unique_ptr<Font_renderer> fonts;
     std::unique_ptr<Text_renderer> text;
-    int                            last_font_px = 0;
 #endif
     std::chrono::steady_clock::time_point last_render_callback;
     bool                series_initialized   = false;
@@ -299,12 +298,6 @@ void Plot_renderer::initialize(QRhiCommandBuffer* /*cb*/)
         m_impl->text = std::make_unique<Text_renderer>(m_impl->fonts.get());
     }
 #endif
-    // Primitive_renderer needs no eager GL initialization on the RHI path:
-    // its GL programs only feed the raw-GL flush used by the headless
-    // benchmark and standalone tests, and the RHI path loads its own QSB
-    // shaders on demand inside flush_rects / draw_grid_shader. Leaving the
-    // GL pipe at zero is correct here because there is no live GL context
-    // to compile against.
 }
 
 void Plot_renderer::synchronize(QQuickRhiItem* item)
@@ -400,9 +393,7 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
     if (m_impl->fonts && config.show_text) {
         const int font_px_int = static_cast<int>(std::lround(snapshot.adjusted_font_px));
         if (font_px_int > 0) {
-            const bool force_rebuild = (font_px_int != m_impl->last_font_px);
-            m_impl->fonts->initialize_metrics(m_impl->asset_loader, font_px_int, force_rebuild);
-            m_impl->last_font_px = font_px_int;
+            m_impl->fonts->initialize_metrics(m_impl->asset_loader, font_px_int);
         }
     }
     const Font_renderer* layout_fonts =
@@ -566,13 +557,12 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
         if (m_impl->series_initialized) {
             m_impl->series.prepare(ctx, snapshot.series);
         }
-        // Chrome runs in two queueing phases so the depth order matches the
-        // GL flow: backgrounds + main grid behind the series, zero line +
-        // preview overlay in front. Both phases write to ctx.rhi_updates
-        // before beginPass so all uploads are submitted atomically; the
-        // checkpoint between them lets record_draws() replay the back-layer
-        // slice, then the series renders, then record_draws() replays the
-        // front-layer slice.
+        // Chrome runs in two queueing phases so backgrounds and the main grid
+        // stay behind the series while the zero line and preview overlay stay
+        // in front. Both phases write to ctx.rhi_updates before beginPass so
+        // all uploads are submitted atomically; the checkpoint between them
+        // lets record_draws() replay the back-layer slice, then the series
+        // renders, then record_draws() replays the front-layer slice.
         m_impl->chrome.render_grid_and_backgrounds(ctx, m_impl->primitives);
         const std::size_t back_layer_end = m_impl->primitives.queued_op_count();
         m_impl->chrome.render_zero_line(ctx, m_impl->primitives);
