@@ -13,7 +13,7 @@ endif()
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick OpenGL)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick)
 
 if(NOT TARGET vnm_plot::vnm_plot)
     set(VNM_PLOT_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
@@ -36,7 +36,6 @@ target_link_libraries(vnm_plot_hello PRIVATE
     Qt6::Core
     Qt6::Gui
     Qt6::Quick
-    Qt6::OpenGL
     vnm_plot::vnm_plot
 )
 
@@ -52,7 +51,6 @@ if(WIN32 AND NOT CMAKE_CROSSCOMPILING)
             COMMAND "${WINDEPLOYQT_EXECUTABLE}"
                     --no-translations
                     --no-system-d3d-compiler
-                    --no-opengl-sw
                     --qmldir "${CMAKE_CURRENT_SOURCE_DIR}/qml"
                     "$<TARGET_FILE:vnm_plot_hello>"
             COMMENT "Deploying Qt runtime for vnm_plot_hello"

@@ -301,8 +301,6 @@ struct Data_access_policy
     // Caller owns dst_sample storage; implementation writes one full sample there.
     std::function<void(void* dst_sample, const void* src_sample, std::int64_t timestamp_ns)> clone_with_timestamp;
 
-    // --- GPU rendering configuration ---
-    std::function<void(unsigned int program_id)> bind_uniforms; ///< Binds custom uniforms
     uint64_t layout_key = 0;  ///< Cache key distinguishing user sample types in renderer-internal caches
 
     bool is_valid() const
@@ -359,32 +357,6 @@ struct preview_config_t
 };
 
 // -----------------------------------------------------------------------------
-// Shader Set: identifies a shader program by asset names
-// -----------------------------------------------------------------------------
-// Identifies a shader program by the asset names of its shader stages.
-// Used as a key for shader program caching.
-struct shader_set_t
-{
-    std::string vert;  ///< Vertex shader asset name
-    std::string frag;  ///< Fragment shader asset name
-
-    bool operator<(const shader_set_t& other) const
-    {
-        if (vert != other.vert) {
-            return vert < other.vert;
-        }
-        return frag < other.frag;
-    }
-
-    bool operator==(const shader_set_t& other) const
-    {
-        return vert == other.vert && frag == other.frag;
-    }
-
-    bool empty() const { return vert.empty() && frag.empty(); }
-};
-
-// -----------------------------------------------------------------------------
 // Colormap Configuration
 // -----------------------------------------------------------------------------
 // Defines a colormap as a list of RGBA samples for gradient-based rendering.
@@ -438,9 +410,6 @@ struct series_data_t
 
     colormap_config_t colormap_area;
     colormap_config_t colormap_line;
-
-    shader_set_t shader_set;
-    std::map<Display_style, shader_set_t> shaders;
 
     std::int64_t get_timestamp(const void* sample) const
     {
@@ -661,15 +630,12 @@ struct frame_context_t
     double adjusted_preview_height  = 0.0;
 
     bool show_info = false;
-    bool skip_gl   = false;
     bool dark_mode = false;
 
     const Plot_config* config = nullptr;
 
-    // RHI handles for the active frame. When `rhi` is non-null the renderer
-    // routes uploads through the RHI resource-update batch and draws with
-    // `cb`. The GL path runs when these stay null (used by tests and the
-    // headless benchmark, which run without a QRhi instance).
+    // RHI handles for the active frame. The renderer routes uploads through
+    // the RHI resource-update batch and records draws through `cb`.
     QRhi*              rhi = nullptr;
     QRhiCommandBuffer* cb  = nullptr;
     // Render target the host already opened a pass on. The renderer reads

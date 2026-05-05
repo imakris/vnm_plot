@@ -13,8 +13,6 @@ project(vnm_plot
 
 # Options
 option(VNM_PLOT_BUILD_EXAMPLES "Build example applications" OFF)
-option(VNM_PLOT_BUILD_QT "Build Qt wrapper library (requires Qt6)" ON)
-option(VNM_PLOT_CORE_ONLY "Build only the Qt-free core library" OFF)
 option(VNM_PLOT_ENABLE_TEXT "Enable MSDF text rendering (requires FreeType + msdfgen)" ON)
 option(VNM_PLOT_BUILD_TESTS "Build test suite" OFF)
 option(VNM_PLOT_USE_SYSTEM_LIBS "Prefer system/precompiled FreeType and msdfgen over FetchContent" OFF)
@@ -32,49 +30,13 @@ endif()
 # Find or fetch required dependencies
 # -----------------------------------------------------------------------------
 
-# OpenGL is required for core library (optional at configure time for header-only usage)
-if(CMAKE_SYSTEM_NAME STREQUAL "FreeBSD")
-    if(NOT OPENGL_opengl_LIBRARY AND NOT OPENGL_gl_LIBRARY)
-        find_file(_vnm_plot_glvnd_lib
-            NAMES libOpenGL.so libOpenGL.so.0
-            PATHS /usr/local/lib /usr/lib
-        )
-        find_file(_vnm_plot_gl_lib
-            NAMES libGL.so.1 libGL.so
-            PATHS /usr/local/lib /usr/lib
-        )
-        if(_vnm_plot_glvnd_lib)
-            set(OPENGL_opengl_LIBRARY "${_vnm_plot_glvnd_lib}" CACHE FILEPATH "" FORCE)
-        elseif(_vnm_plot_gl_lib)
-            set(OPENGL_gl_LIBRARY "${_vnm_plot_gl_lib}" CACHE FILEPATH "" FORCE)
-        endif()
-        unset(_vnm_plot_glvnd_lib)
-        unset(_vnm_plot_gl_lib)
-    endif()
-endif()
-find_package(OpenGL)
-
-# Qt6 is optional - only needed if building Qt wrapper
-if(VNM_PLOT_CORE_ONLY)
-    set(VNM_PLOT_BUILD_QT OFF)
-elseif(VNM_PLOT_BUILD_QT)
-    # ShaderTools is checked separately so a missing component does not silently
-    # collapse Qt6_FOUND and route the build into the core-only fallback. If
-    # Qt6 itself is absent we go core-only; if Qt6 is present but ShaderTools
-    # is not, that is a hard configuration error.
-    find_package(Qt6 COMPONENTS Core Gui GuiPrivate Quick OpenGL)
-    if(NOT Qt6_FOUND)
-        message(STATUS "vnm_plot: Qt6 not found, building core library only")
-        set(VNM_PLOT_BUILD_QT OFF)
-    endif()
-    if(VNM_PLOT_BUILD_QT)
-        find_package(Qt6ShaderTools QUIET)
-        if(NOT Qt6ShaderTools_FOUND)
-            message(FATAL_ERROR
-                "vnm_plot: Qt6ShaderTools is required for the QSB shader pipeline. "
-                "Install the Qt 6 'Shader Tools' module on the build machine.")
-        endif()
-    endif()
+# QRhi is the only renderer backend.
+find_package(Qt6 REQUIRED COMPONENTS Core Gui GuiPrivate Quick)
+find_package(Qt6ShaderTools QUIET)
+if(NOT Qt6ShaderTools_FOUND)
+    message(FATAL_ERROR
+        "vnm_plot: Qt6ShaderTools is required for the QSB shader pipeline. "
+        "Install the Qt 6 'Shader Tools' module on the build machine.")
 endif()
 
 # Text rendering is optional - stub implementations maintain stable layout when OFF
@@ -101,34 +63,6 @@ else()
     if(TARGET glm AND NOT TARGET glm::glm)
         add_library(glm::glm ALIAS glm)
     endif()
-endif()
-
-# --- Glatter (OpenGL extension loading) ---
-if(DEFINED GLATTER_SOURCE_DIR AND EXISTS "${GLATTER_SOURCE_DIR}/include/glatter/glatter.h")
-    message(STATUS "vnm_plot: Using existing GLATTER_SOURCE_DIR: ${GLATTER_SOURCE_DIR}")
-else()
-    message(STATUS "vnm_plot: Fetching glatter")
-
-    # Handle CMake policy for FetchContent_Populate
-    set(_vnm_plot_reset_cmp0169 FALSE)
-    if(POLICY CMP0169)
-        cmake_policy(PUSH)
-        cmake_policy(SET CMP0169 OLD)
-        set(_vnm_plot_reset_cmp0169 TRUE)
-    endif()
-
-    FetchContent_Declare(glatter
-        GIT_REPOSITORY https://github.com/imakris/glatter.git
-        GIT_TAG        v1.0.1
-        GIT_SHALLOW    FALSE
-    )
-    FetchContent_Populate(glatter)
-
-    if(_vnm_plot_reset_cmp0169)
-        cmake_policy(POP)
-    endif()
-
-    set(GLATTER_SOURCE_DIR "${glatter_SOURCE_DIR}" CACHE PATH "Glatter source directory" FORCE)
 endif()
 
 # --- FreeType + msdfgen (needed for MSDF text rendering) ---
@@ -271,18 +205,15 @@ endif()
 endif() # VNM_PLOT_ENABLE_TEXT (FreeType + msdfgen)
 
 # -----------------------------------------------------------------------------
-# Source files - Core (Qt-free)
+# Source files - Core
 # -----------------------------------------------------------------------------
 
 set(VNM_PLOT_CORE_SOURCES
     # Core abstractions
-    src/core/gl_program.cpp
     src/core/asset_loader.cpp
     src/core/utf8_utils.cpp
     src/core/platform_paths.cpp
     src/core/layout_calculator.cpp
-    src/core/default_shaders.cpp
-    src/core/plot_core.cpp
 
     # Core renderers
     src/core/primitive_renderer.cpp
@@ -309,7 +240,6 @@ set(VNM_PLOT_CORE_HEADERS
     include/vnm_plot/core/types.h
     include/vnm_plot/core/access_policy.h
     include/vnm_plot/core/plot_config.h
-    include/vnm_plot/core/default_shaders.h
     include/vnm_plot/core/function_sample.h
     include/vnm_plot/core/layout_calculator.h
     include/vnm_plot/core/constants.h
@@ -323,8 +253,6 @@ set(VNM_PLOT_CORE_HEADERS
     include/vnm_plot/core/text_renderer.h
     include/vnm_plot/core/series_renderer.h
     include/vnm_plot/core/series_builder.h
-    include/vnm_plot/core/plot_core.h
-    include/vnm_plot/core/gl_program.h
     include/vnm_plot/core/asset_loader.h
 )
 
@@ -355,27 +283,13 @@ set(VNM_PLOT_HEADERS
 
 set(VNM_PLOT_EMBEDDED_ASSETS_OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/generated/embedded_assets.cpp")
 
-# Core shaders (always embedded)
+# Core assets
 set(VNM_PLOT_CORE_ASSETS
-    "shaders/generic_rect.vert:shaders/generic_rect.vert"
-    "shaders/generic_rect.frag:shaders/generic_rect.frag"
-    "shaders/grid_quad.vert:shaders/grid_quad.vert"
-    "shaders/grid_quad.frag:shaders/grid_quad.frag"
-    "shaders/plot_line.vert:shaders/plot_line.vert"
-    "shaders/plot_line.frag:shaders/plot_line.frag"
-    "shaders/plot_dot_quad.vert:shaders/plot_dot_quad.vert"
-    "shaders/plot_dot_quad.frag:shaders/plot_dot_quad.frag"
-    "shaders/plot_area.vert:shaders/plot_area.vert"
-    "shaders/plot_area.frag:shaders/plot_area.frag"
-    "shaders/plot_colormap_line.vert:shaders/plot_colormap_line.vert"
-    "shaders/plot_colormap_line.frag:shaders/plot_colormap_line.frag"
 )
 
 # Text rendering assets (only when text is enabled)
 if(VNM_PLOT_ENABLE_TEXT)
     list(APPEND VNM_PLOT_CORE_ASSETS
-        "shaders/msdf_text.vert:shaders/msdf_text.vert"
-        "shaders/msdf_text.frag:shaders/msdf_text.frag"
         "fonts/monospace.ttf:fonts/monospace.ttf"
     )
 endif()
@@ -390,13 +304,12 @@ embed_assets(
 list(APPEND VNM_PLOT_CORE_SOURCES "${VNM_PLOT_EMBEDDED_ASSETS_OUTPUT}")
 
 # -----------------------------------------------------------------------------
-# Core Library target (Qt-free)
+# Core Library target
 # -----------------------------------------------------------------------------
 
 add_library(vnm_plot_core STATIC
     ${VNM_PLOT_CORE_SOURCES}
     ${VNM_PLOT_CORE_HEADERS}
-    "${GLATTER_SOURCE_DIR}/src/glatter/glatter.c"
 )
 
 add_library(vnm_plot::core ALIAS vnm_plot_core)
@@ -404,7 +317,6 @@ add_library(vnm_plot::core ALIAS vnm_plot_core)
 target_include_directories(vnm_plot_core
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-        $<BUILD_INTERFACE:${GLATTER_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
     PRIVATE
         $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated>
@@ -412,63 +324,11 @@ target_include_directories(vnm_plot_core
 
 target_compile_features(vnm_plot_core PUBLIC cxx_std_20)
 
-# Link dependencies (Qt-free)
+# Link dependencies
 target_link_libraries(vnm_plot_core
     PUBLIC
         glm::glm
 )
-
-# Link OpenGL (required at link time, optional at configure time)
-if(TARGET OpenGL::OpenGL)
-    target_link_libraries(vnm_plot_core PUBLIC OpenGL::OpenGL)
-elseif(TARGET OpenGL::GL)
-    target_link_libraries(vnm_plot_core PUBLIC OpenGL::GL)
-elseif(WIN32)
-    target_link_libraries(vnm_plot_core PUBLIC opengl32)
-elseif(APPLE)
-    target_link_libraries(vnm_plot_core PUBLIC "-framework OpenGL")
-elseif(CMAKE_SYSTEM_NAME STREQUAL "FreeBSD")
-    find_file(VNM_PLOT_GL_FILE
-        NAMES libOpenGL.so libOpenGL.so.0 libGL.so.1 libGL.so
-        PATHS /usr/local/lib /usr/lib
-    )
-    if(VNM_PLOT_GL_FILE)
-        target_link_libraries(vnm_plot_core PUBLIC ${VNM_PLOT_GL_FILE})
-    else()
-        set(_vnm_plot_saved_suffixes "${CMAKE_FIND_LIBRARY_SUFFIXES}")
-        list(APPEND CMAKE_FIND_LIBRARY_SUFFIXES ".so.1")
-        find_library(VNM_PLOT_GL_LIB NAMES GL PATHS /usr/local/lib /usr/lib)
-        set(CMAKE_FIND_LIBRARY_SUFFIXES "${_vnm_plot_saved_suffixes}")
-        if(VNM_PLOT_GL_LIB)
-            target_link_libraries(vnm_plot_core PUBLIC ${VNM_PLOT_GL_LIB})
-        else()
-            target_link_libraries(vnm_plot_core PUBLIC GL)
-        endif()
-    endif()
-else()
-    # Linux/BSD: GL is typically provided by the driver
-    target_link_libraries(vnm_plot_core PUBLIC GL)
-endif()
-
-# GLX provides glX* symbols on GLVND-based systems (e.g., FreeBSD).
-if(TARGET OpenGL::GLX)
-    target_link_libraries(vnm_plot_core PUBLIC OpenGL::GLX)
-elseif(CMAKE_SYSTEM_NAME STREQUAL "FreeBSD")
-    find_library(VNM_PLOT_GLX_LIB NAMES GLX GLX.so.0 PATHS /usr/local/lib /usr/lib)
-    if(VNM_PLOT_GLX_LIB)
-        target_link_libraries(vnm_plot_core PUBLIC ${VNM_PLOT_GLX_LIB})
-    endif()
-endif()
-
-# Glatter's GLX support uses X11 symbols (e.g., XGetErrorText).
-# On GLVND systems OpenGL::GLX pulls X11 in transitively, but when
-# the GLX target is unavailable we must link X11 explicitly.
-if(UNIX AND NOT APPLE)
-    find_package(X11 QUIET)
-    if(X11_FOUND)
-        target_link_libraries(vnm_plot_core PUBLIC ${X11_LIBRARIES})
-    endif()
-endif()
 
 # Platform-specific settings for core
 if(WIN32)
@@ -494,28 +354,18 @@ else()
     target_compile_options(vnm_plot_core PRIVATE -Wall -Wextra)
 endif()
 
-message(STATUS "vnm_plot: Building Qt-free core library")
+message(STATUS "vnm_plot: Building QRhi core library")
 
-# Series_renderer.cpp routes uploads and draws through QRhi when the active
-# frame_context_t carries a QRhi*. The QRhi types live behind
-# Qt6::GuiPrivate; linking it PRIVATE here gives the core .cpp files access
-# to <rhi/qrhi.h> without leaking the dependency through the public include
-# surface (series_renderer.h forward-declares the types). When Qt6 is not
-# available the renderer falls back to the GL path automatically through the
-# VNM_PLOT_HAS_QRHI compile guard, which is set here as the single source of
-# truth so the .cpp does not have to probe with __has_include.
-if(VNM_PLOT_BUILD_QT AND TARGET Qt6::GuiPrivate)
-    target_link_libraries(vnm_plot_core PRIVATE Qt6::GuiPrivate)
-    target_compile_definitions(vnm_plot_core PRIVATE VNM_PLOT_HAS_QRHI=1)
-endif()
+# Renderer .cpp files use QRhi, whose public-by-private headers live behind
+# Qt6::GuiPrivate. Keep it PRIVATE so consumers do not inherit Qt private
+# include paths through the public interface.
+target_link_libraries(vnm_plot_core PRIVATE Qt6::GuiPrivate Qt6::Gui)
 
 # -----------------------------------------------------------------------------
 # Qt Resources (only if building Qt wrapper)
 # -----------------------------------------------------------------------------
 
-if(VNM_PLOT_BUILD_QT)
-    qt6_add_resources(VNM_PLOT_QRC_SOURCES vnm_plot.qrc)
-endif()
+qt6_add_resources(VNM_PLOT_QRC_SOURCES vnm_plot.qrc)
 
 # -----------------------------------------------------------------------------
 # QSB shader pipeline (Qt RHI)
@@ -552,7 +402,6 @@ endif()
 # Full Library target (Qt-dependent)
 # -----------------------------------------------------------------------------
 
-if(VNM_PLOT_BUILD_QT)
     add_library(vnm_plot STATIC
         ${VNM_PLOT_SOURCES}
         ${VNM_PLOT_HEADERS}
@@ -569,7 +418,6 @@ if(VNM_PLOT_BUILD_QT)
         PUBLIC
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
             $<INSTALL_INTERFACE:include>
-            ${GLATTER_SOURCE_DIR}/include
     )
 
     target_compile_features(vnm_plot PUBLIC cxx_std_20)
@@ -585,7 +433,6 @@ if(VNM_PLOT_BUILD_QT)
             Qt6::Core
             Qt6::Gui
             Qt6::Quick
-            Qt6::OpenGL
             glm::glm
         PRIVATE
             Qt6::GuiPrivate
@@ -604,7 +451,6 @@ if(VNM_PLOT_BUILD_QT)
 
     # Platform-specific settings
     if(WIN32)
-        target_link_libraries(vnm_plot PRIVATE opengl32)
         target_compile_definitions(vnm_plot PRIVATE NOMINMAX)
     endif()
 
@@ -630,13 +476,12 @@ if(VNM_PLOT_BUILD_QT)
     )
 
     message(STATUS "vnm_plot: Building Qt wrapper library")
-endif()
 
 # -----------------------------------------------------------------------------
 # Examples (require Qt)
 # -----------------------------------------------------------------------------
 
-if(VNM_PLOT_BUILD_EXAMPLES AND VNM_PLOT_BUILD_QT)
+if(VNM_PLOT_BUILD_EXAMPLES)
     add_subdirectory(examples)
 endif()
 
@@ -647,25 +492,7 @@ endif()
 option(VNM_PLOT_BUILD_BENCHMARK "Build benchmark executable" OFF)
 
 if(VNM_PLOT_BUILD_BENCHMARK)
-    # Ensure Qt6 OpenGLWidgets is available for benchmark (QOpenGLWidget)
-    if(NOT TARGET Qt6::OpenGLWidgets)
-        find_package(Qt6 COMPONENTS Widgets OpenGLWidgets)
-    endif()
-    if(TARGET Qt6::OpenGLWidgets)
-        add_subdirectory(benchmark)
-    else()
-        message(STATUS "vnm_plot: Benchmark requires Qt6::OpenGLWidgets, skipping")
-    endif()
-endif()
-
-# -----------------------------------------------------------------------------
-# Headless GLFW Benchmark (CI-compatible, no Qt required)
-# -----------------------------------------------------------------------------
-
-option(VNM_PLOT_BUILD_BENCHMARK_HEADLESS "Build headless GLFW benchmark (CI-compatible)" OFF)
-
-if(VNM_PLOT_BUILD_BENCHMARK_HEADLESS)
-    add_subdirectory(benchmark_headless)
+    add_subdirectory(benchmark)
 endif()
 
 # -----------------------------------------------------------------------------
@@ -689,16 +516,8 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
     )
 
-    # Install glatter headers (required by vnm_plot_core)
-    install(DIRECTORY "${GLATTER_SOURCE_DIR}/include/glatter"
-        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-    )
-
     # Targets to install
-    set(_vnm_plot_install_targets vnm_plot_core)
-    if(VNM_PLOT_BUILD_QT)
-        list(APPEND _vnm_plot_install_targets vnm_plot)
-    endif()
+    set(_vnm_plot_install_targets vnm_plot_core vnm_plot)
 
     # Install library targets (without export for simplicity with FetchContent deps)
     install(TARGETS ${_vnm_plot_install_targets}

@@ -95,11 +95,6 @@ void Font_renderer::batch_text(float, float, const char*)
     // No-op in stub.
 }
 
-void Font_renderer::draw_and_flush(const glm::mat4&, const glm::vec4&)
-{
-    // No-op in stub.
-}
-
 void Font_renderer::rhi_begin_frame()
 {
     // No-op in stub.

@@ -5,8 +5,7 @@
 # Note: This file is included as a subdirectory from the root CMakeLists.txt
 # and inherits cmake_minimum_required and project settings from parent.
 
-# Find Qt6 (required for window management and OpenGL/QRhi presentation)
-find_package(Qt6 REQUIRED COMPONENTS Core Gui GuiPrivate Widgets Quick OpenGL OpenGLWidgets)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui GuiPrivate Quick)
 
 # Find vnm_plot_core (should be available from parent)
 if(NOT TARGET vnm_plot::core)
@@ -29,7 +28,6 @@ endif()
 set(BENCHMARK_SOURCES
     src/main.cpp
     src/benchmark_window.cpp
-    src/benchmark_frame.cpp
 )
 
 set(BENCHMARK_HEADERS
@@ -39,7 +37,6 @@ set(BENCHMARK_HEADERS
     include/benchmark_profiler.h
     include/benchmark_data_source.h
     include/benchmark_window.h
-    include/benchmark_frame.h
 )
 
 add_executable(vnm_plot_benchmark
@@ -68,10 +65,7 @@ target_link_libraries(vnm_plot_benchmark
         Qt6::Core
         Qt6::Gui
         Qt6::GuiPrivate
-        Qt6::Widgets
         Qt6::Quick
-        Qt6::OpenGL
-        Qt6::OpenGLWidgets
 )
 
 # Platform-specific settings
@@ -102,7 +96,6 @@ if(WIN32 AND NOT CMAKE_CROSSCOMPILING)
             COMMAND "${WINDEPLOYQT_EXECUTABLE}"
                     --no-translations
                     --no-system-d3d-compiler
-                    --no-opengl-sw
                     "$<TARGET_FILE:vnm_plot_benchmark>"
             COMMENT "Deploying Qt runtime for vnm_plot_benchmark"
             VERBATIM

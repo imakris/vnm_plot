@@ -1,25 +1,17 @@
 #include <vnm_plot/core/font_renderer.h>
 #include <vnm_plot/core/asset_loader.h>
-#include <vnm_plot/core/gl_program.h>
 #include "platform_paths.h"
 #include "sha256.h"
 #include "utf8_utils.h"
 #include "tls_registry.h"
 
-#ifdef GL_GLEXT_VERSION
-#undef GL_GLEXT_VERSION
-#endif
-
-#include <glatter/glatter.h>
 #include <glm/gtc/type_ptr.hpp>
 #include <msdfgen.h>
 #include <msdfgen-ext.h>
 
-#ifdef VNM_PLOT_HAS_QRHI
-#  include <QFile>
-#  include <QImage>
-#  include <rhi/qrhi.h>
-#endif
+#include <QFile>
+#include <QImage>
+#include <rhi/qrhi.h>
 
 #include <algorithm>
 #include <array>
@@ -70,11 +62,8 @@ namespace {
 
 struct vertex_buffer_t
 {
-    GLuint vao = 0;
-    GLuint vbo = 0;
-    GLuint ebo = 0;
     std::vector<float> vertex_data; // 8 floats per vertex: position, tex coord, tex bounds
-    std::vector<GLuint> index_data;
+    std::vector<std::uint32_t> index_data;
 };
 
 struct text_vertex_t
@@ -91,45 +80,13 @@ struct text_vertex_t
 
 vertex_buffer_t* vertex_buffer_new(const char*)
 {
-    auto* buffer = new vertex_buffer_t();
-    glGenVertexArrays(1, &buffer->vao);
-    glGenBuffers(1, &buffer->vbo);
-    glGenBuffers(1, &buffer->ebo);
-
-    glBindVertexArray(buffer->vao);
-
-    glBindBuffer(GL_ARRAY_BUFFER, buffer->vbo);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, buffer->ebo);
-
-    const GLsizei stride = sizeof(float) * 8;
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void*>(0));
-
-    glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void*>(sizeof(float) * 2));
-
-    glEnableVertexAttribArray(2);
-    glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void*>(sizeof(float) * 4));
-
-    glBindVertexArray(0);
-
-    return buffer;
+    return new vertex_buffer_t();
 }
 
 void vertex_buffer_delete(vertex_buffer_t* buffer)
 {
     if (!buffer) {
         return;
-    }
-
-    if (buffer->vao) {
-        glDeleteVertexArrays(1, &buffer->vao);
-    }
-    if (buffer->vbo) {
-        glDeleteBuffers(1, &buffer->vbo);
-    }
-    if (buffer->ebo) {
-        glDeleteBuffers(1, &buffer->ebo);
     }
 
     delete buffer;
@@ -150,7 +107,7 @@ void vertex_buffer_push_back_vertices(vertex_buffer_t* buffer, const void* verti
     buffer->vertex_data.insert(buffer->vertex_data.end(), data, data + (count * 8));
 }
 
-void vertex_buffer_push_back_indices(vertex_buffer_t* buffer, const GLuint* indices, std::size_t count)
+void vertex_buffer_push_back_indices(vertex_buffer_t* buffer, const std::uint32_t* indices, std::size_t count)
 {
     if (!buffer || !indices || count == 0) {
         return;
@@ -159,32 +116,13 @@ void vertex_buffer_push_back_indices(vertex_buffer_t* buffer, const GLuint* indi
     buffer->index_data.insert(buffer->index_data.end(), indices, indices + count);
 }
 
-void vertex_buffer_render(vertex_buffer_t* buffer, GLenum mode)
+void vertex_buffer_render(vertex_buffer_t* buffer)
 {
     if (!buffer || buffer->index_data.empty() || buffer->vertex_data.empty()) {
         return;
     }
-
-    glBindVertexArray(buffer->vao);
-
-    glBindBuffer(GL_ARRAY_BUFFER, buffer->vbo);
-    glBufferData(GL_ARRAY_BUFFER,
-                 static_cast<GLsizeiptr>(buffer->vertex_data.size() * sizeof(float)),
-                 buffer->vertex_data.data(),
-                 GL_DYNAMIC_DRAW);
-
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, buffer->ebo);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER,
-                 static_cast<GLsizeiptr>(buffer->index_data.size() * sizeof(GLuint)),
-                 buffer->index_data.data(),
-                 GL_DYNAMIC_DRAW);
-
-    glDrawElements(mode,
-                   static_cast<GLsizei>(buffer->index_data.size()),
-                   GL_UNSIGNED_INT,
-                   nullptr);
-
-    glBindVertexArray(0);
+    buffer->vertex_data.clear();
+    buffer->index_data.clear();
 }
 
 void vertex_buffer_clear(vertex_buffer_t* buffer)
@@ -237,18 +175,10 @@ struct msdf_kerning_key_eq_t
     }
 };
 
-// --- Thread-Local OpenGL Resources ---
-// This struct holds the GL resources that must be unique per-thread.
 struct thread_local_font_resources_t
 {
-    GLuint m_texture = 0;
     vertex_buffer_t* m_buffer = nullptr;
-    std::unique_ptr<GL_program> m_shader_program;
     int m_pixel_height = 0;
-    GLint m_tex_uniform_location = -1;
-    GLint m_color_uniform_location = -1;
-    GLint m_pmv_uniform_location = -1;
-    GLint m_range_uniform_location = -1;
     std::uint64_t m_cache_epoch = 0;
     float m_monospace_advance_px = 0.f;
     bool m_monospace_advance_reliable = false;
@@ -260,21 +190,12 @@ struct thread_local_font_resources_t
 
     ~thread_local_font_resources_t() = default;
 
-    void destroy_gl()
+    void destroy_resources()
     {
-        if (m_texture) {
-            glDeleteTextures(1, &m_texture);
-            m_texture = 0;
-        }
         if (m_buffer) {
             vertex_buffer_delete(m_buffer);
             m_buffer = nullptr;
         }
-        m_shader_program.reset();
-        m_tex_uniform_location = -1;
-        m_color_uniform_location = -1;
-        m_pmv_uniform_location = -1;
-        m_range_uniform_location = -1;
     }
 };
 
@@ -423,7 +344,7 @@ void add_text_to_vectors(
     const GlyphMap& glyphs,
     const KerningMap& kerning_px,
     std::vector<float>& vertex_data,
-    std::vector<GLuint>& index_data)
+    std::vector<std::uint32_t>& index_data)
 {
     const auto codepoints = utf8_to_codepoints(text);
     char32_t previous = 0;
@@ -452,8 +373,8 @@ void add_text_to_vectors(
         const float t_max = std::max(glyph.uv_top, glyph.uv_bottom);
 
         const auto vertex_count = vertex_data.size() / 8;
-        const GLuint index = static_cast<GLuint>(vertex_count);
-        const GLuint indices[] = {index, index + 1, index + 2, index, index + 2, index + 3};
+        const auto index = static_cast<std::uint32_t>(vertex_count);
+        const std::uint32_t indices[] = {index, index + 1, index + 2, index, index + 2, index + 3};
 
         const text_vertex_t vertices[] = {
             {x0, y0, glyph.uv_left,  glyph.uv_bottom, s_min, t_min, s_max, t_max},
@@ -924,7 +845,6 @@ std::shared_ptr<cached_font_data_t> load_or_build_font_cache(
 
 } // anonymous namespace
 
-#ifdef VNM_PLOT_HAS_QRHI
 namespace {
 
 struct Text_block_std140
@@ -996,7 +916,6 @@ struct rhi_text_state_t
 };
 
 } // anonymous namespace
-#endif // VNM_PLOT_HAS_QRHI
 
 // --- PIMPL Definition ---
 struct Font_renderer::impl_t
@@ -1008,13 +927,11 @@ struct Font_renderer::impl_t
     std::function<void(const std::string&)> m_log_debug;
     bool m_rhi_batch_active = false;
     std::vector<float> m_rhi_vertex_data;
-    std::vector<GLuint> m_rhi_index_data;
+    std::vector<std::uint32_t> m_rhi_index_data;
     std::vector<float> m_rhi_frame_vertex_data;
-    std::vector<GLuint> m_rhi_frame_index_data;
+    std::vector<std::uint32_t> m_rhi_frame_index_data;
 
-#ifdef VNM_PLOT_HAS_QRHI
     rhi_text_state_t m_rhi;
-#endif
 };
 
 // --- Public API Implementation ---
@@ -1036,74 +953,27 @@ void Font_renderer::set_log_callbacks(
 
 void Font_renderer::initialize(Asset_loader& asset_loader, int pixel_height, bool force_rebuild)
 {
+    initialize_metrics(asset_loader, pixel_height, force_rebuild);
     auto& resources = thread_local_resources();
-    const bool tls_ready = (resources.m_pixel_height == pixel_height) &&
-                           (resources.m_texture != 0) &&
-                           (resources.m_shader_program != nullptr);
-    if (!force_rebuild && tls_ready) {
-        m_impl->m_resources = &resources;
+    if (force_rebuild || resources.m_pixel_height != pixel_height) {
+        resources.destroy_resources();
+        resources.m_buffer = vertex_buffer_new("vertex:2f,tex_coord:2f,tex_bounds:4f");
+    }
+    if (!m_impl->m_font_cache) {
+        m_impl->m_resources = nullptr;
         return;
     }
 
-    resources.destroy_gl();
-
-    auto cached = load_or_build_font_cache(
-        asset_loader,
-        pixel_height,
-        m_impl->m_log_error,
-        m_impl->m_log_debug);
-    if (!cached) {
-        return;
-    }
-    m_impl->m_font_cache = cached;
-    m_impl->m_metric_pixel_height = pixel_height;
-
-    auto* const res = &resources;
-    res->m_pixel_height = pixel_height;
-    res->m_cache_epoch = cached->cache_epoch;
-
-    res->m_buffer = vertex_buffer_new("vertex:2f,tex_coord:2f,tex_bounds:4f");
-    res->m_monospace_advance_px = cached->monospace_advance_px;
-    res->m_monospace_advance_reliable = cached->monospace_advance_reliable;
-    res->m_px_range = cached->px_range;
-    res->m_baseline_offset_px = cached->baseline_offset_px;
-    res->m_glyphs = cached->glyphs;
-    res->m_kerning_px = cached->kerning_px;
-    res->m_texture = 0;
-
-    glGenTextures(1, &res->m_texture);
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, res->m_texture);
-
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-
-    glTexImage2D(
-        GL_TEXTURE_2D, 0, GL_RGBA,
-        cached->atlas_size, cached->atlas_size, 0,
-        GL_RGBA, GL_UNSIGNED_BYTE, cached->atlas_rgba.data()
-    );
-
-    // Load and compile MSDF text shader
-    auto shader_sources = asset_loader.load_shader("shaders/msdf_text");
-    if (shader_sources) {
-        std::string vert_src(shader_sources->vertex.begin(), shader_sources->vertex.end());
-        std::string frag_src(shader_sources->fragment.begin(), shader_sources->fragment.end());
-
-        auto sp = create_gl_program(vert_src, frag_src, m_impl->m_log_error);
-        if (sp) {
-            res->m_shader_program = std::move(sp);
-            const GLuint program_id = res->m_shader_program->program_id();
-            res->m_tex_uniform_location = glGetUniformLocation(program_id, "tex");
-            res->m_color_uniform_location = glGetUniformLocation(program_id, "color");
-            res->m_pmv_uniform_location = glGetUniformLocation(program_id, "pmv");
-            res->m_range_uniform_location = glGetUniformLocation(program_id, "px_range");
-        }
-    }
-
-    m_impl->m_resources = &thread_local_resources();
+    const auto& cached = *m_impl->m_font_cache;
+    resources.m_pixel_height = pixel_height;
+    resources.m_cache_epoch = cached.cache_epoch;
+    resources.m_monospace_advance_px = cached.monospace_advance_px;
+    resources.m_monospace_advance_reliable = cached.monospace_advance_reliable;
+    resources.m_px_range = cached.px_range;
+    resources.m_baseline_offset_px = cached.baseline_offset_px;
+    resources.m_glyphs = cached.glyphs;
+    resources.m_kerning_px = cached.kerning_px;
+    m_impl->m_resources = &resources;
 }
 
 void Font_renderer::initialize_metrics(Asset_loader& asset_loader, int pixel_height, bool force_rebuild)
@@ -1253,34 +1123,6 @@ void Font_renderer::batch_text(float x, float y, const char* text)
     add_text_to_buffer(text, &pen, res);
 }
 
-void Font_renderer::draw_and_flush(const glm::mat4& pmv, const glm::vec4& color)
-{
-    auto* res = m_impl->m_resources;
-    if (!res || !res->m_shader_program) {
-        return;
-    }
-
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, res->m_texture);
-    res->m_shader_program->bind();
-
-    if (res->m_tex_uniform_location >= 0) {
-        glUniform1i(res->m_tex_uniform_location, 0);
-    }
-
-    if (res->m_color_uniform_location < 0 || res->m_pmv_uniform_location < 0) {
-        return;
-    }
-
-    if (res->m_range_uniform_location >= 0) {
-        glUniform1f(res->m_range_uniform_location, res->m_px_range);
-    }
-    glUniform4fv(res->m_color_uniform_location, 1, glm::value_ptr(color));
-    glUniformMatrix4fv(res->m_pmv_uniform_location, 1, GL_FALSE, glm::value_ptr(pmv));
-    vertex_buffer_render(res->m_buffer, GL_TRIANGLES);
-    vertex_buffer_clear(res->m_buffer);
-}
-
 void Font_renderer::rhi_begin_frame()
 {
     m_impl->m_rhi_batch_active = true;
@@ -1288,10 +1130,8 @@ void Font_renderer::rhi_begin_frame()
     m_impl->m_rhi_index_data.clear();
     m_impl->m_rhi_frame_vertex_data.clear();
     m_impl->m_rhi_frame_index_data.clear();
-#ifdef VNM_PLOT_HAS_QRHI
     m_impl->m_rhi.ops.clear();
     m_impl->m_rhi.call_used = 0;
-#endif
 }
 
 void Font_renderer::rhi_queue_draw(
@@ -1300,14 +1140,6 @@ void Font_renderer::rhi_queue_draw(
     const glm::vec4& color,
     const text_scissor_t& scissor)
 {
-#ifndef VNM_PLOT_HAS_QRHI
-    (void)ctx;
-    (void)pmv;
-    (void)color;
-    (void)scissor;
-    m_impl->m_rhi_vertex_data.clear();
-    m_impl->m_rhi_index_data.clear();
-#else
     if (!ctx.rhi || !ctx.rhi_updates || !ctx.render_target || !m_impl->m_font_cache) {
         m_impl->m_rhi_vertex_data.clear();
         m_impl->m_rhi_index_data.clear();
@@ -1321,15 +1153,15 @@ void Font_renderer::rhi_queue_draw(
         m_impl->m_rhi_frame_vertex_data.size();
     const std::uint32_t index_start =
         static_cast<std::uint32_t>(m_impl->m_rhi_frame_index_data.size());
-    const GLuint base_vertex =
-        static_cast<GLuint>(vertex_start_float_count / 8);
+    const std::uint32_t base_vertex =
+        static_cast<std::uint32_t>(vertex_start_float_count / 8);
     m_impl->m_rhi_frame_vertex_data.insert(
         m_impl->m_rhi_frame_vertex_data.end(),
         m_impl->m_rhi_vertex_data.begin(),
         m_impl->m_rhi_vertex_data.end());
     m_impl->m_rhi_frame_index_data.reserve(
         m_impl->m_rhi_frame_index_data.size() + m_impl->m_rhi_index_data.size());
-    for (GLuint index : m_impl->m_rhi_index_data) {
+    for (std::uint32_t index : m_impl->m_rhi_index_data) {
         m_impl->m_rhi_frame_index_data.push_back(index + base_vertex);
     }
 
@@ -1539,14 +1371,10 @@ void Font_renderer::rhi_queue_draw(
 
     m_impl->m_rhi_vertex_data.clear();
     m_impl->m_rhi_index_data.clear();
-#endif
 }
 
 void Font_renderer::rhi_finalize_frame(const frame_context_t& ctx)
 {
-#ifndef VNM_PLOT_HAS_QRHI
-    (void)ctx;
-#else
     auto& rhi_state = m_impl->m_rhi;
     if (!ctx.rhi || !ctx.rhi_updates ||
         m_impl->m_rhi_frame_vertex_data.empty() ||
@@ -1561,7 +1389,7 @@ void Font_renderer::rhi_finalize_frame(const frame_context_t& ctx)
     const std::size_t vertex_bytes =
         m_impl->m_rhi_frame_vertex_data.size() * sizeof(float);
     const std::size_t index_bytes =
-        m_impl->m_rhi_frame_index_data.size() * sizeof(GLuint);
+        m_impl->m_rhi_frame_index_data.size() * sizeof(std::uint32_t);
 
     if (!rhi_state.vbo || rhi_state.vbo_capacity_bytes < vertex_bytes) {
         const std::size_t alloc = vertex_bytes + vertex_bytes / 4;
@@ -1601,14 +1429,10 @@ void Font_renderer::rhi_finalize_frame(const frame_context_t& ctx)
         0,
         static_cast<quint32>(index_bytes),
         m_impl->m_rhi_frame_index_data.data());
-#endif
 }
 
 void Font_renderer::rhi_record_frame(const frame_context_t& ctx)
 {
-#ifndef VNM_PLOT_HAS_QRHI
-    (void)ctx;
-#else
     auto& rhi_state = m_impl->m_rhi;
     if (!ctx.cb || !rhi_state.pipeline || !rhi_state.vbo || !rhi_state.ibo) {
         rhi_reset_frame();
@@ -1650,7 +1474,6 @@ void Font_renderer::rhi_record_frame(const frame_context_t& ctx)
     }
 
     rhi_reset_frame();
-#endif
 }
 
 void Font_renderer::rhi_reset_frame()
@@ -1660,10 +1483,8 @@ void Font_renderer::rhi_reset_frame()
     m_impl->m_rhi_index_data.clear();
     m_impl->m_rhi_frame_vertex_data.clear();
     m_impl->m_rhi_frame_index_data.clear();
-#ifdef VNM_PLOT_HAS_QRHI
     m_impl->m_rhi.ops.clear();
     m_impl->m_rhi.call_used = 0;
-#endif
 }
 
 void Font_renderer::clear_buffer()

@@ -24,7 +24,7 @@ set(CMAKE_AUTORCC ON)
 # -----------------------------------------------------------------------------
 
 # Qt6
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick QuickControls2 OpenGL Multimedia)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick QuickControls2 Multimedia)
 
 # vnm_plot library (from parent repo)
 if(NOT TARGET vnm_plot::vnm_plot)
@@ -81,7 +81,6 @@ target_link_libraries(function_plotter PRIVATE
     Qt6::Gui
     Qt6::Quick
     Qt6::QuickControls2
-    Qt6::OpenGL
     Qt6::Multimedia
     vnm_plot::vnm_plot
     mexce_lib
@@ -121,7 +120,6 @@ if(WIN32 AND NOT CMAKE_CROSSCOMPILING)
             COMMAND "${WINDEPLOYQT_EXECUTABLE}"
                     --no-translations
                     --no-system-d3d-compiler
-                    --no-opengl-sw
                     --qmldir "${CMAKE_CURRENT_SOURCE_DIR}/qml"
                     "$<TARGET_FILE:function_plotter>"
             COMMENT "Deploying Qt runtime for function_plotter"

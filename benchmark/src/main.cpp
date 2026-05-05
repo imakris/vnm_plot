@@ -4,8 +4,8 @@
 #include "benchmark_window.h"
 #include "benchmark_profiler.h"
 
-#include <QApplication>
 #include <QDesktopServices>
+#include <QGuiApplication>
 #include <QSurfaceFormat>
 #include <QUrl>
 
@@ -42,7 +42,7 @@ void print_usage(const char* program_name)
               << "  --session <name>        Session name for report header (default: benchmark_run)\n"
               << "  --stream <name>         Stream name for report (default: SIM)\n"
               << "  --data-type <type>      bars|trades (default: bars)\n"
-              << "  --backend <backend>     opengl|qrhi|qrhi-offscreen (default: opengl)\n"
+              << "  --backend <backend>     qrhi|qrhi-offscreen (default: qrhi-offscreen)\n"
               << "  --render-style <style>  dots|line|area (default: dots for trades, area for bars)\n"
               << "  --static                Skip the generator and render a fixed 4-segment line (visual-diff mode)\n"
               << "  --line-px <pixels>      Line thickness for line/area rendering (default: 1.5)\n"
@@ -86,10 +86,6 @@ Parse_result parse_args(int argc, char* argv[])
             else
             if (arg == "--backend" && i + 1 < argc) {
                 std::string backend = argv[++i];
-                if (backend == "opengl" || backend == "OpenGL") {
-                    config.backend = "opengl";
-                }
-                else
                 if (backend == "qrhi" || backend == "QRhi" || backend == "QRHI") {
                     config.backend = "qrhi";
                 }
@@ -102,7 +98,7 @@ Parse_result parse_args(int argc, char* argv[])
                 else {
                     result.success = false;
                     result.error_message =
-                        "Invalid backend '" + backend + "'. Use 'opengl', 'qrhi', or 'qrhi-offscreen'.";
+                        "Invalid backend '" + backend + "'. Use 'qrhi' or 'qrhi-offscreen'.";
                     return result;
                 }
             }
@@ -236,8 +232,8 @@ std::string validate_config(const vnm::benchmark::Benchmark_config& config)
         return "Duration must be at least 1 second (got " +
                std::to_string(config.duration_seconds) + ")";
     }
-    if (config.backend != "opengl" && config.backend != "qrhi" && config.backend != "qrhi-offscreen") {
-        return "Backend must be 'opengl', 'qrhi', or 'qrhi-offscreen'";
+    if (config.backend != "qrhi" && config.backend != "qrhi-offscreen") {
+        return "Backend must be 'qrhi' or 'qrhi-offscreen'";
     }
     if (config.duration_seconds > 3600.0) {
         return "Duration cannot exceed 3600 seconds (1 hour)";
@@ -342,7 +338,7 @@ int main(int argc, char* argv[])
     format.setSwapInterval(0);
     QSurfaceFormat::setDefaultFormat(format);
 
-    QApplication app(argc, argv);
+    QGuiApplication app(argc, argv);
 
     if (!config.quiet) {
         std::cout << "vnm_plot Benchmark v" << k_version << "\n"
@@ -444,31 +440,17 @@ int main(int argc, char* argv[])
         return write_benchmark_report(runner);
     }
 
-    std::unique_ptr<vnm::benchmark::Benchmark_window> gl_window;
     std::unique_ptr<vnm::benchmark::Benchmark_rhi_window> rhi_window;
 
-    if (config.backend == "qrhi") {
-        rhi_window = std::make_unique<vnm::benchmark::Benchmark_rhi_window>(config);
-        rhi_window->setFormat(format);
-        QObject::connect(
-            rhi_window.get(),
-            &vnm::benchmark::Benchmark_rhi_window::benchmark_finished,
-            [&]() {
-                finish_benchmark(*rhi_window);
-            });
-        rhi_window->show();
-    }
-    else {
-        gl_window = std::make_unique<vnm::benchmark::Benchmark_window>(config);
-        gl_window->setFormat(format);
-        QObject::connect(
-            gl_window.get(),
-            &vnm::benchmark::Benchmark_window::benchmark_finished,
-            [&]() {
-                finish_benchmark(*gl_window);
-            });
-        gl_window->show();
-    }
+    rhi_window = std::make_unique<vnm::benchmark::Benchmark_rhi_window>(config);
+    rhi_window->setFormat(format);
+    QObject::connect(
+        rhi_window.get(),
+        &vnm::benchmark::Benchmark_rhi_window::benchmark_finished,
+        [&]() {
+            finish_benchmark(*rhi_window);
+        });
+    rhi_window->show();
 
     int app_result = app.exec();
     return (app_result != 0) ? k_exit_runtime_error : exit_code;

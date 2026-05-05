@@ -142,9 +142,6 @@ struct Plot_config
     // Area fill alpha multiplier (0..1).
     double area_fill_alpha = 0.3;
 
-    // When true, skip all GL calls (VBO creation, shader usage, draws, etc.).
-    // Useful for profiling pure CPU overhead without any GL interaction.
-    bool skip_gl_calls = false;
     // When true, renderer may request additional frames for smooth animations.
     // When false, renderer suppresses self-posted updates and may skip unchanged
     // frames based on a render signature to minimize idle CPU usage.

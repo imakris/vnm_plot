@@ -526,8 +526,7 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
     ctx.win_w = win_w;
     ctx.win_h = win_h;
     // Pixel-space ortho with origin at top-left. QRhi's correction matrix
-    // adapts the OpenGL-style projection to the active backend's clip-space
-    // conventions.
+    // adapts it to the active backend's clip-space conventions.
     const glm::mat4 pixel_ortho = glm::ortho(
         0.0f,
         static_cast<float>(win_w),
@@ -543,11 +542,6 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
     ctx.adjusted_reserved_height = reserved_h;
     ctx.adjusted_preview_height = snapshot.adjusted_preview_height;
     ctx.show_info = snapshot.show_info;
-    // Under any RHI backend the GL fallback is a no-op; series styles that
-    // do not yet route through the RHI pipeline simply skip rendering. The
-    // only render path that issues real gl* calls is when no QRhi is bound
-    // (tests / headless paths drive the renderer with rhi_ptr == nullptr).
-    ctx.skip_gl = config.skip_gl_calls || (rhi_ptr != nullptr);
     ctx.dark_mode = config.dark_mode;
     ctx.config = &config;
     ctx.rhi = rhi_ptr;

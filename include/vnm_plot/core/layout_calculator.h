@@ -1,7 +1,7 @@
 #pragma once
 // VNM Plot Library - Core Layout Calculator
 // Computes axis labels, grid positions, and layout metrics.
-// This is pure computational logic with no OpenGL dependencies.
+// This is pure computational logic with no renderer-backend dependencies.
 
 #include "types.h"
 

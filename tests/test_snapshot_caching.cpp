@@ -155,7 +155,6 @@ frame_context_t make_context(const frame_layout_result_t& layout, Plot_config& c
     ctx.t_available_max = 10;
     ctx.win_w = 200;
     ctx.win_h = 120;
-    ctx.skip_gl = config.skip_gl_calls;
     ctx.dark_mode = config.dark_mode;
     ctx.config = &config;
     return ctx;
@@ -196,7 +195,6 @@ bool test_frame_scoped_cache_reuse()
     layout.usable_height = 80.0;
 
     Plot_config config;
-    config.skip_gl_calls = true;
     config.preview_visibility = 1.0;
 
     frame_context_t ctx = make_context(layout, config);
@@ -249,7 +247,6 @@ bool test_preview_uses_distinct_source_snapshot()
     layout.usable_height = 80.0;
 
     Plot_config config;
-    config.skip_gl_calls = true;
     config.preview_visibility = 1.0;
 
     frame_context_t ctx = make_context(layout, config);
@@ -295,7 +292,6 @@ bool test_preview_disabled_skips_preview_snapshot()
     layout.usable_height = 80.0;
 
     Plot_config config;
-    config.skip_gl_calls = true;
     config.preview_visibility = 1.0;
 
     frame_context_t ctx = make_context(layout, config);
@@ -338,7 +334,6 @@ bool test_frame_change_invalidates_snapshot_cache()
     layout.usable_height = 80.0;
 
     Plot_config config;
-    config.skip_gl_calls = true;
 
     frame_context_t ctx = make_context(layout, config);
 
@@ -379,7 +374,6 @@ bool test_empty_window_behavior_invalidates_fast_path_cache()
     layout.usable_height = 80.0;
 
     Plot_config config;
-    config.skip_gl_calls = true;
 
     frame_context_t ctx = make_context(layout, config);
 
@@ -396,8 +390,7 @@ bool test_empty_window_behavior_invalidates_fast_path_cache()
     auto state_it = renderer.m_vbo_states.find(series_id);
     TEST_ASSERT(state_it != renderer.m_vbo_states.end(),
                 "expected vbo state for test series");
-    // skip_gl mode does not allocate GL buffers, so seed active_vbo to
-    // exercise the CPU fast-path conditions in process_view().
+    // QRhi-less tests seed active_vbo to // exercise the CPU fast-path conditions in process_view().
     state_it->second.main_view.active_vbo = 1u;
 
     renderer.render(ctx, series_map);
@@ -433,7 +426,6 @@ bool test_preview_honors_hold_last_forward()
     layout.usable_height = 80.0;
 
     Plot_config config;
-    config.skip_gl_calls = true;
     config.preview_visibility = 1.0;
 
     frame_context_t ctx = make_context(layout, config);
@@ -469,7 +461,6 @@ bool test_lod_level_separation()
     series->access = make_policy();
 
     Plot_config config;
-    config.skip_gl_calls = true;
 
     Series_renderer renderer;
     Asset_loader asset_loader;
@@ -529,7 +520,6 @@ bool test_snapshot_released_after_render()
     layout.usable_height = 80.0;
 
     Plot_config config;
-    config.skip_gl_calls = true;
 
     Series_renderer renderer;
     Asset_loader asset_loader;
@@ -554,7 +544,6 @@ bool test_render_empty_series_map()
     layout.usable_height = 80.0;
 
     Plot_config config;
-    config.skip_gl_calls = true;
 
     frame_context_t ctx = make_context(layout, config);
 
@@ -596,7 +585,6 @@ bool test_upload_origin_records_per_view_origin()
     layout.usable_height = 80.0;
 
     Plot_config config;
-    config.skip_gl_calls = true;
 
     frame_context_t ctx = make_context(layout, config);
     // Span = 1 ms + 1 ns is strictly greater than k_ns_per_ms, so
@@ -659,7 +647,6 @@ bool test_upload_invalidates_when_origin_changes_across_snap_bucket()
     layout.usable_height = 80.0;
 
     Plot_config config;
-    config.skip_gl_calls = true;
 
     Series_renderer renderer;
     Asset_loader asset_loader;
@@ -680,8 +667,7 @@ bool test_upload_invalidates_when_origin_changes_across_snap_bucket()
         ctx.t_available_min = ctx.t0;
         ctx.t_available_max = ctx.t1;
         renderer.render(ctx, series_map);
-        // skip_gl mode does not allocate GL buffers, so seed active_vbo
-        // to keep the cache-hit predicate's other terms truthy.
+        // QRhi-less tests seed active_vbo // to keep the cache-hit predicate's other terms truthy.
         auto it = renderer.m_vbo_states.find(series_id);
         if (it != renderer.m_vbo_states.end()) {
             it->second.main_view.active_vbo = 1u;
@@ -779,7 +765,6 @@ bool test_renderer_assigns_distinct_origins_to_main_and_preview()
     layout.usable_height = 80.0;
 
     Plot_config config;
-    config.skip_gl_calls = true;
     config.preview_visibility = 1.0;
 
     frame_context_t ctx = make_context(layout, config);
@@ -859,7 +844,6 @@ bool test_render_skips_invalid_series()
     layout.usable_height = 80.0;
 
     Plot_config config;
-    config.skip_gl_calls = true;
 
     frame_context_t ctx = make_context(layout, config);
 

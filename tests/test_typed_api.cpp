@@ -216,18 +216,12 @@ bool test_typed_api_floating_point_timestamp_member()
 bool test_function_sample_layout_key_matches_typed_factory()
 {
     // Contract: make_function_sample_policy_typed().layout_key must equal
-    // function_sample_layout_key(). default_shader_for_layout uses the
-    // standalone helper to look up the built-in shader set; the typed
-    // factory feeds the renderer the policy. If they disagree, the
-    // built-in lookup falls through to k_empty_shader_set, and the
-    // failure surfaces only at runtime as MISSING_SHADER on first frame.
-    // Test this contract directly so any regression is caught at compile/
-    // unit-test time instead.
+    // function_sample_layout_key() so renderer-internal caches recognize the
+    // typed factory consistently.
     const auto policy = plot::make_function_sample_policy_typed();
     TEST_ASSERT(policy.layout_key == plot::function_sample_layout_key(),
         "make_function_sample_policy_typed().layout_key must equal "
-        "function_sample_layout_key() so default_shader_for_layout "
-        "matches the typed factory");
+        "function_sample_layout_key()");
     TEST_ASSERT(policy.layout_key != 0,
         "function_sample layout_key should be non-zero");
 

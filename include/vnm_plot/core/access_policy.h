@@ -100,7 +100,6 @@ struct Data_access_policy_typed
     std::function<float(const Sample&)> get_signal;
     std::function<void(Sample& dst_sample, const Sample& src_sample, std::int64_t timestamp_ns)> clone_with_timestamp;
 
-    std::function<void(unsigned int)> bind_uniforms;
     uint64_t layout_key = 0;
 
     bool is_valid() const
@@ -151,7 +150,6 @@ struct Data_access_policy_typed
                 std::memcpy(dst_sample, &tmp_sample, sizeof(Sample));
             };
         }
-        policy.bind_uniforms = bind_uniforms;
         policy.layout_key = layout_key;
         return policy;
     }

@@ -3,7 +3,6 @@
 #include <vnm_plot/core/plot_config.h>
 #include <vnm_plot/core/font_renderer.h>
 
-#include <glatter/glatter.h>
 #include <glm/glm.hpp>
 
 #include <algorithm>
@@ -24,17 +23,17 @@ using detail::k_value_decimals;
 
 namespace {
 
-bool to_glint_rounded(double value, GLint& out)
+bool to_int_rounded(double value, int& out)
 {
     if (!std::isfinite(value)) {
         return false;
     }
 
-    out = static_cast<GLint>(lround(value));
+    out = static_cast<int>(lround(value));
     return true;
 }
 
-bool to_positive_glsizei(double value, GLsizei& out)
+bool to_positive_int(double value, int& out)
 {
     if (!std::isfinite(value)) {
         return false;
@@ -45,7 +44,7 @@ bool to_positive_glsizei(double value, GLsizei& out)
         return false;
     }
 
-    out = static_cast<GLsizei>(rounded);
+    out = static_cast<int>(rounded);
     return true;
 }
 
@@ -154,21 +153,9 @@ bool Text_renderer::render(const frame_context_t& ctx, bool fade_v_labels, bool 
         return false;
     }
 
-    // Skip GL calls if configured (for pure CPU profiling)
-    const bool skip_gl = ctx.skip_gl;
-
-    if (!skip_gl) {
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    }
-
     bool any_active = false;
     any_active |= render_axis_labels(ctx, fade_v_labels);
     any_active |= render_info_overlay(ctx, fade_h_labels);
-
-    if (!skip_gl) {
-        glDisable(GL_BLEND);
-    }
     return any_active;
 }
 
@@ -199,40 +186,21 @@ bool Text_renderer::render_axis_labels(const frame_context_t& ctx, bool fade_lab
     const bool dark_mode = ctx.dark_mode;
     const glm::vec4 font_color = dark_mode ? glm::vec4(1.f, 1.f, 1.f, 1.f) : glm::vec4(0.f, 0.f, 0.f, 1.f);
 
-    // Skip GL calls if configured (for pure CPU profiling)
-    const bool skip_gl = ctx.skip_gl;
-
     const float right_edge_x = static_cast<float>(pl.usable_width + pl.v_bar_width - k_v_label_horizontal_padding_px);
     const float min_x = static_cast<float>(pl.usable_width + k_text_margin_px);
     const float baseline_off = m_fonts->baseline_offset_px();
     const double v_span = double(ctx.v1) - double(ctx.v0);
 
     text_scissor_t rhi_scissor;
-    if (!skip_gl) {
-        GLint scissor_x = 0;
-        GLint scissor_y = 0;
-        GLsizei scissor_w = 0;
-        GLsizei scissor_h = 0;
-        if (!to_glint_rounded(pl.usable_width, scissor_x) ||
-            !to_glint_rounded(double(ctx.win_h) - double(pl.usable_height), scissor_y) ||
-            !to_positive_glsizei(pl.v_bar_width, scissor_w) ||
-            !to_positive_glsizei(pl.usable_height, scissor_h)) {
-            return true;
-        }
-
-        glEnable(GL_SCISSOR_TEST);
-        glScissor(scissor_x, scissor_y, scissor_w, scissor_h);
-    }
-    else
     if (ctx.rhi) {
-        GLint scissor_x = 0;
-        GLint scissor_y = 0;
-        GLsizei scissor_w = 0;
-        GLsizei scissor_h = 0;
-        if (!to_glint_rounded(pl.usable_width, scissor_x) ||
-            !to_glint_rounded(double(ctx.win_h) - double(pl.usable_height), scissor_y) ||
-            !to_positive_glsizei(pl.v_bar_width, scissor_w) ||
-            !to_positive_glsizei(pl.usable_height, scissor_h)) {
+        int scissor_x = 0;
+        int scissor_y = 0;
+        int scissor_w = 0;
+        int scissor_h = 0;
+        if (!to_int_rounded(pl.usable_width, scissor_x) ||
+            !to_int_rounded(double(ctx.win_h) - double(pl.usable_height), scissor_y) ||
+            !to_positive_int(pl.v_bar_width, scissor_w) ||
+            !to_positive_int(pl.usable_height, scissor_h)) {
             return true;
         }
         rhi_scissor.enabled = true;
@@ -271,15 +239,6 @@ bool Text_renderer::render_axis_labels(const frame_context_t& ctx, bool fade_lab
                 color.a *= state.alpha;
                 m_fonts->rhi_queue_draw(ctx, ctx.pmv, color, rhi_scissor);
             }
-            else
-            if (skip_gl) {
-                m_fonts->clear_buffer();
-            }
-            else {
-                glm::vec4 color = font_color;
-                color.a *= state.alpha;
-                m_fonts->draw_and_flush(ctx.pmv, color);
-            }
         }
     };
 
@@ -310,17 +269,6 @@ bool Text_renderer::render_axis_labels(const frame_context_t& ctx, bool fade_lab
         if (ctx.rhi) {
             m_fonts->rhi_queue_draw(ctx, ctx.pmv, font_color, rhi_scissor);
         }
-        else
-        if (skip_gl) {
-            m_fonts->clear_buffer();
-        }
-        else {
-            m_fonts->draw_and_flush(ctx.pmv, font_color);
-        }
-    }
-
-    if (!skip_gl) {
-        glDisable(GL_SCISSOR_TEST);
     }
     return any_active;
 }
@@ -333,9 +281,6 @@ bool Text_renderer::render_info_overlay(const frame_context_t& ctx, bool fade_la
     // Subtract first, then convert: keeps sub-ms precision near modern epochs.
     const std::int64_t t_span_ns = ctx.t1 - ctx.t0;
     const double t_span = static_cast<double>(t_span_ns);
-
-    // Skip GL calls if configured (for pure CPU profiling)
-    const bool skip_gl = ctx.skip_gl;
 
     const auto draw_label = [&](double t_ns_as_double, const label_fade_state_t& state) {
         if (!(t_span > 0.0) || !(pl.usable_width > 0.0)) {
@@ -356,15 +301,6 @@ bool Text_renderer::render_info_overlay(const frame_context_t& ctx, bool fade_la
                 glm::vec4 color = font_color;
                 color.a *= state.alpha;
                 m_fonts->rhi_queue_draw(ctx, ctx.pmv, color);
-            }
-            else
-            if (skip_gl) {
-                m_fonts->clear_buffer();
-            }
-            else {
-                glm::vec4 color = font_color;
-                color.a *= state.alpha;
-                m_fonts->draw_and_flush(ctx.pmv, color);
             }
         }
     };
@@ -445,13 +381,6 @@ bool Text_renderer::render_info_overlay(const frame_context_t& ctx, bool fade_la
     if (!fade_labels || ctx.show_info) {
         if (ctx.rhi) {
             m_fonts->rhi_queue_draw(ctx, ctx.pmv, font_color);
-        }
-        else
-        if (skip_gl) {
-            m_fonts->clear_buffer();
-        }
-        else {
-            m_fonts->draw_and_flush(ctx.pmv, font_color);
         }
     }
     return any_active;

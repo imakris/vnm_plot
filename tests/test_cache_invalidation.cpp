@@ -165,7 +165,6 @@ frame_context_t make_context(const frame_layout_result_t& layout, Plot_config& c
     ctx.t_available_max = 399;
     ctx.win_w = 100;
     ctx.win_h = 100;
-    ctx.skip_gl = config.skip_gl_calls;
     ctx.dark_mode = config.dark_mode;
     ctx.config = &config;
     return ctx;
@@ -207,7 +206,6 @@ bool test_lod0_sequence_fallback_calls_snapshot()
     layout.usable_height = 80.0;
 
     Plot_config config;
-    config.skip_gl_calls = true;
 
     frame_context_t ctx = make_context(layout, config);
 

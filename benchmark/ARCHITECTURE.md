@@ -1,7 +1,7 @@
 # vnm_plot Synthetic Benchmark - Architecture and Implementation
 
 ## Purpose
-This benchmark is a standalone Qt + OpenGL application that generates synthetic
+This benchmark is a standalone Qt + QRhi application that generates synthetic
 time-series data and measures vnm_plot rendering performance. It emits a stable
 profiling report format for reproducible comparisons.
 
@@ -32,7 +32,7 @@ profiling report format for reproducible comparisons.
   - Aggregates scopes by name for deterministic output.
   - Writes a fixed-width, hierarchical report with UTC timestamps.
 
-- Benchmark_window (Qt OpenGL widget)
+- Benchmark_window (Qt RHI window/offscreen runner)
   - Owns renderers, asset loader, and series configuration.
   - Starts the generator thread and drives rendering at ~60 Hz.
   - Updates view ranges based on the latest data snapshot.
@@ -40,7 +40,7 @@ profiling report format for reproducible comparisons.
 ## Threading Model
 - Generator thread:
   - Produces samples at the configured rate using steady_clock pacing.
-  - Writes into the ring buffer only; no OpenGL work.
+  - Writes into the ring buffer only; no rendering work.
 
 - UI/render thread:
   - Executes paintGL() via Qt's event loop.

@@ -3,13 +3,10 @@
 #include <vnm_plot/core/constants.h>
 #include <vnm_plot/core/plot_config.h>
 
-#include <glatter/glatter.h>
 #include <glm/gtc/type_ptr.hpp>
 
-#ifdef VNM_PLOT_HAS_QRHI
-#  include <rhi/qrhi.h>
-#  include <QFile>
-#endif
+#include <rhi/qrhi.h>
+#include <QFile>
 
 #include <algorithm>
 #include <cmath>
@@ -22,17 +19,17 @@ using detail::k_rect_initial_quads;
 
 namespace {
 
-bool to_glint_rounded(double value, GLint& out)
+bool to_int_rounded(double value, int& out)
 {
     if (!std::isfinite(value)) {
         return false;
     }
 
-    out = static_cast<GLint>(lround(value));
+    out = static_cast<int>(lround(value));
     return true;
 }
 
-bool to_positive_glsizei(double value, GLsizei& out)
+bool to_positive_int(double value, int& out)
 {
     if (!std::isfinite(value)) {
         return false;
@@ -43,7 +40,7 @@ bool to_positive_glsizei(double value, GLsizei& out)
         return false;
     }
 
-    out = static_cast<GLsizei>(rounded);
+    out = static_cast<int>(rounded);
     return true;
 }
 
@@ -105,7 +102,6 @@ static_assert(sizeof(Grid_block_std140)                     == 1072, "Grid UBO m
 constexpr std::uint32_t k_rect_ubo_bytes = sizeof(Rect_block_std140);
 constexpr std::uint32_t k_grid_ubo_bytes = sizeof(Grid_block_std140);
 
-#ifdef VNM_PLOT_HAS_QRHI
 QShader load_qsb(const char* alias)
 {
     QFile file(QStringLiteral(":/vnm_plot/shaders/qsb/") + QString::fromLatin1(alias));
@@ -114,7 +110,6 @@ QShader load_qsb(const char* alias)
     }
     return QShader::fromSerialized(file.readAll());
 }
-#endif
 
 } // namespace
 
@@ -134,7 +129,6 @@ QShader load_qsb(const char* alias)
 
 struct Primitive_renderer::rhi_state_t
 {
-#ifdef VNM_PLOT_HAS_QRHI
     // Per-call buffers used by exactly one draw op. Owned by rhi_state_t and
     // recycled across frames: the pool grows as the frame's draw count
     // demands and m_used resets to 0 at the top of each prepare phase. The
@@ -215,7 +209,6 @@ struct Primitive_renderer::rhi_state_t
     // teardown) invalidates every cached buffer and pipeline because they
     // belong to the previous QRhi instance.
     QRhi*   last_rhi = nullptr;
-#endif
 };
 
 Primitive_renderer::Primitive_renderer()
@@ -224,129 +217,27 @@ Primitive_renderer::Primitive_renderer()
 
 Primitive_renderer::~Primitive_renderer() = default;
 
-void Primitive_renderer::set_log_callback(GL_program::Log_callback callback)
+void Primitive_renderer::set_log_callback(std::function<void(const std::string&)> callback)
 {
     m_log_error = std::move(callback);
 }
 
 bool Primitive_renderer::initialize(Asset_loader& asset_loader)
 {
+    (void)asset_loader;
     if (m_initialized) {
         return true;
     }
-
-    // Load rect shader sources
-    auto rect_sources = asset_loader.load_shader("shaders/generic_rect");
-    if (!rect_sources) {
-        if (m_log_error) {
-            m_log_error("Failed to load generic_rect shader sources");
-        }
-        return false;
-    }
-
-    // Create rect shader program
-    m_sp_rects = create_gl_program(
-        rect_sources->vertex,
-        rect_sources->fragment,
-        m_log_error);
-
-    if (!m_sp_rects) {
-        return false;
-    }
-
-    // Create rects VAO/VBO
-    glGenVertexArrays(1, &m_rects_pipe.vao);
-    glGenBuffers(1, &m_rects_pipe.vbo);
-
-    glBindVertexArray(m_rects_pipe.vao);
-    glBindBuffer(GL_ARRAY_BUFFER, m_rects_pipe.vbo);
-
-    const GLsizeiptr initial_bytes = k_rect_initial_quads * static_cast<GLsizeiptr>(sizeof(rect_vertex_t));
-    glBufferData(GL_ARRAY_BUFFER, initial_bytes, nullptr, GL_STREAM_DRAW);
-    m_rects_pipe.capacity_bytes = static_cast<size_t>(initial_bytes);
-
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, sizeof(rect_vertex_t),
-                          reinterpret_cast<void*>(offsetof(rect_vertex_t, color)));
-    glVertexAttribDivisor(0, 1);
-    glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(rect_vertex_t),
-                          reinterpret_cast<void*>(offsetof(rect_vertex_t, rect_coords)));
-    glVertexAttribDivisor(1, 1);
-
-    glBindVertexArray(0);
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-    // Load grid shader sources
-    auto grid_sources = asset_loader.load_shader("shaders/grid_quad");
-    if (!grid_sources) {
-        if (m_log_error) {
-            m_log_error("Failed to load grid_quad shader sources");
-        }
-        cleanup_gl_resources();
-        return false;
-    }
-
-    // Create grid shader program
-    m_sp_grid = create_gl_program(
-        grid_sources->vertex,
-        grid_sources->fragment,
-        m_log_error);
-
-    if (!m_sp_grid) {
-        cleanup_gl_resources();
-        return false;
-    }
-
-    // Create grid VAO/VBO (static unit quad)
-    glGenVertexArrays(1, &m_grid_quad_pipe.vao);
-    glGenBuffers(1, &m_grid_quad_pipe.vbo);
-
-    glBindVertexArray(m_grid_quad_pipe.vao);
-    glBindBuffer(GL_ARRAY_BUFFER, m_grid_quad_pipe.vbo);
-
-    const GLfloat quad[] = {
-        -1.f, -1.f,
-         1.f, -1.f,
-        -1.f,  1.f,
-         1.f,  1.f
-    };
-    glBufferData(GL_ARRAY_BUFFER, sizeof(quad), quad, GL_STATIC_DRAW);
-
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat), nullptr);
-
-    glBindVertexArray(0);
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
 
     m_initialized = true;
     return true;
 }
 
-void Primitive_renderer::cleanup_gl_resources()
+void Primitive_renderer::cleanup_resources()
 {
-    if (m_rects_pipe.vao != 0) {
-        glDeleteVertexArrays(1, &m_rects_pipe.vao);
-    }
-    if (m_rects_pipe.vbo != 0) {
-        glDeleteBuffers(1, &m_rects_pipe.vbo);
-    }
-    if (m_grid_quad_pipe.vao != 0) {
-        glDeleteVertexArrays(1, &m_grid_quad_pipe.vao);
-    }
-    if (m_grid_quad_pipe.vbo != 0) {
-        glDeleteBuffers(1, &m_grid_quad_pipe.vbo);
-    }
-
-    m_rects_pipe     = {};
-    m_grid_quad_pipe = {};
-
-    m_sp_rects.reset();
-    m_sp_grid.reset();
     m_cpu_buffer.clear();
     m_initialized = false;
 
-#ifdef VNM_PLOT_HAS_QRHI
     m_rhi_state->rect_calls.clear();
     m_rhi_state->grid_calls.clear();
     m_rhi_state->ops.clear();
@@ -365,7 +256,6 @@ void Primitive_renderer::cleanup_gl_resources()
     m_rhi_state->grid_vert = {};
     m_rhi_state->grid_frag = {};
     m_rhi_state->last_rhi = nullptr;
-#endif
 }
 
 void Primitive_renderer::batch_rect(const glm::vec4& color, const glm::vec4& rect_coords)
@@ -376,7 +266,6 @@ void Primitive_renderer::batch_rect(const glm::vec4& color, const glm::vec4& rec
     m_cpu_buffer.push_back({color, rect_coords});
 }
 
-#ifdef VNM_PLOT_HAS_QRHI
 bool Primitive_renderer::rhi_ensure_rect_pipeline(
     rhi_state_t& rhi_state,
     QRhi* rhi,
@@ -593,8 +482,6 @@ void Primitive_renderer::rhi_on_backend_change(rhi_state_t& rhi_state, QRhi* rhi
     rhi_state.last_rhi = rhi;
 }
 
-#endif // VNM_PLOT_HAS_QRHI
-
 void Primitive_renderer::flush_rects(const frame_context_t& ctx, const glm::mat4& pmv)
 {
     VNM_PLOT_PROFILE_SCOPE(m_profiler, "renderer.frame.prims.flush_rects");
@@ -603,7 +490,6 @@ void Primitive_renderer::flush_rects(const frame_context_t& ctx, const glm::mat4
         return;
     }
 
-#ifdef VNM_PLOT_HAS_QRHI
     if (ctx.rhi && ctx.rhi_updates && ctx.render_target) {
         QRhi* rhi = ctx.rhi;
         QRhiResourceUpdateBatch* updates = ctx.rhi_updates;
@@ -691,42 +577,7 @@ void Primitive_renderer::flush_rects(const frame_context_t& ctx, const glm::mat4
         m_cpu_buffer.clear();
         return;
     }
-#endif // VNM_PLOT_HAS_QRHI
 
-    if (ctx.skip_gl) {
-        m_cpu_buffer.clear();
-        return;
-    }
-    if (!m_sp_rects || m_rects_pipe.vbo == 0 || m_rects_pipe.vao == 0) {
-        m_cpu_buffer.clear();
-        return;
-    }
-
-    const GLsizeiptr bytes_needed = static_cast<GLsizeiptr>(
-        m_cpu_buffer.size() * sizeof(rect_vertex_t));
-
-    glBindBuffer(GL_ARRAY_BUFFER, m_rects_pipe.vbo);
-
-    if (bytes_needed > static_cast<GLsizeiptr>(m_rects_pipe.capacity_bytes)) {
-        glBufferData(GL_ARRAY_BUFFER, bytes_needed, m_cpu_buffer.data(), GL_STREAM_DRAW);
-        m_rects_pipe.capacity_bytes = static_cast<size_t>(bytes_needed);
-    }
-    else {
-        glBufferSubData(GL_ARRAY_BUFFER, 0, bytes_needed, m_cpu_buffer.data());
-    }
-
-    m_sp_rects->bind();
-    glUniformMatrix4fv(
-        m_sp_rects->uniform_location("pmv"),
-        1, GL_FALSE, glm::value_ptr(pmv));
-
-    glBindVertexArray(m_rects_pipe.vao);
-    glDrawArraysInstanced(
-        GL_TRIANGLE_STRIP, 0, 4, static_cast<GLsizei>(m_cpu_buffer.size()));
-
-    glBindVertexArray(0);
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    m_cpu_buffer.clear();
 }
 
 void Primitive_renderer::clear_rect_batch()
@@ -748,7 +599,6 @@ void Primitive_renderer::draw_grid_shader(
         return;
     }
 
-#ifdef VNM_PLOT_HAS_QRHI
     if (ctx.rhi && ctx.rhi_updates && ctx.render_target) {
         QRhi* rhi = ctx.rhi;
         QRhiResourceUpdateBatch* updates = ctx.rhi_updates;
@@ -770,29 +620,29 @@ void Primitive_renderer::draw_grid_shader(
             return;
         }
 
-        // Chrome passes region coordinates in OpenGL's bottom-left origin
-        // for the GL renderer. QRhiScissor also wants bottom-left, while the
-        // fragment shader works in the plot's top-left pixel convention.
+        // Chrome passes region coordinates in framebuffer bottom-left origin.
+        // QRhiScissor also wants bottom-left, while the fragment shader works
+        // in the plot's top-left pixel convention.
         int sx = 0;
         int sy = 0;
         int sw = 0;
         int sh = 0;
         {
-            GLint gl_x = 0;
-            GLint gl_y = 0;
-            GLsizei gl_w = 0;
-            GLsizei gl_h = 0;
-            if (!to_glint_rounded(origin.x, gl_x) ||
-                !to_glint_rounded(origin.y, gl_y) ||
-                !to_positive_glsizei(size.x, gl_w) ||
-                !to_positive_glsizei(size.y, gl_h))
+            int x = 0;
+            int y = 0;
+            int w = 0;
+            int h = 0;
+            if (!to_int_rounded(origin.x, x) ||
+                !to_int_rounded(origin.y, y) ||
+                !to_positive_int(size.x, w) ||
+                !to_positive_int(size.y, h))
             {
                 return;
             }
-            sx = static_cast<int>(gl_x);
-            sy = static_cast<int>(gl_y);
-            sw = static_cast<int>(gl_w);
-            sh = static_cast<int>(gl_h);
+            sx = x;
+            sy = y;
+            sw = w;
+            sh = h;
         }
 
         if (m_rhi_state->grid_used == m_rhi_state->grid_calls.size()) {
@@ -860,82 +710,27 @@ void Primitive_renderer::draw_grid_shader(
         m_rhi_state->ops.push_back(op);
         return;
     }
-#endif // VNM_PLOT_HAS_QRHI
 
-    if (ctx.skip_gl) {
-        return;
-    }
-    if (!m_sp_grid || m_grid_quad_pipe.vao == 0 || m_grid_quad_pipe.vbo == 0) {
-        return;
-    }
-
-    GLint scissor_x = 0;
-    GLint scissor_y = 0;
-    GLsizei scissor_w = 0;
-    GLsizei scissor_h = 0;
-    if (!to_glint_rounded(origin.x, scissor_x) ||
-        !to_glint_rounded(origin.y, scissor_y) ||
-        !to_positive_glsizei(size.x, scissor_w) ||
-        !to_positive_glsizei(size.y, scissor_h)) {
-        return;
-    }
-
-    m_sp_grid->bind();
-
-    glUniform2f(m_sp_grid->uniform_location("plot_size_px"), size.x, size.y);
-    glUniform2f(m_sp_grid->uniform_location("region_origin_px"), origin.x, origin.y);
-    glUniform4f(m_sp_grid->uniform_location("grid_color"), color.r, color.g, color.b, color.a);
-
-    const int max_levels = grid_layer_params_t::k_max_levels;
-
-    glUniform1i(m_sp_grid->uniform_location("v_count"), vertical_levels.count);
-    glUniform1fv(m_sp_grid->uniform_location("v_spacing_px"), max_levels, vertical_levels.spacing_px);
-    glUniform1fv(m_sp_grid->uniform_location("v_start_px"), max_levels, vertical_levels.start_px);
-    glUniform1fv(m_sp_grid->uniform_location("v_alpha"), max_levels, vertical_levels.alpha);
-    glUniform1fv(m_sp_grid->uniform_location("v_thickness_px"), max_levels, vertical_levels.thickness_px);
-
-    glUniform1i(m_sp_grid->uniform_location("t_count"), horizontal_levels.count);
-    glUniform1fv(m_sp_grid->uniform_location("t_spacing_px"), max_levels, horizontal_levels.spacing_px);
-    glUniform1fv(m_sp_grid->uniform_location("t_start_px"), max_levels, horizontal_levels.start_px);
-    glUniform1fv(m_sp_grid->uniform_location("t_alpha"), max_levels, horizontal_levels.alpha);
-    glUniform1fv(m_sp_grid->uniform_location("t_thickness_px"), max_levels, horizontal_levels.thickness_px);
-
-    glEnable(GL_SCISSOR_TEST);
-    glScissor(scissor_x, scissor_y, scissor_w, scissor_h);
-
-    glBindVertexArray(m_grid_quad_pipe.vao);
-    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-    glBindVertexArray(0);
-
-    glDisable(GL_SCISSOR_TEST);
 }
 
 std::size_t Primitive_renderer::queued_op_count() const
 {
-#ifdef VNM_PLOT_HAS_QRHI
     return m_rhi_state->ops.size();
-#else
-    return 0;
-#endif
 }
 
 void Primitive_renderer::record_draws(
     [[maybe_unused]] const frame_context_t& ctx,
     [[maybe_unused]] std::size_t end)
 {
-#ifdef VNM_PLOT_HAS_QRHI
     if (!ctx.rhi || !ctx.cb) {
-        // The GL path runs draws inline in flush_rects / draw_grid_shader, so
-        // there is nothing to play back here. record_draws is a no-op when no
-        // RHI is bound on purpose.
         return;
     }
     QRhiCommandBuffer* cb = ctx.cb;
 
     // Slice play: replay ops [cursor, end). The host advances `end` across
     // multiple calls so it can interleave chrome draws (back layer / front
-    // layer) around the series pass and keep the depth order the GL flow
-    // produces. A clamped `end` past the queue size protects against a
+    // layer) around the series pass and keep depth order stable. A clamped
+    // `end` past the queue size protects against a
     // stale checkpoint after a chrome op was rejected mid-frame.
     const std::size_t cursor = m_rhi_state->record_cursor;
     if (end > m_rhi_state->ops.size()) {
@@ -972,14 +767,11 @@ void Primitive_renderer::record_draws(
         }
     }
     m_rhi_state->record_cursor = end;
-#endif
 }
 
 void Primitive_renderer::reset_frame()
 {
-#ifdef VNM_PLOT_HAS_QRHI
     rhi_reset_frame_plan(*m_rhi_state);
-#endif
 }
 
 } // namespace vnm::plot

@@ -29,7 +29,7 @@ struct Report_metadata {
     std::string session = "benchmark_run";
     std::string stream = "SIM";
     std::string data_type = "Bars";      // "Bars" or "Trades"
-    std::string backend = "opengl";      // "opengl" or "qrhi"
+    std::string backend = "qrhi-offscreen";
     double target_duration = 30.0;
     std::string filename_prefix = "inspector_benchmark";
     std::filesystem::path output_directory;

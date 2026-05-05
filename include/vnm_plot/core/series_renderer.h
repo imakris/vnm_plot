@@ -1,9 +1,8 @@
 #pragma once
 
 // VNM Plot Library - Core Series Renderer
-// Qt-free series data rendering with LOD support.
+// QRhi series data rendering with LOD support.
 
-#include "gl_program.h"
 #include "gpu_sample.h"
 #include "types.h"
 
@@ -31,7 +30,7 @@ class Profiler;
 // -----------------------------------------------------------------------------
 // Series Renderer
 // -----------------------------------------------------------------------------
-// Renders data series using OpenGL. Manages VBOs and shaders internally.
+// Renders data series using QRhi. Manages buffers and pipelines internally.
 class Series_renderer
 {
 public:
@@ -41,12 +40,11 @@ public:
     Series_renderer(const Series_renderer&) = delete;
     Series_renderer& operator=(const Series_renderer&) = delete;
 
-    // Remember the asset loader used for lazy shader compilation. This does
-    // not perform any GL work and cannot fail.
+    // Keep parity with the rest of the renderer initialization path. QSB
+    // shaders are loaded lazily from Qt resources.
     void initialize(Asset_loader& asset_loader);
 
-    // Clean up GL resources
-    void cleanup_gl_resources();
+    void cleanup_resources();
 
     // Two-phase rendering. Under RHI, the host opens a resource-update batch,
     // calls prepare() to fill it with sample/UBO/per-frame uploads, calls
@@ -55,24 +53,20 @@ public:
     // the draw commands. The split is forced by D3D11: cb->resourceUpdate is
     // only legal outside an open pass, and beginPass consumes its 4th
     // argument before the renderer's own draws would otherwise have written
-    // to it. Under the GL fallback (no QRhi in ctx), prepare() is a no-op
-    // and render() runs the full GL flow standalone, which keeps every
-    // existing test that calls render() directly working.
+    // to it.
     void prepare(const frame_context_t& ctx,
                  const std::map<int, std::shared_ptr<const series_data_t>>& series);
 
     // Render all series in the frame context. Records draws only when
-    // ctx.rhi is non-null (uploads must already have been submitted via
-    // prepare() + beginPass(batch)); runs the full GL flow when ctx.rhi is
-    // null.
+    // ctx.rhi is non-null; uploads must already have been submitted via
+    // prepare() + beginPass(batch).
     void render(const frame_context_t& ctx,
                 const std::map<int, std::shared_ptr<const series_data_t>>& series);
 
 private:
     struct vbo_view_state_t
     {
-        GLuint id = UINT_MAX;
-        GLuint active_vbo = UINT_MAX;
+        std::uint32_t active_vbo = std::numeric_limits<std::uint32_t>::max();
         std::size_t last_ring_size = 0;
         std::size_t last_snapshot_elements = 0;
         uint64_t last_sequence = 0;
@@ -81,13 +75,8 @@ private:
         const void* last_timestamp_order_identity = nullptr;
         bool last_timestamps_monotonic = true;
 
-        GLuint adjacency_ebo = UINT_MAX;
-        std::size_t adjacency_ebo_capacity = 0;
-        GLint adjacency_last_first = 0;
-        GLsizei adjacency_last_count = 0;
-
-        GLint last_first = 0;
-        GLsizei last_count = 0;
+        std::int32_t last_first = 0;
+        std::int32_t last_count = 0;
         std::size_t last_lod_level = 0;
         // Timestamps are int64_t nanoseconds; sentinel SENTINEL_NONE means "no
         // valid value yet" so the first frame always invalidates cached state.
@@ -158,8 +147,8 @@ private:
     struct view_render_result_t
     {
         bool can_draw = false;
-        GLint first = 0;
-        GLsizei count = 0;
+        std::int32_t first = 0;
+        std::int32_t count = 0;
         std::size_t applied_level = 0;
         double applied_pps = 0.0;
         data_snapshot_t cached_snapshot;              // Reused in draw_pass for aux metric
@@ -191,87 +180,20 @@ private:
         bool preview_matches_main = false;
     };
 
-    struct colormap_resource_t
-    {
-        unsigned int texture = 0;
-        std::size_t size = 0;
-        uint64_t revision = 0;
-    };
-
-    struct colormap_resource_set_t
-    {
-        colormap_resource_t area;
-        colormap_resource_t line;
-    };
-
-    struct series_pipe_t
-    {
-        // VBO is the GL-fallback vertex-buffer cache (per-pipe + per-layout).
-        // VAOs moved out of entry_t into m_gl_vaos: GL state objects need to
-        // outlive a single bind/draw cycle, but they are not part of the
-        // pipe's per-layout vertex-buffer accounting.
-        struct entry_t
-        {
-            GLuint vbo = 0;
-        };
-        std::unordered_map<std::uint64_t, entry_t> by_layout;
-    };
-
     Asset_loader* m_asset_loader = nullptr;
-    std::map<shader_set_t, std::shared_ptr<GL_program>> m_shaders;
     std::unordered_map<int, vbo_state_t> m_vbo_states;
-    std::unordered_map<const series_data_t*, colormap_resource_set_t> m_colormap_textures;
     // Consolidated once-per-series error log deduplication.
     // Key encodes (series_id, error_category) as uint64_t.
     std::unordered_set<uint64_t> m_logged_errors;
 
-    std::unique_ptr<series_pipe_t> m_pipe_line;
-    std::unique_ptr<series_pipe_t> m_pipe_dots;
-    std::unique_ptr<series_pipe_t> m_pipe_area;
-    std::unique_ptr<series_pipe_t> m_pipe_colormap;
-
-    // GL-fallback VAOs keyed by (pipe pointer, vbo). Outlives any single
-    // draw because GL state objects must persist between bind/draw cycles.
-    // Empty under RHI rendering.
-    struct gl_vao_key_t
-    {
-        const series_pipe_t* pipe;
-        GLuint vbo;
-        bool operator==(const gl_vao_key_t& other) const noexcept
-        {
-            return pipe == other.pipe && vbo == other.vbo;
-        }
-    };
-    struct gl_vao_key_hash_t
-    {
-        std::size_t operator()(const gl_vao_key_t& k) const noexcept
-        {
-            return std::hash<const void*>{}(k.pipe) ^ (std::hash<GLuint>{}(k.vbo) << 1);
-        }
-    };
-    std::unordered_map<gl_vao_key_t, GLuint, gl_vao_key_hash_t> m_gl_vaos;
-
-    // RHI-side state. The renderer drives LINE, DOTS, and solid AREA through
-    // this path; COLORMAP_* keep using the GL fallback, which is gated by
-    // skip_gl whenever a QRhi is bound. Pipelines are cached per Display_style.
-    // The full implementation sits in series_renderer.cpp where the QRhi types
-    // are complete.
+    // The full implementation sits in series_renderer.cpp where the QRhi
+    // types are complete.
     struct rhi_state_t;
     std::unique_ptr<rhi_state_t> m_rhi_state;
 
     uint64_t m_frame_id = 0;  // Monotonic frame counter for snapshot caching
 
     void clear_frame_snapshot_caches();
-
-    std::shared_ptr<GL_program> get_or_load_shader(
-        const shader_set_t& shader_set,
-        const Plot_config* config);
-    series_pipe_t& pipe_for(Display_style style);
-    // GL-fallback VAO management. The GL path needs a non-zero VAO bound for
-    // every draw on a core-profile context; the RHI path drives attribute
-    // layout through QRhiVertexInputLayout instead.
-    GLuint ensure_gl_series_vao(Display_style style, GLuint vbo);
-    GLuint ensure_colormap_texture(const series_data_t& series, Display_style style);
 
     view_render_result_t process_view(
         vbo_view_state_t& view_state,
@@ -286,23 +208,9 @@ private:
         double width_px,
         Empty_window_behavior empty_window_behavior,
         vnm::plot::Profiler* profiler,
-        bool skip_gl,
         QRhi* rhi,
         QRhiResourceUpdateBatch* rhi_updates);
 
-    void set_common_uniforms(
-        GL_program& program,
-        const glm::mat4& pmv,
-        const frame_context_t& ctx,
-        std::int64_t origin_ns);
-    void modify_uniforms_for_preview(
-        GL_program& program,
-        const frame_context_t& ctx,
-        std::int64_t origin_ns);
-
-    // RHI helpers for LINE / DOTS / solid AREA. COLORMAP_* never reach these
-    // paths (they fall to the GL fallback, which is gated by skip_gl).
-    //
     // rhi_prepare_series_primitive: writes to ctx.rhi_updates only. Builds the
     //   per-primitive UBO(s) and (LINE-only) the per-frame line_window_vbo, and
     //   ensures the cached pipeline / SRB are valid. No cb->* draw calls. Must

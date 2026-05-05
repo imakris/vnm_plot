@@ -80,10 +80,7 @@ public:
 // -----------------------------------------------------------------------------
 // Create Data_access_policy for function_sample_t
 // -----------------------------------------------------------------------------
-// Cache key shared by every function-sample policy. default_shader_for_layout
-// uses it to recognize the function-sample type and select the built-in
-// shaders; matching this against the key produced by make_access_policy below
-// is the contract that lets the typed factory's policies hit those defaults.
+// Cache key shared by every function-sample policy.
 inline uint64_t function_sample_layout_key()
 {
     static const uint64_t key = detail::compute_sample_layout_key(

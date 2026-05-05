@@ -121,7 +121,6 @@ bool plot_config_equivalent(
         lhs.snap_lines_to_pixels == rhs.snap_lines_to_pixels &&
         lhs.line_width_px == rhs.line_width_px &&
         lhs.area_fill_alpha == rhs.area_fill_alpha &&
-        lhs.skip_gl_calls == rhs.skip_gl_calls &&
         lhs.allow_renderer_self_scheduling == rhs.allow_renderer_self_scheduling &&
         lhs.auto_v_range_mode == rhs.auto_v_range_mode &&
         lhs.auto_v_range_extra_scale == rhs.auto_v_range_extra_scale;
@@ -152,9 +151,7 @@ Plot_widget::Plot_widget()
     setMirrorVertically(false);
     setAlphaBlending(true);
 
-    // Match the multisample count the GLFW examples and benchmark use so the
-    // RHI offscreen color buffer rasterizes with the same anti-aliasing
-    // characteristics.
+    // Match the multisample count used by the benchmark and examples.
     setSampleCount(k_msaa_samples);
     setFlag(ItemHasContents, true);
 }
