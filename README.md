@@ -31,14 +31,14 @@ vnm_plot_core (standalone core library)
   -> Font_renderer (MSDF glyphs)
 
 vnm_plot (Qt wrapper)
-  -> Plot_widget (QQuickFramebufferObject)
-     -> Plot_renderer (GL thread)
+  -> Plot_widget (QQuickRhiItem)
+     -> Plot_renderer (RHI render thread)
         -> vnm_plot_core
 ```
 
 - `vnm_plot_core` is the standalone rendering and data logic
 - `vnm_plot` is the Qt Quick wrapper (QML-friendly Plot_widget)
-- `Plot_renderer` runs on the GL thread and coordinates the sub-renderers
+- `Plot_renderer` runs on the Qt RHI render thread and coordinates the sub-renderers
 - `Series_renderer` handles lines, dots, and area fills with VBO management
 - `Chrome_renderer` draws the grid and axes
 - `Font_renderer` generates MSDF glyph atlases from FreeType
@@ -68,7 +68,7 @@ plot_widget->add_series(0, series);
 ```
 
 **Thread Safety**
-`Plot_widget` renders on a separate GL thread. Treat `series_data_t` as immutable once added. To change series config (style, shaders, access policy, preview config, color), update a copy and call `add_series` again with the same id to replace it. Make sure your `Data_source` implementation is safe to read from the render thread.
+`Plot_widget` renders on a separate RHI render thread. Treat `series_data_t` as immutable once added. To change series config (style, shaders, access policy, preview config, color), update a copy and call `add_series` again with the same id to replace it. Make sure your `Data_source` implementation is safe to read from the render thread.
 
 ### QML Quickstart
 

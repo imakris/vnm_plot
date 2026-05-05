@@ -1,7 +1,7 @@
 #pragma once
 
 // VNM Plot Library - Plot Widget
-// QQuickFramebufferObject-based plot widget for Qt Quick.
+// QQuickRhiItem-based plot widget for Qt Quick.
 
 #include <vnm_plot/core/types.h>
 #include <vnm_plot/core/plot_config.h>
@@ -10,7 +10,7 @@
 #include <QElapsedTimer>
 #include <QMetaObject>
 #include <QPointer>
-#include <QQuickFramebufferObject>
+#include <QQuickRhiItem>
 
 #include <QString>
 #include <QVariantList>
@@ -90,7 +90,7 @@ struct Plot_view
 // keeps integer fidelity. The conversions happen in the property
 // accessors via ns_to_ms_for_qml() and ms_for_qml_to_ns(); C++ callers
 // stay on the int64-ns surface (t_min(), t_max(), set_t_range(...) etc.).
-class Plot_widget : public QQuickFramebufferObject
+class Plot_widget : public QQuickRhiItem
 {
     Q_OBJECT
 
@@ -230,9 +230,9 @@ public:
     Q_INVOKABLE QVariantList get_indicator_samples(double x_ms, double plot_width, double plot_height, double mouse_px = -1.0) const;
     Q_INVOKABLE QString format_timestamp_precise(qint64 timestamp_ms) const;
 
-    // --- Qt Quick FBO Interface ---
+    // --- Qt Quick RHI Interface ---
 
-    Renderer* createRenderer() const override;
+    QQuickRhiItemRenderer* createRenderer() override;
 
 signals:
     void t_limits_changed();
@@ -257,14 +257,10 @@ protected:
     bool rendered_t_range(qint64& out_min_ns, qint64& out_max_ns) const;
 
 private:
+    // Plot_renderer reads m_config / m_data_cfg under the matching shared_mutexes
+    // during synchronize(); friending lets it touch those members directly
+    // instead of going through accessors that would re-take the same locks.
     friend class Plot_renderer;
-
-    // Render-thread callbacks. Plot_renderer is a friend of this class and
-    // exposes static forwarders so its nested pimpl can invoke these through
-    // QMetaObject::invokeMethod. They are intentionally not part of the public
-    // or QML-visible API.
-    void set_vbar_width_from_renderer(double px);
-    void set_auto_v_range_from_renderer(float v_min, float v_max);
 
     // Lock order (if ever needed concurrently): config -> data_cfg -> series.
     // Prefer holding only one lock at a time.

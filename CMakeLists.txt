@@ -62,7 +62,7 @@ elseif(VNM_PLOT_BUILD_QT)
     # collapse Qt6_FOUND and route the build into the core-only fallback. If
     # Qt6 itself is absent we go core-only; if Qt6 is present but ShaderTools
     # is not, that is a hard configuration error.
-    find_package(Qt6 COMPONENTS Core Gui Quick OpenGL)
+    find_package(Qt6 COMPONENTS Core Gui GuiPrivate Quick OpenGL)
     if(NOT Qt6_FOUND)
         message(STATUS "vnm_plot: Qt6 not found, building core library only")
         set(VNM_PLOT_BUILD_QT OFF)
@@ -563,7 +563,9 @@ if(VNM_PLOT_BUILD_QT)
 
     target_compile_definitions(vnm_plot PUBLIC VNM_PLOT_WITH_QT=1)
 
-    # Link dependencies
+    # Link dependencies. Qt6::GuiPrivate exposes the rhi/qrhi.h public-by-private
+    # header tree that the QQuickRhiItem renderer uses inside plot_renderer.cpp;
+    # keep it PRIVATE so consumers do not inherit Qt's private headers.
     target_link_libraries(vnm_plot
         PUBLIC
             vnm_plot_core
@@ -572,6 +574,8 @@ if(VNM_PLOT_BUILD_QT)
             Qt6::Quick
             Qt6::OpenGL
             glm::glm
+        PRIVATE
+            Qt6::GuiPrivate
     )
 
     # Link MSDF text rendering dependencies if enabled

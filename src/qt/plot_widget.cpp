@@ -134,7 +134,7 @@ using detail::k_vbar_width_change_threshold_d;
 using detail::min_v_span_for;
 
 Plot_widget::Plot_widget()
-    : QQuickFramebufferObject()
+    : QQuickRhiItem()
 {
     vnm_plot_init_qt_resources();
 
@@ -147,6 +147,10 @@ Plot_widget::Plot_widget()
     update_dpi_scaling_factor();
 
     setMirrorVertically(true);
+    // Match the multisample count the GLFW examples and benchmark use, so the
+    // RHI offscreen color buffer rasterizes with the same anti-aliasing
+    // characteristics as the legacy QQuickFramebufferObject path.
+    setSampleCount(k_msaa_samples);
     setFlag(ItemHasContents, true);
 }
 
@@ -750,56 +754,6 @@ void Plot_widget::apply_vbar_width_target(double target)
 
     if (!m_vbar_width_timer.isActive()) {
         m_vbar_width_timer.start(16, this);
-    }
-}
-
-void Plot_widget::set_vbar_width_from_renderer(double px)
-{
-    if (!std::isfinite(px) || px <= 0.0) {
-        return;
-    }
-
-    const double width_px = width() * m_scaling_factor;
-    if (std::isfinite(width_px) && width_px > 0.0) {
-        const double max_target = std::max(1.0, width_px * 0.5);
-        px = std::clamp(px, 1.0, max_target);
-    }
-
-    if (m_time_axis && m_time_axis->sync_vbar_width()) {
-        apply_vbar_width_target(px);
-        m_time_axis->update_shared_vbar_width(this, px);
-        return;
-    }
-
-    apply_vbar_width_target(px);
-}
-
-void Plot_widget::set_auto_v_range_from_renderer(float v_min, float v_max)
-{
-    if (!std::isfinite(v_min) || !std::isfinite(v_max)) {
-        return;
-    }
-
-    if (!m_v_auto.load(std::memory_order_acquire)) {
-        return;
-    }
-
-    constexpr float k_auto_v_eps = 1e-6f;
-    bool changed = false;
-    {
-        std::unique_lock lock(m_data_cfg_mutex);
-        if (std::abs(m_data_cfg.v_min - v_min) > k_auto_v_eps ||
-            std::abs(m_data_cfg.v_max - v_max) > k_auto_v_eps)
-        {
-            m_data_cfg.v_min = v_min;
-            m_data_cfg.v_max = v_max;
-            changed = true;
-        }
-    }
-
-    if (changed) {
-        emit v_limits_changed();
-        update();
     }
 }
 
@@ -1629,14 +1583,14 @@ void Plot_widget::recalculate_preview_height()
     emit preview_height_target_changed(m_preview_height_target);
 }
 
-QQuickFramebufferObject::Renderer* Plot_widget::createRenderer() const
+QQuickRhiItemRenderer* Plot_widget::createRenderer()
 {
     return new Plot_renderer(this);
 }
 
 void Plot_widget::geometryChange(const QRectF& newGeometry, const QRectF& oldGeometry)
 {
-    QQuickFramebufferObject::geometryChange(newGeometry, oldGeometry);
+    QQuickRhiItem::geometryChange(newGeometry, oldGeometry);
 
     if (newGeometry.size() != oldGeometry.size()) {
         m_visible.store(newGeometry.width() > 0 && newGeometry.height() > 0, std::memory_order_release);
@@ -1672,7 +1626,7 @@ void Plot_widget::timerEvent(QTimerEvent* ev)
         return;
     }
 
-    QQuickFramebufferObject::timerEvent(ev);
+    QQuickRhiItem::timerEvent(ev);
 }
 
 } // namespace vnm::plot
