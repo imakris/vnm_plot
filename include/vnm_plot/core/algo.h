@@ -370,6 +370,73 @@ std::size_t upper_bound_timestamp(
 }
 
 // -----------------------------------------------------------------------------
+// Origin Selection for fp32 GPU Time Rebasing
+// -----------------------------------------------------------------------------
+// The renderer uploads sample timestamps as fp32 seconds relative to a
+// per-view origin. Origin selection has two jobs: pick a snap step coarse
+// enough that rebased seconds keep usable fp32 precision over the view
+// span, and align the origin to that step so the cache key stays stable
+// for small camera moves within the same snap bucket.
+//
+// Precision argument: fp32 has 24 mantissa bits, so it represents every
+// integer up to 2^24 ~= 1.677e7 exactly. The maximum absolute rebased
+// value is bounded by (snap_ns + span_ns) * 1e-9. The bucket policy below
+// keeps span_ns/snap_ns <= ~1e6 across all spans, so the snap-step
+// resolution within the rebased range is preserved by fp32's mantissa
+// even when the view span itself exceeds that range. For spans wider
+// than ~193 days (1.67e16 ns) the absolute rebased value exceeds 2^24
+// seconds; precision then degrades to whole snap steps, but the snap
+// step is coarse enough (>= 1 day) that this is the intended trade-off.
+
+inline std::int64_t choose_snap_ns(std::int64_t span_ns)
+{
+    constexpr std::int64_t k_ns_per_us     = 1000LL;
+    constexpr std::int64_t k_ns_per_ms     = 1000000LL;
+    constexpr std::int64_t k_ns_per_second = 1000000000LL;
+    constexpr std::int64_t k_ns_per_hour   = 3600LL * k_ns_per_second;
+    constexpr std::int64_t k_ns_per_day    = 86400LL * k_ns_per_second;
+    constexpr std::int64_t k_ns_per_year   = 365LL * k_ns_per_day;
+
+    if (span_ns <= k_ns_per_ms)     { return 1LL; }
+    if (span_ns <= k_ns_per_second) { return k_ns_per_us; }
+    if (span_ns <= k_ns_per_day)    { return k_ns_per_second; }
+    if (span_ns <= k_ns_per_year)   { return k_ns_per_hour; }
+    return k_ns_per_day;
+}
+
+// Signed floor division of a by b, rounding toward negative infinity.
+// Required because C++ integer division truncates toward zero, which
+// rounds the wrong way for negative numerators and would push the origin
+// above t_view_min for negative timestamps.
+inline std::int64_t floor_div_i64(std::int64_t a, std::int64_t b)
+{
+    const std::int64_t q = a / b;
+    const std::int64_t r = a % b;
+    return r != 0 && ((r < 0) != (b < 0)) ? q - 1 : q;
+}
+
+// Pick a per-view time origin in nanoseconds. The result is the largest
+// multiple of choose_snap_ns(span_ns) that is <= t_view_min_ns, so the
+// origin lies on a stable bucket boundary and small camera moves within
+// the same bucket reuse the same upload cache key.
+//
+// Saturates at the int64 floor: t_view_min_ns within one snap step of
+// INT64_MIN cannot have a snap-aligned origin <= t_view_min_ns inside
+// int64 range, so we return INT64_MIN. INT64_MIN is also used as a
+// sentinel by callers (e.g. Plot_time_axis::k_t_unset), and saturating
+// keeps the multiply from overflowing into UB on signed wrap.
+inline std::int64_t choose_origin_ns(std::int64_t t_view_min_ns, std::int64_t span_ns)
+{
+    const std::int64_t snap_ns = choose_snap_ns(span_ns);
+    const std::int64_t q       = floor_div_i64(t_view_min_ns, snap_ns);
+    constexpr std::int64_t k_min = std::numeric_limits<std::int64_t>::min();
+    if (snap_ns > 1 && q < k_min / snap_ns) {
+        return k_min;
+    }
+    return q * snap_ns;
+}
+
+// -----------------------------------------------------------------------------
 // LOD Level Selection
 // -----------------------------------------------------------------------------
 // Level selection based on pixels-per-sample, without hysteresis.
