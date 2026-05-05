@@ -9,6 +9,7 @@ set(_vnm_plot_core_tests
     test_asset_loader
     test_concurrent_series
     test_gpu_sample_origin
+    test_layout_calculator
 )
 
 foreach(_test IN LISTS _vnm_plot_core_tests)
@@ -44,6 +45,7 @@ add_test(NAME CoreAlgo COMMAND test_core_algo)
 add_test(NAME AssetLoader COMMAND test_asset_loader)
 add_test(NAME ConcurrentSeries COMMAND test_concurrent_series)
 add_test(NAME GpuSampleOrigin COMMAND test_gpu_sample_origin)
+add_test(NAME LayoutCalculator COMMAND test_layout_calculator)
 
 if(TARGET vnm_plot)
     add_test(NAME PlotInteractionItem COMMAND test_plot_interaction_item)

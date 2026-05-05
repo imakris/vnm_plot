@@ -1,0 +1,220 @@
+// Tests for vnm_plot's Layout_calculator covering the formatter contract:
+// the format_timestamp callback must receive both arguments as int64
+// nanoseconds. The function_plotter example relies on this contract; a
+// regression that started passing seconds or milliseconds would silently
+// shift labels by 9 orders of magnitude.
+
+#include "test_macros.h"
+
+#include <vnm_plot/core/algo.h>
+#include <vnm_plot/core/layout_calculator.h>
+#include <vnm_plot/core/types.h>
+
+#include <algorithm>
+#include <cstdint>
+#include <cstring>
+#include <iostream>
+#include <limits>
+#include <string>
+#include <vector>
+
+namespace plot = vnm::plot;
+
+namespace {
+
+constexpr std::int64_t k_ns_per_second = 1'000'000'000LL;
+
+struct Recorded_call
+{
+    std::int64_t timestamp_ns = 0;
+    std::int64_t step_ns      = 0;
+};
+
+plot::Layout_calculator::parameters_t make_minimal_params(
+    std::int64_t t_min_ns,
+    std::int64_t t_max_ns,
+    std::vector<Recorded_call>& recorded_calls)
+{
+    plot::Layout_calculator::parameters_t params;
+    params.v_min = 0.0f;
+    params.v_max = 1.0f;
+    params.t_min = t_min_ns;
+    params.t_max = t_max_ns;
+    params.usable_width  = 800.0;
+    params.usable_height = 480.0;
+    params.vbar_width    = 56.0;
+    params.label_visible_height = 480.0;
+    params.adjusted_font_size_in_pixels = 14.0;
+    params.h_label_vertical_nudge_factor = 0.0f;
+    params.measure_text_cache_key = 0;
+    // Emulate a monospace font so the calculator does not need a
+    // measure_text callback to estimate label widths.
+    params.monospace_char_advance_px     = 8.0f;
+    params.monospace_advance_is_reliable = true;
+    params.measure_text_func = [](const char* text) {
+        return static_cast<float>(std::strlen(text)) * 8.0f;
+    };
+    params.get_required_fixed_digits_func = [](double) { return 2; };
+    // Recording formatter: capture every (timestamp, step) pair the
+    // calculator passes through.
+    params.format_timestamp_func = [&recorded_calls](
+        std::int64_t timestamp_ns,
+        std::int64_t step_ns) -> std::string
+    {
+        recorded_calls.push_back({timestamp_ns, step_ns});
+        return std::string("L");
+    };
+    return params;
+}
+
+bool test_format_timestamp_receives_nanosecond_units()
+{
+    // 1-minute window centered around a modern wall-clock timestamp. The
+    // calculator should produce horizontal labels and call the formatter
+    // for each of them.
+    constexpr std::int64_t k_t_min_ns =
+        1'700'000'000LL * k_ns_per_second;     // ~late 2023
+    constexpr std::int64_t k_t_max_ns =
+        k_t_min_ns + 60LL * k_ns_per_second;   // 60-second span
+
+    std::vector<Recorded_call> recorded;
+    plot::Layout_calculator calc;
+    auto params = make_minimal_params(k_t_min_ns, k_t_max_ns, recorded);
+    auto result = calc.calculate(params);
+
+    TEST_ASSERT(!recorded.empty(),
+        "expected the layout calculator to invoke the format_timestamp "
+        "callback for at least one horizontal label");
+    TEST_ASSERT(!result.h_labels.empty(),
+        "expected at least one horizontal label for a 60-second window");
+
+    // Step values: build_time_steps_covering yields steps in seconds. The
+    // formatter receives them as ns-quantised int64s (llround at the
+    // boundary). For a 60-second span, the chosen finest step lies in the
+    // 1 s ... 60 s window. Anything below 1 ms or above the span itself
+    // would be a unit slip. (The calculator may also probe the formatter
+    // for cache-signature purposes; both probe and label calls share the
+    // same step_ns, so the step bound applies uniformly.)
+    constexpr std::int64_t k_one_ms_ns = 1'000'000LL;
+    for (const auto& call : recorded) {
+        TEST_ASSERT(call.step_ns >= k_one_ms_ns,
+            std::string("step_ns = ") + std::to_string(call.step_ns) +
+            " is below 1 ms; if the formatter were receiving seconds "
+            "instead of nanoseconds, every step would land here");
+        TEST_ASSERT(call.step_ns <= 2 * (k_t_max_ns - k_t_min_ns),
+            "step_ns is larger than the visible span; a likely sign of a "
+            "ns-vs-us unit slip in the calculator -> formatter handoff");
+    }
+
+    // Timestamps: the calculator separates two kinds of formatter calls:
+    //
+    // 1. Format-signature probes at fixed ns-scale samples (currently 0,
+    //    1.23e8, 1.23e13) used only to compute a cache-key hash. These do
+    //    not depend on t_min/t_max.
+    // 2. Actual label calls inside or near the visible window.
+    //
+    // The contract under test is that *both* receive ns-scale int64
+    // values. Any actual-label call inside the visible-window region
+    // confirms ns scale (a seconds-scale unit slip would compress the
+    // values into a ~60 ns range starting near zero, far below the
+    // expected ~1.7e18 magnitude).
+    const std::int64_t margin_ns = (k_t_max_ns - k_t_min_ns);
+    bool saw_label_in_window = false;
+    for (const auto& call : recorded) {
+        if (call.timestamp_ns >= k_t_min_ns - margin_ns &&
+            call.timestamp_ns <= k_t_max_ns + margin_ns)
+        {
+            saw_label_in_window = true;
+            break;
+        }
+    }
+    TEST_ASSERT(saw_label_in_window,
+        std::string("expected at least one formatter call with a timestamp "
+                    "inside the visible window [") +
+        std::to_string(k_t_min_ns) + " .. " + std::to_string(k_t_max_ns) +
+        "]; if the calculator passed t_seconds instead of t_ns, the "
+        "values would land near 1.7e9 instead of 1.7e18");
+
+    // Sanity: the formatter must have been invoked with valid (non-negative
+    // step, finite timestamp) arguments. A ns-scale arg can be any int64;
+    // we only check no nonsense like INT64_MIN/MAX leaking through.
+    constexpr std::int64_t k_sentinel_lo = std::numeric_limits<std::int64_t>::min();
+    constexpr std::int64_t k_sentinel_hi = std::numeric_limits<std::int64_t>::max();
+    for (const auto& call : recorded) {
+        TEST_ASSERT(call.timestamp_ns != k_sentinel_lo &&
+                    call.timestamp_ns != k_sentinel_hi,
+            "no formatter call should receive an INT64 sentinel timestamp");
+        TEST_ASSERT(call.step_ns > 0,
+            "formatter step must be positive (the calculator should never "
+            "pass step_ns <= 0)");
+    }
+
+    return true;
+}
+
+bool test_format_timestamp_step_matches_nanosecond_seconds_grid()
+{
+    // The horizontal-axis ladder is built from build_time_steps_covering(),
+    // which lives in algo.h and produces fixed multiples of seconds (with
+    // sub-second 1-2-5 steps starting at 1 ms). For a few-second visible
+    // window the calculator should pick a finest step from that ladder; the
+    // step it passes to the formatter (after seconds -> ns conversion) must
+    // round-trip exactly to one of the ladder entries.
+    constexpr std::int64_t k_t_min_ns = 0LL;
+    constexpr std::int64_t k_t_max_ns = 5LL * k_ns_per_second;
+
+    std::vector<Recorded_call> recorded;
+    plot::Layout_calculator calc;
+    auto params = make_minimal_params(k_t_min_ns, k_t_max_ns, recorded);
+    auto result = calc.calculate(params);
+
+    TEST_ASSERT(!recorded.empty(),
+        "expected the formatter to be invoked");
+    (void)result;
+
+    const auto ladder_seconds = plot::detail::build_time_steps_covering(
+        static_cast<double>(k_t_max_ns - k_t_min_ns) / 1.0e9);
+
+    // Convert ladder steps to ns and verify each recorded step matches one
+    // entry exactly. If the calculator passed seconds, the ladder values
+    // would be 1, 2, 5, ... rather than 1e9, 2e9, 5e9, ... and this check
+    // would catch the slip.
+    bool any_match = false;
+    for (const auto& call : recorded) {
+        bool matched = false;
+        for (double step_seconds : ladder_seconds) {
+            const std::int64_t step_ns_expected =
+                static_cast<std::int64_t>(step_seconds * 1.0e9 + 0.5);
+            if (call.step_ns == step_ns_expected) {
+                matched = true;
+                break;
+            }
+        }
+        if (matched) {
+            any_match = true;
+        }
+    }
+    TEST_ASSERT(any_match,
+        "expected at least one formatter step_ns to match a ladder entry "
+        "after seconds -> ns conversion. Mismatch typically means the "
+        "calculator passed step_ns in seconds (or in milliseconds) instead "
+        "of nanoseconds.");
+
+    return true;
+}
+
+} // namespace
+
+int main()
+{
+    std::cout << "Layout calculator tests" << std::endl;
+
+    int passed = 0;
+    int failed = 0;
+
+    RUN_TEST(test_format_timestamp_receives_nanosecond_units);
+    RUN_TEST(test_format_timestamp_step_matches_nanosecond_seconds_grid);
+
+    std::cout << "Results: " << passed << " passed, " << failed << " failed" << std::endl;
+    return failed > 0 ? 1 : 0;
+}

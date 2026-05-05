@@ -2,6 +2,7 @@
 
 #include "test_macros.h"
 
+#include <vnm_plot/core/algo.h>
 #include <vnm_plot/core/asset_loader.h>
 #define private public
 #include <vnm_plot/core/series_renderer.h>
@@ -567,6 +568,273 @@ bool test_render_empty_series_map()
     return true;
 }
 
+bool test_upload_origin_records_per_view_origin()
+{
+    // The renderer's per-view upload-invalidation key must include the view
+    // origin. After a render, view_state.uploaded_t_origin_ns must equal
+    // choose_origin_ns(t_view_min, span) for that view, otherwise the next
+    // frame's origin-change branch in process_view will not fire when it
+    // should. This is the visible state-trace of the upload-invalidation
+    // contract; the inline predicate inside process_view is hard to test
+    // directly without refactoring the renderer.
+
+    auto data_source = std::make_shared<Single_level_source>();
+    data_source->samples.resize(8);
+    for (size_t i = 0; i < data_source->samples.size(); ++i) {
+        data_source->samples[i].t = static_cast<std::int64_t>(i) * 1'000'000LL;
+        data_source->samples[i].v = 1.0f + static_cast<float>(i);
+    }
+
+    const int series_id = 41;
+    auto series = std::make_shared<series_data_t>();
+    series->style = Display_style::LINE;
+    series->data_source = data_source;
+    series->access = make_policy();
+
+    frame_layout_result_t layout;
+    layout.usable_width = 200.0;
+    layout.usable_height = 80.0;
+
+    Plot_config config;
+    config.skip_gl_calls = true;
+
+    frame_context_t ctx = make_context(layout, config);
+    // Span = 1 ms + 1 ns is strictly greater than k_ns_per_ms, so
+    // choose_snap_ns falls into the next bucket and returns 1 us. t0 is
+    // an exact multiple of 1 us, so the snap-aligned origin equals t0.
+    ctx.t0 = 5'000'000LL;
+    ctx.t1 = 5'000'001LL + 1'000'000LL; // 1 ms + 1 ns
+    ctx.t_available_min = ctx.t0;
+    ctx.t_available_max = ctx.t1;
+
+    Series_renderer renderer;
+    Asset_loader asset_loader;
+    renderer.initialize(asset_loader);
+
+    std::map<int, std::shared_ptr<const series_data_t>> series_map;
+    series_map[series_id] = series;
+
+    renderer.render(ctx, series_map);
+
+    auto state_it = renderer.m_vbo_states.find(series_id);
+    TEST_ASSERT(state_it != renderer.m_vbo_states.end(),
+        "expected vbo state for upload-origin test");
+
+    const std::int64_t expected_origin_ns =
+        plot::detail::choose_origin_ns(ctx.t0, ctx.t1 - ctx.t0);
+    TEST_ASSERT(state_it->second.main_view.uploaded_t_origin_ns == expected_origin_ns,
+        std::string("uploaded_t_origin_ns must match choose_origin_ns; got ") +
+        std::to_string(state_it->second.main_view.uploaded_t_origin_ns) +
+        ", expected " + std::to_string(expected_origin_ns));
+
+    return true;
+}
+
+bool test_upload_invalidates_when_origin_changes_across_snap_bucket()
+{
+    // The cache-fast-path predicate inside process_view requires
+    // view_state.uploaded_t_origin_ns == t_origin_ns. With sequence,
+    // identity, and width all unchanged, an origin change (achieved by
+    // moving t_min/t_max across a snap-step boundary) must still force the
+    // fast-path miss and a fresh snapshot. Two different view ranges in
+    // the same snap bucket would skip the snapshot; two ranges in
+    // different buckets must not.
+
+    auto data_source = std::make_shared<Single_level_source>();
+    data_source->samples.resize(64);
+    for (size_t i = 0; i < data_source->samples.size(); ++i) {
+        // 100-second timeline at 1.5-second cadence.
+        data_source->samples[i].t = static_cast<std::int64_t>(i) * 1'500'000'000LL;
+        data_source->samples[i].v = 1.0f + static_cast<float>(i);
+    }
+
+    const int series_id = 42;
+    auto series = std::make_shared<series_data_t>();
+    series->style = Display_style::LINE;
+    series->data_source = data_source;
+    series->access = make_policy();
+
+    frame_layout_result_t layout;
+    layout.usable_width = 200.0;
+    layout.usable_height = 80.0;
+
+    Plot_config config;
+    config.skip_gl_calls = true;
+
+    Series_renderer renderer;
+    Asset_loader asset_loader;
+    renderer.initialize(asset_loader);
+
+    std::map<int, std::shared_ptr<const series_data_t>> series_map;
+    series_map[series_id] = series;
+
+    // Span = 1 hour -> snap = 1 second (per choose_snap_ns).
+    // Render frames whose t_min spans different 1-second buckets. Sequence,
+    // identity, width all stay the same; only origin (and t_min/t_max)
+    // moves. The renderer should call try_snapshot on every frame because
+    // origin change is part of the upload-invalidation key.
+    auto run_frame = [&](std::int64_t t_min_ns, std::int64_t span_ns) {
+        frame_context_t ctx = make_context(layout, config);
+        ctx.t0 = t_min_ns;
+        ctx.t1 = t_min_ns + span_ns;
+        ctx.t_available_min = ctx.t0;
+        ctx.t_available_max = ctx.t1;
+        renderer.render(ctx, series_map);
+        // skip_gl mode does not allocate GL buffers, so seed active_vbo
+        // to keep the cache-hit predicate's other terms truthy.
+        auto it = renderer.m_vbo_states.find(series_id);
+        if (it != renderer.m_vbo_states.end()) {
+            it->second.main_view.active_vbo = 1u;
+        }
+    };
+
+    constexpr std::int64_t k_one_hour_ns = 3'600LL * 1'000'000'000LL;
+    constexpr std::int64_t k_one_second_ns = 1'000'000'000LL;
+
+    // Frame 1: bucket-aligned origin = 0.
+    run_frame(0LL, k_one_hour_ns);
+    auto state_it = renderer.m_vbo_states.find(series_id);
+    TEST_ASSERT(state_it != renderer.m_vbo_states.end(),
+        "expected vbo state to exist after first render");
+    const std::int64_t origin_after_frame1 =
+        state_it->second.main_view.uploaded_t_origin_ns;
+    TEST_ASSERT(origin_after_frame1 == 0LL,
+        std::string("expected origin 0 after first render, got ") +
+        std::to_string(origin_after_frame1));
+    const int snapshots_after_frame1 = data_source->snapshot_calls;
+    TEST_ASSERT(snapshots_after_frame1 >= 1,
+        "expected at least one snapshot on first render");
+
+    // Frame 2: same span, t_min still in same 1 s bucket -> origin
+    // unchanged. The cache fast path should fire (no extra snapshot).
+    run_frame(k_one_second_ns / 2, k_one_hour_ns);
+    const std::int64_t origin_after_frame2 =
+        state_it->second.main_view.uploaded_t_origin_ns;
+    TEST_ASSERT(origin_after_frame2 == 0LL,
+        "expected origin to remain 0 when t_min moves within the same snap bucket");
+    // Snapshot the call count after frame 2 so the post-frame-3 assertion
+    // attributes any new snapshot strictly to frame 3's origin shift.
+    // Frame 2's t_min/t_max differ from frame 1's, so snapshot_calls may
+    // grow here too (the fast path bails on t_min/t_max mismatch before
+    // reaching the origin term); that growth is not the contract under test.
+    const int snapshots_after_frame2 = data_source->snapshot_calls;
+
+    // Frame 3: t_min moves into the next 1 s bucket -> origin must change.
+    run_frame(k_one_second_ns + k_one_second_ns / 4, k_one_hour_ns);
+    const std::int64_t origin_after_frame3 =
+        state_it->second.main_view.uploaded_t_origin_ns;
+    TEST_ASSERT(origin_after_frame3 == k_one_second_ns,
+        std::string("expected origin to advance to 1 s bucket after t_min "
+                    "crosses snap boundary, got ") +
+        std::to_string(origin_after_frame3));
+    TEST_ASSERT(origin_after_frame3 != origin_after_frame1,
+        "origin must change when t_min crosses a snap-step boundary");
+
+    // The renderer must have re-run try_snapshot for frame 3 specifically;
+    // comparing against the post-frame-2 count isolates frame 3's
+    // contribution. (origin_after_frame3 already proves origin advanced; if
+    // origin weren't part of the upload-invalidation key, that assertion
+    // alone would not fail, but a regression in snapshot triggering would
+    // leave snapshot_calls flat across frame 3.)
+    TEST_ASSERT(data_source->snapshot_calls > snapshots_after_frame2,
+        "origin change across a snap bucket must invalidate the upload "
+        "cache and trigger a fresh try_snapshot call");
+
+    return true;
+}
+
+bool test_renderer_assigns_distinct_origins_to_main_and_preview()
+{
+    // The renderer chooses per-view origins from each view's own visible
+    // window: choose_origin_ns(ctx.t0, ctx.t1 - ctx.t0) for main and
+    // choose_origin_ns(ctx.t_available_min,
+    //                  ctx.t_available_max - ctx.t_available_min)
+    // for preview. When the main span lands in a finer snap bucket (e.g.
+    // a 1-hour span -> 1 s snap) and the preview span in a coarser one
+    // (e.g. a 10-year span -> 1 day snap), the two origins must end up at
+    // different floored boundaries. A regression that fed main_origin_ns
+    // into the preview's process_view call would leave both views with
+    // the same uploaded_t_origin_ns and break fp32 precision in preview.
+    auto data_source = std::make_shared<Single_level_source>();
+    // Sparse 10-year coverage: one sample per day is enough for the
+    // renderer to find data within both windows without ballooning memory.
+    constexpr std::int64_t k_ns_per_second = 1'000'000'000LL;
+    constexpr std::int64_t k_ns_per_day = 86'400LL * k_ns_per_second;
+    constexpr std::int64_t k_ns_per_hour = 3'600LL * k_ns_per_second;
+    constexpr int k_num_samples = 365 * 10;
+    data_source->samples.resize(k_num_samples);
+    for (int i = 0; i < k_num_samples; ++i) {
+        data_source->samples[i].t = static_cast<std::int64_t>(i) * k_ns_per_day;
+        data_source->samples[i].v = 1.0f + static_cast<float>(i);
+    }
+
+    const int series_id = 43;
+    auto series = std::make_shared<series_data_t>();
+    series->style = Display_style::LINE;
+    series->data_source = data_source;
+    series->access = make_policy();
+
+    frame_layout_result_t layout;
+    layout.usable_width = 200.0;
+    layout.usable_height = 80.0;
+
+    Plot_config config;
+    config.skip_gl_calls = true;
+    config.preview_visibility = 1.0;
+
+    frame_context_t ctx = make_context(layout, config);
+    // Main view: 1-hour window at an offset that is NOT day-aligned, so
+    // the per-view floored origin differs depending on the snap step.
+    // 100 days + 30 minutes pushes the main range mid-day.
+    const std::int64_t main_t0 = 100LL * k_ns_per_day + 30LL * 60LL * k_ns_per_second;
+    ctx.t0 = main_t0;
+    ctx.t1 = main_t0 + k_ns_per_hour;
+    // Preview view: full 10-year range starting at 0.
+    ctx.t_available_min = 0LL;
+    ctx.t_available_max = 10LL * 365LL * k_ns_per_day;
+    ctx.adjusted_preview_height = 20.0;
+
+    Series_renderer renderer;
+    Asset_loader asset_loader;
+    renderer.initialize(asset_loader);
+
+    std::map<int, std::shared_ptr<const series_data_t>> series_map;
+    series_map[series_id] = series;
+
+    renderer.render(ctx, series_map);
+
+    auto state_it = renderer.m_vbo_states.find(series_id);
+    TEST_ASSERT(state_it != renderer.m_vbo_states.end(),
+        "expected vbo state for distinct-origin renderer test");
+
+    const std::int64_t main_origin =
+        state_it->second.main_view.uploaded_t_origin_ns;
+    const std::int64_t preview_origin =
+        state_it->second.preview_view.uploaded_t_origin_ns;
+
+    const std::int64_t expected_main_origin =
+        plot::detail::choose_origin_ns(ctx.t0, ctx.t1 - ctx.t0);
+    const std::int64_t expected_preview_origin =
+        plot::detail::choose_origin_ns(ctx.t_available_min,
+                                       ctx.t_available_max - ctx.t_available_min);
+
+    TEST_ASSERT(main_origin == expected_main_origin,
+        std::string("main view must record its own per-view origin; got ") +
+        std::to_string(main_origin) + ", expected " +
+        std::to_string(expected_main_origin));
+    TEST_ASSERT(preview_origin == expected_preview_origin,
+        std::string("preview view must record its own per-view origin; got ") +
+        std::to_string(preview_origin) + ", expected " +
+        std::to_string(expected_preview_origin));
+    TEST_ASSERT(main_origin != preview_origin,
+        std::string("main and preview must record different origins when "
+                    "their spans land in different snap buckets; got main=") +
+        std::to_string(main_origin) + ", preview=" +
+        std::to_string(preview_origin));
+
+    return true;
+}
+
 bool test_render_skips_invalid_series()
 {
     auto data_source = std::make_shared<Single_level_source>();
@@ -630,6 +898,9 @@ int main()
     RUN_TEST(test_lod_level_separation);
     RUN_TEST(test_snapshot_released_after_render);
     RUN_TEST(test_render_empty_series_map);
+    RUN_TEST(test_upload_origin_records_per_view_origin);
+    RUN_TEST(test_upload_invalidates_when_origin_changes_across_snap_bucket);
+    RUN_TEST(test_renderer_assigns_distinct_origins_to_main_and_preview);
     RUN_TEST(test_render_skips_invalid_series);
 
     std::cout << "Results: " << passed << " passed, " << failed << " failed" << std::endl;

@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
+#include <limits>
 #include <vector>
 
 namespace plot = vnm::plot;
@@ -157,6 +158,60 @@ bool test_bounds_on_segmented_snapshot()
     return true;
 }
 
+bool test_layout_cache_key_distinguishes_adjacent_int64_time_windows()
+{
+    // The horizontal-axis label cache keys layouts by t0/t1 in nanoseconds.
+    // Two windows that differ by a single nanosecond must be treated as
+    // distinct keys, otherwise the layout cache returns stale axis labels
+    // when the user pans or zooms by a sub-step amount. Before the int64
+    // migration, t0/t1 lived as doubles; adjacent ns-resolution windows
+    // collided in the cache because doubles cannot hold modern absolute
+    // timestamps with single-nanosecond precision.
+
+    plot::layout_cache_key_t base{};
+    base.v0 = 0.0f;
+    base.v1 = 1.0f;
+    base.t0 = 1'700'000'000'000'000'000LL; // ~late 2023 in ns since epoch
+    base.t1 = base.t0 + 60LL * 1'000'000'000LL; // 60-second window
+    base.viewport_size = plot::Size_2i{1024, 768};
+    base.adjusted_reserved_height     = 24.0;
+    base.adjusted_preview_height      = 32.0;
+    base.adjusted_font_size_in_pixels = 13.5;
+    base.vbar_width_pixels            = 56.0;
+    base.font_metrics_key             = 0xfeedface;
+
+    // Adjacent t0 windows (differ by 1 ns) must compare unequal.
+    plot::layout_cache_key_t shifted_t0 = base;
+    shifted_t0.t0 = base.t0 + 1;
+    TEST_ASSERT(!(base == shifted_t0),
+        "layout_cache_key_t must distinguish t0 windows that differ by 1 ns");
+
+    // Adjacent t1 windows (differ by 1 ns) must compare unequal.
+    plot::layout_cache_key_t shifted_t1 = base;
+    shifted_t1.t1 = base.t1 + 1;
+    TEST_ASSERT(!(base == shifted_t1),
+        "layout_cache_key_t must distinguish t1 windows that differ by 1 ns");
+
+    // Identical keys still equal (sanity).
+    plot::layout_cache_key_t copy = base;
+    TEST_ASSERT(base == copy,
+        "layout_cache_key_t equality must hold for identical fields");
+
+    // INT64_MAX-adjacent windows: the boundary case where double-typed
+    // fields would lose precision entirely.
+    plot::layout_cache_key_t high_a = base;
+    plot::layout_cache_key_t high_b = base;
+    high_a.t0 = std::numeric_limits<std::int64_t>::max() - 1;
+    high_a.t1 = std::numeric_limits<std::int64_t>::max();
+    high_b.t0 = std::numeric_limits<std::int64_t>::max() - 2;
+    high_b.t1 = std::numeric_limits<std::int64_t>::max() - 1;
+    TEST_ASSERT(!(high_a == high_b),
+        "layout_cache_key_t must distinguish adjacent ns windows even "
+        "near INT64_MAX where double fields would lose precision");
+
+    return true;
+}
+
 bool test_format_axis_fixed_or_int()
 {
     TEST_ASSERT(plot::format_axis_fixed_or_int(0.0, 0) == "0", "zero as integer");
@@ -183,6 +238,7 @@ int main()
     RUN_TEST(test_compute_lod_scales_forces_minimum_of_one);
     RUN_TEST(test_lower_and_upper_bound_on_contiguous_buffer);
     RUN_TEST(test_bounds_on_segmented_snapshot);
+    RUN_TEST(test_layout_cache_key_distinguishes_adjacent_int64_time_windows);
     RUN_TEST(test_format_axis_fixed_or_int);
 
     std::cout << "Results: " << passed << " passed, " << failed << " failed" << std::endl;

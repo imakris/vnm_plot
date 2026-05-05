@@ -212,6 +212,61 @@ bool test_fp32_snap_step_resolution_at_bucket_boundaries()
     return true;
 }
 
+bool test_main_and_preview_can_have_different_origins_in_same_frame()
+{
+    // The renderer picks origins independently for main and preview because
+    // their visible windows can differ substantially. A typical case: the
+    // main view is zoomed into a few seconds, while the preview shows the
+    // full available range over hours or days. Each view's origin is
+    // floored to its own snap bucket, so the two values must be allowed to
+    // disagree within the same frame.
+
+    // Main view: 1-hour visible window starting at t = 86400s + 1234567890ns.
+    // 1-hour span -> 1-second snap; the origin floors below the visible min.
+    const std::int64_t main_t_view_min = k_ns_per_day + 1234567890LL;
+    const std::int64_t main_span       = k_ns_per_hour;
+    const std::int64_t main_origin     =
+        plot::detail::choose_origin_ns(main_t_view_min, main_span);
+
+    // Preview view: 10-year range starting from 0. 10-year span -> 1-day snap.
+    const std::int64_t preview_t_view_min = 0LL;
+    const std::int64_t preview_span       = 10LL * k_ns_per_year;
+    const std::int64_t preview_origin     =
+        plot::detail::choose_origin_ns(preview_t_view_min, preview_span);
+
+    TEST_ASSERT(main_origin != preview_origin,
+        "main and preview must be allowed to pick different origins for the "
+        "same frame state when their spans land in different snap buckets");
+
+    // Each origin is on its own snap boundary and below its view min.
+    const std::int64_t main_snap    = plot::detail::choose_snap_ns(main_span);
+    const std::int64_t preview_snap = plot::detail::choose_snap_ns(preview_span);
+    TEST_ASSERT(main_snap != preview_snap,
+        "differently sized spans must select different snap steps "
+        "(precondition for the per-view origin contract)");
+    TEST_ASSERT(main_origin <= main_t_view_min,
+        "main origin must not exceed main t_view_min");
+    TEST_ASSERT(preview_origin <= preview_t_view_min,
+        "preview origin must not exceed preview t_view_min");
+    TEST_ASSERT(main_origin    % main_snap    == 0,
+        "main origin must land on its own snap step");
+    TEST_ASSERT(preview_origin % preview_snap == 0,
+        "preview origin must land on its own snap step");
+
+    // Sharing one origin between the views would push one view's rebased
+    // seconds out of fp32 precision. Confirm by computing both views'
+    // worst-case rebased magnitudes if they shared the main origin.
+    const std::int64_t preview_t_max = preview_t_view_min + preview_span;
+    const float preview_rebased_against_main =
+        static_cast<float>(preview_t_max - main_origin) * 1.0e-9f;
+    constexpr float k_fp32_integer_bound = 16777216.0f; // 2^24
+    TEST_ASSERT(preview_rebased_against_main >= k_fp32_integer_bound,
+        "the preview's far end re-based against the main origin would "
+        "exceed fp32 integer precision (justifies independent origins)");
+
+    return true;
+}
+
 bool test_choose_origin_ns_handles_int64_min()
 {
     // Plot_time_axis::k_t_unset == INT64_MIN is used as a sentinel and may
@@ -258,6 +313,7 @@ int main()
     RUN_TEST(test_choose_origin_ns_aligns_for_positive_timestamps);
     RUN_TEST(test_fp32_round_trip_within_2e24_for_bounded_spans);
     RUN_TEST(test_fp32_snap_step_resolution_at_bucket_boundaries);
+    RUN_TEST(test_main_and_preview_can_have_different_origins_in_same_frame);
     RUN_TEST(test_choose_origin_ns_handles_int64_min);
 
     std::cout << "Results: " << passed << " passed, " << failed << " failed" << std::endl;

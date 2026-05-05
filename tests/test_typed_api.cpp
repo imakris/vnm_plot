@@ -3,6 +3,7 @@
 #include "test_macros.h"
 
 #include <vnm_plot/core/access_policy.h>
+#include <vnm_plot/core/function_sample.h>
 #include <vnm_plot/core/series_builder.h>
 #include <vnm_plot/core/types.h>
 
@@ -212,6 +213,27 @@ bool test_typed_api_floating_point_timestamp_member()
     return true;
 }
 
+bool test_function_sample_layout_key_matches_typed_factory()
+{
+    // Contract: make_function_sample_policy_typed().layout_key must equal
+    // function_sample_layout_key(). default_shader_for_layout uses the
+    // standalone helper to look up the built-in shader set; the typed
+    // factory feeds the renderer the policy. If they disagree, the
+    // built-in lookup falls through to k_empty_shader_set, and the
+    // failure surfaces only at runtime as MISSING_SHADER on first frame.
+    // Test this contract directly so any regression is caught at compile/
+    // unit-test time instead.
+    const auto policy = plot::make_function_sample_policy_typed();
+    TEST_ASSERT(policy.layout_key == plot::function_sample_layout_key(),
+        "make_function_sample_policy_typed().layout_key must equal "
+        "function_sample_layout_key() so default_shader_for_layout "
+        "matches the typed factory");
+    TEST_ASSERT(policy.layout_key != 0,
+        "function_sample layout_key should be non-zero");
+
+    return true;
+}
+
 bool test_series_builder_preview_config()
 {
     auto main_source = std::make_shared<plot::Vector_data_source<sample_t>>();
@@ -257,6 +279,7 @@ int main()
     RUN_TEST(test_make_access_policy_and_erase);
     RUN_TEST(test_clone_with_timestamp_for_both_overloads);
     RUN_TEST(test_typed_api_floating_point_timestamp_member);
+    RUN_TEST(test_function_sample_layout_key_matches_typed_factory);
     RUN_TEST(test_series_builder_preview_config);
 
     std::cout << "Results: " << passed << " passed, " << failed << " failed" << std::endl;
