@@ -6,6 +6,7 @@
 
 #include <glm/gtc/matrix_transform.hpp>
 
+#include <QByteArray>
 #include <QMatrix4x4>
 #include <QOffscreenSurface>
 #include <QQuickItem>
@@ -519,21 +520,73 @@ void Benchmark_rhi_offscreen_runner::fill_static_data()
 
 bool Benchmark_rhi_offscreen_runner::initialize_rhi(std::string& error_message)
 {
-#ifdef Q_OS_WIN
-    QRhiD3D11InitParams params;
-    m_rhi.reset(QRhi::create(QRhi::D3D11, &params));
-#else
+    auto create_null_rhi = [&]() {
+        QRhiNullInitParams params;
+        m_rhi.reset(QRhi::create(QRhi::Null, &params));
+    };
+
+    auto create_opengl_rhi = [&]() {
 #if QT_CONFIG(opengl)
-    m_fallback_surface.reset(QRhiGles2InitParams::newFallbackSurface());
-    QRhiGles2InitParams gl_params;
-    gl_params.fallbackSurface = m_fallback_surface.get();
-    m_rhi.reset(QRhi::create(QRhi::OpenGLES2, &gl_params));
+        m_fallback_surface.reset(QRhiGles2InitParams::newFallbackSurface());
+        QRhiGles2InitParams params;
+        params.fallbackSurface = m_fallback_surface.get();
+        m_rhi.reset(QRhi::create(QRhi::OpenGLES2, &params));
+        if (!m_rhi) {
+            m_fallback_surface.reset();
+        }
+        return m_rhi != nullptr;
+#else
+        return false;
 #endif
-    if (!m_rhi) {
-        QRhiNullInitParams null_params;
-        m_rhi.reset(QRhi::create(QRhi::Null, &null_params));
+    };
+
+    const QByteArray forced_backend = qgetenv("QSG_RHI_BACKEND").trimmed().toLower();
+    if (!forced_backend.isEmpty()) {
+        if (forced_backend == "opengl" || forced_backend == "gles" ||
+            forced_backend == "gles2")
+        {
+            if (!create_opengl_rhi()) {
+                error_message = "QSG_RHI_BACKEND requests OpenGL, but offscreen OpenGL QRhi creation failed";
+                return false;
+            }
+        }
+        else
+        if (forced_backend == "null") {
+            create_null_rhi();
+        }
+        else
+        if (forced_backend == "d3d11") {
+#ifdef Q_OS_WIN
+            QRhiD3D11InitParams params;
+            m_rhi.reset(QRhi::create(QRhi::D3D11, &params));
+            if (!m_rhi) {
+                error_message = "QSG_RHI_BACKEND=d3d11 was requested, but D3D11 QRhi creation failed";
+                return false;
+            }
+#else
+            error_message = "QSG_RHI_BACKEND=d3d11 is only supported on Windows";
+            return false;
+#endif
+        }
+        else {
+            error_message =
+                "Unsupported QSG_RHI_BACKEND for offscreen benchmark: " +
+                std::string(forced_backend.constData(), forced_backend.size());
+            return false;
+        }
     }
+    else {
+#ifdef Q_OS_WIN
+        QRhiD3D11InitParams params;
+        m_rhi.reset(QRhi::create(QRhi::D3D11, &params));
+#else
+        create_opengl_rhi();
 #endif
+    }
+
+    if (!m_rhi) {
+        create_null_rhi();
+    }
     if (!m_rhi) {
         error_message = "Failed to create offscreen QRhi";
         return false;
