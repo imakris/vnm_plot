@@ -3,13 +3,12 @@ A GPU-accelerated 2D time-series plotting library using Qt RHI and Qt Quick.
 ![Function Plotter](function_plotter_example.png)
 <sub>function_plotter example</sub>
 ## CI Status
-| Job | Status | Notes |
-| :-- | :-- | :-- |
-| Linux (GitHub Actions) | [![CI Linux](https://github.com/imakris/vnm_plot/actions/workflows/ci-linux.yml/badge.svg?branch=master)](https://github.com/imakris/vnm_plot/actions/workflows/ci-linux.yml) | QRhi and QRhi+Text |
-| macOS (GitHub Actions) | [![CI macOS](https://github.com/imakris/vnm_plot/actions/workflows/ci-macos.yml/badge.svg?branch=master)](https://github.com/imakris/vnm_plot/actions/workflows/ci-macos.yml) | QRhi and QRhi+Text |
-| Windows (GitHub Actions) | [![CI Windows](https://github.com/imakris/vnm_plot/actions/workflows/ci-windows.yml/badge.svg?branch=master)](https://github.com/imakris/vnm_plot/actions/workflows/ci-windows.yml) | QRhi and QRhi+Text |
-| FreeBSD QRhi (Cirrus) | [![FreeBSD QRhi](https://api.cirrus-ci.com/github/imakris/vnm_plot.svg?task=FreeBSD%20QRhi%20Build)](https://cirrus-ci.com/github/imakris/vnm_plot?task=FreeBSD%20QRhi%20Build) | QRhi |
-| FreeBSD QRhi+Text (Cirrus) | [![FreeBSD QRhi+Text](https://api.cirrus-ci.com/github/imakris/vnm_plot.svg?task=FreeBSD%20QRhi%2BText%20Build)](https://cirrus-ci.com/github/imakris/vnm_plot?task=FreeBSD%20QRhi%2BText%20Build) | QRhi with text enabled |
+| Platform | Status |
+| :-- | :-- |
+| Linux | [![CI Linux](https://github.com/imakris/vnm_plot/actions/workflows/ci-linux.yml/badge.svg?branch=master)](https://github.com/imakris/vnm_plot/actions/workflows/ci-linux.yml) |
+| macOS | [![CI macOS](https://github.com/imakris/vnm_plot/actions/workflows/ci-macos.yml/badge.svg?branch=master)](https://github.com/imakris/vnm_plot/actions/workflows/ci-macos.yml) |
+| Windows | [![CI Windows](https://github.com/imakris/vnm_plot/actions/workflows/ci-windows.yml/badge.svg?branch=master)](https://github.com/imakris/vnm_plot/actions/workflows/ci-windows.yml) |
+| FreeBSD | [![FreeBSD QRhi](https://api.cirrus-ci.com/github/imakris/vnm_plot.svg?task=FreeBSD%20QRhi%20Build)](https://cirrus-ci.com/github/imakris/vnm_plot?task=FreeBSD%20QRhi%20Build) [![FreeBSD QRhi+Text](https://api.cirrus-ci.com/github/imakris/vnm_plot.svg?task=FreeBSD%20QRhi%2BText%20Build)](https://cirrus-ci.com/github/imakris/vnm_plot?task=FreeBSD%20QRhi%2BText%20Build) |
 
 ## Overview
 
