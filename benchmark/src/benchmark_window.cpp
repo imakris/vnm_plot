@@ -518,10 +518,15 @@ void Benchmark_rhi_offscreen_runner::fill_static_data()
 
 bool Benchmark_rhi_offscreen_runner::initialize_rhi(std::string& error_message)
 {
+#ifdef Q_OS_WIN
     QRhiD3D11InitParams params;
     m_rhi.reset(QRhi::create(QRhi::D3D11, &params));
+#else
+    QRhiNullInitParams params;
+    m_rhi.reset(QRhi::create(QRhi::Null, &params));
+#endif
     if (!m_rhi) {
-        error_message = "Failed to create D3D11 QRhi";
+        error_message = "Failed to create offscreen QRhi";
         return false;
     }
 
