@@ -3,7 +3,7 @@ A GPU-accelerated 2D time-series plotting library using Qt RHI and Qt Quick.
 ![Function Plotter](function_plotter_example.png)
 <sub>function_plotter example</sub>
 ## CI Status
-[![CI Linux](https://github.com/imakris/vnm_plot/actions/workflows/ci-linux.yml/badge.svg?branch=master)](https://github.com/imakris/vnm_plot/actions/workflows/ci-linux.yml) [![CI macOS](https://github.com/imakris/vnm_plot/actions/workflows/ci-macos.yml/badge.svg?branch=master)](https://github.com/imakris/vnm_plot/actions/workflows/ci-macos.yml) [![CI Windows](https://github.com/imakris/vnm_plot/actions/workflows/ci-windows.yml/badge.svg?branch=master)](https://github.com/imakris/vnm_plot/actions/workflows/ci-windows.yml) [![CI FreeBSD](https://api.cirrus-ci.com/github/imakris/vnm_plot.svg)](https://cirrus-ci.com/github/imakris/vnm_plot)
+[![CI Linux](https://github.com/imakris/vnm_plot/actions/workflows/ci-linux.yml/badge.svg?branch=master)](https://github.com/imakris/vnm_plot/actions/workflows/ci-linux.yml) [![CI macOS](https://github.com/imakris/vnm_plot/actions/workflows/ci-macos.yml/badge.svg?branch=master)](https://github.com/imakris/vnm_plot/actions/workflows/ci-macos.yml) [![CI Windows](https://github.com/imakris/vnm_plot/actions/workflows/ci-windows.yml/badge.svg?branch=master)](https://github.com/imakris/vnm_plot/actions/workflows/ci-windows.yml) [![CI FreeBSD](https://img.shields.io/cirrus/github/imakris/vnm_plot/master?label=CI%20FreeBSD)](https://cirrus-ci.com/github/imakris/vnm_plot)
 
 ## Overview
 
