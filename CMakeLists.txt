@@ -58,10 +58,22 @@ find_package(OpenGL)
 if(VNM_PLOT_CORE_ONLY)
     set(VNM_PLOT_BUILD_QT OFF)
 elseif(VNM_PLOT_BUILD_QT)
+    # ShaderTools is checked separately so a missing component does not silently
+    # collapse Qt6_FOUND and route the build into the core-only fallback. If
+    # Qt6 itself is absent we go core-only; if Qt6 is present but ShaderTools
+    # is not, that is a hard configuration error.
     find_package(Qt6 COMPONENTS Core Gui Quick OpenGL)
     if(NOT Qt6_FOUND)
         message(STATUS "vnm_plot: Qt6 not found, building core library only")
         set(VNM_PLOT_BUILD_QT OFF)
+    endif()
+    if(VNM_PLOT_BUILD_QT)
+        find_package(Qt6ShaderTools QUIET)
+        if(NOT Qt6ShaderTools_FOUND)
+            message(FATAL_ERROR
+                "vnm_plot: Qt6ShaderTools is required for the QSB shader pipeline. "
+                "Install the Qt 6 'Shader Tools' module on the build machine.")
+        endif()
     endif()
 endif()
 
@@ -493,6 +505,37 @@ if(VNM_PLOT_BUILD_QT)
 endif()
 
 # -----------------------------------------------------------------------------
+# QSB shader pipeline (Qt RHI)
+#
+# Bake every shader in shaders/qsb/ into a multi-profile .qsb artifact and
+# embed it under :/vnm_plot/shaders/qsb/<name>.qsb. Profile set covers Vulkan
+# (SPIR-V), Metal 1.2 + 2.1, D3D11 (HLSL 5.0), and desktop GL 4.10 so RHI can
+# pick a working artifact on every supported backend.
+# -----------------------------------------------------------------------------
+
+set(VNM_PLOT_QSB_SHADERS
+    shaders/qsb/generic_rect.vert
+    shaders/qsb/generic_rect.frag
+    shaders/qsb/grid_quad.vert
+    shaders/qsb/grid_quad.frag
+    shaders/qsb/plot_line.vert
+    shaders/qsb/plot_line.frag
+    shaders/qsb/plot_dot_quad.vert
+    shaders/qsb/plot_dot_quad.frag
+    shaders/qsb/plot_area.vert
+    shaders/qsb/plot_area.frag
+    shaders/qsb/plot_colormap_line.vert
+    shaders/qsb/plot_colormap_line.frag
+)
+
+if(VNM_PLOT_ENABLE_TEXT)
+    list(APPEND VNM_PLOT_QSB_SHADERS
+        shaders/qsb/msdf_text.vert
+        shaders/qsb/msdf_text.frag
+    )
+endif()
+
+# -----------------------------------------------------------------------------
 # Full Library target (Qt-dependent)
 # -----------------------------------------------------------------------------
 
@@ -553,6 +596,20 @@ if(VNM_PLOT_BUILD_QT)
     else()
         target_compile_options(vnm_plot PRIVATE -Wall -Wextra)
     endif()
+
+    # Each input shader yields :/vnm_plot/shaders/qsb/<name>.<ext>.qsb.
+    # GLSL profile is desktop 410 only; mobile GL ES is out of scope for
+    # Phase 2 and several shaders use SSBOs that are unavailable below ES 3.1,
+    # so emitting a 300 ES artifact would compile-fail at runtime on a real
+    # ES 3.0 driver.
+    qt_add_shaders(vnm_plot "vnm_plot_qsb_shaders"
+        PREFIX "/vnm_plot"
+        BASE   "${CMAKE_CURRENT_SOURCE_DIR}"
+        GLSL   "410"
+        HLSL   "50"
+        MSL    "12,21"
+        FILES  ${VNM_PLOT_QSB_SHADERS}
+    )
 
     message(STATUS "vnm_plot: Building Qt wrapper library")
 endif()
