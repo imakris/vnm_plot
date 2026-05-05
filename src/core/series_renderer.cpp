@@ -33,28 +33,6 @@ constexpr glm::vec4 k_default_series_color(0.16f, 0.45f, 0.64f, 1.0f);
 constexpr glm::vec4 k_default_series_color_dark(0.30f, 0.63f, 0.88f, 1.0f);
 constexpr float k_default_color_epsilon = 0.01f;
 
-bool to_int_rounded(double value, std::int32_t& out)
-{
-    if (!std::isfinite(value)) {
-        return false;
-    }
-    out = static_cast<std::int32_t>(lround(value));
-    return true;
-}
-
-bool to_positive_int(double value, std::int32_t& out)
-{
-    if (!std::isfinite(value)) {
-        return false;
-    }
-    const long rounded = lround(value);
-    if (rounded <= 0) {
-        return false;
-    }
-    out = static_cast<std::int32_t>(rounded);
-    return true;
-}
-
 bool is_default_series_color(const glm::vec4& color)
 {
     return glm::all(glm::lessThan(

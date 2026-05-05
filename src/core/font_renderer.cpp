@@ -92,39 +92,6 @@ void vertex_buffer_delete(vertex_buffer_t* buffer)
     delete buffer;
 }
 
-std::size_t vertex_buffer_vertex_count(const vertex_buffer_t* buffer)
-{
-    return buffer ? buffer->vertex_data.size() / 8 : 0;
-}
-
-void vertex_buffer_push_back_vertices(vertex_buffer_t* buffer, const void* vertices, std::size_t count)
-{
-    if (!buffer || !vertices || count == 0) {
-        return;
-    }
-
-    const float* data = static_cast<const float*>(vertices);
-    buffer->vertex_data.insert(buffer->vertex_data.end(), data, data + (count * 8));
-}
-
-void vertex_buffer_push_back_indices(vertex_buffer_t* buffer, const std::uint32_t* indices, std::size_t count)
-{
-    if (!buffer || !indices || count == 0) {
-        return;
-    }
-
-    buffer->index_data.insert(buffer->index_data.end(), indices, indices + count);
-}
-
-void vertex_buffer_render(vertex_buffer_t* buffer)
-{
-    if (!buffer || buffer->index_data.empty() || buffer->vertex_data.empty()) {
-        return;
-    }
-    buffer->vertex_data.clear();
-    buffer->index_data.clear();
-}
-
 void vertex_buffer_clear(vertex_buffer_t* buffer)
 {
     if (!buffer) {
