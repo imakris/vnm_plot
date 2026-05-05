@@ -66,8 +66,8 @@ void Top_controller::set_plot_widget(vnm::plot::Plot_widget* widget)
             [this]() {
                 if (!m_plot_widget) return;
                 vnm::plot::Plot_view view;
-                view.t_range = std::make_pair(k_x_min, k_x_max);
-                view.t_available_range = std::make_pair(k_x_min, k_x_max);
+                view.t_range = std::make_pair(k_t_min_ns, k_t_max_ns);
+                view.t_available_range = std::make_pair(k_t_min_ns, k_t_max_ns);
                 m_plot_widget->set_view(view);
             });
     }

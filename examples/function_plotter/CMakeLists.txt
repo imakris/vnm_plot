@@ -3,7 +3,7 @@
 # Demonstrates vnm_plot with mexce for plotting arbitrary mathematical functions
 # ==============================================================================
 
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.18)
 
 # Only define project when building standalone (not as subdirectory)
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
@@ -41,12 +41,18 @@ if(MEXCE_LOCAL_PATH AND EXISTS "${MEXCE_LOCAL_PATH}/mexce.h")
     set(mexce_SOURCE_DIR "${MEXCE_LOCAL_PATH}")
 else()
     include(FetchContent)
+    # SOURCE_SUBDIR points at a non-existent path so FetchContent_MakeAvailable
+    # downloads the sources but skips add_subdirectory. Without this, mexce's
+    # own CMakeLists forces /O2 on its benchmark / unit_tests targets, which
+    # collides with the parent build's /RTC1 in MSVC Debug. We only need the
+    # header — the parent project does not consume mexce's executables.
     FetchContent_Declare(mexce
         GIT_REPOSITORY https://github.com/imakris/mexce.git
         GIT_TAG        master
         # Keep full history for fetched libraries because this workspace patches
         # and reviews them directly during active development.
         GIT_SHALLOW    FALSE
+        SOURCE_SUBDIR  cmake_unused_skip_subdirectory
     )
     FetchContent_MakeAvailable(mexce)
 endif()
@@ -84,6 +90,12 @@ target_link_libraries(function_plotter PRIVATE
 target_include_directories(function_plotter PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
+
+# windows.h ships min/max as macros; std::min / std::max in this TU expand
+# wrong without NOMINMAX, breaking the format_timestamp lambda's digit clamp.
+if(WIN32)
+    target_compile_definitions(function_plotter PRIVATE NOMINMAX)
+endif()
 
 # -----------------------------------------------------------------------------
 # Resources

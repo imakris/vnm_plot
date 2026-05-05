@@ -870,8 +870,15 @@ void Function_plotter::configure_plot_widget()
     config.line_width_px = 1.25;
     config.auto_v_range_extra_scale = 0.5;
 
-    // Custom x-axis formatter (just show the value, not time)
-    config.format_timestamp = [](double x, double step) -> std::string {
+    // Custom x-axis formatter (just show the value, not time). The plot
+    // widget passes int64 nanoseconds; this example treats the time axis as
+    // a function-domain x in seconds, so divide back at the boundary instead
+    // of relying on implicit qint64->double narrowing of raw ns counts.
+    config.format_timestamp = [](std::int64_t x_ns, std::int64_t step_ns) -> std::string {
+        constexpr double k_ns_per_second = 1.0e9;
+        const double x = static_cast<double>(x_ns) / k_ns_per_second;
+        const double step = static_cast<double>(step_ns) / k_ns_per_second;
+
         int digits = 0;
         if (step > 0.0) {
             digits = std::max(0, static_cast<int>(std::ceil(-std::log10(step))) + 1);
