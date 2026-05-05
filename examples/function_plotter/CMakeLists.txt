@@ -108,3 +108,29 @@ add_custom_command(TARGET function_plotter POST_BUILD
         "$<TARGET_FILE_DIR:function_plotter>/qml"
     COMMENT "Copying QML files"
 )
+
+# Deploy Qt runtime DLLs next to the example so it can be launched by
+# double-clicking from Explorer (no manual PATH or vcvarsall shell needed).
+if(WIN32 AND NOT CMAKE_CROSSCOMPILING)
+    get_target_property(_qt_qmake_executable Qt6::qmake IMPORTED_LOCATION)
+    get_filename_component(_qt_bin_dir "${_qt_qmake_executable}" DIRECTORY)
+    find_program(WINDEPLOYQT_EXECUTABLE windeployqt HINTS "${_qt_bin_dir}")
+
+    if(WINDEPLOYQT_EXECUTABLE)
+        add_custom_command(TARGET function_plotter POST_BUILD
+            COMMAND "${WINDEPLOYQT_EXECUTABLE}"
+                    --no-translations
+                    --no-system-d3d-compiler
+                    --no-opengl-sw
+                    --qmldir "${CMAKE_CURRENT_SOURCE_DIR}/qml"
+                    "$<TARGET_FILE:function_plotter>"
+            COMMENT "Deploying Qt runtime for function_plotter"
+            VERBATIM
+        )
+    else()
+        message(WARNING
+            "windeployqt not found near Qt6::qmake (${_qt_bin_dir}); "
+            "function_plotter.exe will not have Qt runtime DLLs alongside "
+            "it and will fail to launch from Explorer.")
+    endif()
+endif()
