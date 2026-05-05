@@ -6,7 +6,16 @@
 #include <glatter/glatter.h>
 #include <glm/gtc/type_ptr.hpp>
 
+#ifdef VNM_PLOT_HAS_QRHI
+#  include <rhi/qrhi.h>
+#  include <QFile>
+#endif
+
+#include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <cstring>
+#include <vector>
 
 namespace vnm::plot {
 using detail::k_rect_initial_quads;
@@ -38,9 +47,181 @@ bool to_positive_glsizei(double value, GLsizei& out)
     return true;
 }
 
+// -----------------------------------------------------------------------------
+// std140 UBO mirrors for the QSB chrome shaders.
+// -----------------------------------------------------------------------------
+//
+// generic_rect.vert exposes:
+//
+//     layout(std140, binding = 0) uniform Block { mat4 pmv; } u;
+//
+// std140 puts mat4 columns at vec4 stride (16 bytes), giving a 64-byte block.
+// The host struct mirrors the column-major buffer glm::value_ptr produces.
+struct Rect_block_std140
+{
+    float pmv[16];  // offset 0
+};
+static_assert(sizeof(Rect_block_std140) == 64,
+    "Rect UBO mirror must be 64 bytes (single mat4)");
+
+// grid_quad.frag exposes:
+//
+//     layout(std140, binding = 0) uniform Block {
+//         vec2  plot_size_px;          // offset 0
+//         vec2  region_origin_px;      // offset 8
+//         vec4  grid_color;            // offset 16
+//         int   v_count;               // offset 32
+//         int   t_count;               // offset 36
+//         int   framebuffer_y_up;      // offset 40
+//         float win_h;                 // offset 44
+//         vec4  v_levels[GRID_LEVEL_MAX]; // offset 48
+//         vec4  t_levels[GRID_LEVEL_MAX]; // offset 560
+//     } u;
+//
+// Verified against `qsb --dump shaders/qsb/grid_quad.frag.qsb`.
+struct Grid_block_std140
+{
+    float    plot_size_px[2];      // offset   0
+    float    region_origin_px[2];  // offset   8
+    float    grid_color[4];        // offset  16
+    int32_t  v_count;              // offset  32
+    int32_t  t_count;              // offset  36
+    int32_t  framebuffer_y_up;     // offset  40
+    float    win_h;                // offset  44
+    float    v_levels[32][4];      // offset  48 (32 * 16 = 512 bytes)
+    float    t_levels[32][4];      // offset 560 (32 * 16 = 512 bytes)
+};
+static_assert(offsetof(Grid_block_std140, plot_size_px)     ==    0, "plot_size_px offset");
+static_assert(offsetof(Grid_block_std140, region_origin_px) ==    8, "region_origin_px offset");
+static_assert(offsetof(Grid_block_std140, grid_color)       ==   16, "grid_color offset");
+static_assert(offsetof(Grid_block_std140, v_count)          ==   32, "v_count offset");
+static_assert(offsetof(Grid_block_std140, t_count)          ==   36, "t_count offset");
+static_assert(offsetof(Grid_block_std140, framebuffer_y_up) ==   40, "framebuffer_y_up offset");
+static_assert(offsetof(Grid_block_std140, win_h)            ==   44, "win_h offset");
+static_assert(offsetof(Grid_block_std140, v_levels)         ==   48, "v_levels offset");
+static_assert(offsetof(Grid_block_std140, t_levels)         ==  560, "t_levels offset");
+static_assert(sizeof(Grid_block_std140)                     == 1072, "Grid UBO mirror size");
+
+constexpr std::uint32_t k_rect_ubo_bytes = sizeof(Rect_block_std140);
+constexpr std::uint32_t k_grid_ubo_bytes = sizeof(Grid_block_std140);
+
+#ifdef VNM_PLOT_HAS_QRHI
+QShader load_qsb(const char* alias)
+{
+    QFile file(QStringLiteral(":/vnm_plot/shaders/qsb/") + QString::fromLatin1(alias));
+    if (!file.open(QIODevice::ReadOnly)) {
+        return {};
+    }
+    return QShader::fromSerialized(file.readAll());
+}
+#endif
+
 } // namespace
 
-Primitive_renderer::Primitive_renderer() = default;
+// -----------------------------------------------------------------------------
+// rhi_state_t: Cached pipelines, per-frame buffers, and the deferred draw plan.
+// -----------------------------------------------------------------------------
+//
+// The rect pipeline is one cached QRhiGraphicsPipeline shared across every
+// rect draw in the frame; pipeline state (vertex layout, blend, sample count)
+// only depends on the binding LAYOUT, not on the concrete buffer handles.
+// Each flush_rects call allocates a fresh per-call vertex buffer + UBO + SRB
+// triple via the renderer's per-frame ring; this keeps lifetimes simple
+// because every draw owns its own buffers and the ring is reset each frame.
+//
+// The grid pipeline mirrors the same shape: one cached QRhiGraphicsPipeline,
+// per-call UBO + SRB, full-screen unit quad shared across all draws.
+
+struct Primitive_renderer::rhi_state_t
+{
+#ifdef VNM_PLOT_HAS_QRHI
+    // Per-call buffers used by exactly one draw op. Owned by rhi_state_t and
+    // recycled across frames: the pool grows as the frame's draw count
+    // demands and m_used resets to 0 at the top of each prepare phase. The
+    // SRB references the per-call UBO directly; rebuilding it whenever the
+    // UBO pointer changes (e.g. capacity grew the QRhiBuffer) is the only
+    // way to avoid use-after-free, since QRhiShaderResourceBindings captures
+    // raw handles at create() time.
+    struct rect_call_t
+    {
+        std::unique_ptr<QRhiBuffer>                 vbo;
+        std::size_t                                 vbo_capacity_bytes = 0;
+        std::unique_ptr<QRhiBuffer>                 ubo;
+        std::unique_ptr<QRhiShaderResourceBindings> srb;
+        QRhiBuffer*                                 srb_last_ubo = nullptr;
+    };
+
+    struct grid_call_t
+    {
+        std::unique_ptr<QRhiBuffer>                 ubo;
+        std::unique_ptr<QRhiShaderResourceBindings> srb;
+        QRhiBuffer*                                 srb_last_ubo = nullptr;
+    };
+
+    enum class op_kind_t : uint8_t { RECT, GRID };
+
+    struct draw_op_t
+    {
+        op_kind_t  kind;
+        // Index into rect_calls / grid_calls depending on kind. Stored as
+        // uint32_t because each op references exactly one preallocated call
+        // resource; the indices are stable for the duration of the frame.
+        uint32_t   resource_index;
+        // For RECT: number of instances (== quads) in vbo.
+        // For GRID: scissor rectangle in QRhi's bottom-left coordinates.
+        union {
+            struct {
+                uint32_t instance_count;
+            } rect;
+            struct {
+                int x, y, w, h;
+            } grid;
+        };
+    };
+
+    std::vector<rect_call_t> rect_calls;
+    std::vector<grid_call_t> grid_calls;
+    std::vector<draw_op_t>   ops;
+    std::size_t              rect_used = 0;
+    std::size_t              grid_used = 0;
+    // Position in `ops` where the next record_draws() call should start
+    // playback. Lets the host interleave multiple record_draws() invocations
+    // around a series.render() call so chrome paints both behind and in
+    // front of the data series in a single frame.
+    std::size_t              record_cursor = 0;
+
+    // Cached pipelines keyed only by primitive kind: the descriptor depends
+    // on shader stages, vertex layout, blend, and sample count. Per-call
+    // buffer handles ride the SRB on each draw.
+    std::unique_ptr<QRhiGraphicsPipeline> rect_pipeline;
+    std::unique_ptr<QRhiGraphicsPipeline> grid_pipeline;
+    QRhiRenderPassDescriptor* rect_pipeline_rpd = nullptr;
+    int                       rect_pipeline_samples = 0;
+    QRhiRenderPassDescriptor* grid_pipeline_rpd = nullptr;
+    int                       grid_pipeline_samples = 0;
+
+    // Static unit-quad VBO consumed by the grid pipeline. Allocated once on
+    // first prepare and reused forever; the same four vertices feed every
+    // grid draw (the fragment shader resolves region clipping itself).
+    std::unique_ptr<QRhiBuffer> grid_quad_vbo;
+
+    QShader rect_vert;
+    QShader rect_frag;
+    QShader grid_vert;
+    QShader grid_frag;
+    bool    shaders_loaded = false;
+
+    // Last QRhi seen on the prepare path. A backend swap (rare; tests / host
+    // teardown) invalidates every cached buffer and pipeline because they
+    // belong to the previous QRhi instance.
+    QRhi*   last_rhi = nullptr;
+#endif
+};
+
+Primitive_renderer::Primitive_renderer()
+    : m_rhi_state(std::make_unique<rhi_state_t>())
+{}
+
 Primitive_renderer::~Primitive_renderer() = default;
 
 void Primitive_renderer::set_log_callback(GL_program::Log_callback callback)
@@ -164,6 +345,27 @@ void Primitive_renderer::cleanup_gl_resources()
     m_sp_grid.reset();
     m_cpu_buffer.clear();
     m_initialized = false;
+
+#ifdef VNM_PLOT_HAS_QRHI
+    m_rhi_state->rect_calls.clear();
+    m_rhi_state->grid_calls.clear();
+    m_rhi_state->ops.clear();
+    m_rhi_state->rect_used = 0;
+    m_rhi_state->grid_used = 0;
+    m_rhi_state->rect_pipeline.reset();
+    m_rhi_state->grid_pipeline.reset();
+    m_rhi_state->rect_pipeline_rpd = nullptr;
+    m_rhi_state->rect_pipeline_samples = 0;
+    m_rhi_state->grid_pipeline_rpd = nullptr;
+    m_rhi_state->grid_pipeline_samples = 0;
+    m_rhi_state->grid_quad_vbo.reset();
+    m_rhi_state->shaders_loaded = false;
+    m_rhi_state->rect_vert = {};
+    m_rhi_state->rect_frag = {};
+    m_rhi_state->grid_vert = {};
+    m_rhi_state->grid_frag = {};
+    m_rhi_state->last_rhi = nullptr;
+#endif
 }
 
 void Primitive_renderer::batch_rect(const glm::vec4& color, const glm::vec4& rect_coords)
@@ -174,16 +376,334 @@ void Primitive_renderer::batch_rect(const glm::vec4& color, const glm::vec4& rec
     m_cpu_buffer.push_back({color, rect_coords});
 }
 
-void Primitive_renderer::flush_rects(const glm::mat4& pmv)
+#ifdef VNM_PLOT_HAS_QRHI
+bool Primitive_renderer::rhi_ensure_rect_pipeline(
+    rhi_state_t& rhi_state,
+    QRhi* rhi,
+    QRhiRenderTarget* rt)
+{
+    QRhiRenderPassDescriptor* rpd = rt->renderPassDescriptor();
+    const int samples = rt->sampleCount();
+
+    if (rhi_state.rect_pipeline
+        && (rhi_state.rect_pipeline_rpd != rpd
+            || rhi_state.rect_pipeline_samples != samples))
+    {
+        rhi_state.rect_pipeline.reset();
+    }
+    if (rhi_state.rect_pipeline) {
+        return true;
+    }
+
+    if (!rhi_state.rect_vert.isValid() || !rhi_state.rect_frag.isValid()) {
+        return false;
+    }
+
+    // Layout-only SRB: the pipeline binds against this stub at create() time;
+    // every per-call SRB built below shares the same single-UBO layout, so
+    // setShaderResources() with the call's SRB succeeds against this pipeline.
+    auto layout_ubo = std::unique_ptr<QRhiBuffer>(rhi->newBuffer(
+        QRhiBuffer::Dynamic, QRhiBuffer::UniformBuffer, k_rect_ubo_bytes));
+    if (!layout_ubo || !layout_ubo->create()) {
+        return false;
+    }
+    auto layout_srb = std::unique_ptr<QRhiShaderResourceBindings>(
+        rhi->newShaderResourceBindings());
+    layout_srb->setBindings({
+        QRhiShaderResourceBinding::uniformBuffer(
+            0, QRhiShaderResourceBinding::VertexStage,
+            layout_ubo.get(), 0, k_rect_ubo_bytes)
+    });
+    layout_srb->create();
+
+    rhi_state.rect_pipeline.reset(rhi->newGraphicsPipeline());
+    rhi_state.rect_pipeline->setShaderStages({
+        { QRhiShaderStage::Vertex,   rhi_state.rect_vert },
+        { QRhiShaderStage::Fragment, rhi_state.rect_frag }
+    });
+
+    QRhiVertexInputLayout vlayout;
+    QRhiVertexInputBinding vb(
+        static_cast<quint32>(sizeof(rect_vertex_t)),
+        QRhiVertexInputBinding::PerInstance,
+        1);
+    vlayout.setBindings({vb});
+    QRhiVertexInputAttribute a_color(
+        0, 0, QRhiVertexInputAttribute::Float4,
+        static_cast<quint32>(offsetof(rect_vertex_t, color)));
+    QRhiVertexInputAttribute a_rect(
+        0, 1, QRhiVertexInputAttribute::Float4,
+        static_cast<quint32>(offsetof(rect_vertex_t, rect_coords)));
+    vlayout.setAttributes({a_color, a_rect});
+    rhi_state.rect_pipeline->setVertexInputLayout(vlayout);
+    rhi_state.rect_pipeline->setShaderResourceBindings(layout_srb.get());
+    rhi_state.rect_pipeline->setTopology(QRhiGraphicsPipeline::TriangleStrip);
+
+    QRhiGraphicsPipeline::TargetBlend blend;
+    blend.enable = true;
+    blend.srcColor = QRhiGraphicsPipeline::SrcAlpha;
+    blend.dstColor = QRhiGraphicsPipeline::OneMinusSrcAlpha;
+    blend.srcAlpha = QRhiGraphicsPipeline::One;
+    blend.dstAlpha = QRhiGraphicsPipeline::OneMinusSrcAlpha;
+    rhi_state.rect_pipeline->setTargetBlends({blend});
+    rhi_state.rect_pipeline->setRenderPassDescriptor(rpd);
+    rhi_state.rect_pipeline->setSampleCount(samples);
+
+    if (!rhi_state.rect_pipeline->create()) {
+        rhi_state.rect_pipeline.reset();
+        return false;
+    }
+    rhi_state.rect_pipeline_rpd = rpd;
+    rhi_state.rect_pipeline_samples = samples;
+    return true;
+}
+
+bool Primitive_renderer::rhi_ensure_grid_pipeline(
+    rhi_state_t& rhi_state,
+    QRhi* rhi,
+    QRhiRenderTarget* rt)
+{
+    QRhiRenderPassDescriptor* rpd = rt->renderPassDescriptor();
+    const int samples = rt->sampleCount();
+
+    if (rhi_state.grid_pipeline
+        && (rhi_state.grid_pipeline_rpd != rpd
+            || rhi_state.grid_pipeline_samples != samples))
+    {
+        rhi_state.grid_pipeline.reset();
+    }
+    if (rhi_state.grid_pipeline) {
+        return true;
+    }
+
+    if (!rhi_state.grid_vert.isValid() || !rhi_state.grid_frag.isValid()) {
+        return false;
+    }
+
+    auto layout_ubo = std::unique_ptr<QRhiBuffer>(rhi->newBuffer(
+        QRhiBuffer::Dynamic, QRhiBuffer::UniformBuffer, k_grid_ubo_bytes));
+    if (!layout_ubo || !layout_ubo->create()) {
+        return false;
+    }
+    auto layout_srb = std::unique_ptr<QRhiShaderResourceBindings>(
+        rhi->newShaderResourceBindings());
+    // grid_quad.frag is the only stage that reads the UBO; the .vert just
+    // forwards the unit-quad vertex through gl_Position.
+    layout_srb->setBindings({
+        QRhiShaderResourceBinding::uniformBuffer(
+            0, QRhiShaderResourceBinding::FragmentStage,
+            layout_ubo.get(), 0, k_grid_ubo_bytes)
+    });
+    layout_srb->create();
+
+    rhi_state.grid_pipeline.reset(rhi->newGraphicsPipeline());
+    rhi_state.grid_pipeline->setShaderStages({
+        { QRhiShaderStage::Vertex,   rhi_state.grid_vert },
+        { QRhiShaderStage::Fragment, rhi_state.grid_frag }
+    });
+
+    QRhiVertexInputLayout vlayout;
+    QRhiVertexInputBinding vb(
+        2 * sizeof(float), QRhiVertexInputBinding::PerVertex, 1);
+    vlayout.setBindings({vb});
+    QRhiVertexInputAttribute a_pos(
+        0, 0, QRhiVertexInputAttribute::Float2, 0);
+    vlayout.setAttributes({a_pos});
+    rhi_state.grid_pipeline->setVertexInputLayout(vlayout);
+    rhi_state.grid_pipeline->setShaderResourceBindings(layout_srb.get());
+    rhi_state.grid_pipeline->setTopology(QRhiGraphicsPipeline::TriangleStrip);
+
+    QRhiGraphicsPipeline::TargetBlend blend;
+    blend.enable = true;
+    blend.srcColor = QRhiGraphicsPipeline::SrcAlpha;
+    blend.dstColor = QRhiGraphicsPipeline::OneMinusSrcAlpha;
+    blend.srcAlpha = QRhiGraphicsPipeline::One;
+    blend.dstAlpha = QRhiGraphicsPipeline::OneMinusSrcAlpha;
+    rhi_state.grid_pipeline->setTargetBlends({blend});
+    rhi_state.grid_pipeline->setFlags(QRhiGraphicsPipeline::UsesScissor);
+    rhi_state.grid_pipeline->setRenderPassDescriptor(rpd);
+    rhi_state.grid_pipeline->setSampleCount(samples);
+
+    if (!rhi_state.grid_pipeline->create()) {
+        rhi_state.grid_pipeline.reset();
+        return false;
+    }
+    rhi_state.grid_pipeline_rpd = rpd;
+    rhi_state.grid_pipeline_samples = samples;
+    return true;
+}
+
+bool Primitive_renderer::rhi_ensure_grid_quad_vbo(
+    rhi_state_t& rhi_state,
+    QRhi* rhi,
+    QRhiResourceUpdateBatch* updates)
+{
+    if (rhi_state.grid_quad_vbo) {
+        return true;
+    }
+    static constexpr float k_quad[] = {
+        -1.f, -1.f,
+         1.f, -1.f,
+        -1.f,  1.f,
+         1.f,  1.f
+    };
+    rhi_state.grid_quad_vbo.reset(rhi->newBuffer(
+        QRhiBuffer::Immutable, QRhiBuffer::VertexBuffer, sizeof(k_quad)));
+    if (!rhi_state.grid_quad_vbo || !rhi_state.grid_quad_vbo->create()) {
+        rhi_state.grid_quad_vbo.reset();
+        return false;
+    }
+    if (updates) {
+        updates->uploadStaticBuffer(
+            rhi_state.grid_quad_vbo.get(), 0, sizeof(k_quad), k_quad);
+    }
+    return true;
+}
+
+// Reset the per-frame plan if the caller hasn't already. A fresh prepare
+// phase always starts with no ops; record_draws() leaves the plan empty
+// after consuming it. The frame_id-tracked scheme used by Series_renderer is
+// overkill here because the plan is bounded and each batched op owns its
+// resources outright.
+void Primitive_renderer::rhi_reset_frame_plan(rhi_state_t& rhi_state)
+{
+    rhi_state.ops.clear();
+    rhi_state.rect_used = 0;
+    rhi_state.grid_used = 0;
+    rhi_state.record_cursor = 0;
+}
+
+void Primitive_renderer::rhi_on_backend_change(rhi_state_t& rhi_state, QRhi* rhi)
+{
+    if (rhi_state.last_rhi == rhi) {
+        return;
+    }
+    // Backend swap: every cached resource belongs to the previous QRhi and
+    // is no longer valid. Drop the lot and rebuild lazily on the next call.
+    rhi_state.rect_calls.clear();
+    rhi_state.grid_calls.clear();
+    rhi_state.ops.clear();
+    rhi_state.rect_used = 0;
+    rhi_state.grid_used = 0;
+    rhi_state.rect_pipeline.reset();
+    rhi_state.grid_pipeline.reset();
+    rhi_state.rect_pipeline_rpd = nullptr;
+    rhi_state.grid_pipeline_rpd = nullptr;
+    rhi_state.grid_quad_vbo.reset();
+    rhi_state.last_rhi = rhi;
+}
+
+#endif // VNM_PLOT_HAS_QRHI
+
+void Primitive_renderer::flush_rects(const frame_context_t& ctx, const glm::mat4& pmv)
 {
     VNM_PLOT_PROFILE_SCOPE(m_profiler, "renderer.frame.prims.flush_rects");
 
-    if (m_cpu_buffer.empty() || !m_sp_rects || m_rects_pipe.vbo == 0 || m_rects_pipe.vao == 0) {
+    if (m_cpu_buffer.empty()) {
+        return;
+    }
+
+#ifdef VNM_PLOT_HAS_QRHI
+    if (ctx.rhi && ctx.rhi_updates && ctx.render_target) {
+        QRhi* rhi = ctx.rhi;
+        QRhiResourceUpdateBatch* updates = ctx.rhi_updates;
+
+        rhi_on_backend_change(*m_rhi_state, rhi);
+
+        if (!m_rhi_state->shaders_loaded) {
+            m_rhi_state->rect_vert = load_qsb("generic_rect.vert.qsb");
+            m_rhi_state->rect_frag = load_qsb("generic_rect.frag.qsb");
+            m_rhi_state->grid_vert = load_qsb("grid_quad.vert.qsb");
+            m_rhi_state->grid_frag = load_qsb("grid_quad.frag.qsb");
+            m_rhi_state->shaders_loaded = true;
+        }
+
+        if (!rhi_ensure_rect_pipeline(*m_rhi_state, rhi, ctx.render_target)) {
+            m_cpu_buffer.clear();
+            return;
+        }
+
+        // Acquire the next per-call resource slot. The pool grows on demand
+        // and is recycled across frames; rect_used is bumped here and reset
+        // by record_draws().
+        if (m_rhi_state->rect_used == m_rhi_state->rect_calls.size()) {
+            m_rhi_state->rect_calls.emplace_back();
+        }
+        const std::size_t slot = m_rhi_state->rect_used++;
+        auto& call = m_rhi_state->rect_calls[slot];
+
+        const std::size_t bytes_needed =
+            m_cpu_buffer.size() * sizeof(rect_vertex_t);
+
+        if (!call.vbo || call.vbo_capacity_bytes < bytes_needed) {
+            // Headroom of 25% on grow keeps reallocations rare across frames
+            // where the rect count drifts slightly. The grow reseats call.vbo,
+            // which invalidates the SRB's last_ubo handle (UBO is unchanged),
+            // and forces ensure-* to upload fresh contents.
+            const std::size_t alloc = bytes_needed + bytes_needed / 4;
+            call.vbo.reset(rhi->newBuffer(
+                QRhiBuffer::Static, QRhiBuffer::VertexBuffer,
+                static_cast<quint32>(alloc)));
+            if (!call.vbo || !call.vbo->create()) {
+                call.vbo.reset();
+                m_cpu_buffer.clear();
+                m_rhi_state->rect_used--;
+                return;
+            }
+            call.vbo_capacity_bytes = alloc;
+        }
+        if (!call.ubo) {
+            call.ubo.reset(rhi->newBuffer(
+                QRhiBuffer::Dynamic, QRhiBuffer::UniformBuffer, k_rect_ubo_bytes));
+            if (!call.ubo || !call.ubo->create()) {
+                call.ubo.reset();
+                m_cpu_buffer.clear();
+                m_rhi_state->rect_used--;
+                return;
+            }
+        }
+        if (!call.srb || call.srb_last_ubo != call.ubo.get()) {
+            call.srb.reset(rhi->newShaderResourceBindings());
+            call.srb->setBindings({
+                QRhiShaderResourceBinding::uniformBuffer(
+                    0, QRhiShaderResourceBinding::VertexStage,
+                    call.ubo.get(), 0, k_rect_ubo_bytes)
+            });
+            call.srb->create();
+            call.srb_last_ubo = call.ubo.get();
+        }
+
+        updates->uploadStaticBuffer(
+            call.vbo.get(), 0,
+            static_cast<quint32>(bytes_needed),
+            m_cpu_buffer.data());
+
+        Rect_block_std140 block{};
+        std::memcpy(block.pmv, glm::value_ptr(pmv), sizeof(block.pmv));
+        updates->updateDynamicBuffer(call.ubo.get(), 0, sizeof(block), &block);
+
+        rhi_state_t::draw_op_t op{};
+        op.kind = rhi_state_t::op_kind_t::RECT;
+        op.resource_index = static_cast<uint32_t>(slot);
+        op.rect.instance_count = static_cast<uint32_t>(m_cpu_buffer.size());
+        m_rhi_state->ops.push_back(op);
+
+        m_cpu_buffer.clear();
+        return;
+    }
+#endif // VNM_PLOT_HAS_QRHI
+
+    if (ctx.skip_gl) {
+        m_cpu_buffer.clear();
+        return;
+    }
+    if (!m_sp_rects || m_rects_pipe.vbo == 0 || m_rects_pipe.vao == 0) {
         m_cpu_buffer.clear();
         return;
     }
 
-    const GLsizeiptr bytes_needed = static_cast<GLsizeiptr>(m_cpu_buffer.size() * sizeof(rect_vertex_t));
+    const GLsizeiptr bytes_needed = static_cast<GLsizeiptr>(
+        m_cpu_buffer.size() * sizeof(rect_vertex_t));
 
     glBindBuffer(GL_ARRAY_BUFFER, m_rects_pipe.vbo);
 
@@ -215,6 +735,7 @@ void Primitive_renderer::clear_rect_batch()
 }
 
 void Primitive_renderer::draw_grid_shader(
+    const frame_context_t& ctx,
     const glm::vec2& origin,
     const glm::vec2& size,
     const glm::vec4& color,
@@ -223,10 +744,128 @@ void Primitive_renderer::draw_grid_shader(
 {
     VNM_PLOT_PROFILE_SCOPE(m_profiler, "renderer.frame.prims.draw_grid");
 
-    if (!m_sp_grid || m_grid_quad_pipe.vao == 0 || m_grid_quad_pipe.vbo == 0) {
+    if (vertical_levels.count <= 0 && horizontal_levels.count <= 0) {
         return;
     }
-    if (vertical_levels.count <= 0 && horizontal_levels.count <= 0) {
+
+#ifdef VNM_PLOT_HAS_QRHI
+    if (ctx.rhi && ctx.rhi_updates && ctx.render_target) {
+        QRhi* rhi = ctx.rhi;
+        QRhiResourceUpdateBatch* updates = ctx.rhi_updates;
+
+        rhi_on_backend_change(*m_rhi_state, rhi);
+
+        if (!m_rhi_state->shaders_loaded) {
+            m_rhi_state->rect_vert = load_qsb("generic_rect.vert.qsb");
+            m_rhi_state->rect_frag = load_qsb("generic_rect.frag.qsb");
+            m_rhi_state->grid_vert = load_qsb("grid_quad.vert.qsb");
+            m_rhi_state->grid_frag = load_qsb("grid_quad.frag.qsb");
+            m_rhi_state->shaders_loaded = true;
+        }
+
+        if (!rhi_ensure_grid_pipeline(*m_rhi_state, rhi, ctx.render_target)) {
+            return;
+        }
+        if (!rhi_ensure_grid_quad_vbo(*m_rhi_state, rhi, updates)) {
+            return;
+        }
+
+        // Chrome passes region coordinates in OpenGL's bottom-left origin
+        // for the GL renderer. QRhiScissor also wants bottom-left, while the
+        // fragment shader works in the plot's top-left pixel convention.
+        int sx = 0;
+        int sy = 0;
+        int sw = 0;
+        int sh = 0;
+        {
+            GLint gl_x = 0;
+            GLint gl_y = 0;
+            GLsizei gl_w = 0;
+            GLsizei gl_h = 0;
+            if (!to_glint_rounded(origin.x, gl_x) ||
+                !to_glint_rounded(origin.y, gl_y) ||
+                !to_positive_glsizei(size.x, gl_w) ||
+                !to_positive_glsizei(size.y, gl_h))
+            {
+                return;
+            }
+            sx = static_cast<int>(gl_x);
+            sy = static_cast<int>(gl_y);
+            sw = static_cast<int>(gl_w);
+            sh = static_cast<int>(gl_h);
+        }
+
+        if (m_rhi_state->grid_used == m_rhi_state->grid_calls.size()) {
+            m_rhi_state->grid_calls.emplace_back();
+        }
+        const std::size_t slot = m_rhi_state->grid_used++;
+        auto& call = m_rhi_state->grid_calls[slot];
+
+        if (!call.ubo) {
+            call.ubo.reset(rhi->newBuffer(
+                QRhiBuffer::Dynamic, QRhiBuffer::UniformBuffer, k_grid_ubo_bytes));
+            if (!call.ubo || !call.ubo->create()) {
+                call.ubo.reset();
+                m_rhi_state->grid_used--;
+                return;
+            }
+        }
+        if (!call.srb || call.srb_last_ubo != call.ubo.get()) {
+            call.srb.reset(rhi->newShaderResourceBindings());
+            call.srb->setBindings({
+                QRhiShaderResourceBinding::uniformBuffer(
+                    0, QRhiShaderResourceBinding::FragmentStage,
+                    call.ubo.get(), 0, k_grid_ubo_bytes)
+            });
+            call.srb->create();
+            call.srb_last_ubo = call.ubo.get();
+        }
+
+        Grid_block_std140 block{};
+        block.plot_size_px[0]     = size.x;
+        block.plot_size_px[1]     = size.y;
+        block.region_origin_px[0] = origin.x;
+        block.region_origin_px[1] =
+            static_cast<float>(ctx.win_h) - (origin.y + size.y);
+        block.grid_color[0] = color.r;
+        block.grid_color[1] = color.g;
+        block.grid_color[2] = color.b;
+        block.grid_color[3] = color.a;
+        block.v_count = std::min(vertical_levels.count, grid_layer_params_t::k_max_levels);
+        block.t_count = std::min(horizontal_levels.count, grid_layer_params_t::k_max_levels);
+        block.framebuffer_y_up = rhi->isYUpInFramebuffer() ? 1 : 0;
+        block.win_h = static_cast<float>(ctx.win_h);
+        for (int i = 0; i < block.v_count; ++i) {
+            block.v_levels[i][0] = vertical_levels.spacing_px[i];
+            block.v_levels[i][1] = size.y - vertical_levels.start_px[i];
+            block.v_levels[i][2] = vertical_levels.alpha[i];
+            block.v_levels[i][3] = vertical_levels.thickness_px[i];
+        }
+        for (int i = 0; i < block.t_count; ++i) {
+            block.t_levels[i][0] = horizontal_levels.spacing_px[i];
+            block.t_levels[i][1] = horizontal_levels.start_px[i];
+            block.t_levels[i][2] = horizontal_levels.alpha[i];
+            block.t_levels[i][3] = horizontal_levels.thickness_px[i];
+        }
+
+        updates->updateDynamicBuffer(call.ubo.get(), 0, sizeof(block), &block);
+
+        rhi_state_t::draw_op_t op{};
+        op.kind = rhi_state_t::op_kind_t::GRID;
+        op.resource_index = static_cast<uint32_t>(slot);
+        op.grid.x = sx;
+        op.grid.y = sy;
+        op.grid.w = sw;
+        op.grid.h = sh;
+        m_rhi_state->ops.push_back(op);
+        return;
+    }
+#endif // VNM_PLOT_HAS_QRHI
+
+    if (ctx.skip_gl) {
+        return;
+    }
+    if (!m_sp_grid || m_grid_quad_pipe.vao == 0 || m_grid_quad_pipe.vbo == 0) {
         return;
     }
 
@@ -269,6 +908,78 @@ void Primitive_renderer::draw_grid_shader(
     glBindVertexArray(0);
 
     glDisable(GL_SCISSOR_TEST);
+}
+
+std::size_t Primitive_renderer::queued_op_count() const
+{
+#ifdef VNM_PLOT_HAS_QRHI
+    return m_rhi_state->ops.size();
+#else
+    return 0;
+#endif
+}
+
+void Primitive_renderer::record_draws(
+    [[maybe_unused]] const frame_context_t& ctx,
+    [[maybe_unused]] std::size_t end)
+{
+#ifdef VNM_PLOT_HAS_QRHI
+    if (!ctx.rhi || !ctx.cb) {
+        // The GL path runs draws inline in flush_rects / draw_grid_shader, so
+        // there is nothing to play back here. record_draws is a no-op when no
+        // RHI is bound on purpose.
+        return;
+    }
+    QRhiCommandBuffer* cb = ctx.cb;
+
+    // Slice play: replay ops [cursor, end). The host advances `end` across
+    // multiple calls so it can interleave chrome draws (back layer / front
+    // layer) around the series pass and keep the depth order the GL flow
+    // produces. A clamped `end` past the queue size protects against a
+    // stale checkpoint after a chrome op was rejected mid-frame.
+    const std::size_t cursor = m_rhi_state->record_cursor;
+    if (end > m_rhi_state->ops.size()) {
+        end = m_rhi_state->ops.size();
+    }
+    for (std::size_t i = cursor; i < end; ++i) {
+        const auto& op = m_rhi_state->ops[i];
+        switch (op.kind) {
+            case rhi_state_t::op_kind_t::RECT: {
+                auto& call = m_rhi_state->rect_calls[op.resource_index];
+                if (!call.vbo || !call.srb) {
+                    continue;
+                }
+                cb->setGraphicsPipeline(m_rhi_state->rect_pipeline.get());
+                cb->setShaderResources(call.srb.get());
+                QRhiCommandBuffer::VertexInput vi{call.vbo.get(), 0u};
+                cb->setVertexInput(0, 1, &vi);
+                cb->draw(4, op.rect.instance_count);
+                break;
+            }
+            case rhi_state_t::op_kind_t::GRID: {
+                auto& call = m_rhi_state->grid_calls[op.resource_index];
+                if (!call.srb || !m_rhi_state->grid_quad_vbo) {
+                    continue;
+                }
+                cb->setGraphicsPipeline(m_rhi_state->grid_pipeline.get());
+                cb->setShaderResources(call.srb.get());
+                QRhiCommandBuffer::VertexInput vi{m_rhi_state->grid_quad_vbo.get(), 0u};
+                cb->setVertexInput(0, 1, &vi);
+                cb->setScissor(QRhiScissor(op.grid.x, op.grid.y, op.grid.w, op.grid.h));
+                cb->draw(4);
+                break;
+            }
+        }
+    }
+    m_rhi_state->record_cursor = end;
+#endif
+}
+
+void Primitive_renderer::reset_frame()
+{
+#ifdef VNM_PLOT_HAS_QRHI
+    rhi_reset_frame_plan(*m_rhi_state);
+#endif
 }
 
 } // namespace vnm::plot

@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <cstring>
 #include <limits>
 #include <string_view>
@@ -328,7 +329,8 @@ struct Series_renderer::rhi_state_t
 //   offset 100 height   (float)
 //   offset 104 y_offset (float)
 //   offset 108 win_h    (float)
-//   total: 112 bytes
+//   offset 112 framebuffer_y_up (int)
+//   total: 128 bytes
 //
 // Per-shader trailing scalars sit just past the view, padded out to vec4 to
 // satisfy std140's structure-trailing rule. We size the union to fit either
@@ -347,6 +349,8 @@ struct Series_view_std140
     float height;       // offset 100
     float y_offset;     // offset 104
     float win_h;        // offset 108
+    int32_t framebuffer_y_up; // offset 112
+    float _pad0[3];     // offset 116
 };
 static_assert(offsetof(Series_view_std140, pmv)      ==   0, "Series_view_t std140 pmv offset");
 static_assert(offsetof(Series_view_std140, color)    ==  64, "Series_view_t std140 color offset");
@@ -358,7 +362,8 @@ static_assert(offsetof(Series_view_std140, width)    ==  96, "Series_view_t std1
 static_assert(offsetof(Series_view_std140, height)   == 100, "Series_view_t std140 height offset");
 static_assert(offsetof(Series_view_std140, y_offset) == 104, "Series_view_t std140 y_offset offset");
 static_assert(offsetof(Series_view_std140, win_h)    == 108, "Series_view_t std140 win_h offset");
-static_assert(sizeof(Series_view_std140)            == 112, "Series_view_t std140 size");
+static_assert(offsetof(Series_view_std140, framebuffer_y_up) == 112, "Series_view_t framebuffer_y_up offset");
+static_assert(sizeof(Series_view_std140)            == 128, "Series_view_t std140 size");
 
 // Whole-block layout: Series_view + LINE trailing (line_px, snap_to_pixels).
 // Padded out to a 16-byte multiple so the host-side struct mirrors the
@@ -366,31 +371,31 @@ static_assert(sizeof(Series_view_std140)            == 112, "Series_view_t std14
 struct Line_block_std140
 {
     Series_view_std140 view;          // offset 0
-    float              line_px;       // offset 112
-    int                snap_to_pixels;// offset 116
-    float              _pad0;         // offset 120
-    float              _pad1;         // offset 124
+    float              line_px;       // offset 128
+    int                snap_to_pixels;// offset 132
+    float              _pad0;         // offset 136
+    float              _pad1;         // offset 140
 };
-static_assert(sizeof(Line_block_std140) == 128, "Line_block_std140 must be a multiple of 16");
-static_assert(offsetof(Line_block_std140, line_px)        == 112, "Line_block line_px offset");
-static_assert(offsetof(Line_block_std140, snap_to_pixels) == 116, "Line_block snap_to_pixels offset");
+static_assert(sizeof(Line_block_std140) == 144, "Line_block_std140 must be a multiple of 16");
+static_assert(offsetof(Line_block_std140, line_px)        == 128, "Line_block line_px offset");
+static_assert(offsetof(Line_block_std140, snap_to_pixels) == 132, "Line_block snap_to_pixels offset");
 
 // Whole-block layout: Series_view + DOTS trailing (point_diameter_px).
-// Padded out to 128 bytes for the same reason as Line_block_std140.
+// Padded out to 144 bytes for the same reason as Line_block_std140.
 struct Dot_block_std140
 {
     Series_view_std140 view;              // offset 0
-    float              point_diameter_px; // offset 112
-    float              _pad0;             // offset 116
-    float              _pad1;             // offset 120
-    float              _pad2;             // offset 124
+    float              point_diameter_px; // offset 128
+    float              _pad0;             // offset 132
+    float              _pad1;             // offset 136
+    float              _pad2;             // offset 140
 };
-static_assert(sizeof(Dot_block_std140) == 128, "Dot_block_std140 must be a multiple of 16");
-static_assert(offsetof(Dot_block_std140, point_diameter_px) == 112, "Dot_block point_diameter_px offset");
+static_assert(sizeof(Dot_block_std140) == 144, "Dot_block_std140 must be a multiple of 16");
+static_assert(offsetof(Dot_block_std140, point_diameter_px) == 128, "Dot_block point_diameter_px offset");
 
 // LINE and DOTS share a single UBO size; the host allocates one buffer per
 // view sized to fit either block.
-constexpr std::uint32_t k_series_ubo_bytes = 128;
+constexpr std::uint32_t k_series_ubo_bytes = 144;
 static_assert(sizeof(Line_block_std140) == k_series_ubo_bytes, "ubo bytes match LINE block");
 static_assert(sizeof(Dot_block_std140) == k_series_ubo_bytes,  "ubo bytes match DOTS block");
 
@@ -726,8 +731,8 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
 #endif
     // The RHI upload path runs whenever a QRhi/batch is bound. skip_gl is a
     // "do not issue gl* calls" knob, not a "do not render" knob; under any
-    // RHI backend the host sets skip_gl so the legacy GL fallback stays
-    // silent, but the RHI staging upload must still run or LINE/DOTS draw
+    // RHI backend the host sets skip_gl so the GL fallback stays silent, but
+    // the RHI staging upload must still run or LINE/DOTS draw
     // against an empty vertex buffer.
     const bool use_rhi_uploads = (rhi != nullptr) && (rhi_updates != nullptr);
     view_render_result_t result;
@@ -1033,7 +1038,7 @@ Series_renderer::view_render_result_t Series_renderer::process_view(
             // Two write surfaces gate this block:
             //   - use_rhi_uploads: the RHI upload path runs whenever a QRhi
             //     and batch are bound, even when the host set skip_gl to
-            //     silence the legacy GL fallback.
+            //     silence the GL fallback.
             //   - !skip_gl: the GL upload path runs only when gl* calls are
             //     allowed (no RHI bound, and the host did not set skip_gl
             //     for CPU profiling).
@@ -2864,8 +2869,7 @@ void Series_renderer::rhi_prepare_line_or_dots(
 
     if (is_preview) {
         const double preview_top =
-            layout.usable_height
-            + std::max(0.0, layout.h_bar_height - double(k_scissor_pad_px));
+            double(ctx.win_h) - ctx.adjusted_preview_height;
         view_block.y_offset = static_cast<float>(preview_top);
         view_block.width    = static_cast<float>(ctx.win_w);
         view_block.height   = static_cast<float>(ctx.adjusted_preview_height);
@@ -2876,6 +2880,8 @@ void Series_renderer::rhi_prepare_line_or_dots(
         view_block.height   = static_cast<float>(layout.usable_height);
     }
     view_block.win_h = static_cast<float>(ctx.win_h);
+    view_block.framebuffer_y_up =
+        (ctx.rhi && ctx.rhi->isYUpInFramebuffer()) ? 1 : 0;
 
     if (is_dots) {
         Dot_block_std140 block{};
@@ -2950,8 +2956,7 @@ void Series_renderer::rhi_record_line_or_dots(
     QRhiScissor scissor;
     if (is_preview) {
         const double preview_top =
-            layout.usable_height
-            + std::max(0.0, layout.h_bar_height - double(k_scissor_pad_px));
+            double(ctx.win_h) - ctx.adjusted_preview_height;
         scissor = QRhiScissor(
             0,
             to_scissor_y(preview_top, ctx.adjusted_preview_height),

@@ -617,7 +617,7 @@ if(VNM_PLOT_BUILD_QT)
 
     # Each input shader yields :/vnm_plot/shaders/qsb/<name>.<ext>.qsb.
     # GLSL profile is desktop 410 only; mobile GL ES is out of scope for
-    # Phase 2 and several shaders use SSBOs that are unavailable below ES 3.1,
+    # The RHI shaders use SSBOs that are unavailable below ES 3.1,
     # so emitting a 300 ES artifact would compile-fail at runtime on a real
     # ES 3.0 driver.
     qt_add_shaders(vnm_plot "vnm_plot_qsb_shaders"

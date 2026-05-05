@@ -13,6 +13,8 @@ layout(std140, binding = 0) uniform Block
     vec4  grid_color;
     int   v_count;
     int   t_count;
+    int   framebuffer_y_up;
+    float win_h;
     vec4  v_levels[GRID_LEVEL_MAX];
     vec4  t_levels[GRID_LEVEL_MAX];
 } u;
@@ -42,7 +44,10 @@ float accumulate_lines(int count, float coord, vec4 levels[GRID_LEVEL_MAX])
 
 void main()
 {
-    vec2 frag = gl_FragCoord.xy - u.region_origin_px;
+    float frag_y = (u.framebuffer_y_up != 0)
+        ? (u.win_h - gl_FragCoord.y)
+        : gl_FragCoord.y;
+    vec2 frag = vec2(gl_FragCoord.x, frag_y) - u.region_origin_px;
 
     if (frag.x < 0.0              || frag.y < 0.0 ||
         frag.x > u.plot_size_px.x || frag.y > u.plot_size_px.y)

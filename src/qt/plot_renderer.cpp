@@ -1,14 +1,18 @@
 #include "plot_renderer.h"
 #include <vnm_plot/qt/plot_widget.h>
 #include <vnm_plot/core/asset_loader.h>
+#include <vnm_plot/core/chrome_renderer.h>
 #include <vnm_plot/core/color_palette.h>
 #include <vnm_plot/core/constants.h>
+#include <vnm_plot/core/primitive_renderer.h>
 #include <vnm_plot/core/series_renderer.h>
 
 #include <QColor>
+#include <QMatrix4x4>
 #include <QQuickWindow>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 #include <rhi/qrhi.h>
 
 #include <algorithm>
@@ -18,12 +22,20 @@
 
 namespace vnm::plot {
 
+namespace {
+
+glm::mat4 to_glm_mat4(const QMatrix4x4& matrix)
+{
+    return glm::make_mat4(matrix.constData());
+}
+
+} // anonymous namespace
+
 struct Plot_renderer::impl_t
 {
     // Snapshot of the widget state the render path reads. Held by value so
     // render() runs on the renderer thread without re-acquiring Plot_widget
-    // locks. C1 reinstates the data_cfg, series map, and adjusted preview
-    // height that Batch B dropped together with the GL renderer.
+    // locks.
     struct render_snapshot_t
     {
         Plot_config    config;
@@ -40,9 +52,11 @@ struct Plot_renderer::impl_t
     const Plot_widget* owner = nullptr;
     render_snapshot_t  snapshot;
 
-    Asset_loader      asset_loader;
-    Series_renderer   series;
-    bool              series_initialized = false;
+    Asset_loader        asset_loader;
+    Series_renderer     series;
+    Primitive_renderer  primitives;
+    Chrome_renderer     chrome;
+    bool                series_initialized   = false;
 };
 
 Plot_renderer::Plot_renderer(const Plot_widget* owner)
@@ -60,6 +74,12 @@ void Plot_renderer::initialize(QRhiCommandBuffer* /*cb*/)
         m_impl->series.initialize(m_impl->asset_loader);
         m_impl->series_initialized = true;
     }
+    // Primitive_renderer needs no eager GL initialization on the RHI path:
+    // its GL programs only feed the raw-GL flush used by the headless
+    // benchmark and standalone tests, and the RHI path loads its own QSB
+    // shaders on demand inside flush_rects / draw_grid_shader. Leaving the
+    // GL pipe at zero is correct here because there is no live GL context
+    // to compile against.
 }
 
 void Plot_renderer::synchronize(QQuickRhiItem* item)
@@ -118,14 +138,21 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
     const int win_w = pixel_size.width();
     const int win_h = pixel_size.height();
 
-    // Minimal frame_layout_result_t. The series renderer reads usable_width,
-    // usable_height, and h_bar_height (used as scissor padding under the
-    // preview pane). The chrome and label fields stay zero because chrome and
-    // labels do not go through this renderer path.
+    // Frame layout for chrome + series. Axis labels and tick marks ride the
+    // text path, which is not yet on RHI, so v_bar_width and the base
+    // label height stay zero: chrome's degenerate-rect early-exits drop the
+    // empty side panes that would otherwise paint as flat color blocks.
+    // usable_height carves out the preview band at the bottom; usable_width
+    // covers the full widget because no v_bar is reserved.
+    // Reserve room at the bottom for both the preview band and the (still
+    // empty) x-axis label strip. Plot_interaction_item's reserved_height()
+    // also includes both, so the QML overlay's mouse hit-tests stay aligned
+    // with the rendered layout while text remains on the GL path.
+    const double reserved_h = snapshot.base_label_height_px + snapshot.adjusted_preview_height;
     frame_layout_result_t layout;
     layout.usable_width  = static_cast<double>(win_w);
     layout.usable_height = static_cast<double>(
-        std::max(0.0, double(win_h) - snapshot.adjusted_preview_height));
+        std::max(0.0, double(win_h) - reserved_h));
     layout.v_bar_width   = 0.0;
     layout.h_bar_height  = 0.0;
     layout.max_v_label_text_width = 0.0f;
@@ -141,25 +168,33 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
     ctx.t_available_max = snapshot.data_cfg.t_available_max;
     ctx.win_w = win_w;
     ctx.win_h = win_h;
-    // Pixel-space ortho with origin at top-left. Plot_widget keeps
-    // setMirrorVertically(true) on QQuickRhiItem so the offscreen FBO is
-    // sampled flipped, giving the same visual orientation the GL path
-    // produced.
-    ctx.pmv = glm::ortho(
+    // Pixel-space ortho with origin at top-left. QRhi's correction matrix
+    // adapts the OpenGL-style projection to the active backend's clip-space
+    // conventions.
+    const glm::mat4 pixel_ortho = glm::ortho(
         0.0f,
         static_cast<float>(win_w),
         static_cast<float>(win_h),
         0.0f,
         -1.0f,
         1.0f);
+    ctx.pmv = rhi_ptr
+        ? to_glm_mat4(rhi_ptr->clipSpaceCorrMatrix()) * pixel_ortho
+        : pixel_ortho;
     ctx.adjusted_font_px = snapshot.adjusted_font_px;
-    ctx.base_label_height_px = snapshot.base_label_height_px;
-    ctx.adjusted_reserved_height =
-        snapshot.base_label_height_px + snapshot.adjusted_preview_height;
+    // Suppress the empty h-label pane on the RHI path: chrome would
+    // otherwise paint a flat-color band at the bottom because text isn't on
+    // RHI yet. Setting the height to 0 makes chrome's tick-mark draw
+    // early-exit (the band has zero pixels to fill).
+    // Keep base_label_height_px = 0 so chrome's tick-mark draw early-exits;
+    // the label strip itself is left as background color until text moves
+    // onto RHI.
+    ctx.base_label_height_px = 0.0;
+    ctx.adjusted_reserved_height = reserved_h;
     ctx.adjusted_preview_height = snapshot.adjusted_preview_height;
     ctx.show_info = snapshot.show_info;
-    // Under any RHI backend the legacy GL fallback is a no-op; series styles
-    // that have not yet moved to the RHI pipeline simply skip rendering. The
+    // Under any RHI backend the GL fallback is a no-op; series styles that
+    // do not yet route through the RHI pipeline simply skip rendering. The
     // only render path that issues real gl* calls is when no QRhi is bound
     // (tests / headless paths drive the renderer with rhi_ptr == nullptr).
     ctx.skip_gl = config.skip_gl_calls || (rhi_ptr != nullptr);
@@ -169,12 +204,14 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
     ctx.cb = cb;
     ctx.render_target = rt;
 
-    // Open the resource-update batch BEFORE the render pass. The series
-    // renderer fills it via prepare(); beginPass then submits the now-full
-    // batch atomically before any draw in the pass. cb->resourceUpdate from
-    // inside an open pass is a hard error on D3D11 (recordingPass != NoPass
-    // asserts), so the upload work has to be over by the time beginPass
-    // runs. render() afterwards records draw commands only.
+    // Open the resource-update batch BEFORE the render pass. Both series and
+    // primitives fill it (series via prepare(), primitives via flush_rects /
+    // draw_grid_shader called from chrome); beginPass then submits the
+    // now-full batch atomically before any draw in the pass.
+    // cb->resourceUpdate from inside an open pass is a hard error on D3D11
+    // (recordingPass != NoPass asserts), so the upload work has to be over
+    // by the time beginPass runs. record_draws() and series.render()
+    // afterwards record draw commands only.
     QRhiResourceUpdateBatch* rhi_updates =
         rhi_ptr ? rhi_ptr->nextResourceUpdateBatch() : nullptr;
     ctx.rhi_updates = rhi_updates;
@@ -182,11 +219,30 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
     if (m_impl->series_initialized) {
         m_impl->series.prepare(ctx, snapshot.series);
     }
+    // Chrome runs in two queueing phases so the depth order matches the
+    // GL flow: backgrounds + main grid behind the series, zero line +
+    // preview overlay in front. Both phases write to ctx.rhi_updates
+    // before beginPass so all uploads are submitted atomically; the
+    // checkpoint between them lets record_draws() replay the back-layer
+    // slice, then the series renders, then record_draws() replays the
+    // front-layer slice.
+    m_impl->chrome.render_grid_and_backgrounds(ctx, m_impl->primitives);
+    const std::size_t back_layer_end = m_impl->primitives.queued_op_count();
+    m_impl->chrome.render_zero_line(ctx, m_impl->primitives);
+    if (snapshot.adjusted_preview_height > 0.0) {
+        m_impl->chrome.render_preview_overlay(ctx, m_impl->primitives);
+    }
+    const std::size_t front_layer_end = m_impl->primitives.queued_op_count();
+
     cb->beginPass(rt, clear_color, QRhiDepthStencilClearValue(1.0f, 0), rhi_updates);
+    cb->setViewport(QRhiViewport(0, 0, win_w, win_h));
+    m_impl->primitives.record_draws(ctx, back_layer_end);
     if (m_impl->series_initialized) {
         m_impl->series.render(ctx, snapshot.series);
     }
+    m_impl->primitives.record_draws(ctx, front_layer_end);
     cb->endPass();
+    m_impl->primitives.reset_frame();
 }
 
 } // namespace vnm::plot

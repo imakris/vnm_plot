@@ -146,10 +146,14 @@ Plot_widget::Plot_widget()
 
     update_dpi_scaling_factor();
 
-    setMirrorVertically(true);
-    // Match the multisample count the GLFW examples and benchmark use, so the
+    // Keep the compositor texture coordinates unmirrored. Backend clip-space
+    // and framebuffer orientation are handled by the renderer's QRhi
+    // projection correction.
+    setMirrorVertically(false);
+
+    // Match the multisample count the GLFW examples and benchmark use so the
     // RHI offscreen color buffer rasterizes with the same anti-aliasing
-    // characteristics as the legacy QQuickFramebufferObject path.
+    // characteristics.
     setSampleCount(k_msaa_samples);
     setFlag(ItemHasContents, true);
 }

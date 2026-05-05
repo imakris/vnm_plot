@@ -164,7 +164,7 @@ void Plot_core::render(
         return;
     }
 
-    const bool skip_gl = config && config->skip_gl_calls;
+    [[maybe_unused]] const bool skip_gl = config && config->skip_gl_calls;
 
     vnm::plot::Profiler* profiler = config ? config->profiler.get() : nullptr;
     m_impl->primitives.set_profiler(profiler);
@@ -287,9 +287,6 @@ void Plot_core::render(
     m_impl->chrome.render_zero_line(ctx, m_impl->primitives);
     if (preview_height > 0.0) {
         m_impl->chrome.render_preview_overlay(ctx, m_impl->primitives);
-    }
-    if (!skip_gl) {
-        m_impl->primitives.flush_rects(ctx.pmv);
     }
 
 #if defined(VNM_PLOT_ENABLE_TEXT)

@@ -271,9 +271,6 @@ void render_benchmark_frame(
         ctx.chrome_renderer.render_grid_and_backgrounds(frame_ctx, ctx.primitives);
         ctx.series_renderer.render(frame_ctx, ctx.series_map);
         ctx.chrome_renderer.render_preview_overlay(frame_ctx, ctx.primitives);
-        if (!params.skip_gl_calls) {
-            ctx.primitives.flush_rects(frame_ctx.pmv);
-        }
     }
 
     // Render text labels

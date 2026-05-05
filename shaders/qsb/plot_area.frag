@@ -19,7 +19,10 @@ void main()
 {
     // Clip outside the active value band; keeps the fill from leaking past
     // v_min / v_max when the fragment shifts off the rasterized triangle.
-    float y    = (u.view.win_h - gl_FragCoord.y) - u.view.y_offset;
+    float frag_y = (u.view.framebuffer_y_up != 0)
+        ? (u.view.win_h - gl_FragCoord.y)
+        : gl_FragCoord.y;
+    float y    = frag_y - u.view.y_offset;
     float vmin = u.view.v_min;
     float vmax = u.view.v_max;
     float vy   = (1.0 - (y / u.view.height)) * (vmax - vmin) + vmin;

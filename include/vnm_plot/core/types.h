@@ -668,8 +668,8 @@ struct frame_context_t
 
     // RHI handles for the active frame. When `rhi` is non-null the renderer
     // routes uploads through the RHI resource-update batch and draws with
-    // `cb`. The legacy GL path runs when these stay null (used by tests and
-    // the headless benchmark, which run without a QRhi instance).
+    // `cb`. The GL path runs when these stay null (used by tests and the
+    // headless benchmark, which run without a QRhi instance).
     QRhi*              rhi = nullptr;
     QRhiCommandBuffer* cb  = nullptr;
     // Render target the host already opened a pass on. The renderer reads

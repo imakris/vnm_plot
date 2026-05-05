@@ -94,7 +94,9 @@ void Plot_controller::generate_samples()
 {
     m_data_source.generate(
         [](double x) {
-            return static_cast<float>(std::sin(x));
+            const double shoulder = 0.34 * std::exp(-0.55 * (x - 3.2) * (x - 3.2));
+            const double trough   = 0.27 * std::exp(-0.42 * (x + 4.8) * (x + 4.8));
+            return static_cast<float>(0.0012 * x * x * x - 0.04 * x + shoulder - trough);
         },
         k_x_min,
         k_x_max,

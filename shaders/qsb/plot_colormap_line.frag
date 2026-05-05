@@ -49,7 +49,10 @@ segment_result_t dist_to_segment(vec2 p, vec2 a, vec2 b)
 
 void main()
 {
-    vec2 frag = vec2(gl_FragCoord.x, u.view.win_h - gl_FragCoord.y);
+    float frag_y = (u.view.framebuffer_y_up != 0)
+        ? (u.view.win_h - gl_FragCoord.y)
+        : gl_FragCoord.y;
+    vec2 frag = vec2(gl_FragCoord.x, frag_y);
 
     segment_result_t r0     = dist_to_segment(frag, fs_p0,     fs_p1);
     float            d_prev = dist_to_segment(frag, fs_p_prev,  fs_p0).dist;

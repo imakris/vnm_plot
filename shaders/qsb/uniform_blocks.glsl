@@ -17,4 +17,5 @@ struct Series_view_t
     float height;
     float y_offset;
     float win_h;
+    int   framebuffer_y_up;
 };
