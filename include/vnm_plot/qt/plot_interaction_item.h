@@ -13,6 +13,8 @@ class Plot_interaction_item : public QQuickItem
 {
     Q_OBJECT
     Q_PROPERTY(Plot_widget* plot_widget READ plot_widget WRITE set_plot_widget NOTIFY plot_widget_changed REQUIRED)
+    Q_PROPERTY(Plot_widget* time_plot_widget READ time_plot_widget WRITE set_time_plot_widget NOTIFY time_plot_widget_changed)
+    Q_PROPERTY(bool pin_time_pivot_to_right READ pin_time_pivot_to_right WRITE set_pin_time_pivot_to_right NOTIFY pin_time_pivot_to_right_changed)
     Q_PROPERTY(bool interaction_enabled READ is_interaction_enabled WRITE set_interaction_enabled NOTIFY interaction_enabled_changed)
 
 public:
@@ -25,11 +27,28 @@ public:
     Plot_widget* plot_widget() const;
     void set_plot_widget(Plot_widget* widget);
 
+    Plot_widget* time_plot_widget() const;
+    void set_time_plot_widget(Plot_widget* widget);
+
+    bool pin_time_pivot_to_right() const;
+    void set_pin_time_pivot_to_right(bool pinned);
+
     bool is_interaction_enabled() const;
     void set_interaction_enabled(bool enabled);
 
+    Q_INVOKABLE bool handle_wheel(
+        qreal x,
+        qreal y,
+        qreal angle_delta_x,
+        qreal angle_delta_y,
+        qreal pixel_delta_x,
+        qreal pixel_delta_y,
+        int modifiers);
+
 signals:
     void plot_widget_changed();
+    void time_plot_widget_changed();
+    void pin_time_pivot_to_right_changed();
     void interaction_enabled_changed();
     void mouse_position_changed(qreal x, qreal y);
     void mouse_exited();
@@ -51,9 +70,13 @@ private:
     qreal t_stop_min() const;
     qreal t_stop_max() const;
     void apply_zoom_step();
+    void apply_zoom_step(std::chrono::steady_clock::time_point now);
+    Plot_widget* time_target_widget() const;
 
     Plot_widget* m_plot_widget = nullptr;
+    Plot_widget* m_time_plot_widget = nullptr;
     bool m_interaction_enabled = true;
+    bool m_pin_time_pivot_to_right = false;
 
     bool m_dragging = false;
     bool m_dragging_preview = false;

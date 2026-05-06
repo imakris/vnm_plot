@@ -606,19 +606,31 @@ void Plot_widget::attach_time_axis(Plot_widget* other)
 
 float Plot_widget::v_min() const
 {
-    std::shared_lock lock(m_data_cfg_mutex);
     if (m_v_auto.load(std::memory_order_acquire)) {
+        float rendered_min = 0.0f;
+        float rendered_max = 0.0f;
+        if (rendered_v_range(rendered_min, rendered_max)) {
+            return rendered_min;
+        }
+        std::shared_lock lock(m_data_cfg_mutex);
         return m_data_cfg.v_min;
     }
+    std::shared_lock lock(m_data_cfg_mutex);
     return m_data_cfg.v_manual_min;
 }
 
 float Plot_widget::v_max() const
 {
-    std::shared_lock lock(m_data_cfg_mutex);
     if (m_v_auto.load(std::memory_order_acquire)) {
+        float rendered_min = 0.0f;
+        float rendered_max = 0.0f;
+        if (rendered_v_range(rendered_min, rendered_max)) {
+            return rendered_max;
+        }
+        std::shared_lock lock(m_data_cfg_mutex);
         return m_data_cfg.v_max;
     }
+    std::shared_lock lock(m_data_cfg_mutex);
     return m_data_cfg.v_manual_max;
 }
 
@@ -1347,6 +1359,11 @@ std::pair<float, float> Plot_widget::current_v_range() const
 {
     const auto cfg = data_cfg_snapshot();
     if (m_v_auto.load(std::memory_order_acquire)) {
+        float rendered_min = 0.0f;
+        float rendered_max = 0.0f;
+        if (rendered_v_range(rendered_min, rendered_max)) {
+            return {rendered_min, rendered_max};
+        }
         return {cfg.v_min, cfg.v_max};
     }
     return {cfg.v_manual_min, cfg.v_manual_max};

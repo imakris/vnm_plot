@@ -206,16 +206,16 @@ public:
 
     // --- Interaction ---
 
-    Q_INVOKABLE void adjust_t_from_mouse_diff(double ref_width, double diff);
-    Q_INVOKABLE void adjust_t_from_mouse_diff_on_preview(double ref_width, double diff);
-    Q_INVOKABLE void adjust_t_from_mouse_pos_on_preview(double ref_width, double x_pos);
-    Q_INVOKABLE void adjust_t_from_pivot_and_scale(double pivot, double scale);
-    Q_INVOKABLE void adjust_v_from_mouse_diff(float ref_height, float diff);
-    Q_INVOKABLE void adjust_v_from_pivot_and_scale(float pivot, float scale);
+    Q_INVOKABLE virtual void adjust_t_from_mouse_diff(double ref_width, double diff);
+    Q_INVOKABLE virtual void adjust_t_from_mouse_diff_on_preview(double ref_width, double diff);
+    Q_INVOKABLE virtual void adjust_t_from_mouse_pos_on_preview(double ref_width, double x_pos);
+    Q_INVOKABLE virtual void adjust_t_from_pivot_and_scale(double pivot, double scale);
+    Q_INVOKABLE virtual void adjust_v_from_mouse_diff(float ref_height, float diff);
+    Q_INVOKABLE virtual void adjust_v_from_pivot_and_scale(float pivot, float scale);
     Q_INVOKABLE void adjust_v_to_target(float target_vmin, float target_vmax);
     Q_INVOKABLE void auto_adjust_view(bool adjust_t, double extra_v_scale);
     Q_INVOKABLE void auto_adjust_view(bool adjust_t, double extra_v_scale, bool anchor_zero);
-    Q_INVOKABLE bool can_zoom_in() const;
+    Q_INVOKABLE virtual bool can_zoom_in() const;
     Q_INVOKABLE double update_dpi_scaling_factor();
     Q_INVOKABLE void set_info_visible(bool v);
     Q_INVOKABLE void set_relative_preview_height(float relative);

@@ -37,6 +37,34 @@ void Plot_interaction_item::set_plot_widget(Plot_widget* widget)
     emit plot_widget_changed();
 }
 
+Plot_widget* Plot_interaction_item::time_plot_widget() const
+{
+    return m_time_plot_widget;
+}
+
+void Plot_interaction_item::set_time_plot_widget(Plot_widget* widget)
+{
+    if (m_time_plot_widget == widget) {
+        return;
+    }
+    m_time_plot_widget = widget;
+    emit time_plot_widget_changed();
+}
+
+bool Plot_interaction_item::pin_time_pivot_to_right() const
+{
+    return m_pin_time_pivot_to_right;
+}
+
+void Plot_interaction_item::set_pin_time_pivot_to_right(bool pinned)
+{
+    if (m_pin_time_pivot_to_right == pinned) {
+        return;
+    }
+    m_pin_time_pivot_to_right = pinned;
+    emit pin_time_pivot_to_right_changed();
+}
+
 bool Plot_interaction_item::is_interaction_enabled() const
 {
     return m_interaction_enabled;
@@ -77,26 +105,28 @@ qreal Plot_interaction_item::preview_height() const
 
 qreal Plot_interaction_item::t_stop_min() const
 {
-    if (!m_plot_widget) {
+    const auto* target = time_target_widget();
+    if (!target) {
         return 0.0;
     }
     // Subtract qint64 nanoseconds first, then widen to qreal once for the
     // proportional math. A floor of 1 ns prevents division-by-zero when the
     // available range is empty.
     const qreal t_available_span = std::max<qreal>(1.0,
-        static_cast<qreal>(m_plot_widget->t_available_max() - m_plot_widget->t_available_min()));
-    return static_cast<qreal>(m_plot_widget->t_min() - m_plot_widget->t_available_min())
+        static_cast<qreal>(target->t_available_max() - target->t_available_min()));
+    return static_cast<qreal>(target->t_min() - target->t_available_min())
         / t_available_span;
 }
 
 qreal Plot_interaction_item::t_stop_max() const
 {
-    if (!m_plot_widget) {
+    const auto* target = time_target_widget();
+    if (!target) {
         return 1.0;
     }
     const qreal t_available_span = std::max<qreal>(1.0,
-        static_cast<qreal>(m_plot_widget->t_available_max() - m_plot_widget->t_available_min()));
-    return 1.0 - static_cast<qreal>(m_plot_widget->t_available_max() - m_plot_widget->t_max())
+        static_cast<qreal>(target->t_available_max() - target->t_available_min()));
+    return 1.0 - static_cast<qreal>(target->t_available_max() - target->t_max())
         / t_available_span;
 }
 
@@ -127,6 +157,11 @@ qreal Plot_interaction_item::zoom_animation_velocity_after(qreal velocity, qreal
 
 void Plot_interaction_item::apply_zoom_step()
 {
+    apply_zoom_step(std::chrono::steady_clock::now());
+}
+
+void Plot_interaction_item::apply_zoom_step(std::chrono::steady_clock::time_point now)
+{
     if (!m_plot_widget) {
         m_zoom_timer.stop();
         return;
@@ -134,7 +169,6 @@ void Plot_interaction_item::apply_zoom_step()
 
     constexpr qreal eps = 1e-3;
     bool active = false;
-    const auto now = std::chrono::steady_clock::now();
     qreal elapsed_ms = std::chrono::duration<qreal, std::milli>(now - m_last_zoom_step_time).count();
     m_last_zoom_step_time = now;
 
@@ -145,14 +179,20 @@ void Plot_interaction_item::apply_zoom_step()
     const qreal dt = elapsed_ms / k_zoom_timer_interval_ms;
 
     if (std::abs(m_zoom_vel_t) > eps) {
-        const qreal factor_t = zoom_animation_scale_factor(m_zoom_vel_t, dt);
-        if (factor_t < 1.0 && !m_plot_widget->can_zoom_in()) {
+        Plot_widget* target = time_target_widget();
+        if (!target) {
             m_zoom_vel_t = 0.0;
         }
         else {
-            m_plot_widget->adjust_t_from_pivot_and_scale(m_last_pivot_x, factor_t);
-            m_zoom_vel_t = zoom_animation_velocity_after(m_zoom_vel_t, dt);
-            active = true;
+            const qreal factor_t = zoom_animation_scale_factor(m_zoom_vel_t, dt);
+            if (factor_t < 1.0 && !target->can_zoom_in()) {
+                m_zoom_vel_t = 0.0;
+            }
+            else {
+                target->adjust_t_from_pivot_and_scale(m_last_pivot_x, factor_t);
+                m_zoom_vel_t = zoom_animation_velocity_after(m_zoom_vel_t, dt);
+                active = true;
+            }
         }
     }
 
@@ -166,6 +206,11 @@ void Plot_interaction_item::apply_zoom_step()
     if (!active) {
         m_zoom_timer.stop();
     }
+}
+
+Plot_widget* Plot_interaction_item::time_target_widget() const
+{
+    return m_time_plot_widget ? m_time_plot_widget : m_plot_widget;
 }
 
 void Plot_interaction_item::mousePressEvent(QMouseEvent* event)
@@ -196,7 +241,9 @@ void Plot_interaction_item::mousePressEvent(QMouseEvent* event)
         const qreal stop_min = t_stop_min();
         const qreal stop_max = t_stop_max();
         if (x < width() * stop_min || x > width() * stop_max) {
-            m_plot_widget->adjust_t_from_mouse_pos_on_preview(width(), x);
+            if (auto* target = time_target_widget()) {
+                target->adjust_t_from_mouse_pos_on_preview(width(), x);
+            }
         }
         m_dragging_preview = true;
         m_drag_preview_start = x;
@@ -234,13 +281,17 @@ void Plot_interaction_item::mouseMoveEvent(QMouseEvent* event)
         }
 
         if (!alt_held) {
-            m_plot_widget->adjust_t_from_mouse_diff(usable_width(), x - m_drag_start_x);
-            m_drag_start_x = x;
+            if (auto* target = time_target_widget()) {
+                target->adjust_t_from_mouse_diff(usable_width(), x - m_drag_start_x);
+            }
         }
+        m_drag_start_x = x;
     }
     else
     if (m_dragging_preview) {
-        m_plot_widget->adjust_t_from_mouse_diff_on_preview(width(), x - m_drag_preview_start);
+        if (auto* target = time_target_widget()) {
+            target->adjust_t_from_mouse_diff_on_preview(width(), x - m_drag_preview_start);
+        }
         m_drag_preview_start = x;
     }
 }
@@ -261,75 +312,115 @@ void Plot_interaction_item::wheelEvent(QWheelEvent* event)
         return;
     }
 
+    const QPoint angle_delta = event->angleDelta();
+    const QPoint pixel_delta = event->pixelDelta();
+    if (!handle_wheel(
+            event->position().x(),
+            event->position().y(),
+            angle_delta.x(),
+            angle_delta.y(),
+            pixel_delta.x(),
+            pixel_delta.y(),
+            event->modifiers().toInt()))
+    {
+        event->ignore();
+        return;
+    }
+
+    event->accept();
+}
+
+bool Plot_interaction_item::handle_wheel(
+    qreal x,
+    qreal y,
+    qreal angle_delta_x,
+    qreal angle_delta_y,
+    qreal pixel_delta_x,
+    qreal pixel_delta_y,
+    int modifiers)
+{
+    if (!m_interaction_enabled || !m_plot_widget) {
+        return false;
+    }
+
     const qreal ph = preview_height();
-    const qreal y = event->position().y();
 
     if (ph > 0 && y > height() - (ph - 1)) {
-        event->ignore();
-        return;
+        return false;
     }
 
-    qreal dy = event->angleDelta().y();
+    qreal dy = angle_delta_y;
     if (dy == 0.0) {
-        dy = event->pixelDelta().y();
+        dy = pixel_delta_y;
     }
     if (dy == 0.0) {
-        dy = event->angleDelta().x();
+        dy = angle_delta_x;
     }
     if (dy == 0.0) {
-        dy = event->pixelDelta().x();
+        dy = pixel_delta_x;
     }
     if (dy == 0.0) {
-        event->ignore();
-        return;
+        return false;
     }
 
-    const auto mods = event->modifiers();
+    const auto mods = Qt::KeyboardModifiers::fromInt(modifiers);
     const qreal steps = dy / 120.0;
     const qreal impulse = -steps * k_zoom_impulse_per_step;
-    const bool zoom_time = (mods & Qt::ControlModifier) || !(mods & Qt::AltModifier);
+    const bool zoom_both = mods.testFlag(Qt::ControlModifier);
+    const bool zoom_alt = mods.testFlag(Qt::AltModifier);
+    const bool zoom_value = zoom_both || zoom_alt;
+    const bool zoom_time = zoom_both || !zoom_value;
 
-    if (zoom_time && impulse < 0 && !m_plot_widget->can_zoom_in()) {
-        event->ignore();
-        return;
+    Plot_widget* time_target = time_target_widget();
+    const bool time_allowed = zoom_time && time_target && (impulse >= 0 || time_target->can_zoom_in());
+    const bool value_allowed = zoom_value;
+    if (!time_allowed && !value_allowed) {
+        return false;
     }
 
-    const qreal uw = usable_width();
-    const qreal uh = usable_height();
-    const qreal wx = std::min(event->position().x(), uw);
+    if (m_zoom_timer.isActive()) {
+        apply_zoom_step();
+    }
+
+    const qreal uw = std::max(qreal{0.0}, usable_width());
+    const qreal uh = std::max(qreal{0.0}, usable_height());
+    const qreal wx = m_pin_time_pivot_to_right && time_allowed
+        ? uw
+        : std::clamp(x, qreal{0.0}, uw);
+    const qreal wy = std::clamp(y, qreal{0.0}, uh);
     const qreal px = uw > 0 ? (wx / uw) : 0.5;
-    const qreal py = uh > 0 ? (y / uh) : 0.5;
+    const qreal py = uh > 0 ? (wy / uh) : 0.5;
 
     m_last_pivot_x = px;
     m_last_pivot_y = py;
 
-    if (mods & Qt::ControlModifier) {
+    if (time_allowed) {
         m_zoom_vel_t += impulse;
-        m_zoom_vel_v += impulse;
     }
-    else
-    if (mods & Qt::AltModifier) {
+    else {
+        m_zoom_vel_t = 0.0;
+    }
+
+    if (value_allowed) {
         m_zoom_vel_v += impulse;
     }
     else {
-        m_zoom_vel_t += impulse;
+        m_zoom_vel_v = 0.0;
     }
 
     m_zoom_vel_t = std::clamp(m_zoom_vel_t, -k_zoom_max_vel, k_zoom_max_vel);
     m_zoom_vel_v = std::clamp(m_zoom_vel_v, -k_zoom_max_vel, k_zoom_max_vel);
 
-    if (!m_zoom_timer.isActive()) {
-        m_last_zoom_step_time = std::chrono::steady_clock::now()
-                              - std::chrono::milliseconds(k_zoom_timer_interval_ms);
-    }
+    const auto now = std::chrono::steady_clock::now();
+    m_last_zoom_step_time = now - std::chrono::milliseconds(k_zoom_timer_interval_ms);
 
-    apply_zoom_step();
+    apply_zoom_step(now);
 
     if (!m_zoom_timer.isActive()) {
         m_zoom_timer.start(k_zoom_timer_interval_ms, this);
     }
 
-    event->accept();
+    return true;
 }
 
 void Plot_interaction_item::hoverEnterEvent(QHoverEvent* event)
