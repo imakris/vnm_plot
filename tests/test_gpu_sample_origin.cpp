@@ -1,16 +1,14 @@
-// Tests for the gpu_sample_t fixed layout and the origin-selection
-// helpers (choose_snap_ns, floor_div_i64, choose_origin_ns).
+// Tests for origin-selection helpers (choose_snap_ns, floor_div_i64,
+// choose_origin_ns).
 
 #include "test_macros.h"
 
 #include <vnm_plot/core/algo.h>
-#include <vnm_plot/core/gpu_sample.h>
 
 #include <cmath>
 #include <cstdint>
 #include <iostream>
 #include <limits>
-#include <type_traits>
 
 namespace plot = vnm::plot;
 
@@ -22,17 +20,6 @@ constexpr std::int64_t k_ns_per_second = 1000000000LL;
 constexpr std::int64_t k_ns_per_hour   = 3600LL * k_ns_per_second;
 constexpr std::int64_t k_ns_per_day    = 86400LL * k_ns_per_second;
 constexpr std::int64_t k_ns_per_year   = 365LL * k_ns_per_day;
-
-bool test_gpu_sample_size_and_layout()
-{
-    TEST_ASSERT(sizeof(plot::gpu_sample_t) == 16,
-        "gpu_sample_t must be exactly 16 bytes");
-    TEST_ASSERT(std::is_standard_layout_v<plot::gpu_sample_t>,
-        "gpu_sample_t must be standard-layout");
-    TEST_ASSERT(std::is_trivially_copyable_v<plot::gpu_sample_t>,
-        "gpu_sample_t must be trivially copyable");
-    return true;
-}
 
 bool test_choose_snap_ns_is_positive_for_representative_spans()
 {
@@ -300,12 +287,11 @@ bool test_choose_origin_ns_handles_int64_min()
 
 int main()
 {
-    std::cout << "GPU sample + origin tests" << std::endl;
+    std::cout << "Origin tests" << std::endl;
 
     int passed = 0;
     int failed = 0;
 
-    RUN_TEST(test_gpu_sample_size_and_layout);
     RUN_TEST(test_choose_snap_ns_is_positive_for_representative_spans);
     RUN_TEST(test_choose_snap_ns_bucket_progression);
     RUN_TEST(test_floor_div_i64_rounds_toward_negative_infinity);

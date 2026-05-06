@@ -26,6 +26,7 @@ class QRhiResourceUpdateBatch;
 
 namespace vnm::plot {
 struct Plot_config;
+class Qrhi_series_layer;
 // -----------------------------------------------------------------------------
 // Size_2i - Replacement for QSize
 // -----------------------------------------------------------------------------
@@ -154,10 +155,6 @@ public:
     virtual bool has_value_range() const { return false; }
     virtual std::pair<float, float> value_range() const { return {0.0f, 0.0f}; }
     virtual bool value_range_needs_rescan() const { return false; }
-    // Optional aux metric range interface for colormap range queries.
-    virtual bool has_aux_metric_range() const { return false; }
-    virtual std::pair<double, double> aux_metric_range() const { return {0.0, 0.0}; }
-    virtual bool aux_metric_range_needs_rescan() const { return false; }
     /// Query v-range for samples within [t_min_ns, t_max_ns]. Timestamps
     /// are int64_t nanoseconds (by API convention).
     /// Returns false if unsupported, no samples are in range, or a consistent snapshot
@@ -294,9 +291,6 @@ struct Data_access_policy
     std::function<float(const void* sample)>                    get_value;      ///< Extract primary value
     std::function<std::pair<float, float>(const void* sample)>  get_range;      ///< Extract min/max range
 
-    std::function<double(const void* sample)> get_aux_metric;  ///< Optional auxiliary metric
-    std::function<float(const void* sample)>  get_signal;      ///< Optional [0,1] signal for COLORMAP_LINE
-
     // Optional sample cloning with timestamp rewrite, used for render-only hold-forward paths.
     // Caller owns dst_sample storage; implementation writes one full sample there.
     std::function<void(void* dst_sample, const void* src_sample, std::int64_t timestamp_ns)> clone_with_timestamp;
@@ -320,9 +314,7 @@ enum class Display_style : int
     DOTS_LINE      = DOTS | LINE,
     DOTS_AREA      = DOTS | AREA,
     LINE_AREA      = LINE | AREA,
-    DOTS_LINE_AREA = DOTS | LINE | AREA,
-    COLORMAP_AREA  = 0x8,
-    COLORMAP_LINE  = 0x10
+    DOTS_LINE_AREA = DOTS | LINE | AREA
 };
 
 inline Display_style operator|(Display_style a, Display_style b)
@@ -354,16 +346,6 @@ struct preview_config_t
     Data_source_ref data_source;              // required when preview_config is set
     Data_access_policy access;                  // optional; if invalid, fall back to main access
     std::optional<Display_style> style;         // nullopt means use main style
-};
-
-// -----------------------------------------------------------------------------
-// Colormap Configuration
-// -----------------------------------------------------------------------------
-// Defines a colormap as a list of RGBA samples for gradient-based rendering.
-struct colormap_config_t
-{
-    std::vector<glm::vec4> samples;  ///< RGBA color samples (linearly interpolated)
-    uint64_t revision = 0;           ///< Increment when samples change
 };
 
 // -----------------------------------------------------------------------------
@@ -408,8 +390,7 @@ struct series_data_t
     // use a distinct data source, access policy, and style.
     std::optional<preview_config_t> preview_config;
 
-    colormap_config_t colormap_area;
-    colormap_config_t colormap_line;
+    std::vector<std::shared_ptr<const Qrhi_series_layer>> qrhi_layers;
 
     std::int64_t get_timestamp(const void* sample) const
     {

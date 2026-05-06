@@ -169,10 +169,6 @@ inline vnm::plot::Data_access_policy make_bar_access_policy() {
         return {bar->low, bar->high};
     };
 
-    policy.get_aux_metric = [](const void* sample) -> double {
-        return static_cast<double>(static_cast<const Bar_sample*>(sample)->volume);
-    };
-
     policy.layout_key = k_bar_sample_layout_key;
 
     return policy;
@@ -195,10 +191,6 @@ inline vnm::plot::Data_access_policy make_trade_access_policy() {
     policy.get_range = [](const void* sample) -> std::pair<float, float> {
         const auto* trade = static_cast<const Trade_sample*>(sample);
         return {trade->price, trade->price};
-    };
-
-    policy.get_aux_metric = [](const void* sample) -> double {
-        return static_cast<double>(static_cast<const Trade_sample*>(sample)->size);
     };
 
     policy.layout_key = k_trade_sample_layout_key;

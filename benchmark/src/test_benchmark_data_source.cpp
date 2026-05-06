@@ -219,8 +219,6 @@ bool test_bar_access_policy() {
     TEST_ASSERT(lo == 100.0f, "range low");
     TEST_ASSERT(hi == 110.0f, "range high");
 
-    TEST_ASSERT(policy.get_aux_metric(&bar) == 5000.0, "aux metric (volume)");
-
     return true;
 }
 
@@ -242,8 +240,6 @@ bool test_trade_access_policy() {
     auto [lo, hi] = policy.get_range(&trade);
     TEST_ASSERT(lo == 99.5f, "range low == price");
     TEST_ASSERT(hi == 99.5f, "range high == price");
-
-    TEST_ASSERT(policy.get_aux_metric(&trade) == 100.0, "aux metric (size)");
 
     return true;
 }

@@ -7,10 +7,6 @@
 #include <vnm_plot/core/plot_config.h>
 #include <vnm_plot/core/range_cache.h>
 
-#include <glm/glm.hpp>
-
-#include <array>
-#include <cassert>
 #include <cstdint>
 #include <iostream>
 #include <map>
@@ -20,16 +16,11 @@
 #include <vector>
 
 namespace plot = vnm::plot;
-using plot::Asset_loader;
 using plot::Auto_v_range_mode;
 using plot::Data_access_policy;
 using plot::Data_source;
 using plot::Display_style;
-using plot::Plot_config;
-using plot::Series_renderer;
 using plot::data_snapshot_t;
-using plot::frame_context_t;
-using plot::frame_layout_result_t;
 using plot::lod_minmax_cache_t;
 using plot::preview_config_t;
 using plot::series_data_t;
@@ -43,47 +34,6 @@ struct Test_sample {
     // Timestamps are int64 nanoseconds (API convention).
     std::int64_t t = 0;
     float v = 0.0f;
-    double aux = 0.0;
-};
-
-class Lod_data_source final : public Data_source {
-public:
-    std::vector<Test_sample> lod0;
-    std::vector<Test_sample> lod1;
-    std::array<uint64_t, 2> sequences{{100, 50}};
-    std::array<int, 2> snapshot_calls{{0, 0}};
-
-    snapshot_result_t try_snapshot(size_t lod_level) override
-    {
-        if (lod_level >= 2) {
-            return {data_snapshot_t{}, snapshot_result_t::Snapshot_status::FAILED};
-        }
-        ++snapshot_calls[lod_level];
-        const auto& data = (lod_level == 0) ? lod0 : lod1;
-        auto hold = std::make_shared<int>(42);
-        data_snapshot_t snapshot{
-            data.data(),
-            data.size(),
-            sizeof(Test_sample),
-            sequences[lod_level],
-            nullptr,
-            0,
-            hold
-        };
-        if (data.empty()) {
-            return {data_snapshot_t{}, snapshot_result_t::Snapshot_status::EMPTY};
-        }
-        return {snapshot, snapshot_result_t::Snapshot_status::READY};
-    }
-
-    size_t lod_levels() const override { return 2; }
-    size_t lod_scale(size_t level) const override { return level == 0 ? 1 : 4; }
-    size_t sample_stride() const override { return sizeof(Test_sample); }
-    uint64_t current_sequence(size_t /*lod_level*/) const override { return 0; }
-
-    bool has_aux_metric_range() const override { return true; }
-    std::pair<double, double> aux_metric_range() const override { return {0.0, 10.0}; }
-    bool aux_metric_range_needs_rescan() const override { return false; }
 };
 
 class Range_cache_source final : public Data_source {
@@ -139,9 +89,6 @@ Data_access_policy make_policy()
         const float value = static_cast<const Test_sample*>(sample)->v;
         return std::make_pair(value, value);
     };
-    policy.get_aux_metric = [](const void* sample) {
-        return static_cast<const Test_sample*>(sample)->aux;
-    };
     return policy;
 }
 
@@ -152,80 +99,6 @@ std::shared_ptr<series_data_t> make_series(const std::shared_ptr<Data_source>& s
     series->data_source = source;
     series->access = make_policy();
     return series;
-}
-
-frame_context_t make_context(const frame_layout_result_t& layout, Plot_config& config)
-{
-    frame_context_t ctx{layout};
-    // Timestamps are int64 ns. Sample-index domain test data; the values
-    // double as ordinal sample indices, so they remain small and clear.
-    ctx.t0 = 0;
-    ctx.t1 = 399;
-    ctx.t_available_min = 0;
-    ctx.t_available_max = 399;
-    ctx.win_w = 100;
-    ctx.win_h = 100;
-    ctx.dark_mode = config.dark_mode;
-    ctx.config = &config;
-    return ctx;
-}
-
-void fill_lod_data(Lod_data_source& ds)
-{
-    ds.lod0.resize(400);
-    for (size_t i = 0; i < ds.lod0.size(); ++i) {
-        ds.lod0[i].t = static_cast<std::int64_t>(i);
-        ds.lod0[i].v = 1.0f + static_cast<float>(i) * 0.01f;
-        ds.lod0[i].aux = 0.5 + static_cast<double>(i) * 0.1;
-    }
-
-    ds.lod1.resize(100);
-    for (size_t i = 0; i < ds.lod1.size(); ++i) {
-        const size_t src = i * 4;
-        ds.lod1[i].t = static_cast<std::int64_t>(src);
-        ds.lod1[i].v = 1.0f + static_cast<float>(src) * 0.01f;
-        ds.lod1[i].aux = 0.5 + static_cast<double>(src) * 0.1;
-    }
-}
-
-bool test_lod0_sequence_fallback_calls_snapshot()
-{
-    auto data_source = std::make_shared<Lod_data_source>();
-    fill_lod_data(*data_source);
-
-    const int series_id = 1;
-    auto series = std::make_shared<series_data_t>();
-    series->style = Display_style::COLORMAP_AREA;
-    series->data_source = data_source;
-    series->access = make_policy();
-    series->colormap_area.samples = {glm::vec4(0.0f, 0.0f, 0.0f, 1.0f),
-                                     glm::vec4(1.0f, 1.0f, 1.0f, 1.0f)};
-
-    frame_layout_result_t layout;
-    layout.usable_width = 100.0;
-    layout.usable_height = 80.0;
-
-    Plot_config config;
-
-    frame_context_t ctx = make_context(layout, config);
-
-    Series_renderer renderer;
-    Asset_loader asset_loader;
-    renderer.initialize(asset_loader);
-
-    std::map<int, std::shared_ptr<const series_data_t>> series_map;
-    series_map[series_id] = series;
-
-    renderer.render(ctx, series_map);
-
-    TEST_ASSERT(data_source->snapshot_calls[0] == 2,
-                std::string("expected LOD0 snapshot for sequence fallback, got ") +
-                    std::to_string(data_source->snapshot_calls[0]));
-    TEST_ASSERT(data_source->snapshot_calls[1] == 1,
-                std::string("expected single LOD1 snapshot, got ") +
-                    std::to_string(data_source->snapshot_calls[1]));
-
-    return true;
 }
 
 bool test_failed_snapshot_invalidates_range_cache()
@@ -484,7 +357,6 @@ int main()
     int passed = 0;
     int failed = 0;
 
-    RUN_TEST(test_lod0_sequence_fallback_calls_snapshot);
     RUN_TEST(test_failed_snapshot_invalidates_range_cache);
     RUN_TEST(test_sequence_change_invalidates_range_cache);
     RUN_TEST(test_validate_range_cache_with_empty_series);

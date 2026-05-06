@@ -246,7 +246,6 @@ set(VNM_PLOT_CORE_HEADERS
     include/vnm_plot/core/constants.h
     include/vnm_plot/core/color_palette.h
     include/vnm_plot/core/algo.h
-    include/vnm_plot/core/gpu_sample.h
     include/vnm_plot/core/range_cache.h
     include/vnm_plot/core/primitive_renderer.h
     include/vnm_plot/core/chrome_renderer.h
@@ -274,6 +273,7 @@ set(VNM_PLOT_HEADERS
     include/vnm_plot/qt/plot_widget.h
     include/vnm_plot/qt/plot_interaction_item.h
     include/vnm_plot/qt/plot_time_axis.h
+    include/vnm_plot/qt/qrhi_series_layer.h
     # Private internal header (lives next to its sources, not installed)
     src/qt/plot_renderer.h
 )
@@ -388,8 +388,6 @@ set(VNM_PLOT_QSB_SHADERS
     shaders/qsb/plot_dot_quad.frag
     shaders/qsb/plot_area.vert
     shaders/qsb/plot_area.frag
-    shaders/qsb/plot_colormap_line.vert
-    shaders/qsb/plot_colormap_line.frag
 )
 
 if(VNM_PLOT_ENABLE_TEXT)

@@ -10,11 +10,10 @@
 // for each segment as four per-instance vertex attributes. The host fills a
 // dedicated per-frame buffer that already contains the leading and trailing
 // boundary duplicates ([s[first], s[first], s[first+1], ..., s[last], s[last]])
-// and binds it four times at offsets 0, 16, 32, 48 with stride 16. Reading
-// neighbour samples through vertex attributes avoids the SSBO -> UAV mapping
-// SPIRV-Cross emits for std430 buffers; D3D11 SM 5.0 vertex shaders accept
-// no UAVs at all, so any storage-buffer access in the vertex stage fails to
-// compile.
+// and binds it four times at consecutive gpu_sample_t offsets. Reading neighbour
+// samples through vertex attributes avoids the SSBO -> UAV mapping SPIRV-Cross
+// emits for std430 buffers; D3D11 SM 5.0 vertex shaders accept no UAVs at all,
+// so any storage-buffer access in the vertex stage fails to compile.
 
 #include "uniform_blocks.glsl"
 

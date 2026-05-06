@@ -10,6 +10,8 @@ set(_vnm_plot_core_tests
     test_concurrent_series
     test_gpu_sample_origin
     test_layout_calculator
+    test_qrhi_layer_lifecycle
+    test_qrhi_public_api
 )
 
 foreach(_test IN LISTS _vnm_plot_core_tests)
@@ -25,6 +27,9 @@ find_package(Threads QUIET)
 if(TARGET Threads::Threads)
     target_link_libraries(test_concurrent_series PRIVATE Threads::Threads)
 endif()
+
+target_link_libraries(test_qrhi_layer_lifecycle PRIVATE Qt6::GuiPrivate Qt6::Gui)
+target_link_libraries(test_qrhi_public_api PRIVATE Qt6::GuiPrivate Qt6::Gui)
 
 if(TARGET vnm_plot)
     add_executable(test_plot_interaction_item test_plot_interaction_item.cpp)
@@ -46,6 +51,8 @@ add_test(NAME AssetLoader COMMAND test_asset_loader)
 add_test(NAME ConcurrentSeries COMMAND test_concurrent_series)
 add_test(NAME GpuSampleOrigin COMMAND test_gpu_sample_origin)
 add_test(NAME LayoutCalculator COMMAND test_layout_calculator)
+add_test(NAME QrhiLayerLifecycle COMMAND test_qrhi_layer_lifecycle)
+add_test(NAME QrhiPublicApi COMMAND test_qrhi_public_api)
 
 if(TARGET vnm_plot)
     add_test(NAME PlotInteractionItem COMMAND test_plot_interaction_item)

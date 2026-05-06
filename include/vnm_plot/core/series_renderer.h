@@ -3,7 +3,6 @@
 // VNM Plot Library - Core Series Renderer
 // QRhi series data rendering with LOD support.
 
-#include "gpu_sample.h"
 #include "types.h"
 
 #include <cstddef>
@@ -64,6 +63,10 @@ public:
                 const std::map<int, std::shared_ptr<const series_data_t>>& series);
 
 private:
+    struct gpu_sample_t;
+    class Builtin_series_layer;
+    class Builtin_series_layer_state;
+
     struct vbo_view_state_t
     {
         std::uint32_t active_vbo = std::numeric_limits<std::uint32_t>::max();
@@ -122,19 +125,6 @@ private:
     {
         vbo_view_state_t main_view;
         vbo_view_state_t preview_view;
-        struct aux_metric_cache_t
-        {
-            double min = 0.0;
-            double max = 1.0;
-            uint64_t sequence = 0;
-            bool valid = false;
-        };
-
-        std::vector<aux_metric_cache_t> cached_aux_metric_levels;
-        std::vector<aux_metric_cache_t> cached_aux_metric_levels_preview;
-        const void* cached_aux_metric_identity = nullptr;
-        const void* cached_aux_metric_identity_preview = nullptr;
-
         // Frame-scoped snapshot cache: shared between main_view and preview_view
         // to avoid redundant try_snapshot() calls within the same frame.
         uint64_t cached_snapshot_frame_id = 0;
@@ -151,11 +141,20 @@ private:
         std::int32_t count = 0;
         std::size_t applied_level = 0;
         double applied_pps = 0.0;
-        double aux_metric_min = 0.0;
-        double aux_metric_max = 1.0;
-        bool aux_metric_valid = false;
-        data_snapshot_t cached_snapshot;              // Reused in draw_pass for aux metric
+        data_snapshot_t cached_snapshot;
         std::shared_ptr<void> cached_snapshot_hold;   // Keep snapshot alive
+        std::uint64_t sample_sequence = 0;
+        std::int64_t t_min_ns = 0;
+        std::int64_t t_max_ns = 0;
+        std::int64_t t_origin_ns = 0;
+        bool hold_last_forward = false;
+        std::int64_t hold_timestamp_ns = 0;
+        float v_min = 0.0f;
+        float v_max = 1.0f;
+        float width_px = 0.0f;
+        float height_px = 0.0f;
+        float y_offset_px = 0.0f;
+        float window_alpha = 1.0f;
     };
 
     // Per-(series, view) draw plan computed in prepare() and consumed in
@@ -198,7 +197,7 @@ private:
 
     void clear_frame_snapshot_caches();
 
-    view_render_result_t process_view(
+    view_render_result_t plan_view(
         vbo_view_state_t& view_state,
         vbo_state_t& shared_state,
         uint64_t frame_id,
@@ -210,9 +209,7 @@ private:
         std::int64_t t_origin_ns,
         double width_px,
         Empty_window_behavior empty_window_behavior,
-        vnm::plot::Profiler* profiler,
-        QRhi* rhi,
-        QRhiResourceUpdateBatch* rhi_updates);
+        vnm::plot::Profiler* profiler);
 
     // rhi_prepare_series_primitive: writes to ctx.rhi_updates only. Builds the
     //   per-primitive UBO(s) and (LINE-only) the per-frame line_window_vbo, and
@@ -221,25 +218,24 @@ private:
     //   alongside the rest of ctx.rhi_updates.
     //
     // rhi_record_series_primitive: emits cb->setGraphicsPipeline /
-    //   setShaderResources / setVertexInput / setScissor / draw only. No
-    //   buffer writes; safe to call inside the open render pass.
-    void rhi_prepare_series_primitive(
+    //   setShaderResources / setVertexInput / draw only. Scissor is owned by
+    //   the outer layer replay loop. No buffer writes; safe to call inside the
+    //   open render pass.
+    bool rhi_prepare_series_primitive(
         const frame_context_t& ctx,
         const series_data_t* series,
+        const Data_access_policy* access,
         Display_style primitive_style,
         vbo_view_state_t& view_state,
         const view_render_result_t& view_result,
-        bool is_preview,
         float line_width_px,
         float point_diameter_px,
-        float area_fill_alpha,
-        std::int64_t origin_ns);
+        float area_fill_alpha);
     void rhi_record_series_primitive(
         const frame_context_t& ctx,
         Display_style primitive_style,
         vbo_view_state_t& view_state,
-        const view_render_result_t& view_result,
-        bool is_preview);
+        const view_render_result_t& view_result);
 };
 
 } // namespace vnm::plot

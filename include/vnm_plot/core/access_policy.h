@@ -96,8 +96,6 @@ struct Data_access_policy_typed
     std::function<float(const Sample&)> get_value;
     std::function<std::pair<float, float>(const Sample&)> get_range;
 
-    std::function<double(const Sample&)> get_aux_metric;
-    std::function<float(const Sample&)> get_signal;
     std::function<void(Sample& dst_sample, const Sample& src_sample, std::int64_t timestamp_ns)> clone_with_timestamp;
 
     uint64_t layout_key = 0;
@@ -122,16 +120,6 @@ struct Data_access_policy_typed
         }
         if (get_range) {
             policy.get_range = [fn = get_range](const void* sample) {
-                return fn(*static_cast<const Sample*>(sample));
-            };
-        }
-        if (get_aux_metric) {
-            policy.get_aux_metric = [fn = get_aux_metric](const void* sample) {
-                return fn(*static_cast<const Sample*>(sample));
-            };
-        }
-        if (get_signal) {
-            policy.get_signal = [fn = get_signal](const void* sample) {
                 return fn(*static_cast<const Sample*>(sample));
             };
         }

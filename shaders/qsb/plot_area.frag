@@ -7,17 +7,10 @@ layout(std140, binding = 0) uniform Block
 {
     Series_view_t view;
     vec4 zero_axis_color;
-    float aux_metric_min;
-    float aux_metric_inv_span;
-    int  has_colormap;
     int  axis_pass;
 } u;
 
-layout(binding = 1) uniform sampler2D u_colormap_tex;
-
 layout(location = 0) in vec4  vs_color;
-layout(location = 1) in float vs_t;
-layout(location = 2) in float vs_aux;
 
 layout(location = 0) out vec4 frag_color;
 
@@ -36,12 +29,5 @@ void main()
         discard;
     }
 
-    if (u.has_colormap != 0 && u.axis_pass == 0) {
-        vec4 color = texture(u_colormap_tex, vec2(clamp(vs_aux, 0.0, 1.0), 0.0));
-        color.a *= vs_color.a;
-        frag_color = color;
-    }
-    else {
-        frag_color = vs_color;
-    }
+    frag_color = vs_color;
 }

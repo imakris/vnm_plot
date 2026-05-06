@@ -1,0 +1,341 @@
+// vnm_plot public QRhi layer API tests
+
+#include "test_macros.h"
+
+#include <vnm_plot/core/access_policy.h>
+#include <vnm_plot/core/series_builder.h>
+#include <vnm_plot/core/types.h>
+#include <vnm_plot/qt/qrhi_series_layer.h>
+
+#include <glm/mat4x4.hpp>
+
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <functional>
+#include <iostream>
+#include <memory>
+#include <string>
+#include <string_view>
+#include <type_traits>
+#include <utility>
+#include <vector>
+
+namespace plot = vnm::plot;
+
+namespace {
+
+struct sample_t
+{
+    std::int64_t timestamp_ns = 0;
+    float value = 0.0f;
+    float range_min = 0.0f;
+    float range_max = 0.0f;
+};
+
+template<typename T, typename = void>
+struct has_get_signal : std::false_type {};
+
+template<typename T>
+struct has_get_signal<T, std::void_t<decltype(&T::get_signal)>> : std::true_type {};
+
+template<typename T, typename = void>
+struct has_get_aux : std::false_type {};
+
+template<typename T>
+struct has_get_aux<T, std::void_t<decltype(&T::get_aux)>> : std::true_type {};
+
+template<typename T, typename = void>
+struct has_get_auxiliary : std::false_type {};
+
+template<typename T>
+struct has_get_auxiliary<T, std::void_t<decltype(&T::get_auxiliary)>> : std::true_type {};
+
+template<typename T, typename = void>
+struct has_colormap_area : std::false_type {};
+
+template<typename T>
+struct has_colormap_area<T, std::void_t<decltype(&T::colormap_area)>> : std::true_type {};
+
+template<typename T, typename = void>
+struct has_colormap_line : std::false_type {};
+
+template<typename T>
+struct has_colormap_line<T, std::void_t<decltype(&T::colormap_line)>> : std::true_type {};
+
+template<typename T, typename = void>
+struct has_get_colormap : std::false_type {};
+
+template<typename T>
+struct has_get_colormap<T, std::void_t<decltype(&T::get_colormap)>> : std::true_type {};
+
+static_assert(std::is_same_v<
+    decltype(plot::Data_access_policy::get_timestamp),
+    std::function<std::int64_t(const void*)>>);
+static_assert(std::is_same_v<
+    decltype(plot::Data_access_policy::get_value),
+    std::function<float(const void*)>>);
+static_assert(std::is_same_v<
+    decltype(plot::Data_access_policy::get_range),
+    std::function<std::pair<float, float>(const void*)>>);
+static_assert(std::is_same_v<
+    decltype(plot::Data_access_policy::clone_with_timestamp),
+    std::function<void(void*, const void*, std::int64_t)>>);
+static_assert(std::is_same_v<decltype(plot::Data_access_policy::layout_key), std::uint64_t>);
+
+static_assert(!has_get_signal<plot::Data_access_policy>::value);
+static_assert(!has_get_signal<plot::Data_access_policy_typed<sample_t>>::value);
+static_assert(!has_get_aux<plot::Data_access_policy>::value);
+static_assert(!has_get_aux<plot::Data_access_policy_typed<sample_t>>::value);
+static_assert(!has_get_auxiliary<plot::Data_access_policy>::value);
+static_assert(!has_get_auxiliary<plot::Data_access_policy_typed<sample_t>>::value);
+static_assert(!has_get_colormap<plot::Data_access_policy>::value);
+static_assert(!has_get_colormap<plot::Data_access_policy_typed<sample_t>>::value);
+static_assert(!has_colormap_area<plot::series_data_t>::value);
+static_assert(!has_colormap_line<plot::series_data_t>::value);
+static_assert(!has_colormap_area<plot::Series_builder>::value);
+static_assert(!has_colormap_line<plot::Series_builder>::value);
+
+static_assert(static_cast<int>(plot::Display_style::DOTS) == 0x1);
+static_assert(static_cast<int>(plot::Display_style::LINE) == 0x2);
+static_assert(static_cast<int>(plot::Display_style::AREA) == 0x4);
+static_assert(static_cast<int>(plot::Display_style::DOTS_LINE_AREA) == 0x7);
+
+static_assert(offsetof(plot::series_view_uniform_std140_t, pmv)      ==   0);
+static_assert(offsetof(plot::series_view_uniform_std140_t, color)    ==  64);
+static_assert(offsetof(plot::series_view_uniform_std140_t, t_min)    ==  80);
+static_assert(offsetof(plot::series_view_uniform_std140_t, t_max)    ==  84);
+static_assert(offsetof(plot::series_view_uniform_std140_t, v_min)    ==  88);
+static_assert(offsetof(plot::series_view_uniform_std140_t, v_max)    ==  92);
+static_assert(offsetof(plot::series_view_uniform_std140_t, width)    ==  96);
+static_assert(offsetof(plot::series_view_uniform_std140_t, height)   == 100);
+static_assert(offsetof(plot::series_view_uniform_std140_t, y_offset) == 104);
+static_assert(offsetof(plot::series_view_uniform_std140_t, win_h)    == 108);
+static_assert(offsetof(plot::series_view_uniform_std140_t, framebuffer_y_up) == 112);
+static_assert(sizeof(plot::series_view_uniform_std140_t) == 128);
+
+class Test_layer_state final : public plot::Qrhi_series_layer_state
+{
+public:
+    bool prepare(const plot::qrhi_series_prepare_context_t& ctx) override
+    {
+        last_prepare_context = ctx;
+        return true;
+    }
+
+    void record(const plot::qrhi_series_record_context_t& ctx) override
+    {
+        last_record_context = ctx;
+    }
+
+    plot::qrhi_series_prepare_context_t last_prepare_context;
+    plot::qrhi_series_record_context_t last_record_context;
+};
+
+class Test_layer final : public plot::Qrhi_series_layer
+{
+public:
+    Test_layer(std::string id, std::uint64_t revision, int z_order)
+    :
+        m_id(std::move(id)),
+        m_revision(revision),
+        m_z_order(z_order)
+    {}
+
+    std::string_view id() const override { return m_id; }
+    std::uint64_t revision() const override { return m_revision; }
+    int z_order() const override { return m_z_order; }
+
+    bool draws_view(plot::Series_view_kind view_kind) const override
+    {
+        return view_kind == plot::Series_view_kind::MAIN;
+    }
+
+    std::unique_ptr<plot::Qrhi_series_layer_state> create_state(QRhi& rhi) const override
+    {
+        (void)rhi;
+        return std::make_unique<Test_layer_state>();
+    }
+
+private:
+    std::string m_id;
+    std::uint64_t m_revision = 0;
+    int m_z_order = 0;
+};
+
+bool nearly_equal(float a, float b)
+{
+    return std::fabs(a - b) < 1.0e-6f;
+}
+
+bool test_series_builder_qrhi_layers_append_replace_clear()
+{
+    auto layer_a = std::make_shared<Test_layer>("main-a", 7, -3);
+    auto layer_b = std::make_shared<Test_layer>("main-b", 8,  4);
+    auto layer_c = std::make_shared<Test_layer>("main-c", 9, 11);
+
+    plot::Series_builder builder;
+    auto series = builder
+        .qrhi_layer(layer_a)
+        .qrhi_layer(layer_b)
+        .build_value();
+
+    TEST_ASSERT(series.qrhi_layers.size() == 2, "qrhi_layer() must append");
+    TEST_ASSERT(series.qrhi_layers[0] == layer_a, "first appended layer pointer mismatch");
+    TEST_ASSERT(series.qrhi_layers[1] == layer_b, "second appended layer pointer mismatch");
+
+    series = builder
+        .qrhi_layers({layer_c})
+        .build_value();
+
+    TEST_ASSERT(series.qrhi_layers.size() == 1, "qrhi_layers() must replace existing layers");
+    TEST_ASSERT(series.qrhi_layers[0] == layer_c, "replacement layer pointer mismatch");
+
+    series = builder
+        .clear_qrhi_layers()
+        .build_value();
+
+    TEST_ASSERT(series.qrhi_layers.empty(), "clear_qrhi_layers() must remove all layers");
+    return true;
+}
+
+bool test_series_data_copy_preserves_layer_shared_pointers()
+{
+    auto layer_a = std::make_shared<Test_layer>("copy-a", 1, 0);
+    auto layer_b = std::make_shared<Test_layer>("copy-b", 2, 1);
+
+    plot::series_data_t original;
+    original.qrhi_layers.push_back(layer_a);
+    original.qrhi_layers.push_back(layer_b);
+
+    const plot::series_data_t copied = original;
+    TEST_ASSERT(copied.qrhi_layers.size() == 2, "series_data_t copy must preserve layer count");
+    TEST_ASSERT(copied.qrhi_layers[0] == original.qrhi_layers[0],
+        "series_data_t copy must preserve first shared layer pointer");
+    TEST_ASSERT(copied.qrhi_layers[1] == original.qrhi_layers[1],
+        "series_data_t copy must preserve second shared layer pointer");
+    TEST_ASSERT(layer_a.use_count() == 3, "copied series must retain first layer");
+    TEST_ASSERT(layer_b.use_count() == 3, "copied series must retain second layer");
+
+    const auto shared_series = plot::Series_builder()
+        .qrhi_layers({layer_a, layer_b})
+        .build_shared();
+
+    TEST_ASSERT(shared_series->qrhi_layers.size() == 2,
+        "build_shared() must preserve QRhi layer vector");
+    TEST_ASSERT(shared_series->qrhi_layers[0] == layer_a,
+        "build_shared() first layer pointer mismatch");
+    TEST_ASSERT(shared_series->qrhi_layers[1] == layer_b,
+        "build_shared() second layer pointer mismatch");
+
+    return true;
+}
+
+bool test_qrhi_layer_api_surface_can_be_implemented()
+{
+    const Test_layer layer("api-layer", 23, -5);
+
+    TEST_ASSERT(layer.id() == "api-layer", "layer id accessor mismatch");
+    TEST_ASSERT(layer.revision() == 23, "layer revision accessor mismatch");
+    TEST_ASSERT(layer.z_order() == -5, "layer z_order accessor mismatch");
+    TEST_ASSERT(layer.draws_view(plot::Series_view_kind::MAIN),
+        "test layer should draw the main view");
+    TEST_ASSERT(!layer.draws_view(plot::Series_view_kind::PREVIEW),
+        "test layer should not draw the preview view");
+
+    plot::qrhi_series_prepare_context_t prepare_context;
+    plot::qrhi_series_record_context_t record_context;
+    TEST_ASSERT(prepare_context.rhi == nullptr, "prepare context rhi default mismatch");
+    TEST_ASSERT(prepare_context.render_target == nullptr,
+        "prepare context render target default mismatch");
+    TEST_ASSERT(prepare_context.updates == nullptr, "prepare context update batch default mismatch");
+    TEST_ASSERT(prepare_context.asset_loader == nullptr,
+        "prepare context asset loader default mismatch");
+    TEST_ASSERT(prepare_context.frame == nullptr, "prepare context frame default mismatch");
+    TEST_ASSERT(prepare_context.series == nullptr, "prepare context series default mismatch");
+    TEST_ASSERT(prepare_context.view_uniform == nullptr,
+        "prepare context view uniform default mismatch");
+    TEST_ASSERT(prepare_context.view_ubo == nullptr, "prepare context UBO default mismatch");
+    TEST_ASSERT(!prepare_context.resources_changed,
+        "prepare context resources_changed default mismatch");
+
+    TEST_ASSERT(record_context.cb == nullptr, "record context command buffer default mismatch");
+    TEST_ASSERT(record_context.render_target == nullptr,
+        "record context render target default mismatch");
+    TEST_ASSERT(record_context.frame == nullptr, "record context frame default mismatch");
+    TEST_ASSERT(record_context.series == nullptr, "record context series default mismatch");
+    TEST_ASSERT(record_context.view_ubo == nullptr, "record context UBO default mismatch");
+
+    return true;
+}
+
+bool test_make_series_view_uniform_values()
+{
+    plot::frame_layout_result_t layout;
+    plot::frame_context_t frame{layout};
+    frame.win_h = 300;
+
+    for (int column = 0; column < 4; ++column) {
+        for (int row = 0; row < 4; ++row) {
+            frame.pmv[column][row] = static_cast<float>(column * 4 + row + 1);
+        }
+    }
+
+    plot::series_data_t series;
+    series.color = glm::vec4(0.2f, 0.4f, 0.6f, 0.8f);
+
+    plot::sample_window_t window;
+    window.t_origin_ns = 1'000'000'000LL;
+    window.t_min_ns = 2'500'000'000LL;
+    window.t_max_ns = 5'000'000'000LL;
+    window.v_min = -3.0f;
+    window.v_max =  9.0f;
+    window.width_px = 640.0f;
+    window.height_px = 120.0f;
+    window.y_offset_px = 24.0f;
+    window.window_alpha = 0.5f;
+
+    const plot::series_view_uniform_std140_t uniform =
+        plot::make_series_view_uniform(frame, series, window);
+
+    TEST_ASSERT(nearly_equal(uniform.pmv[0],  1.0f), "uniform pmv[0] mismatch");
+    TEST_ASSERT(nearly_equal(uniform.pmv[5],  6.0f), "uniform pmv[5] mismatch");
+    TEST_ASSERT(nearly_equal(uniform.pmv[15], 16.0f), "uniform pmv[15] mismatch");
+
+    TEST_ASSERT(nearly_equal(uniform.color[0], 0.2f), "uniform color red mismatch");
+    TEST_ASSERT(nearly_equal(uniform.color[1], 0.4f), "uniform color green mismatch");
+    TEST_ASSERT(nearly_equal(uniform.color[2], 0.6f), "uniform color blue mismatch");
+    TEST_ASSERT(nearly_equal(uniform.color[3], 0.4f),
+        "uniform color alpha must include window alpha");
+
+    TEST_ASSERT(nearly_equal(uniform.t_min, 1.5f), "uniform t_min relative seconds mismatch");
+    TEST_ASSERT(nearly_equal(uniform.t_max, 4.0f), "uniform t_max relative seconds mismatch");
+    TEST_ASSERT(nearly_equal(uniform.v_min, -3.0f), "uniform v_min mismatch");
+    TEST_ASSERT(nearly_equal(uniform.v_max,  9.0f), "uniform v_max mismatch");
+    TEST_ASSERT(nearly_equal(uniform.width, 640.0f), "uniform width mismatch");
+    TEST_ASSERT(nearly_equal(uniform.height, 120.0f), "uniform height mismatch");
+    TEST_ASSERT(nearly_equal(uniform.y_offset, 24.0f), "uniform y_offset mismatch");
+    TEST_ASSERT(nearly_equal(uniform.win_h, 300.0f), "uniform win_h mismatch");
+    TEST_ASSERT(uniform.framebuffer_y_up == 0,
+        "null frame.rhi must produce framebuffer_y_up == 0");
+
+    return true;
+}
+
+} // namespace
+
+int main()
+{
+    std::cout << "QRhi public API tests" << std::endl;
+
+    int passed = 0;
+    int failed = 0;
+
+    RUN_TEST(test_series_builder_qrhi_layers_append_replace_clear);
+    RUN_TEST(test_series_data_copy_preserves_layer_shared_pointers);
+    RUN_TEST(test_qrhi_layer_api_surface_can_be_implemented);
+    RUN_TEST(test_make_series_view_uniform_values);
+
+    std::cout << "Results: " << passed << " passed, " << failed << " failed" << std::endl;
+    return failed > 0 ? 1 : 0;
+}

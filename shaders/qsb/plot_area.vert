@@ -15,29 +15,17 @@
 
 layout(location = 0) in float in_x0_rel;
 layout(location = 1) in float in_y0;
-layout(location = 2) in float in_aux0;
 layout(location = 4) in float in_x1_rel;
 layout(location = 5) in float in_y1;
-layout(location = 6) in float in_aux1;
 
 layout(std140, binding = 0) uniform Block
 {
     Series_view_t view;
     vec4 zero_axis_color;
-    float aux_metric_min;
-    float aux_metric_inv_span;
-    int  has_colormap;
     int  axis_pass;
 } u;
 
 layout(location = 0) out vec4  vs_color;
-layout(location = 1) out float vs_t;
-layout(location = 2) out float vs_aux;
-
-float normalized_aux(float value)
-{
-    return clamp((value - u.aux_metric_min) * u.aux_metric_inv_span, 0.0, 1.0);
-}
 
 void main()
 {
@@ -55,18 +43,14 @@ void main()
     int  vid    = gl_VertexIndex;
     vec2 pos    = vec2(0.0);
     vec4 vcolor = u.view.color;
-    float vt    = 0.0;
-    float vaux  = 0.0;
 
     if (u.axis_pass != 0) {
         // Pass 1: zero-axis emphasis quad.
-        float aux0 = normalized_aux(in_aux0);
-        float aux1 = normalized_aux(in_aux1);
         switch (vid) {
-            case 0:  pos = vec2(x0, y_axis + a2); vt = 0.0; vaux = aux0; break;
-            case 1:  pos = vec2(x1, y_axis + a2); vt = 1.0; vaux = aux1; break;
-            case 2:  pos = vec2(x0, y_axis - a2); vt = 0.0; vaux = aux0; break;
-            default: pos = vec2(x1, y_axis - a2); vt = 1.0; vaux = aux1; break;
+            case 0:  pos = vec2(x0, y_axis + a2); break;
+            case 1:  pos = vec2(x1, y_axis + a2); break;
+            case 2:  pos = vec2(x0, y_axis - a2); break;
+            default: pos = vec2(x1, y_axis - a2); break;
         }
         vcolor = u.zero_axis_color;
     }
@@ -80,8 +64,6 @@ void main()
 
         float cv0 = in_y0;
         float cv1 = in_y1;
-        float aux0 = normalized_aux(in_aux0);
-        float aux1 = normalized_aux(in_aux1);
 
         vec4 v0_color = u.view.color; v0_color.w = axis_color0.w + 0.3 * abs(cv0) / color_denom;
         vec4 v1_color = u.view.color; v1_color.w = axis_color1.w + 0.3 * abs(cv1) / color_denom;
@@ -96,33 +78,29 @@ void main()
         float mid       = (cv0 - cv1) != 0.0 ? cv0 / (cv0 - cv1) : 0.0;
         float t_mid     = in_x0_rel + (in_x1_rel - in_x0_rel) * mid;
         float x_mid     = u.view.width * (t_mid - u.view.t_min) / rt;
-        float am        = abs(mid);
-        float aux_mid   = mix(aux0, aux1, mid);
 
         if (sign_flip) {
             switch (vid) {
-                case 0:  pos = vec2(x0,    y0);     vcolor = v0_color;    vt = 0.0; vaux = aux0;    break;
-                case 1:  pos = vec2(x0,    y_axis); vcolor = axis_color0; vt = 0.0; vaux = aux0;    break;
-                case 2:  pos = vec2(x_mid, y_axis); vcolor = axis_color0; vt = am;  vaux = aux_mid; break;
-                case 3:  pos = vec2(x_mid, y_axis); vcolor = axis_color1; vt = am;  vaux = aux_mid; break;
-                case 4:  pos = vec2(x1,    y1);     vcolor = v1_color;    vt = 1.0; vaux = aux1;    break;
-                default: pos = vec2(x1,    y_axis); vcolor = axis_color1; vt = 1.0; vaux = aux1;    break;
+                case 0:  pos = vec2(x0,    y0);     vcolor = v0_color;    break;
+                case 1:  pos = vec2(x0,    y_axis); vcolor = axis_color0; break;
+                case 2:  pos = vec2(x_mid, y_axis); vcolor = axis_color0; break;
+                case 3:  pos = vec2(x_mid, y_axis); vcolor = axis_color1; break;
+                case 4:  pos = vec2(x1,    y1);     vcolor = v1_color;    break;
+                default: pos = vec2(x1,    y_axis); vcolor = axis_color1; break;
             }
         }
         else {
             switch (vid) {
-                case 0:  pos = vec2(x0, y0);     vcolor = v0_color;    vt = 0.0; vaux = aux0; break;
-                case 1:  pos = vec2(x1, y1);     vcolor = v1_color;    vt = 1.0; vaux = aux1; break;
-                case 2:  pos = vec2(x0, y_axis); vcolor = axis_color0; vt = 0.0; vaux = aux0; break;
-                case 3:  pos = vec2(x1, y_axis); vcolor = axis_color1; vt = 1.0; vaux = aux1; break;
-                case 4:  pos = vec2(x1, y_axis); vcolor = axis_color1; vt = 1.0; vaux = aux1; break;
-                default: pos = vec2(x1, y_axis); vcolor = axis_color1; vt = 1.0; vaux = aux1; break;
+                case 0:  pos = vec2(x0, y0);     vcolor = v0_color;    break;
+                case 1:  pos = vec2(x1, y1);     vcolor = v1_color;    break;
+                case 2:  pos = vec2(x0, y_axis); vcolor = axis_color0; break;
+                case 3:  pos = vec2(x1, y_axis); vcolor = axis_color1; break;
+                case 4:  pos = vec2(x1, y_axis); vcolor = axis_color1; break;
+                default: pos = vec2(x1, y_axis); vcolor = axis_color1; break;
             }
         }
     }
 
     vs_color    = vcolor;
-    vs_t        = vt;
-    vs_aux      = vaux;
     gl_Position = u.view.pmv * vec4(pos, 0.0, 1.0);
 }

@@ -74,15 +74,21 @@ public:
         return *this;
     }
 
-    Series_builder& colormap_area(const colormap_config_t& colormap)
+    Series_builder& qrhi_layer(std::shared_ptr<const Qrhi_series_layer> layer)
     {
-        m_series.colormap_area = colormap;
+        m_series.qrhi_layers.push_back(std::move(layer));
         return *this;
     }
 
-    Series_builder& colormap_line(const colormap_config_t& colormap)
+    Series_builder& qrhi_layers(std::vector<std::shared_ptr<const Qrhi_series_layer>> layers)
     {
-        m_series.colormap_line = colormap;
+        m_series.qrhi_layers = std::move(layers);
+        return *this;
+    }
+
+    Series_builder& clear_qrhi_layers()
+    {
+        m_series.qrhi_layers.clear();
         return *this;
     }
 
