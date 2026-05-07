@@ -3,34 +3,16 @@
 include(CMakeFindDependencyMacro)
 
 find_dependency(glm)
-find_dependency(Qt6 REQUIRED COMPONENTS Core Gui Quick)
 
-set(_vnm_lib_prefix "@CMAKE_STATIC_LIBRARY_PREFIX@")
-set(_vnm_lib_suffix "@CMAKE_STATIC_LIBRARY_SUFFIX@")
+# vnm_plot_core PRIVATE-links Qt6::GuiPrivate. As a STATIC library that
+# propagates via $<LINK_ONLY:>, so consumers of installed vnm_plot need the
+# private Qt module available. GuiPrivate exposes unstable Qt internals.
+find_dependency(Qt6 REQUIRED COMPONENTS Core Gui GuiPrivate Quick)
 
-set(_vnm_core_lib "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_LIBDIR@/${_vnm_lib_prefix}vnm_plot_core${_vnm_lib_suffix}")
-if(NOT TARGET vnm_plot::core AND EXISTS "${_vnm_core_lib}")
-    add_library(vnm_plot::core STATIC IMPORTED)
-    set_target_properties(vnm_plot::core PROPERTIES
-        IMPORTED_LOCATION "${_vnm_core_lib}"
-        INTERFACE_INCLUDE_DIRECTORIES "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_INCLUDEDIR@"
-        INTERFACE_LINK_LIBRARIES "glm::glm;Qt6::Gui"
-    )
+if(@VNM_PLOT_CONFIG_ENABLE_TEXT@)
+    find_dependency(vnm_msdf_text)
 endif()
 
-set(_vnm_qt_lib "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_LIBDIR@/${_vnm_lib_prefix}vnm_plot${_vnm_lib_suffix}")
-if(NOT TARGET vnm_plot::vnm_plot AND EXISTS "${_vnm_qt_lib}")
-    add_library(vnm_plot::vnm_plot STATIC IMPORTED)
-    set_target_properties(vnm_plot::vnm_plot PROPERTIES
-        IMPORTED_LOCATION "${_vnm_qt_lib}"
-        INTERFACE_INCLUDE_DIRECTORIES "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_INCLUDEDIR@"
-        INTERFACE_LINK_LIBRARIES "vnm_plot::core;Qt6::Core;Qt6::Gui;Qt6::Quick"
-    )
-endif()
-
-unset(_vnm_lib_prefix)
-unset(_vnm_lib_suffix)
-unset(_vnm_core_lib)
-unset(_vnm_qt_lib)
+include("${CMAKE_CURRENT_LIST_DIR}/vnm_plotTargets.cmake")
 
 check_required_components(vnm_plot)

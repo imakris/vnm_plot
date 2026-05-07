@@ -16,7 +16,7 @@ option(VNM_PLOT_BUILD_EXAMPLES "Build example applications" OFF)
 option(VNM_PLOT_BUILD_FUNCTION_PLOTTER "Build the Qt Multimedia function_plotter example" ON)
 option(VNM_PLOT_ENABLE_TEXT "Enable MSDF text rendering (requires FreeType + msdfgen)" ON)
 option(VNM_PLOT_BUILD_TESTS "Build test suite" OFF)
-option(VNM_PLOT_USE_SYSTEM_LIBS "Prefer system/precompiled FreeType and msdfgen over FetchContent" OFF)
+option(VNM_PLOT_USE_SYSTEM_LIBS "Prefer find_package dependencies over FetchContent when available" OFF)
 
 include(FetchContent)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/EmbedAssets.cmake)
@@ -65,22 +65,30 @@ elseif(TARGET glm)
     add_library(glm::glm ALIAS glm)
     message(STATUS "vnm_plot: Using existing glm target (aliased)")
 else()
-    if(FETCHCONTENT_SOURCE_DIR_GLM AND
-       EXISTS "${FETCHCONTENT_SOURCE_DIR_GLM}/CMakeLists.txt")
-        message(STATUS "vnm_plot: Using local glm checkout: ${FETCHCONTENT_SOURCE_DIR_GLM}")
-    else()
-        message(STATUS "vnm_plot: Fetching glm")
+    if(VNM_PLOT_USE_SYSTEM_LIBS)
+        find_package(glm CONFIG QUIET)
+        if(TARGET glm::glm)
+            message(STATUS "vnm_plot: Using glm from find_package")
+        endif()
     endif()
-    # Keep full history for fetched libraries because this workspace patches and
-    # reviews them directly instead of treating them as disposable third-party code.
-    FetchContent_Declare(glm
-        GIT_REPOSITORY https://github.com/g-truc/glm.git
-        GIT_TAG        1.0.1
-        GIT_SHALLOW    FALSE
-    )
-    FetchContent_MakeAvailable(glm)
-    if(TARGET glm AND NOT TARGET glm::glm)
-        add_library(glm::glm ALIAS glm)
+    if(NOT TARGET glm::glm)
+        if(FETCHCONTENT_SOURCE_DIR_GLM AND
+           EXISTS "${FETCHCONTENT_SOURCE_DIR_GLM}/CMakeLists.txt")
+            message(STATUS "vnm_plot: Using local glm checkout: ${FETCHCONTENT_SOURCE_DIR_GLM}")
+        else()
+            message(STATUS "vnm_plot: Fetching glm")
+        endif()
+        # Keep full history for fetched libraries because this workspace patches and
+        # reviews them directly instead of treating them as disposable third-party code.
+        FetchContent_Declare(glm
+            GIT_REPOSITORY https://github.com/g-truc/glm.git
+            GIT_TAG        1.0.1
+            GIT_SHALLOW    FALSE
+        )
+        FetchContent_MakeAvailable(glm)
+        if(TARGET glm AND NOT TARGET glm::glm)
+            add_library(glm::glm ALIAS glm)
+        endif()
     endif()
 endif()
 
@@ -90,28 +98,36 @@ if(VNM_PLOT_ENABLE_TEXT)
     if(TARGET vnm_msdf_text::vnm_msdf_text)
         message(STATUS "vnm_plot: Using existing vnm_msdf_text target")
     else()
-        get_filename_component(_vnm_plot_msdf_text_source
-            "${CMAKE_CURRENT_SOURCE_DIR}/../vnm_msdf_text"
-            ABSOLUTE)
-        if(EXISTS "${_vnm_plot_msdf_text_source}/CMakeLists.txt")
-            message(STATUS "vnm_plot: Using sibling vnm_msdf_text source")
-            vnm_plot_set_fetchcontent_build_dir(vnm_msdf_text vnm_msdf_text)
-            FetchContent_Declare(vnm_msdf_text
-                SOURCE_DIR  "${_vnm_plot_msdf_text_source}"
-                BINARY_DIR  "${FETCHCONTENT_BINARY_DIR_vnm_msdf_text}"
-            )
-        else()
-            message(STATUS "vnm_plot: Fetching vnm_msdf_text")
-            vnm_plot_set_fetchcontent_build_dir(vnm_msdf_text vnm_msdf_text)
-            FetchContent_Declare(vnm_msdf_text
-                GIT_REPOSITORY https://github.com/imakris/vnm_msdf_text.git
-                GIT_TAG        1a89bc28948d9463bcc0d82d8a4941bd9734a125
-                GIT_SHALLOW    FALSE
-                BINARY_DIR     "${FETCHCONTENT_BINARY_DIR_vnm_msdf_text}"
-            )
+        if(VNM_PLOT_USE_SYSTEM_LIBS)
+            find_package(vnm_msdf_text CONFIG QUIET)
+            if(TARGET vnm_msdf_text::vnm_msdf_text)
+                message(STATUS "vnm_plot: Using vnm_msdf_text from find_package")
+            endif()
         endif()
-        FetchContent_MakeAvailable(vnm_msdf_text)
-        unset(_vnm_plot_msdf_text_source)
+        if(NOT TARGET vnm_msdf_text::vnm_msdf_text)
+            get_filename_component(_vnm_plot_msdf_text_source
+                "${CMAKE_CURRENT_SOURCE_DIR}/../vnm_msdf_text"
+                ABSOLUTE)
+            if(EXISTS "${_vnm_plot_msdf_text_source}/CMakeLists.txt")
+                message(STATUS "vnm_plot: Using sibling vnm_msdf_text source")
+                vnm_plot_set_fetchcontent_build_dir(vnm_msdf_text vnm_msdf_text)
+                FetchContent_Declare(vnm_msdf_text
+                    SOURCE_DIR  "${_vnm_plot_msdf_text_source}"
+                    BINARY_DIR  "${FETCHCONTENT_BINARY_DIR_vnm_msdf_text}"
+                )
+            else()
+                message(STATUS "vnm_plot: Fetching vnm_msdf_text")
+                vnm_plot_set_fetchcontent_build_dir(vnm_msdf_text vnm_msdf_text)
+                FetchContent_Declare(vnm_msdf_text
+                    GIT_REPOSITORY https://github.com/imakris/vnm_msdf_text.git
+                    GIT_TAG        1a89bc28948d9463bcc0d82d8a4941bd9734a125
+                    GIT_SHALLOW    FALSE
+                    BINARY_DIR     "${FETCHCONTENT_BINARY_DIR_vnm_msdf_text}"
+                )
+            endif()
+            FetchContent_MakeAvailable(vnm_msdf_text)
+            unset(_vnm_plot_msdf_text_source)
+        endif()
     endif()
 endif() # VNM_PLOT_ENABLE_TEXT
 
@@ -224,6 +240,7 @@ add_library(vnm_plot_core STATIC
 )
 
 add_library(vnm_plot::core ALIAS vnm_plot_core)
+set_target_properties(vnm_plot_core PROPERTIES EXPORT_NAME core)
 
 target_include_directories(vnm_plot_core
     PUBLIC
@@ -413,36 +430,75 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
     )
 
-    # Targets to install
     set(_vnm_plot_install_targets vnm_plot_core vnm_plot)
 
-    # Install library targets (without export for simplicity with FetchContent deps)
-    install(TARGETS ${_vnm_plot_install_targets}
-        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-        INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-    )
+    # install(EXPORT) needs every link dependency to be IMPORTED (or in a
+    # peer export set). glm and vnm_msdf_text only satisfy that when
+    # VNM_PLOT_USE_SYSTEM_LIBS=ON brought them in via find_package; the
+    # FetchContent path produces locally-built targets which can't be
+    # exported here.
+    set(_vnm_plot_export_ok TRUE)
+    foreach(_dep IN ITEMS glm::glm)
+        if(TARGET ${_dep})
+            get_target_property(_dep_imported ${_dep} IMPORTED)
+            if(NOT _dep_imported)
+                set(_vnm_plot_export_ok FALSE)
+            endif()
+        endif()
+    endforeach()
+    if(VNM_PLOT_ENABLE_TEXT AND TARGET vnm_msdf_text::vnm_msdf_text)
+        get_target_property(_dep_imported vnm_msdf_text::vnm_msdf_text IMPORTED)
+        if(NOT _dep_imported)
+            set(_vnm_plot_export_ok FALSE)
+        endif()
+    endif()
 
-    # Generate version file for find_package
-    include(CMakePackageConfigHelpers)
+    if(_vnm_plot_export_ok)
+        install(TARGETS ${_vnm_plot_install_targets}
+            EXPORT vnm_plotTargets
+            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+            INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+        )
 
-    write_basic_package_version_file(
-        "${CMAKE_CURRENT_BINARY_DIR}/vnm_plot-config-version.cmake"
-        VERSION ${PROJECT_VERSION}
-        COMPATIBILITY SameMajorVersion
-    )
+        install(EXPORT vnm_plotTargets
+            NAMESPACE vnm_plot::
+            DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/vnm_plot
+        )
 
-    # Install simple config file
-    configure_package_config_file(
-        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/vnm_plot-config.cmake.in"
-        "${CMAKE_CURRENT_BINARY_DIR}/vnm_plot-config.cmake"
-        INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/vnm_plot
-    )
+        include(CMakePackageConfigHelpers)
 
-    install(FILES
-        "${CMAKE_CURRENT_BINARY_DIR}/vnm_plot-config.cmake"
-        "${CMAKE_CURRENT_BINARY_DIR}/vnm_plot-config-version.cmake"
-        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/vnm_plot
-    )
+        write_basic_package_version_file(
+            "${CMAKE_CURRENT_BINARY_DIR}/vnm_plot-config-version.cmake"
+            VERSION ${PROJECT_VERSION}
+            COMPATIBILITY SameMajorVersion
+        )
+
+        set(VNM_PLOT_CONFIG_ENABLE_TEXT ${VNM_PLOT_ENABLE_TEXT})
+
+        configure_package_config_file(
+            "${CMAKE_CURRENT_SOURCE_DIR}/cmake/vnm_plot-config.cmake.in"
+            "${CMAKE_CURRENT_BINARY_DIR}/vnm_plot-config.cmake"
+            INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/vnm_plot
+        )
+
+        install(FILES
+            "${CMAKE_CURRENT_BINARY_DIR}/vnm_plot-config.cmake"
+            "${CMAKE_CURRENT_BINARY_DIR}/vnm_plot-config-version.cmake"
+            DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/vnm_plot
+        )
+    else()
+        install(TARGETS ${_vnm_plot_install_targets}
+            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+            INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+        )
+        message(STATUS
+            "vnm_plot: Skipping find_package export because glm or vnm_msdf_text "
+            "is built locally via FetchContent. Configure with "
+            "-DVNM_PLOT_USE_SYSTEM_LIBS=ON (and have those packages "
+            "find_package-able) to install a find_package-ready vnm_plot.")
+    endif()
 endif()
