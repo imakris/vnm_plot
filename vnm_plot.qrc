@@ -1,7 +1,5 @@
 <RCC>
     <qresource prefix="/vnm_plot">
-        <!-- Fonts -->
-        <file alias="fonts/monospace.ttf">fonts/monospace.ttf</file>
         <!-- QML Components -->
         <file alias="qml/VnmPlot/qmldir">qml/VnmPlot/qmldir</file>
         <file alias="qml/VnmPlot/PlotIndicator.qml">qml/VnmPlot/PlotIndicator.qml</file>

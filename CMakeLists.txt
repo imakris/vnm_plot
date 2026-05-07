@@ -21,6 +21,19 @@ option(VNM_PLOT_USE_SYSTEM_LIBS "Prefer system/precompiled FreeType and msdfgen 
 include(FetchContent)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/EmbedAssets.cmake)
 
+function(vnm_plot_set_fetchcontent_build_dir name dir_name)
+    string(TOLOWER "${CMAKE_CXX_COMPILER_ID}" _fc_compiler_tag)
+    set(_fc_config_suffix "-${_fc_compiler_tag}")
+    if(CMAKE_BUILD_TYPE)
+        string(TOLOWER "${CMAKE_BUILD_TYPE}" _fc_bt_lower)
+        string(APPEND _fc_config_suffix "-${_fc_bt_lower}")
+    endif()
+
+    set(FETCHCONTENT_BINARY_DIR_${name}
+        "${FETCHCONTENT_BASE_DIR}/${dir_name}-build${_fc_config_suffix}"
+        CACHE PATH "" FORCE)
+endfunction()
+
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/workspace_deps_overrides.cmake OPTIONAL)
 if(VNM_PLOT_DEP_OVERRIDES_FILE AND EXISTS "${VNM_PLOT_DEP_OVERRIDES_FILE}")
     message(STATUS "vnm_plot: Loading dependency overrides from ${VNM_PLOT_DEP_OVERRIDES_FILE}")
@@ -66,144 +79,36 @@ else()
     endif()
 endif()
 
-# --- FreeType + msdfgen (needed for MSDF text rendering) ---
-# Used by the core font_renderer for MSDF atlas generation.
+# --- Shared MSDF text atlas builder ---
 if(VNM_PLOT_ENABLE_TEXT)
-if(VNM_PLOT_USE_SYSTEM_LIBS)
-    find_package(Freetype QUIET)
-    if(FREETYPE_FOUND)
-        if(TARGET Freetype::Freetype)
-            # ok
-        elseif(TARGET freetype)
-            add_library(Freetype::Freetype ALIAS freetype)
+    set(VNM_MSDF_TEXT_USE_SYSTEM_LIBS "${VNM_PLOT_USE_SYSTEM_LIBS}" CACHE BOOL "" FORCE)
+    if(TARGET vnm_msdf_text::vnm_msdf_text)
+        message(STATUS "vnm_plot: Using existing vnm_msdf_text target")
+    else()
+        get_filename_component(_vnm_plot_msdf_text_source
+            "${CMAKE_CURRENT_SOURCE_DIR}/../vnm_msdf_text"
+            ABSOLUTE)
+        if(EXISTS "${_vnm_plot_msdf_text_source}/CMakeLists.txt")
+            message(STATUS "vnm_plot: Using sibling vnm_msdf_text source")
+            vnm_plot_set_fetchcontent_build_dir(vnm_msdf_text vnm_msdf_text)
+            FetchContent_Declare(vnm_msdf_text
+                SOURCE_DIR  "${_vnm_plot_msdf_text_source}"
+                BINARY_DIR  "${FETCHCONTENT_BINARY_DIR_vnm_msdf_text}"
+            )
         else()
-            add_library(Freetype::Freetype INTERFACE IMPORTED)
-            set_target_properties(Freetype::Freetype PROPERTIES
-                INTERFACE_INCLUDE_DIRECTORIES "${FREETYPE_INCLUDE_DIRS}"
-                INTERFACE_LINK_LIBRARIES "${FREETYPE_LIBRARIES}")
+            message(STATUS "vnm_plot: Fetching vnm_msdf_text")
+            vnm_plot_set_fetchcontent_build_dir(vnm_msdf_text vnm_msdf_text)
+            FetchContent_Declare(vnm_msdf_text
+                GIT_REPOSITORY https://github.com/imakris/vnm_msdf_text.git
+                GIT_TAG        1a89bc28948d9463bcc0d82d8a4941bd9734a125
+                GIT_SHALLOW    FALSE
+                BINARY_DIR     "${FETCHCONTENT_BINARY_DIR_vnm_msdf_text}"
+            )
         endif()
+        FetchContent_MakeAvailable(vnm_msdf_text)
+        unset(_vnm_plot_msdf_text_source)
     endif()
-endif()
-
-if(TARGET Freetype::Freetype)
-    message(STATUS "vnm_plot: Using existing Freetype::Freetype target")
-elseif(TARGET freetype)
-    add_library(Freetype::Freetype ALIAS freetype)
-    message(STATUS "vnm_plot: Using existing freetype target (aliased)")
-else()
-    message(STATUS "vnm_plot: Fetching freetype")
-
-    set(_vnm_plot_reset_cmp0169_ft FALSE)
-    if(POLICY CMP0169)
-        cmake_policy(PUSH)
-        cmake_policy(SET CMP0169 OLD)
-        set(_vnm_plot_reset_cmp0169_ft TRUE)
-    endif()
-
-    FetchContent_Declare(freetype
-        GIT_REPOSITORY https://gitlab.freedesktop.org/freetype/freetype.git
-        GIT_TAG        VER-2-13-3
-        GIT_SHALLOW    FALSE
-    )
-    FetchContent_GetProperties(freetype)
-    if(NOT freetype_POPULATED)
-        FetchContent_Populate(freetype)
-
-        # Set FreeType's policy floor from the parent instead of rewriting the checkout.
-        set(_vnm_plot_policy_version_minimum_saved "")
-        set(_vnm_plot_policy_version_minimum_was_defined FALSE)
-        if(DEFINED CMAKE_POLICY_VERSION_MINIMUM)
-            set(_vnm_plot_policy_version_minimum_saved "${CMAKE_POLICY_VERSION_MINIMUM}")
-            set(_vnm_plot_policy_version_minimum_was_defined TRUE)
-        endif()
-        set(CMAKE_POLICY_VERSION_MINIMUM "3.16")
-
-        # Disable optional FreeType features
-        set(FT_DISABLE_HARFBUZZ ON CACHE BOOL "" FORCE)
-        set(FT_DISABLE_BROTLI ON CACHE BOOL "" FORCE)
-        set(FT_DISABLE_BZIP2 ON CACHE BOOL "" FORCE)
-        set(FT_DISABLE_PNG ON CACHE BOOL "" FORCE)
-        set(FT_DISABLE_ZLIB ON CACHE BOOL "" FORCE)
-        set(FT_ENABLE_ERROR_STRINGS OFF CACHE BOOL "" FORCE)
-
-        # Build static FreeType
-        set(_vnm_plot_build_shared_libs_saved "${BUILD_SHARED_LIBS}")
-        set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
-
-        add_subdirectory("${freetype_SOURCE_DIR}" "${freetype_BINARY_DIR}")
-
-        # Restore BUILD_SHARED_LIBS
-        if(DEFINED _vnm_plot_build_shared_libs_saved)
-            set(BUILD_SHARED_LIBS "${_vnm_plot_build_shared_libs_saved}" CACHE BOOL "" FORCE)
-        endif()
-
-        if(_vnm_plot_policy_version_minimum_was_defined)
-            set(CMAKE_POLICY_VERSION_MINIMUM "${_vnm_plot_policy_version_minimum_saved}")
-        else()
-            unset(CMAKE_POLICY_VERSION_MINIMUM)
-        endif()
-    endif()
-
-    if(TARGET freetype AND NOT TARGET Freetype::Freetype)
-        add_library(Freetype::Freetype ALIAS freetype)
-    endif()
-
-    if(_vnm_plot_reset_cmp0169_ft)
-        cmake_policy(POP)
-    endif()
-endif()
-
-if(TARGET Freetype::Freetype)
-    get_target_property(_vnm_plot_ft_real Freetype::Freetype ALIASED_TARGET)
-    if(NOT _vnm_plot_ft_real)
-        set(_vnm_plot_ft_real Freetype::Freetype)
-    endif()
-    get_target_property(_vnm_plot_ft_imported ${_vnm_plot_ft_real} IMPORTED)
-    if(NOT _vnm_plot_ft_imported)
-        if(MSVC)
-            target_compile_options(${_vnm_plot_ft_real} PRIVATE /w)
-        else()
-            target_compile_options(${_vnm_plot_ft_real} PRIVATE -w)
-        endif()
-    endif()
-endif()
-
-# --- msdfgen (needed for MSDF text rendering in core) ---
-if(VNM_PLOT_USE_SYSTEM_LIBS)
-    find_package(msdfgen QUIET)
-endif()
-
-if(TARGET msdfgen::msdfgen-core AND TARGET msdfgen::msdfgen-ext)
-    message(STATUS "vnm_plot: Using existing msdfgen targets")
-else()
-    message(STATUS "vnm_plot: Fetching msdfgen")
-    FetchContent_Declare(msdfgen
-        GIT_REPOSITORY https://github.com/Chlumsky/msdfgen.git
-        GIT_TAG        v1.12.1
-        GIT_SHALLOW    FALSE
-    )
-    set(MSDFGEN_USE_VCPKG OFF CACHE BOOL "" FORCE)
-    set(MSDFGEN_BUILD_STANDALONE OFF CACHE BOOL "" FORCE)
-    set(MSDFGEN_DISABLE_SVG ON CACHE BOOL "" FORCE)
-    set(MSDFGEN_DISABLE_PNG ON CACHE BOOL "" FORCE)
-    set(MSDFGEN_USE_SKIA OFF CACHE BOOL "" FORCE)
-    set(MSDFGEN_CORE_ONLY OFF CACHE BOOL "" FORCE)
-    set(MSDFGEN_USE_MSVC_STATIC_RUNTIME OFF CACHE BOOL "" FORCE)
-
-    FetchContent_MakeAvailable(msdfgen)
-
-    # Ensure MSVC runtime matches
-    if(MSVC)
-        foreach(t msdfgen-core msdfgen-ext msdfgen)
-            if(TARGET ${t})
-                set_property(TARGET ${t} PROPERTY
-                    MSVC_RUNTIME_LIBRARY "MultiThreaded$<IF:$<CONFIG:Debug>,Debug,>DLL")
-            endif()
-        endforeach()
-    endif()
-endif()
-
-endif() # VNM_PLOT_ENABLE_TEXT (FreeType + msdfgen)
+endif() # VNM_PLOT_ENABLE_TEXT
 
 # -----------------------------------------------------------------------------
 # Source files - Core
@@ -291,7 +196,7 @@ set(VNM_PLOT_CORE_ASSETS
 # Text rendering assets (only when text is enabled)
 if(VNM_PLOT_ENABLE_TEXT)
     list(APPEND VNM_PLOT_CORE_ASSETS
-        "fonts/monospace.ttf:fonts/monospace.ttf"
+        "${VNM_MSDF_TEXT_DEFAULT_FONT_FILE}:fonts/monospace.ttf"
     )
 endif()
 
@@ -343,8 +248,7 @@ if(VNM_PLOT_ENABLE_TEXT)
     # Link MSDF text rendering dependencies
     target_link_libraries(vnm_plot_core
         PRIVATE
-            msdfgen::msdfgen-core
-            msdfgen::msdfgen-ext
+            vnm_msdf_text::vnm_msdf_text
     )
 endif()
 
@@ -436,17 +340,6 @@ target_link_libraries(vnm_plot
     PRIVATE
         Qt6::GuiPrivate
 )
-
-# Link MSDF text rendering dependencies if enabled
-# (VNM_PLOT_ENABLE_TEXT compile definition is inherited from vnm_plot_core)
-if(VNM_PLOT_ENABLE_TEXT)
-    target_link_libraries(vnm_plot
-        PRIVATE
-            msdfgen::msdfgen-core
-            msdfgen::msdfgen-ext
-    )
-endif()
-
 
 # Platform-specific settings
 if(WIN32)

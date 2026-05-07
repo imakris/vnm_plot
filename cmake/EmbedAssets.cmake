@@ -30,7 +30,7 @@ function(embed_assets)
 
     foreach(_asset ${EMBED_ASSETS})
         # Parse file:name format
-        string(FIND "${_asset}" ":" _colon_pos)
+        string(FIND "${_asset}" ":" _colon_pos REVERSE)
         if(_colon_pos EQUAL -1)
             set(_file "${_asset}")
             get_filename_component(_name "${_asset}" NAME)

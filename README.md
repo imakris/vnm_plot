@@ -138,13 +138,16 @@ cmake --build build
 ```
 
 Qt 6 (Core, Gui, Quick, GuiPrivate, ShaderTools) is required. The build fetches
-glm, FreeType, and msdfgen if they are not already available as targets.
+glm when it is not already available. Text rendering uses `vnm_msdf_text`; CMake
+uses a sibling `../vnm_msdf_text` checkout when present, otherwise it fetches the
+pinned GitHub dependency. `vnm_msdf_text` fetches FreeType and msdfgen when they
+are not already available as targets.
 
 CI currently builds QRhi and QRhi+Text on Linux, macOS, Windows, and FreeBSD.
 The GitHub Actions jobs use the Qt 6.10.1 SDK on Linux, macOS, and Windows so
 the QRhi private headers and `qsb` shader compiler are available consistently.
 
-To disable text rendering (skips FreeType + msdfgen):
+To disable text rendering (skips `vnm_msdf_text`, FreeType, and msdfgen):
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DVNM_PLOT_ENABLE_TEXT=OFF
