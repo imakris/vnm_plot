@@ -29,6 +29,9 @@ struct sample_window_t
 {
     Series_view_kind view_kind = Series_view_kind::MAIN;
 
+    // Caller-owned QRhi layers receive a valid frame-scoped snapshot for
+    // drawable sample windows. If the renderer cannot acquire one, it skips
+    // those layers instead of passing a drawable window with empty data.
     data_snapshot_t snapshot;
     const Data_access_policy* access = nullptr;
 

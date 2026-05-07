@@ -35,10 +35,13 @@ struct layer_event_t
     std::string layer_id;
     std::string action;
     bool resources_changed = false;
+    bool snapshot_valid = false;
+    std::size_t snapshot_count = 0;
     plot::Series_view_kind view_kind = plot::Series_view_kind::MAIN;
     std::int32_t first = 0;
     std::int32_t count = 0;
     std::uint64_t sample_sequence = 0;
+    std::uint64_t snapshot_sequence = 0;
     std::int64_t t_min_ns = 0;
     std::int64_t t_max_ns = 0;
     std::int64_t t_origin_ns = 0;
@@ -63,15 +66,26 @@ public:
 
     plot::snapshot_result_t try_snapshot(std::size_t lod_level) override
     {
+        ++m_snapshot_calls;
         if (lod_level != 0) {
             return {plot::data_snapshot_t{}, plot::snapshot_result_t::Snapshot_status::FAILED};
+        }
+        if (m_busy_snapshots_remaining > 0) {
+            --m_busy_snapshots_remaining;
+            return {plot::data_snapshot_t{}, plot::snapshot_result_t::Snapshot_status::BUSY};
+        }
+        if (m_advance_during_next_snapshot) {
+            m_advance_during_next_snapshot = false;
+            ++m_sequence;
         }
         plot::data_snapshot_t snapshot;
         snapshot.data = m_samples.data();
         snapshot.count = m_samples.size();
         snapshot.stride = sizeof(test_sample_t);
         snapshot.sequence = m_sequence;
-        snapshot.hold = m_hold;
+        auto hold = std::make_shared<int>(17);
+        m_last_hold = hold;
+        snapshot.hold = hold;
         return {
             snapshot,
             m_samples.empty()
@@ -94,7 +108,6 @@ public:
     {
         m_samples = std::move(samples);
         ++m_sequence;
-        m_hold = std::make_shared<int>(17);
     }
 
     void notify_changed()
@@ -102,11 +115,19 @@ public:
         ++m_sequence;
     }
 
+    int snapshot_calls() const { return m_snapshot_calls; }
+    std::weak_ptr<void> last_hold() const { return m_last_hold; }
+    void return_busy_once() { m_busy_snapshots_remaining = 1; }
+    void advance_during_next_snapshot() { m_advance_during_next_snapshot = true; }
+
 private:
     std::vector<test_sample_t> m_samples;
-    std::shared_ptr<void> m_hold;
+    std::weak_ptr<void> m_last_hold;
     const void* m_identity = this;
     std::uint64_t m_sequence = 0;
+    int m_snapshot_calls = 0;
+    int m_busy_snapshots_remaining = 0;
+    bool m_advance_during_next_snapshot = false;
 };
 
 plot::Data_access_policy make_access_policy()
@@ -147,6 +168,9 @@ public:
         event.layer_id = m_layer_id;
         event.action = "prepare";
         event.resources_changed = ctx.resources_changed;
+        event.snapshot_valid = static_cast<bool>(ctx.window.snapshot);
+        event.snapshot_count = ctx.window.snapshot.count;
+        event.snapshot_sequence = ctx.window.snapshot.sequence;
         event.view_kind = ctx.window.view_kind;
         event.first = ctx.window.first;
         event.count = ctx.window.count;
@@ -163,6 +187,9 @@ public:
         layer_event_t event;
         event.layer_id = m_layer_id;
         event.action = "record";
+        event.snapshot_valid = static_cast<bool>(ctx.window.snapshot);
+        event.snapshot_count = ctx.window.snapshot.count;
+        event.snapshot_sequence = ctx.window.snapshot.sequence;
         event.view_kind = ctx.window.view_kind;
         event.first = ctx.window.first;
         event.count = ctx.window.count;
@@ -338,6 +365,18 @@ std::shared_ptr<plot::series_data_t> make_layer_only_series(
     return series;
 }
 
+std::shared_ptr<plot::series_data_t> make_line_plus_layer_series(
+    std::shared_ptr<Test_source> source,
+    std::vector<std::shared_ptr<const plot::Qrhi_series_layer>> layers)
+{
+    auto series = std::make_shared<plot::series_data_t>();
+    series->style = plot::Display_style::LINE;
+    series->data_source = source;
+    series->access = make_access_policy();
+    series->qrhi_layers = std::move(layers);
+    return series;
+}
+
 const layer_event_t* find_prepare_event(
     const std::vector<layer_event_t>& events,
     std::string_view layer_id)
@@ -412,6 +451,8 @@ bool test_layer_only_zero_style_prepare_record_order()
     TEST_ASSERT(low_record < high_record, "lower z-order layer must record first");
     TEST_ASSERT(events[low_prepare].count > 0 && events[high_prepare].count > 0,
         "layer-only series with zero Display_style must not be skipped");
+    TEST_ASSERT(events[low_prepare].snapshot_valid && events[high_prepare].snapshot_valid,
+        "layer-only external prepares must receive a valid snapshot");
 
     return true;
 }
@@ -474,6 +515,167 @@ bool test_resources_changed_tracks_data_and_window_changes()
         "visible window change must report resources_changed");
     TEST_ASSERT(window_prepare->t_min_ns == ctx.t0 && window_prepare->t_max_ns == ctx.t1,
         "prepare context must carry the changed visible window");
+
+    return true;
+}
+
+bool test_external_layer_gets_snapshot_on_builtin_cache_hit()
+{
+    std::vector<layer_event_t> events;
+    int create_count = 0;
+    auto layer = std::make_shared<Recording_layer>(
+        "cached", 1, 0, events, create_count);
+    auto source = std::make_shared<Test_source>();
+    auto series = make_line_plus_layer_series(source, {layer});
+    std::map<int, std::shared_ptr<const plot::series_data_t>> series_map;
+    const int series_id = 21;
+    series_map[series_id] = series;
+
+    plot::Asset_loader asset_loader;
+    plot::Series_renderer renderer;
+    renderer.initialize(asset_loader);
+
+    Offscreen_rhi_fixture rhi_fixture;
+    std::string error_message;
+    TEST_ASSERT(rhi_fixture.initialize(error_message), error_message);
+
+    plot::Plot_config config;
+    const plot::frame_layout_result_t layout = make_layout();
+    plot::frame_context_t ctx = make_context(layout, config);
+
+    TEST_ASSERT(
+        rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
+        error_message);
+    const layer_event_t* initial_prepare = find_prepare_event(events, "cached");
+    TEST_ASSERT(initial_prepare && initial_prepare->snapshot_valid,
+        "initial prepare must receive a valid snapshot");
+    TEST_ASSERT(initial_prepare->snapshot_count > 0,
+        "initial prepare snapshot must contain samples");
+
+    const int snapshots_after_initial_frame = source->snapshot_calls();
+
+    events.clear();
+    TEST_ASSERT(
+        rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
+        error_message);
+    const layer_event_t* stable_prepare = find_prepare_event(events, "cached");
+    TEST_ASSERT(stable_prepare, "expected external prepare on stable built-in cache-hit frame");
+    TEST_ASSERT(!stable_prepare->resources_changed,
+        "unchanged data and window must keep resources_changed false");
+    TEST_ASSERT(stable_prepare->snapshot_valid,
+        "stable built-in cache-hit frame must still provide the external layer snapshot");
+    TEST_ASSERT(stable_prepare->snapshot_count > 0,
+        "stable built-in cache-hit snapshot must contain samples");
+    TEST_ASSERT(source->snapshot_calls() > snapshots_after_initial_frame,
+        "external layer view must acquire a frame snapshot instead of taking the no-snapshot fast path");
+
+    std::weak_ptr<void> hold = source->last_hold();
+    TEST_ASSERT(hold.expired(),
+        "external layer cache-hit snapshot hold must release after render");
+
+    return true;
+}
+
+bool test_external_layer_skips_busy_stale_fallback_and_recovers()
+{
+    std::vector<layer_event_t> events;
+    int create_count = 0;
+    auto layer = std::make_shared<Recording_layer>(
+        "busy", 1, 0, events, create_count);
+    auto source = std::make_shared<Test_source>();
+    auto series = make_line_plus_layer_series(source, {layer});
+    std::map<int, std::shared_ptr<const plot::series_data_t>> series_map;
+    const int series_id = 22;
+    series_map[series_id] = series;
+
+    plot::Asset_loader asset_loader;
+    plot::Series_renderer renderer;
+    renderer.initialize(asset_loader);
+
+    Offscreen_rhi_fixture rhi_fixture;
+    std::string error_message;
+    TEST_ASSERT(rhi_fixture.initialize(error_message), error_message);
+
+    plot::Plot_config config;
+    const plot::frame_layout_result_t layout = make_layout();
+    plot::frame_context_t ctx = make_context(layout, config);
+
+    TEST_ASSERT(
+        rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
+        error_message);
+    TEST_ASSERT(find_prepare_event(events, "busy"),
+        "expected initial external prepare before BUSY simulation");
+    TEST_ASSERT(create_count == 1,
+        "expected one external layer state after initial prepare");
+
+    source->return_busy_once();
+    events.clear();
+    TEST_ASSERT(
+        rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
+        error_message);
+    TEST_ASSERT(!find_prepare_event(events, "busy"),
+        "external layer must not prepare from stale fallback without a valid snapshot");
+    TEST_ASSERT(create_count == 1,
+        "transient BUSY snapshot must not recreate external layer state");
+
+    events.clear();
+    TEST_ASSERT(
+        rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
+        error_message);
+    const layer_event_t* recovered_prepare = find_prepare_event(events, "busy");
+    TEST_ASSERT(recovered_prepare && recovered_prepare->snapshot_valid,
+        "external layer must prepare with a valid snapshot after BUSY recovery");
+    TEST_ASSERT(recovered_prepare->snapshot_count > 0,
+        "recovered external prepare snapshot must contain samples");
+    TEST_ASSERT(create_count == 1,
+        "external layer state must survive transient BUSY snapshot recovery");
+
+    return true;
+}
+
+bool test_external_layer_replans_when_snapshot_advances_after_sequence_probe()
+{
+    std::vector<layer_event_t> events;
+    int create_count = 0;
+    auto layer = std::make_shared<Recording_layer>(
+        "advance", 1, 0, events, create_count);
+    auto source = std::make_shared<Test_source>();
+    auto series = make_line_plus_layer_series(source, {layer});
+    std::map<int, std::shared_ptr<const plot::series_data_t>> series_map;
+    const int series_id = 23;
+    series_map[series_id] = series;
+
+    plot::Asset_loader asset_loader;
+    plot::Series_renderer renderer;
+    renderer.initialize(asset_loader);
+
+    Offscreen_rhi_fixture rhi_fixture;
+    std::string error_message;
+    TEST_ASSERT(rhi_fixture.initialize(error_message), error_message);
+
+    plot::Plot_config config;
+    const plot::frame_layout_result_t layout = make_layout();
+    plot::frame_context_t ctx = make_context(layout, config);
+
+    TEST_ASSERT(
+        rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
+        error_message);
+    const layer_event_t* initial_prepare = find_prepare_event(events, "advance");
+    TEST_ASSERT(initial_prepare && initial_prepare->snapshot_valid,
+        "expected initial external prepare with a snapshot");
+
+    source->advance_during_next_snapshot();
+    events.clear();
+    TEST_ASSERT(
+        rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
+        error_message);
+    const layer_event_t* advanced_prepare = find_prepare_event(events, "advance");
+    TEST_ASSERT(advanced_prepare && advanced_prepare->snapshot_valid,
+        "external prepare must still receive a valid snapshot after source advancement");
+    TEST_ASSERT(advanced_prepare->sample_sequence == advanced_prepare->snapshot_sequence,
+        "cache-hit metadata must be replanned when the acquired snapshot sequence advances");
+    TEST_ASSERT(advanced_prepare->resources_changed,
+        "advanced snapshot sequence must invalidate the external layer data key");
 
     return true;
 }
@@ -548,6 +750,9 @@ int main()
 
     RUN_TEST(test_layer_only_zero_style_prepare_record_order);
     RUN_TEST(test_resources_changed_tracks_data_and_window_changes);
+    RUN_TEST(test_external_layer_gets_snapshot_on_builtin_cache_hit);
+    RUN_TEST(test_external_layer_skips_busy_stale_fallback_and_recovers);
+    RUN_TEST(test_external_layer_replans_when_snapshot_advances_after_sequence_probe);
     RUN_TEST(test_layer_state_recreated_for_program_identity_changes);
 
     std::cout << "Results: " << passed << " passed, " << failed << " failed" << std::endl;

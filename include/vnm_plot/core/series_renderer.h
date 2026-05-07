@@ -157,6 +157,12 @@ private:
         float window_alpha = 1.0f;
     };
 
+    enum class Snapshot_requirement
+    {
+        Optional,
+        Frame_snapshot_required
+    };
+
     // Per-(series, view) draw plan computed in prepare() and consumed in
     // render(). Holds the raw policy/source pointers and the LOD-resolved
     // view results so the record-draws phase can replay decisions without
@@ -209,6 +215,7 @@ private:
         std::int64_t t_origin_ns,
         double width_px,
         Empty_window_behavior empty_window_behavior,
+        Snapshot_requirement snapshot_requirement,
         vnm::plot::Profiler* profiler);
 
     // rhi_prepare_series_primitive: writes to ctx.rhi_updates only. Builds the

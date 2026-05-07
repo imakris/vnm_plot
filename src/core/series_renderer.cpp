@@ -655,6 +655,7 @@ Series_renderer::view_render_result_t Series_renderer::plan_view(
     std::int64_t t_origin_ns,
     double width_px,
     Empty_window_behavior empty_window_behavior,
+    Snapshot_requirement snapshot_requirement,
     vnm::plot::Profiler* profiler)
 {
     view_render_result_t result;
@@ -688,6 +689,31 @@ Series_renderer::view_render_result_t Series_renderer::plan_view(
         tried_heap.assign(level_count, uint8_t{0});
         tried = tried_heap.data();
     }
+
+    const auto acquire_frame_snapshot = [&](std::size_t level) {
+        VNM_PLOT_PROFILE_SCOPE(profiler, "process_view.try_snapshot");
+        snapshot_result_t snapshot_result;
+        if (shared_state.cached_snapshot_frame_id == frame_id &&
+            shared_state.cached_snapshot_level == level &&
+            shared_state.cached_snapshot_source == &data_source &&
+            shared_state.cached_snapshot)
+        {
+            snapshot_result.snapshot = shared_state.cached_snapshot;
+            snapshot_result.status = snapshot_result_t::Snapshot_status::READY;
+            return snapshot_result;
+        }
+
+        snapshot_result = data_source.try_snapshot(level);
+        if (snapshot_result) {
+            shared_state.cached_snapshot_frame_id = frame_id;
+            shared_state.cached_snapshot_level = level;
+            shared_state.cached_snapshot_source = &data_source;
+            shared_state.cached_snapshot = snapshot_result.snapshot;
+            shared_state.cached_snapshot_hold = snapshot_result.snapshot.hold;
+        }
+        return snapshot_result;
+    };
+
     const auto was_tried = [&](std::size_t level) -> bool {
         return tried && level < level_count && tried[level] != 0;
     };
@@ -755,32 +781,32 @@ Series_renderer::view_render_result_t Series_renderer::plan_view(
             view_state.last_empty_window_behavior == empty_window_behavior &&
             view_state.uploaded_t_origin_ns == t_origin_ns)
         {
-            load_cached_result(result, applied_level);
-            return result;
-        }
-
-        vnm::plot::snapshot_result_t snapshot_result;
-        {
-            VNM_PLOT_PROFILE_SCOPE(profiler, "process_view.try_snapshot");
-            if (shared_state.cached_snapshot_frame_id == frame_id &&
-                shared_state.cached_snapshot_level == applied_level &&
-                shared_state.cached_snapshot_source == &data_source &&
-                shared_state.cached_snapshot)
-            {
-                snapshot_result.snapshot = shared_state.cached_snapshot;
-                snapshot_result.status = snapshot_result_t::Snapshot_status::READY;
-            }
-            else {
-                snapshot_result = data_source.try_snapshot(applied_level);
+            if (snapshot_requirement == Snapshot_requirement::Frame_snapshot_required) {
+                snapshot_result_t snapshot_result = acquire_frame_snapshot(applied_level);
                 if (snapshot_result) {
-                    shared_state.cached_snapshot_frame_id = frame_id;
-                    shared_state.cached_snapshot_level = applied_level;
-                    shared_state.cached_snapshot_source = &data_source;
-                    shared_state.cached_snapshot = snapshot_result.snapshot;
-                    shared_state.cached_snapshot_hold = snapshot_result.snapshot.hold;
+                    if (snapshot_result.snapshot.sequence == current_seq) {
+                        load_cached_result(result, applied_level);
+                        result.cached_snapshot = snapshot_result.snapshot;
+                        result.cached_snapshot_hold = snapshot_result.snapshot.hold;
+                        return result;
+                    }
+                    // The source advanced between current_sequence() and
+                    // try_snapshot(); fall through to replan against the
+                    // newer frame-scoped snapshot instead of pairing cached
+                    // first/count metadata with a different snapshot.
+                }
+                else {
+                    load_cached_result(result, applied_level);
+                    return result;
                 }
             }
+            else {
+                load_cached_result(result, applied_level);
+                return result;
+            }
         }
+
+        snapshot_result_t snapshot_result = acquire_frame_snapshot(applied_level);
 
         if (!snapshot_result || !snapshot_result.snapshot || snapshot_result.snapshot.count == 0) {
             if (try_stale_fallback(result)) {
@@ -1074,7 +1100,8 @@ void Series_renderer::prepare(
                     return layer && layer->draws_view(view_kind);
                 });
         };
-        if (!main_style && !has_layer_for_view(Series_view_kind::MAIN)) {
+        const bool has_main_layer = has_layer_for_view(Series_view_kind::MAIN);
+        if (!main_style && !has_main_layer) {
             continue;
         }
 
@@ -1084,12 +1111,14 @@ void Series_renderer::prepare(
         Display_style preview_style = static_cast<Display_style>(0);
         bool preview_matches_main = false;
         bool preview_valid = false;
+        bool has_preview_layer = false;
 
         if (preview_visible) {
             preview_source = s->preview_source();
             preview_access = &s->preview_access();
             preview_style = s->effective_preview_style();
             preview_matches_main = s->preview_matches_main();
+            has_preview_layer = has_layer_for_view(Series_view_kind::PREVIEW);
 
             if (has_preview_config && !preview_source) {
                 log_error_once(Error_cat::PREVIEW_MISSING_SOURCE, id,
@@ -1100,7 +1129,7 @@ void Series_renderer::prepare(
 
             if (preview_source &&
                 preview_access &&
-                (!!preview_style || has_layer_for_view(Series_view_kind::PREVIEW)))
+                (!!preview_style || has_preview_layer))
             {
                 preview_valid = true;
             }
@@ -1127,7 +1156,11 @@ void Series_renderer::prepare(
             vbo_state.main_view, vbo_state, m_frame_id, *main_source,
             main_access, main_scales,
             ctx.t0, ctx.t1, main_origin_ns,
-            layout.usable_width, s->empty_window_behavior, profiler);
+            layout.usable_width, s->empty_window_behavior,
+            has_main_layer
+                ? Snapshot_requirement::Frame_snapshot_required
+                : Snapshot_requirement::Optional,
+            profiler);
         main_result.v_min = ctx.v0;
         main_result.v_max = ctx.v1;
         main_result.height_px = static_cast<float>(layout.usable_height);
@@ -1149,7 +1182,11 @@ void Series_renderer::prepare(
                 vbo_state.preview_view, vbo_state, m_frame_id, *preview_source,
                 *preview_access, preview_scales,
                 ctx.t_available_min, ctx.t_available_max, preview_origin_ns,
-                ctx.win_w, s->empty_window_behavior, profiler);
+                ctx.win_w, s->empty_window_behavior,
+                has_preview_layer
+                    ? Snapshot_requirement::Frame_snapshot_required
+                    : Snapshot_requirement::Optional,
+                profiler);
             const double preview_top =
                 double(ctx.win_h) - ctx.adjusted_preview_height;
             preview_result.v_min = ctx.preview_v0;
@@ -1258,6 +1295,7 @@ void Series_renderer::prepare(
         {
             std::shared_ptr<const Qrhi_series_layer> layer;
             bool needs_view_ubo = true;
+            bool requires_snapshot = true;
         };
 
         std::vector<planned_layer_t> layers;
@@ -1267,6 +1305,7 @@ void Series_renderer::prepare(
                     *this,
                     Display_style::AREA,
                     view_state),
+                false,
                 false});
         }
         if (!!(style & Display_style::LINE)) {
@@ -1275,6 +1314,7 @@ void Series_renderer::prepare(
                     *this,
                     Display_style::LINE,
                     view_state),
+                false,
                 false});
         }
         if (!!(style & Display_style::DOTS)) {
@@ -1283,11 +1323,12 @@ void Series_renderer::prepare(
                     *this,
                     Display_style::DOTS,
                     view_state),
+                false,
                 false});
         }
         for (const auto& layer : draw_state.series->qrhi_layers) {
             if (layer && layer->draws_view(view_kind)) {
-                layers.push_back({layer, true});
+                layers.push_back({layer, true, true});
             }
         }
         std::stable_sort(
@@ -1325,10 +1366,6 @@ void Series_renderer::prepare(
             if (!layer) {
                 continue;
             }
-            if (planned_layer.needs_view_ubo && !view_ubo) {
-                continue;
-            }
-
             rhi_state_t::qrhi_layer_program_key_t program_key;
             program_key.series_id = draw_state.id;
             program_key.view_kind = view_kind;
@@ -1337,6 +1374,24 @@ void Series_renderer::prepare(
             program_key.data_identity = data_source ? data_source->identity() : nullptr;
             program_key.layout_key = access ? access->layout_key : 0;
             program_key.rhi = rhi;
+
+            if (planned_layer.requires_snapshot && !window.snapshot) {
+                for (auto& [cached_key, cache_entry] : m_rhi_state->qrhi_layer_cache) {
+                    if (cached_key.series_id == program_key.series_id &&
+                        cached_key.view_kind == program_key.view_kind &&
+                        cached_key.layer_id == program_key.layer_id &&
+                        cached_key.layer_revision == program_key.layer_revision &&
+                        cached_key.layout_key == program_key.layout_key &&
+                        cached_key.rhi == program_key.rhi)
+                    {
+                        cache_entry.last_frame_used = m_frame_id;
+                    }
+                }
+                continue;
+            }
+            if (planned_layer.needs_view_ubo && !view_ubo) {
+                continue;
+            }
 
             rhi_state_t::qrhi_layer_data_key_t data_key;
             data_key.lod_level = window.lod_level;
@@ -1415,10 +1470,52 @@ void Series_renderer::prepare(
         }
     }
 
+    const auto qrhi_layer_still_configured =
+        [&](const rhi_state_t::qrhi_layer_program_key_t& key) {
+            const auto series_it = series.find(key.series_id);
+            if (series_it == series.end() || !series_it->second || !series_it->second->enabled) {
+                return false;
+            }
+
+            const series_data_t& series_data = *series_it->second;
+            const Data_source* source = nullptr;
+            const Data_access_policy* access = nullptr;
+            if (key.view_kind == Series_view_kind::MAIN) {
+                source = series_data.main_source();
+                access = &series_data.main_access();
+            }
+            else {
+                if (!preview_visible) {
+                    return false;
+                }
+                source = series_data.preview_source();
+                access = &series_data.preview_access();
+            }
+            if (!source || !access ||
+                key.data_identity != source->identity() ||
+                key.layout_key != access->layout_key ||
+                key.rhi != rhi)
+            {
+                return false;
+            }
+
+            return std::any_of(
+                series_data.qrhi_layers.begin(),
+                series_data.qrhi_layers.end(),
+                [&](const auto& layer) {
+                    return layer &&
+                        layer->draws_view(key.view_kind) &&
+                        layer->id() == key.layer_id &&
+                        layer->revision() == key.layer_revision;
+                });
+        };
+
     for (auto it = m_rhi_state->qrhi_layer_cache.begin();
          it != m_rhi_state->qrhi_layer_cache.end(); )
     {
-        if (it->second.last_frame_used == m_frame_id) {
+        if (it->second.last_frame_used == m_frame_id ||
+            qrhi_layer_still_configured(it->first))
+        {
             ++it;
             continue;
         }
