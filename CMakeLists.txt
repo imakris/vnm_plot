@@ -65,7 +65,12 @@ elseif(TARGET glm)
     add_library(glm::glm ALIAS glm)
     message(STATUS "vnm_plot: Using existing glm target (aliased)")
 else()
-    message(STATUS "vnm_plot: Fetching glm")
+    if(FETCHCONTENT_SOURCE_DIR_GLM AND
+       EXISTS "${FETCHCONTENT_SOURCE_DIR_GLM}/CMakeLists.txt")
+        message(STATUS "vnm_plot: Using local glm checkout: ${FETCHCONTENT_SOURCE_DIR_GLM}")
+    else()
+        message(STATUS "vnm_plot: Fetching glm")
+    endif()
     # Keep full history for fetched libraries because this workspace patches and
     # reviews them directly instead of treating them as disposable third-party code.
     FetchContent_Declare(glm
