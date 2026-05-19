@@ -10,7 +10,7 @@ find_dependency(glm)
 find_dependency(Qt6 REQUIRED COMPONENTS Core Gui GuiPrivate Quick)
 
 if(@VNM_PLOT_CONFIG_ENABLE_TEXT@)
-    find_dependency(vnm_msdf_text)
+    find_dependency(vnm_msdf_text @VNM_PLOT_VNM_MSDF_TEXT_VERSION@)
 endif()
 
 include("${CMAKE_CURRENT_LIST_DIR}/vnm_plotTargets.cmake")

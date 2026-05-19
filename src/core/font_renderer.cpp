@@ -68,8 +68,6 @@ struct vertex_buffer_t
 using msdf_atlas_t = vnm::msdf_text::atlas_t;
 using msdf_glyph_t = vnm::msdf_text::glyph_t;
 using msdf_kerning_key_t = vnm::msdf_text::kerning_key_t;
-using msdf_kerning_key_hash_t = vnm::msdf_text::kerning_key_hash_t;
-using msdf_kerning_key_eq_t = vnm::msdf_text::kerning_key_equal_t;
 using text_vertex_t = vnm::msdf_text::text_vertex_t;
 
 static_assert(sizeof(text_vertex_t) == 8 * sizeof(float), "MSDF text vertex layout");

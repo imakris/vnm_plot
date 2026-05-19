@@ -17,6 +17,7 @@ option(VNM_PLOT_BUILD_FUNCTION_PLOTTER "Build the Qt Multimedia function_plotter
 option(VNM_PLOT_ENABLE_TEXT "Enable MSDF text rendering (requires FreeType + msdfgen)" ON)
 option(VNM_PLOT_BUILD_TESTS "Build test suite" OFF)
 option(VNM_PLOT_USE_SYSTEM_LIBS "Prefer find_package dependencies over FetchContent when available" OFF)
+set(VNM_PLOT_VNM_MSDF_TEXT_VERSION 0.2.0)
 
 include(FetchContent)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/EmbedAssets.cmake)
@@ -99,7 +100,7 @@ if(VNM_PLOT_ENABLE_TEXT)
         message(STATUS "vnm_plot: Using existing vnm_msdf_text target")
     else()
         if(VNM_PLOT_USE_SYSTEM_LIBS)
-            find_package(vnm_msdf_text CONFIG QUIET)
+            find_package(vnm_msdf_text ${VNM_PLOT_VNM_MSDF_TEXT_VERSION} CONFIG QUIET)
             if(TARGET vnm_msdf_text::vnm_msdf_text)
                 message(STATUS "vnm_plot: Using vnm_msdf_text from find_package")
             endif()
@@ -120,7 +121,7 @@ if(VNM_PLOT_ENABLE_TEXT)
                 vnm_plot_set_fetchcontent_build_dir(vnm_msdf_text vnm_msdf_text)
                 FetchContent_Declare(vnm_msdf_text
                     GIT_REPOSITORY https://github.com/imakris/vnm_msdf_text.git
-                    GIT_TAG        1a89bc28948d9463bcc0d82d8a4941bd9734a125
+                    GIT_TAG        master
                     GIT_SHALLOW    FALSE
                     BINARY_DIR     "${FETCHCONTENT_BINARY_DIR_vnm_msdf_text}"
                 )
