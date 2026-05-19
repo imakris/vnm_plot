@@ -138,7 +138,6 @@ endif() # VNM_PLOT_ENABLE_TEXT
 set(VNM_PLOT_CORE_SOURCES
     # Core abstractions
     src/core/asset_loader.cpp
-    src/core/utf8_utils.cpp
     src/core/platform_paths.cpp
     src/core/layout_calculator.cpp
 

@@ -248,6 +248,36 @@ std::vector<std::size_t> compute_lod_scales(const DataSourceT& data_source)
 // These functions perform binary search on a contiguous array of samples,
 // using a callback to extract timestamps. Assumes ascending timestamp order.
 
+// Core binary-search loop shared by lower_bound / upper_bound and by raw
+// strided / data_snapshot_t addressing. The Addr functor maps an index to a
+// sample pointer; if it returns nullptr the search short-circuits at the
+// current bound (used by segmented snapshots to bail out on torn views).
+template<typename AddrFn, typename GetTimestampFn, typename Cmp>
+std::size_t bsearch_ts_impl(
+    std::size_t count,
+    AddrFn&& addr,
+    GetTimestampFn&& get_timestamp,
+    Cmp&& cmp,
+    std::int64_t t_ns)
+{
+    std::size_t lo = 0;
+    std::size_t hi = count;
+    while (lo < hi) {
+        std::size_t mid = lo + (hi - lo) / 2;
+        const void* sample = addr(mid);
+        if (!sample) {
+            break;
+        }
+        if (cmp(get_timestamp(sample), t_ns)) {
+            lo = mid + 1;
+        }
+        else {
+            hi = mid;
+        }
+    }
+    return lo;
+}
+
 // Returns index of first sample with timestamp >= t_ns (lower_bound semantics).
 // Query value t_ns is in nanoseconds (API convention); the user-supplied
 // get_timestamp accessor must return the same unit.
@@ -262,22 +292,13 @@ std::size_t lower_bound_timestamp(
     if (data == nullptr || count == 0) {
         return 0;
     }
-
     const auto* base = static_cast<const std::uint8_t*>(data);
-    std::size_t lo = 0;
-    std::size_t hi = count;
-
-    while (lo < hi) {
-        std::size_t mid = lo + (hi - lo) / 2;
-        const void* sample = base + mid * stride;
-        if (get_timestamp(sample) < t_ns) {
-            lo = mid + 1;
-        }
-        else {
-            hi = mid;
-        }
-    }
-    return lo;
+    return bsearch_ts_impl(
+        count,
+        [base, stride](std::size_t i) -> const void* { return base + i * stride; },
+        std::forward<GetTimestampFn>(get_timestamp),
+        [](std::int64_t ts, std::int64_t t) { return ts < t; },
+        t_ns);
 }
 
 // Overload for data_snapshot_t (supports segmented snapshots).
@@ -290,23 +311,12 @@ std::size_t lower_bound_timestamp(
     if (!snapshot.is_valid()) {
         return 0;
     }
-
-    std::size_t lo = 0;
-    std::size_t hi = snapshot.count;
-    while (lo < hi) {
-        std::size_t mid = lo + (hi - lo) / 2;
-        const void* sample = snapshot.at(mid);
-        if (!sample) {
-            break;
-        }
-        if (get_timestamp(sample) < t_ns) {
-            lo = mid + 1;
-        }
-        else {
-            hi = mid;
-        }
-    }
-    return lo;
+    return bsearch_ts_impl(
+        snapshot.count,
+        [&snapshot](std::size_t i) { return snapshot.at(i); },
+        std::forward<GetTimestampFn>(get_timestamp),
+        [](std::int64_t ts, std::int64_t t) { return ts < t; },
+        t_ns);
 }
 
 // Returns index of first sample with timestamp > t_ns (upper_bound semantics).
@@ -322,22 +332,13 @@ std::size_t upper_bound_timestamp(
     if (data == nullptr || count == 0) {
         return 0;
     }
-
     const auto* base = static_cast<const std::uint8_t*>(data);
-    std::size_t lo = 0;
-    std::size_t hi = count;
-
-    while (lo < hi) {
-        std::size_t mid = lo + (hi - lo) / 2;
-        const void* sample = base + mid * stride;
-        if (get_timestamp(sample) <= t_ns) {
-            lo = mid + 1;
-        }
-        else {
-            hi = mid;
-        }
-    }
-    return lo;
+    return bsearch_ts_impl(
+        count,
+        [base, stride](std::size_t i) -> const void* { return base + i * stride; },
+        std::forward<GetTimestampFn>(get_timestamp),
+        [](std::int64_t ts, std::int64_t t) { return ts <= t; },
+        t_ns);
 }
 
 // Overload for data_snapshot_t (supports segmented snapshots).
@@ -350,23 +351,12 @@ std::size_t upper_bound_timestamp(
     if (!snapshot.is_valid()) {
         return 0;
     }
-
-    std::size_t lo = 0;
-    std::size_t hi = snapshot.count;
-    while (lo < hi) {
-        std::size_t mid = lo + (hi - lo) / 2;
-        const void* sample = snapshot.at(mid);
-        if (!sample) {
-            break;
-        }
-        if (get_timestamp(sample) <= t_ns) {
-            lo = mid + 1;
-        }
-        else {
-            hi = mid;
-        }
-    }
-    return lo;
+    return bsearch_ts_impl(
+        snapshot.count,
+        [&snapshot](std::size_t i) { return snapshot.at(i); },
+        std::forward<GetTimestampFn>(get_timestamp),
+        [](std::int64_t ts, std::int64_t t) { return ts <= t; },
+        t_ns);
 }
 
 // -----------------------------------------------------------------------------
