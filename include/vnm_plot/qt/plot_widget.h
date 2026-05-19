@@ -316,6 +316,23 @@ private:
     data_config_t data_cfg_snapshot() const;
     template<typename Field, typename Value, typename Signal>
     void update_config_field(Field& field, Value new_value, Signal signal);
+
+    // Assigns new_value into field if it differs and invokes on_change.
+    // Returns true on a real change. Unlike update_config_field, this does
+    // not lock m_config_mutex or emit a signal directly; the on_change
+    // closure is responsible for whatever follow-up the caller needs
+    // (typically recalculate_preview_height).
+    template<typename Field, typename Value, typename OnChange>
+    static bool set_if_changed(Field& field, Value new_value, OnChange&& on_change)
+    {
+        if (field == static_cast<Field>(new_value)) {
+            return false;
+        }
+        field = static_cast<Field>(new_value);
+        std::forward<OnChange>(on_change)();
+        return true;
+    }
+
     void clamp_t_range_to_available(qint64 t_avail_min_ns, qint64 t_avail_max_ns);
 
     bool consume_view_state_reset_request();
