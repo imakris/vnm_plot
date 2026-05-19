@@ -73,4 +73,25 @@ private:
     std::list<registry_entry_t> m_entries;
 };
 
+// Process-wide registry for type T, shared across translation units.
+// Use this to call shutdown() during an explicit teardown phase.
+template <typename T>
+inline Thread_local_registry<T>& thread_local_registry()
+{
+    static Thread_local_registry<T> registry;
+    return registry;
+}
+
+// Returns the calling thread's T instance, lazily constructed via T's
+// default constructor on first call. Identical to
+// thread_local_registry<T>().get_or_create([]{ return std::make_unique<T>(); })
+// but without the per-callsite boilerplate.
+template <typename T>
+inline T& thread_local_singleton()
+{
+    return thread_local_registry<T>().get_or_create([] {
+        return std::make_unique<T>();
+    });
+}
+
 } // namespace vnm::plot

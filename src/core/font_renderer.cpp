@@ -121,17 +121,9 @@ struct thread_local_font_resources_t
     }
 };
 
-Thread_local_registry<thread_local_font_resources_t>& font_registry()
-{
-    static Thread_local_registry<thread_local_font_resources_t> registry;
-    return registry;
-}
-
 thread_local_font_resources_t& thread_local_resources()
 {
-    return font_registry().get_or_create([] {
-        return std::make_unique<thread_local_font_resources_t>();
-    });
+    return thread_local_singleton<thread_local_font_resources_t>();
 }
 
 std::atomic<std::uint64_t> s_next_cache_epoch{1};
@@ -611,6 +603,31 @@ struct Font_renderer::impl_t
     std::vector<std::uint32_t> m_rhi_frame_index_data;
 
     rhi_text_state_t m_rhi;
+
+    // m_resources is the live thread-local atlas the renderer mutates and
+    // m_font_cache is the cross-thread snapshot used by readers. The
+    // metric/measure accessors below prefer m_resources when set and fall
+    // back to m_font_cache; this helper centralizes the choice so each
+    // accessor doesn't repeat the "res ? res->X : (cached ? cached->Y : ...)"
+    // dance.
+    const msdf_atlas_t* current_atlas() const
+    {
+        if (m_resources) {
+            return &m_resources->m_atlas;
+        }
+        if (m_font_cache) {
+            return &m_font_cache->atlas;
+        }
+        return nullptr;
+    }
+
+    std::uint64_t current_cache_epoch() const
+    {
+        if (m_resources) {
+            return m_resources->m_cache_epoch;
+        }
+        return m_font_cache ? m_font_cache->cache_epoch : std::uint64_t{0};
+    }
 };
 
 // --- Public API Implementation ---
@@ -681,57 +698,41 @@ void Font_renderer::deinitialize()
 
 float Font_renderer::measure_text_px(const char* text) const
 {
-    const auto* res = m_impl->m_resources;
-    const auto* cached = m_impl->m_font_cache.get();
-    if (!text || (!res && !cached)) {
+    const msdf_atlas_t* atlas = m_impl->current_atlas();
+    if (!text || !atlas) {
         return 0.0f;
     }
-    return vnm::msdf_text::measure_text_px(res ? res->m_atlas : cached->atlas, text);
+    return vnm::msdf_text::measure_text_px(*atlas, text);
 }
 
 std::uint64_t Font_renderer::text_measure_cache_key() const
 {
-    const auto* res = m_impl->m_resources;
-    if (res) {
-        return res->m_cache_epoch;
-    }
-    const auto* cached = m_impl->m_font_cache.get();
-    return cached ? cached->cache_epoch : 0;
+    return m_impl->current_cache_epoch();
 }
 
 float Font_renderer::monospace_advance_px() const
 {
-    const auto* res = m_impl->m_resources;
-    if (res) {
-        return res->m_atlas.monospace_advance_px;
-    }
-    const auto* cached = m_impl->m_font_cache.get();
-    return cached ? cached->atlas.monospace_advance_px : 0.f;
+    const msdf_atlas_t* atlas = m_impl->current_atlas();
+    return atlas ? atlas->monospace_advance_px : 0.f;
 }
 
 bool Font_renderer::monospace_advance_is_reliable() const
 {
-    const auto* res = m_impl->m_resources;
-    if (res) {
-        return res->m_atlas.monospace_advance_reliable;
-    }
-    const auto* cached = m_impl->m_font_cache.get();
-    return cached ? cached->atlas.monospace_advance_reliable : false;
+    const msdf_atlas_t* atlas = m_impl->current_atlas();
+    return atlas ? atlas->monospace_advance_reliable : false;
 }
 
 float Font_renderer::compute_numeric_bottom() const
 {
-    const auto* res = m_impl->m_resources;
-    const auto* cached = m_impl->m_font_cache.get();
-    if (!res && !cached) {
+    const msdf_atlas_t* atlas = m_impl->current_atlas();
+    if (!atlas) {
         return 0.0f;
     }
-    const auto& glyphs = res ? res->m_atlas.glyphs : cached->atlas.glyphs;
     static const char* k_sample = "0123456789-+.,";
     float max_bottom = -std::numeric_limits<float>::infinity();
     for (const char* p = k_sample; *p; ++p) {
-        const auto it = glyphs.find(static_cast<unsigned char>(*p));
-        if (it != glyphs.end()) {
+        const auto it = atlas->glyphs.find(static_cast<unsigned char>(*p));
+        if (it != atlas->glyphs.end()) {
             const float neg_bottom = -(it->second.plane_bottom);
             if (neg_bottom > max_bottom) {
                 max_bottom = neg_bottom;
@@ -743,12 +744,8 @@ float Font_renderer::compute_numeric_bottom() const
 
 float Font_renderer::baseline_offset_px() const
 {
-    const auto* res = m_impl->m_resources;
-    if (res) {
-        return res->m_atlas.baseline_offset_px;
-    }
-    const auto* cached = m_impl->m_font_cache.get();
-    return cached ? cached->atlas.baseline_offset_px : 0.f;
+    const msdf_atlas_t* atlas = m_impl->current_atlas();
+    return atlas ? atlas->baseline_offset_px : 0.f;
 }
 
 void Font_renderer::batch_text(float x, float y, const char* text)

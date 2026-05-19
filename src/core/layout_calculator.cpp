@@ -340,30 +340,14 @@ private:
     std::vector<Key>                         m_lru;
 };
 
-Thread_local_registry<Timestamp_label_cache>& timestamp_cache_registry()
-{
-    static Thread_local_registry<Timestamp_label_cache> registry;
-    return registry;
-}
-
-Thread_local_registry<Format_signature_cache>& format_cache_registry()
-{
-    static Thread_local_registry<Format_signature_cache> registry;
-    return registry;
-}
-
 Timestamp_label_cache& timestamp_label_cache()
 {
-    return timestamp_cache_registry().get_or_create([] {
-        return std::make_unique<Timestamp_label_cache>();
-    });
+    return thread_local_singleton<Timestamp_label_cache>();
 }
 
 Format_signature_cache& format_signature_cache()
 {
-    return format_cache_registry().get_or_create([] {
-        return std::make_unique<Format_signature_cache>();
-    });
+    return thread_local_singleton<Format_signature_cache>();
 }
 
 bool has_anchor_within(
@@ -1167,8 +1151,8 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
 
 void shutdown_layout_caches()
 {
-    timestamp_cache_registry().shutdown();
-    format_cache_registry().shutdown();
+    thread_local_registry<Timestamp_label_cache>().shutdown();
+    thread_local_registry<Format_signature_cache>().shutdown();
 }
 
 } // namespace vnm::plot
