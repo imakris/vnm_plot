@@ -8,7 +8,6 @@
 
 #include <QtGlobal>
 
-#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -23,11 +22,18 @@ inline qint64 to_qint64_rounded(double value)
     if (!std::isfinite(value)) {
         return 0;
     }
-    const double clamped = std::clamp(
-        value,
-        static_cast<double>(std::numeric_limits<qint64>::min()),
-        static_cast<double>(std::numeric_limits<qint64>::max()));
-    return static_cast<qint64>(std::llround(clamped));
+    const long double rounded = std::round(static_cast<long double>(value));
+    const long double min_value =
+        static_cast<long double>(std::numeric_limits<qint64>::min());
+    const long double max_value =
+        static_cast<long double>(std::numeric_limits<qint64>::max());
+    if (rounded <= min_value) {
+        return std::numeric_limits<qint64>::min();
+    }
+    if (rounded >= max_value) {
+        return std::numeric_limits<qint64>::max();
+    }
+    return static_cast<qint64>(rounded);
 }
 
 // Snapshot of the four ns-timestamp fields the adjust_* family reads. The
