@@ -254,33 +254,6 @@ bool Primitive_renderer::rhi_ensure_rect_pipeline(
         return true;
     }
 
-    if (!rhi_state.rect_vert.isValid() || !rhi_state.rect_frag.isValid()) {
-        return false;
-    }
-
-    // Layout-only SRB: the pipeline binds against this stub at create() time;
-    // every per-call SRB built below shares the same single-UBO layout, so
-    // setShaderResources() with the call's SRB succeeds against this pipeline.
-    auto layout_ubo = std::unique_ptr<QRhiBuffer>(rhi->newBuffer(
-        QRhiBuffer::Dynamic, QRhiBuffer::UniformBuffer, k_rect_ubo_bytes));
-    if (!layout_ubo || !layout_ubo->create()) {
-        return false;
-    }
-    auto layout_srb = std::unique_ptr<QRhiShaderResourceBindings>(
-        rhi->newShaderResourceBindings());
-    layout_srb->setBindings({
-        QRhiShaderResourceBinding::uniformBuffer(
-            0, QRhiShaderResourceBinding::VertexStage,
-            layout_ubo.get(), 0, k_rect_ubo_bytes)
-    });
-    layout_srb->create();
-
-    rhi_state.rect_pipeline.reset(rhi->newGraphicsPipeline());
-    rhi_state.rect_pipeline->setShaderStages({
-        { QRhiShaderStage::Vertex,   rhi_state.rect_vert },
-        { QRhiShaderStage::Fragment, rhi_state.rect_frag }
-    });
-
     QRhiVertexInputLayout vlayout;
     QRhiVertexInputBinding vb(
         static_cast<quint32>(sizeof(rect_vertex_t)),
@@ -294,22 +267,15 @@ bool Primitive_renderer::rhi_ensure_rect_pipeline(
         0, 1, QRhiVertexInputAttribute::Float4,
         static_cast<quint32>(offsetof(rect_vertex_t, rect_coords)));
     vlayout.setAttributes({a_color, a_rect});
-    rhi_state.rect_pipeline->setVertexInputLayout(vlayout);
-    rhi_state.rect_pipeline->setShaderResourceBindings(layout_srb.get());
-    rhi_state.rect_pipeline->setTopology(QRhiGraphicsPipeline::TriangleStrip);
 
-    QRhiGraphicsPipeline::TargetBlend blend;
-    blend.enable = true;
-    blend.srcColor = QRhiGraphicsPipeline::SrcAlpha;
-    blend.dstColor = QRhiGraphicsPipeline::OneMinusSrcAlpha;
-    blend.srcAlpha = QRhiGraphicsPipeline::One;
-    blend.dstAlpha = QRhiGraphicsPipeline::OneMinusSrcAlpha;
-    rhi_state.rect_pipeline->setTargetBlends({blend});
-    rhi_state.rect_pipeline->setRenderPassDescriptor(rpd);
-    rhi_state.rect_pipeline->setSampleCount(samples);
-
-    if (!rhi_state.rect_pipeline->create()) {
-        rhi_state.rect_pipeline.reset();
+    detail::alpha_blended_pipeline_desc_t desc;
+    desc.vert = rhi_state.rect_vert;
+    desc.frag = rhi_state.rect_frag;
+    desc.vlayout = vlayout;
+    desc.ubo_bytes = k_rect_ubo_bytes;
+    desc.ubo_stages = QRhiShaderResourceBinding::VertexStage;
+    rhi_state.rect_pipeline = detail::build_alpha_blended_pipeline(rhi, rt, desc);
+    if (!rhi_state.rect_pipeline) {
         return false;
     }
     rhi_state.rect_pipeline_rpd = rpd;
@@ -335,32 +301,6 @@ bool Primitive_renderer::rhi_ensure_grid_pipeline(
         return true;
     }
 
-    if (!rhi_state.grid_vert.isValid() || !rhi_state.grid_frag.isValid()) {
-        return false;
-    }
-
-    auto layout_ubo = std::unique_ptr<QRhiBuffer>(rhi->newBuffer(
-        QRhiBuffer::Dynamic, QRhiBuffer::UniformBuffer, k_grid_ubo_bytes));
-    if (!layout_ubo || !layout_ubo->create()) {
-        return false;
-    }
-    auto layout_srb = std::unique_ptr<QRhiShaderResourceBindings>(
-        rhi->newShaderResourceBindings());
-    // grid_quad.frag is the only stage that reads the UBO; the .vert just
-    // forwards the unit-quad vertex through gl_Position.
-    layout_srb->setBindings({
-        QRhiShaderResourceBinding::uniformBuffer(
-            0, QRhiShaderResourceBinding::FragmentStage,
-            layout_ubo.get(), 0, k_grid_ubo_bytes)
-    });
-    layout_srb->create();
-
-    rhi_state.grid_pipeline.reset(rhi->newGraphicsPipeline());
-    rhi_state.grid_pipeline->setShaderStages({
-        { QRhiShaderStage::Vertex,   rhi_state.grid_vert },
-        { QRhiShaderStage::Fragment, rhi_state.grid_frag }
-    });
-
     QRhiVertexInputLayout vlayout;
     QRhiVertexInputBinding vb(
         2 * sizeof(float), QRhiVertexInputBinding::PerVertex, 1);
@@ -368,23 +308,18 @@ bool Primitive_renderer::rhi_ensure_grid_pipeline(
     QRhiVertexInputAttribute a_pos(
         0, 0, QRhiVertexInputAttribute::Float2, 0);
     vlayout.setAttributes({a_pos});
-    rhi_state.grid_pipeline->setVertexInputLayout(vlayout);
-    rhi_state.grid_pipeline->setShaderResourceBindings(layout_srb.get());
-    rhi_state.grid_pipeline->setTopology(QRhiGraphicsPipeline::TriangleStrip);
 
-    QRhiGraphicsPipeline::TargetBlend blend;
-    blend.enable = true;
-    blend.srcColor = QRhiGraphicsPipeline::SrcAlpha;
-    blend.dstColor = QRhiGraphicsPipeline::OneMinusSrcAlpha;
-    blend.srcAlpha = QRhiGraphicsPipeline::One;
-    blend.dstAlpha = QRhiGraphicsPipeline::OneMinusSrcAlpha;
-    rhi_state.grid_pipeline->setTargetBlends({blend});
-    rhi_state.grid_pipeline->setFlags(QRhiGraphicsPipeline::UsesScissor);
-    rhi_state.grid_pipeline->setRenderPassDescriptor(rpd);
-    rhi_state.grid_pipeline->setSampleCount(samples);
-
-    if (!rhi_state.grid_pipeline->create()) {
-        rhi_state.grid_pipeline.reset();
+    // grid_quad.frag is the only stage that reads the UBO; the .vert just
+    // forwards the unit-quad vertex through gl_Position.
+    detail::alpha_blended_pipeline_desc_t desc;
+    desc.vert = rhi_state.grid_vert;
+    desc.frag = rhi_state.grid_frag;
+    desc.vlayout = vlayout;
+    desc.ubo_bytes = k_grid_ubo_bytes;
+    desc.ubo_stages = QRhiShaderResourceBinding::FragmentStage;
+    desc.flags = QRhiGraphicsPipeline::UsesScissor;
+    rhi_state.grid_pipeline = detail::build_alpha_blended_pipeline(rhi, rt, desc);
+    if (!rhi_state.grid_pipeline) {
         return false;
     }
     rhi_state.grid_pipeline_rpd = rpd;
@@ -519,13 +454,15 @@ void Primitive_renderer::flush_rects(const frame_context_t& ctx, const glm::mat4
             }
         }
         if (!call.srb || call.srb_last_ubo != call.ubo.get()) {
-            call.srb.reset(rhi->newShaderResourceBindings());
-            call.srb->setBindings({
-                QRhiShaderResourceBinding::uniformBuffer(
-                    0, QRhiShaderResourceBinding::VertexStage,
-                    call.ubo.get(), 0, k_rect_ubo_bytes)
-            });
-            call.srb->create();
+            if (!detail::rebuild_single_ubo_srb(
+                    rhi, call.srb, call.ubo.get(),
+                    k_rect_ubo_bytes,
+                    QRhiShaderResourceBinding::VertexStage))
+            {
+                m_cpu_buffer.clear();
+                m_rhi_state->rect_used--;
+                return;
+            }
             call.srb_last_ubo = call.ubo.get();
         }
 
@@ -631,13 +568,14 @@ void Primitive_renderer::draw_grid_shader(
             }
         }
         if (!call.srb || call.srb_last_ubo != call.ubo.get()) {
-            call.srb.reset(rhi->newShaderResourceBindings());
-            call.srb->setBindings({
-                QRhiShaderResourceBinding::uniformBuffer(
-                    0, QRhiShaderResourceBinding::FragmentStage,
-                    call.ubo.get(), 0, k_grid_ubo_bytes)
-            });
-            call.srb->create();
+            if (!detail::rebuild_single_ubo_srb(
+                    rhi, call.srb, call.ubo.get(),
+                    k_grid_ubo_bytes,
+                    QRhiShaderResourceBinding::FragmentStage))
+            {
+                m_rhi_state->grid_used--;
+                return;
+            }
             call.srb_last_ubo = call.ubo.get();
         }
 
