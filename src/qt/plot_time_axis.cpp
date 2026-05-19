@@ -8,8 +8,6 @@
 
 namespace vnm::plot {
 
-using detail::to_qint64_rounded;
-
 Plot_time_axis::Plot_time_axis(QObject* parent)
     : QObject(parent)
 {}
