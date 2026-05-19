@@ -1,5 +1,6 @@
 #include <vnm_plot/qt/plot_widget.h>
 #include "plot_renderer.h"
+#include "t_axis_adjust.h"
 #include <vnm_plot/qt/plot_time_axis.h>
 #include <vnm_plot/core/constants.h>
 #include <vnm_plot/core/algo.h>
@@ -814,59 +815,54 @@ void Plot_widget::set_info_visible(bool v)
 
 void Plot_widget::set_relative_preview_height(float relative)
 {
-    const float clamped = std::clamp(relative, 0.0f, 1.0f);
-    if (m_relative_preview_height != clamped) {
-        m_relative_preview_height = clamped;
-        recalculate_preview_height();
-    }
+    set_if_changed(
+        m_relative_preview_height,
+        std::clamp(relative, 0.0f, 1.0f),
+        [this] { recalculate_preview_height(); });
 }
 
 void Plot_widget::set_preview_height_min(double v)
 {
-    if (v < 0.0) {
-        v = 0.0;
-    }
-    if (m_preview_height_min != v) {
-        m_preview_height_min = v;
+    set_if_changed(m_preview_height_min, std::max(0.0, v), [this] {
         if (m_preview_height_max < m_preview_height_min) {
             m_preview_height_max = m_preview_height_min;
         }
         recalculate_preview_height();
-    }
+    });
 }
 
 void Plot_widget::set_preview_height_max(double v)
 {
-    if (v < 0.0) {
-        v = 0.0;
-    }
-    if (m_preview_height_max != v) {
-        m_preview_height_max = v;
+    set_if_changed(m_preview_height_max, std::max(0.0, v), [this] {
         if (m_preview_height_max < m_preview_height_min) {
             m_preview_height_min = m_preview_height_max;
         }
         recalculate_preview_height();
-    }
+    });
 }
 
 void Plot_widget::set_show_if_calculated_preview_height_below_min(bool v)
 {
-    if (m_show_if_calculated_preview_height_below_min != v) {
-        m_show_if_calculated_preview_height_below_min = v;
-        recalculate_preview_height();
-    }
+    set_if_changed(
+        m_show_if_calculated_preview_height_below_min, v,
+        [this] { recalculate_preview_height(); });
 }
 
 void Plot_widget::set_preview_height_steps(int steps)
 {
-    if (steps < 0) {
-        steps = 0;
-    }
-    if (m_preview_height_steps != steps) {
-        m_preview_height_steps = steps;
-        recalculate_preview_height();
-    }
+    set_if_changed(
+        m_preview_height_steps, std::max(0, steps),
+        [this] { recalculate_preview_height(); });
 }
+
+namespace {
+
+detail::t_view_snapshot_t widget_view_snapshot(const data_config_t& cfg)
+{
+    return {cfg.t_min, cfg.t_max, cfg.t_available_min, cfg.t_available_max};
+}
+
+} // anonymous namespace
 
 void Plot_widget::adjust_t_from_mouse_diff(double ref_width, double diff)
 {
@@ -874,16 +870,9 @@ void Plot_widget::adjust_t_from_mouse_diff(double ref_width, double diff)
         m_time_axis->adjust_t_from_mouse_diff(ref_width, diff);
         return;
     }
-    if (ref_width <= 0.0) {
-        return;
-    }
-    const auto cfg = data_cfg_snapshot();
-    // Pixel deltas are double; the visible span is in int64 nanoseconds.
-    // Subtract first, scale through fp64 once, round into qint64.
-    const qint64 span_ns = cfg.t_max - cfg.t_min;
-    const qint64 delta_ns = static_cast<qint64>(std::llround(
-        diff * static_cast<double>(span_ns) / ref_width));
-    adjust_t_to_target(cfg.t_min - delta_ns, cfg.t_max - delta_ns);
+    detail::adjust_t_from_mouse_diff_impl(
+        widget_view_snapshot(data_cfg_snapshot()), ref_width, diff,
+        [this](qint64 mn, qint64 mx) { adjust_t_to_target(mn, mx); });
 }
 
 void Plot_widget::adjust_t_from_mouse_diff_on_preview(double ref_width, double diff)
@@ -892,14 +881,9 @@ void Plot_widget::adjust_t_from_mouse_diff_on_preview(double ref_width, double d
         m_time_axis->adjust_t_from_mouse_diff_on_preview(ref_width, diff);
         return;
     }
-    if (ref_width <= 0.0) {
-        return;
-    }
-    const auto cfg = data_cfg_snapshot();
-    const qint64 avail_span_ns = cfg.t_available_max - cfg.t_available_min;
-    const qint64 delta_ns = static_cast<qint64>(std::llround(
-        diff * static_cast<double>(avail_span_ns) / ref_width));
-    adjust_t_to_target(cfg.t_min + delta_ns, cfg.t_max + delta_ns);
+    detail::adjust_t_from_mouse_diff_on_preview_impl(
+        widget_view_snapshot(data_cfg_snapshot()), ref_width, diff,
+        [this](qint64 mn, qint64 mx) { adjust_t_to_target(mn, mx); });
 }
 
 void Plot_widget::adjust_t_from_mouse_pos_on_preview(double ref_width, double x_pos)
@@ -908,16 +892,9 @@ void Plot_widget::adjust_t_from_mouse_pos_on_preview(double ref_width, double x_
         m_time_axis->adjust_t_from_mouse_pos_on_preview(ref_width, x_pos);
         return;
     }
-    if (ref_width <= 0.0) {
-        return;
-    }
-    const auto cfg = data_cfg_snapshot();
-    const qint64 span_ns = cfg.t_max - cfg.t_min;
-    const qint64 avail_span_ns = cfg.t_available_max - cfg.t_available_min;
-    const qint64 center_ns = cfg.t_available_min + static_cast<qint64>(std::llround(
-        (x_pos / ref_width) * static_cast<double>(avail_span_ns)));
-    const qint64 half_ns = span_ns / 2;
-    adjust_t_to_target(center_ns - half_ns, center_ns + (span_ns - half_ns));
+    detail::adjust_t_from_mouse_pos_on_preview_impl(
+        widget_view_snapshot(data_cfg_snapshot()), ref_width, x_pos,
+        [this](qint64 mn, qint64 mx) { adjust_t_to_target(mn, mx); });
 }
 
 void Plot_widget::adjust_t_from_pivot_and_scale(double pivot, double scale)
@@ -926,18 +903,9 @@ void Plot_widget::adjust_t_from_pivot_and_scale(double pivot, double scale)
         m_time_axis->adjust_t_from_pivot_and_scale(pivot, scale);
         return;
     }
-    if (scale <= 0.0) {
-        return;
-    }
-    const auto cfg = data_cfg_snapshot();
-    const qint64 span_ns = cfg.t_max - cfg.t_min;
-    const qint64 t_pivot_ns = cfg.t_min + static_cast<qint64>(std::llround(
-        pivot * static_cast<double>(span_ns)));
-    const qint64 left_ns = static_cast<qint64>(std::llround(
-        static_cast<double>(t_pivot_ns - cfg.t_min) * scale));
-    const qint64 right_ns = static_cast<qint64>(std::llround(
-        static_cast<double>(cfg.t_max - t_pivot_ns) * scale));
-    adjust_t_to_target(t_pivot_ns - left_ns, t_pivot_ns + right_ns);
+    detail::adjust_t_from_pivot_and_scale_impl(
+        widget_view_snapshot(data_cfg_snapshot()), pivot, scale,
+        [this](qint64 mn, qint64 mx) { adjust_t_to_target(mn, mx); });
 }
 
 void Plot_widget::adjust_v_from_mouse_diff(float ref_height, float diff)

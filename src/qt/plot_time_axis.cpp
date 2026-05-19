@@ -1,29 +1,14 @@
 #include <vnm_plot/qt/plot_time_axis.h>
 
+#include "t_axis_adjust.h"
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
 
 namespace vnm::plot {
 
-namespace {
-
-// Round-to-nearest helper for fp64 -> qint64 conversions on the time axis.
-// Saturates instead of overflowing on extreme inputs so a stray Infinity from
-// a misuse cannot tear the integer field.
-qint64 to_qint64_rounded(double value)
-{
-    if (!std::isfinite(value)) {
-        return 0;
-    }
-    const double clamped = std::clamp(
-        value,
-        static_cast<double>(std::numeric_limits<qint64>::min()),
-        static_cast<double>(std::numeric_limits<qint64>::max()));
-    return static_cast<qint64>(std::llround(clamped));
-}
-
-} // anonymous namespace
+using detail::to_qint64_rounded;
 
 Plot_time_axis::Plot_time_axis(QObject* parent)
     : QObject(parent)
@@ -333,61 +318,53 @@ void Plot_time_axis::set_available_t_range(qint64 t_available_min_ns, qint64 t_a
     set_limits_if_changed(new_t_min, new_t_max, t_available_min_ns, t_available_max_ns);
 }
 
+namespace {
+
+detail::t_view_snapshot_t time_axis_view_snapshot(const Plot_time_axis& a)
+{
+    return {a.t_min(), a.t_max(), a.t_available_min(), a.t_available_max()};
+}
+
+} // anonymous namespace
+
 void Plot_time_axis::adjust_t_from_mouse_diff(double ref_width, double diff)
 {
-    if (ref_width <= 0.0 || !view_initialized()) {
+    if (!view_initialized()) {
         return;
     }
-
-    // Pixel deltas are double, but the visible span is in int64 nanoseconds;
-    // convert through fp64 once, round when re-attaching to the qint64 axis.
-    const qint64 span_ns = m_t_max - m_t_min;
-    const qint64 delta_ns = to_qint64_rounded(
-        diff * static_cast<double>(span_ns) / ref_width);
-    adjust_t_to_target(m_t_min - delta_ns, m_t_max - delta_ns);
+    detail::adjust_t_from_mouse_diff_impl(
+        time_axis_view_snapshot(*this), ref_width, diff,
+        [this](qint64 mn, qint64 mx) { adjust_t_to_target(mn, mx); });
 }
 
 void Plot_time_axis::adjust_t_from_mouse_diff_on_preview(double ref_width, double diff)
 {
-    if (ref_width <= 0.0 || !view_initialized() || !available_initialized()) {
+    if (!view_initialized() || !available_initialized()) {
         return;
     }
-
-    const qint64 avail_span_ns = m_t_available_max - m_t_available_min;
-    const qint64 delta_ns = to_qint64_rounded(
-        diff * static_cast<double>(avail_span_ns) / ref_width);
-    adjust_t_to_target(m_t_min + delta_ns, m_t_max + delta_ns);
+    detail::adjust_t_from_mouse_diff_on_preview_impl(
+        time_axis_view_snapshot(*this), ref_width, diff,
+        [this](qint64 mn, qint64 mx) { adjust_t_to_target(mn, mx); });
 }
 
 void Plot_time_axis::adjust_t_from_mouse_pos_on_preview(double ref_width, double x_pos)
 {
-    if (ref_width <= 0.0 || !view_initialized() || !available_initialized()) {
+    if (!view_initialized() || !available_initialized()) {
         return;
     }
-
-    const qint64 span_ns = m_t_max - m_t_min;
-    const qint64 avail_span_ns = m_t_available_max - m_t_available_min;
-    const double rel = x_pos / ref_width;
-    const qint64 new_center_ns = m_t_available_min
-        + to_qint64_rounded(rel * static_cast<double>(avail_span_ns));
-    const qint64 half_ns = span_ns / 2;
-    adjust_t_to_target(new_center_ns - half_ns, new_center_ns + (span_ns - half_ns));
+    detail::adjust_t_from_mouse_pos_on_preview_impl(
+        time_axis_view_snapshot(*this), ref_width, x_pos,
+        [this](qint64 mn, qint64 mx) { adjust_t_to_target(mn, mx); });
 }
 
 void Plot_time_axis::adjust_t_from_pivot_and_scale(double pivot, double scale)
 {
-    if (scale <= 0.0 || !view_initialized()) {
+    if (!view_initialized()) {
         return;
     }
-
-    const qint64 span_ns = m_t_max - m_t_min;
-    const qint64 t_pivot_ns = m_t_min
-        + to_qint64_rounded(pivot * static_cast<double>(span_ns));
-    const qint64 new_min_ns = t_pivot_ns - to_qint64_rounded(
-        static_cast<double>(t_pivot_ns - m_t_min) * scale);
-    const qint64 new_max_ns = t_pivot_ns + to_qint64_rounded(
-        static_cast<double>(m_t_max - t_pivot_ns) * scale);
-    adjust_t_to_target(new_min_ns, new_max_ns);
+    detail::adjust_t_from_pivot_and_scale_impl(
+        time_axis_view_snapshot(*this), pivot, scale,
+        [this](qint64 mn, qint64 mx) { adjust_t_to_target(mn, mx); });
 }
 
 void Plot_time_axis::adjust_t_to_target(qint64 target_min_ns, qint64 target_max_ns)
