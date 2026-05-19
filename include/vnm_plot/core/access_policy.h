@@ -43,23 +43,41 @@ std::size_t member_offset(Member Sample::* member)
     return static_cast<std::size_t>(field - base);
 }
 
+// The vnm_plot API contract for timestamps is int64_t nanoseconds. Sample
+// types store the raw timestamp; if a sample's timestamp member is
+// floating-point, the convention is that the field holds seconds (so it
+// remains intuitive to the user populating it). These two helpers are the
+// single point that crosses the seconds<->nanoseconds boundary; everything
+// else in vnm_plot operates on int64_t nanoseconds.
+template<typename Timestamp>
+constexpr std::int64_t timestamp_member_to_ns(Timestamp value)
+{
+    if constexpr (std::is_floating_point_v<Timestamp>) {
+        return static_cast<std::int64_t>(value * 1e9);
+    }
+    else {
+        return static_cast<std::int64_t>(value);
+    }
+}
+
+template<typename Timestamp>
+constexpr Timestamp ns_to_timestamp_member(std::int64_t timestamp_ns)
+{
+    if constexpr (std::is_floating_point_v<Timestamp>) {
+        return static_cast<Timestamp>(timestamp_ns) * static_cast<Timestamp>(1e-9);
+    }
+    else {
+        return static_cast<Timestamp>(timestamp_ns);
+    }
+}
+
 template<typename Sample, typename Timestamp_member>
 auto make_clone_with_timestamp(Timestamp_member Sample::* timestamp_member)
 {
     return [timestamp_member](Sample& dst_sample, const Sample& src_sample, std::int64_t timestamp_ns) {
         dst_sample = src_sample;
         using timestamp_t = std::decay_t<decltype(dst_sample.*timestamp_member)>;
-        // The vnm_plot API contract for timestamps is int64_t nanoseconds.
-        // Sample types store the raw timestamp; if a sample's timestamp
-        // member is floating-point, the convention is that the field
-        // holds seconds (so it remains intuitive to the user populating
-        // it). The boundary code in this file converts both directions.
-        if constexpr (std::is_floating_point_v<timestamp_t>) {
-            dst_sample.*timestamp_member = static_cast<timestamp_t>(timestamp_ns) * 1e-9;
-        }
-        else {
-            dst_sample.*timestamp_member = static_cast<timestamp_t>(timestamp_ns);
-        }
+        dst_sample.*timestamp_member = ns_to_timestamp_member<timestamp_t>(timestamp_ns);
     };
 }
 
@@ -108,20 +126,19 @@ struct Data_access_policy_typed
     Data_access_policy erase() const
     {
         Data_access_policy policy;
-        if (get_timestamp) {
-            policy.get_timestamp = [fn = get_timestamp](const void* sample) {
+        const auto erase_accessor = [](auto fn) {
+            return [fn = std::move(fn)](const void* sample) {
                 return fn(*static_cast<const Sample*>(sample));
             };
+        };
+        if (get_timestamp) {
+            policy.get_timestamp = erase_accessor(get_timestamp);
         }
         if (get_value) {
-            policy.get_value = [fn = get_value](const void* sample) {
-                return fn(*static_cast<const Sample*>(sample));
-            };
+            policy.get_value = erase_accessor(get_value);
         }
         if (get_range) {
-            policy.get_range = [fn = get_range](const void* sample) {
-                return fn(*static_cast<const Sample*>(sample));
-            };
+            policy.get_range = erase_accessor(get_range);
         }
         if (clone_with_timestamp) {
             policy.clone_with_timestamp = [fn = clone_with_timestamp](void* dst_sample, const void* src_sample, std::int64_t timestamp_ns) {
@@ -151,40 +168,12 @@ inline void assign_standard_accessors(
 {
     policy.get_timestamp = [timestamp_member](const Sample& sample) -> std::int64_t {
         using timestamp_t = std::decay_t<decltype(sample.*timestamp_member)>;
-        // API contract: timestamps are int64_t nanoseconds. If the user's
-        // sample type stores its timestamp as a floating-point member, the
-        // convention is that the value is in seconds; convert to ns at the
-        // boundary so the rest of vnm_plot sees one consistent unit. An
-        // integer-typed member is taken at face value; the user is
-        // responsible for storing nanoseconds in that case.
-        if constexpr (std::is_floating_point_v<timestamp_t>) {
-            return static_cast<std::int64_t>((sample.*timestamp_member) * 1e9);
-        }
-        else {
-            return static_cast<std::int64_t>(sample.*timestamp_member);
-        }
+        return detail::timestamp_member_to_ns<timestamp_t>(sample.*timestamp_member);
     };
     policy.get_value = [value_member](const Sample& sample) {
         return static_cast<float>(sample.*value_member);
     };
     policy.clone_with_timestamp = detail::make_clone_with_timestamp(timestamp_member);
-}
-
-template<typename Sample, typename Timestamp_member, typename Value_member>
-inline Data_access_policy_typed<Sample> make_access_policy(
-    Timestamp_member Sample::* timestamp_member,
-    Value_member Sample::* value_member)
-{
-    Data_access_policy_typed<Sample> policy;
-    assign_standard_accessors(policy, timestamp_member, value_member);
-    policy.layout_key = detail::compute_sample_layout_key(
-        sizeof(Sample),
-        detail::member_offset(timestamp_member),
-        detail::member_offset(value_member),
-        false,
-        0,
-        0);
-    return policy;
 }
 
 template<typename Sample, typename Timestamp_member, typename Value_member,
@@ -209,6 +198,23 @@ inline Data_access_policy_typed<Sample> make_access_policy(
         true,
         detail::member_offset(range_min_member),
         detail::member_offset(range_max_member));
+    return policy;
+}
+
+template<typename Sample, typename Timestamp_member, typename Value_member>
+inline Data_access_policy_typed<Sample> make_access_policy(
+    Timestamp_member Sample::* timestamp_member,
+    Value_member Sample::* value_member)
+{
+    Data_access_policy_typed<Sample> policy;
+    assign_standard_accessors(policy, timestamp_member, value_member);
+    policy.layout_key = detail::compute_sample_layout_key(
+        sizeof(Sample),
+        detail::member_offset(timestamp_member),
+        detail::member_offset(value_member),
+        false,
+        0,
+        0);
     return policy;
 }
 
