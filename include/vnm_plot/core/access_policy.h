@@ -64,7 +64,12 @@ template<typename Timestamp>
 constexpr Timestamp ns_to_timestamp_member(std::int64_t timestamp_ns)
 {
     if constexpr (std::is_floating_point_v<Timestamp>) {
-        return static_cast<Timestamp>(timestamp_ns) * static_cast<Timestamp>(1e-9);
+        // The right-hand `1e-9` is a double, so `cast(ns) * 1e-9` promotes
+        // a float-typed cast through double before the surrounding
+        // static_cast narrows on return. That matches the pre-refactor
+        // expression `static_cast<timestamp_t>(timestamp_ns) * 1e-9;`
+        // byte-for-byte, including for float-typed members.
+        return static_cast<Timestamp>(static_cast<Timestamp>(timestamp_ns) * 1e-9);
     }
     else {
         return static_cast<Timestamp>(timestamp_ns);

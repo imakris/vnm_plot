@@ -82,8 +82,8 @@ series_view_uniform_std140_t make_series_view_uniform(
     uniform.color[2] = draw_color.b;
     uniform.color[3] = draw_color.a;
 
-    uniform.t_min = static_cast<float>(window.t_min_ns - window.t_origin_ns) * 1.0e-9f;
-    uniform.t_max = static_cast<float>(window.t_max_ns - window.t_origin_ns) * 1.0e-9f;
+    uniform.t_min = detail::to_view_seconds(window.t_min_ns, window.t_origin_ns);
+    uniform.t_max = detail::to_view_seconds(window.t_max_ns, window.t_origin_ns);
     uniform.v_min = window.v_min;
     uniform.v_max = window.v_max;
     uniform.width = window.width_px;
@@ -1652,19 +1652,19 @@ bool Series_renderer::rhi_prepare_series_primitive(
     }
 
     auto ensure_ubo = [&](vbo_view_state_t::rhi_buffers_t::srb_entry_t& entry) -> bool {
-        if (!entry.ubo || entry.ubo_capacity_bytes < k_series_ubo_bytes) {
-            entry.ubo.reset(rhi->newBuffer(
-                QRhiBuffer::Dynamic,
-                QRhiBuffer::UniformBuffer,
-                k_series_ubo_bytes));
-            if (entry.ubo && entry.ubo->create()) {
-                entry.ubo_capacity_bytes = k_series_ubo_bytes;
-                entry.srb.reset();
-                entry.last_ubo = nullptr;
-            }
-            else {
-                return false;
-            }
+        const bool already_sized =
+            entry.ubo && entry.ubo_capacity_bytes >= k_series_ubo_bytes;
+        if (!detail::ensure_dynamic_ubo(
+                rhi, entry.ubo, entry.ubo_capacity_bytes, k_series_ubo_bytes))
+        {
+            return false;
+        }
+        if (!already_sized) {
+            // ensure_dynamic_ubo replaced the QRhiBuffer; the SRB still holds
+            // the old handle. Invalidate so the per-view SRB rebuild below
+            // captures the new pointer.
+            entry.srb.reset();
+            entry.last_ubo = nullptr;
         }
         return true;
     };
@@ -1690,7 +1690,7 @@ bool Series_renderer::rhi_prepare_series_primitive(
 
         const auto stage_one_sample = [&](gpu_sample_t& dst, const void* src) {
             const std::int64_t ts_ns = access->get_timestamp(src);
-            dst.t_rel = static_cast<float>(ts_ns - view_result.t_origin_ns) * 1.0e-9f;
+            dst.t_rel = detail::to_view_seconds(ts_ns, view_result.t_origin_ns);
             dst.y = access->get_value ? access->get_value(src) : 0.0f;
             const auto range = access->get_range
                 ? access->get_range(src)
@@ -1829,33 +1829,6 @@ bool Series_renderer::rhi_prepare_series_primitive(
         cached.vert = vert;
         cached.frag = frag;
 
-        // The pipeline only needs an SRB whose LAYOUT matches the real one;
-        // a dummy SRB built from view_state.rhi's buffers is fine because
-        // the actual draws bind a per-view SRB (built below) that shares
-        // that layout. Qt validates layout, not handles, when the pipeline
-        // is created, then re-validates per setShaderResources call.
-        std::unique_ptr<QRhiShaderResourceBindings> layout_srb(
-            rhi->newShaderResourceBindings());
-        QRhiShaderResourceBinding ubo_binding =
-            QRhiShaderResourceBinding::uniformBuffer(
-                0,
-                QRhiShaderResourceBinding::VertexStage
-                    | QRhiShaderResourceBinding::FragmentStage,
-                primary_srb_entry.ubo.get(),
-                0,
-                k_series_ubo_bytes);
-        // RHI series primitives bind only a UBO through the SRB. Sample data
-        // rides vertex attributes instead of SSBOs so the D3D11 backend's
-        // SM 5.0 vertex shader has zero UAVs.
-        layout_srb->setBindings({ubo_binding});
-        layout_srb->create();
-
-        cached.pipeline.reset(rhi->newGraphicsPipeline());
-        cached.pipeline->setShaderStages({
-            { QRhiShaderStage::Vertex,   cached.vert },
-            { QRhiShaderStage::Fragment, cached.frag }
-        });
-
         QRhiVertexInputLayout vlayout;
         if (is_dots) {
             QRhiVertexInputBinding ib0(
@@ -1919,24 +1892,20 @@ bool Series_renderer::rhi_prepare_series_primitive(
                 3, 3, QRhiVertexInputAttribute::Float2, ty_offset);
             vlayout.setAttributes({a_prev, a_p0, a_p1, a_next});
         }
-        cached.pipeline->setVertexInputLayout(vlayout);
-        cached.pipeline->setShaderResourceBindings(layout_srb.get());
-        cached.pipeline->setTopology(QRhiGraphicsPipeline::TriangleStrip);
 
-        QRhiGraphicsPipeline::TargetBlend blend;
-        blend.enable = true;
-        blend.srcColor = QRhiGraphicsPipeline::SrcAlpha;
-        blend.dstColor = QRhiGraphicsPipeline::OneMinusSrcAlpha;
-        blend.srcAlpha = QRhiGraphicsPipeline::One;
-        blend.dstAlpha = QRhiGraphicsPipeline::OneMinusSrcAlpha;
-        cached.pipeline->setTargetBlends({blend});
-
-        cached.pipeline->setFlags(QRhiGraphicsPipeline::UsesScissor);
-        cached.pipeline->setRenderPassDescriptor(current_rpd);
-        cached.pipeline->setSampleCount(current_samples);
-
-        if (!cached.pipeline->create()) {
-            cached.pipeline.reset();
+        // RHI series primitives bind only a UBO through the SRB. Sample data
+        // rides vertex attributes instead of SSBOs so the D3D11 backend's
+        // SM 5.0 vertex shader has zero UAVs.
+        detail::alpha_blended_pipeline_desc_t desc;
+        desc.vert = cached.vert;
+        desc.frag = cached.frag;
+        desc.vlayout = vlayout;
+        desc.ubo_bytes = k_series_ubo_bytes;
+        desc.ubo_stages = QRhiShaderResourceBinding::VertexStage
+                        | QRhiShaderResourceBinding::FragmentStage;
+        desc.flags = QRhiGraphicsPipeline::UsesScissor;
+        cached.pipeline = detail::build_alpha_blended_pipeline(rhi, rt, desc);
+        if (!cached.pipeline) {
             return false;
         }
         cached.last_rpd = current_rpd;
@@ -1955,17 +1924,10 @@ bool Series_renderer::rhi_prepare_series_primitive(
             return;
         }
 
-        entry.srb.reset(rhi->newShaderResourceBindings());
-        QRhiShaderResourceBinding ubo_binding =
-            QRhiShaderResourceBinding::uniformBuffer(
-                0,
-                QRhiShaderResourceBinding::VertexStage
-                    | QRhiShaderResourceBinding::FragmentStage,
-                current_ubo,
-                0,
-                k_series_ubo_bytes);
-        entry.srb->setBindings({ubo_binding});
-        entry.srb->create();
+        detail::rebuild_single_ubo_srb(
+            rhi, entry.srb, current_ubo, k_series_ubo_bytes,
+            QRhiShaderResourceBinding::VertexStage
+                | QRhiShaderResourceBinding::FragmentStage);
         entry.last_ubo = current_ubo;
     };
 
@@ -1990,12 +1952,10 @@ bool Series_renderer::rhi_prepare_series_primitive(
     view_block.color[2] = draw_color.b;
     view_block.color[3] = draw_color.a;
 
-    const float t_min_rel = static_cast<float>(
-        view_result.t_min_ns - view_result.t_origin_ns) * 1.0e-9f;
-    const float t_max_rel = static_cast<float>(
-        view_result.t_max_ns - view_result.t_origin_ns) * 1.0e-9f;
-    view_block.t_min = t_min_rel;
-    view_block.t_max = t_max_rel;
+    view_block.t_min = detail::to_view_seconds(
+        view_result.t_min_ns, view_result.t_origin_ns);
+    view_block.t_max = detail::to_view_seconds(
+        view_result.t_max_ns, view_result.t_origin_ns);
     view_block.v_min = view_result.v_min;
     view_block.v_max = view_result.v_max;
     view_block.y_offset = view_result.y_offset_px;
