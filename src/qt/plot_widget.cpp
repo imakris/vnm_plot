@@ -101,7 +101,7 @@ bool plot_config_equivalent(
     const vnm::plot::Plot_config& rhs)
 {
     // If a field is added to Plot_config, update this comparator and bump field_count.
-    static_assert(vnm::plot::Plot_config::field_count == 22,
+    static_assert(vnm::plot::Plot_config::field_count == 24,
         "Plot_config field_count changed — update plot_config_equivalent to cover new fields");
     return
         lhs.dark_mode == rhs.dark_mode &&
@@ -110,6 +110,8 @@ bool plot_config_equivalent(
         lhs.preview_visibility == rhs.preview_visibility &&
         function_targets_equivalent(lhs.format_timestamp, rhs.format_timestamp) &&
         lhs.format_timestamp_revision == rhs.format_timestamp_revision &&
+        function_targets_equivalent(lhs.format_value, rhs.format_value) &&
+        lhs.format_value_revision == rhs.format_value_revision &&
         lhs.profiler.get() == rhs.profiler.get() &&
         lhs.font_size_px == rhs.font_size_px &&
         lhs.base_label_height_px == rhs.base_label_height_px &&
@@ -1195,6 +1197,8 @@ QVariantList Plot_widget::get_indicator_samples(
         x = tmin + (mouse_px / plot_width) * t_span;
     }
 
+    const auto plot_cfg = config();
+    const auto value_formatter = plot_cfg.format_value;
     auto series_map = get_series_snapshot();
 
     for (const auto& [id, series] : series_map) {
@@ -1316,6 +1320,13 @@ QVariantList Plot_widget::get_indicator_samples(
         // see the Plot_widget class-level comment for the convention.
         entry["x"] = x / k_ns_per_ms;
         entry["y"] = y;
+        if (value_formatter) {
+            value_format_context_t context;
+            context.role = Value_format_role::INDICATOR;
+            context.suggested_fixed_digits = 3;
+            context.series_label = series->series_label;
+            entry["y_text"] = QString::fromStdString(value_formatter(y, context));
+        }
         entry["px"] = px;
         entry["py"] = py;
         entry["color"] = color;

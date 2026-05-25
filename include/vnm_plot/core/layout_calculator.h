@@ -4,6 +4,7 @@
 // This is pure computational logic with no renderer-backend dependencies.
 
 #include "types.h"
+#include "plot_config.h"
 
 #include <cstdint>
 #include <functional>
@@ -50,6 +51,10 @@ public:
         std::function<int(double)>                                get_required_fixed_digits_func;
         // Both arguments are int64 nanoseconds (API convention).
         std::function<std::string(std::int64_t, std::int64_t)>    format_timestamp_func;
+        std::uint64_t                                             format_timestamp_revision = 0;
+        std::function<std::string(double, const value_format_context_t&)>
+                                                                 format_value_func;
+        std::uint64_t                                             format_value_revision = 0;
         std::function<float(const char*)>                         measure_text_func;
 
         // Optional profiler (from Plot_config)

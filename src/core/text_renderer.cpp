@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <string>
 #include <unordered_set>
 
 namespace vnm::plot {
@@ -318,14 +319,28 @@ bool Text_renderer::render_info_overlay(const frame_context_t& ctx, bool fade_la
                   - static_cast<float>(ctx.adjusted_font_px * 4 * k_line_spacing)
                   + overlay_baseline;
 
+        const auto format_info_value = [&](double value) {
+            if (ctx.config && ctx.config->format_value) {
+                value_format_context_t context;
+                context.role = Value_format_role::INFO_OVERLAY;
+                context.suggested_fixed_digits = k_value_decimals;
+                const std::string text = ctx.config->format_value(value, context);
+                if (!text.empty()) {
+                    return text;
+                }
+            }
+            std::snprintf(buf, sizeof(buf), "%.*f", k_value_decimals, value);
+            return std::string(buf);
+        };
+
         // High
-        std::snprintf(buf, sizeof(buf), "High: %.*f", k_value_decimals, ctx.v1);
-        m_fonts->batch_text(k_overlay_left_px, llt, buf);
+        const std::string high_text = "High: " + format_info_value(ctx.v1);
+        m_fonts->batch_text(k_overlay_left_px, llt, high_text.c_str());
 
         // Low
         llt += static_cast<float>(ctx.adjusted_font_px * k_line_spacing);
-        std::snprintf(buf, sizeof(buf), "Low:  %.*f", k_value_decimals, ctx.v0);
-        m_fonts->batch_text(k_overlay_left_px, llt, buf);
+        const std::string low_text = "Low:  " + format_info_value(ctx.v0);
+        m_fonts->batch_text(k_overlay_left_px, llt, low_text.c_str());
 
         // From timestamp
         llt += static_cast<float>(ctx.adjusted_font_px * k_line_spacing);
@@ -336,15 +351,24 @@ bool Text_renderer::render_info_overlay(const frame_context_t& ctx, bool fade_la
         const bool timestamp_style_changed = (pl.h_labels_subsecond != m_last_subsecond);
         const bool timestamp_values_changed =
             (ctx.t0 != m_last_t0) || (ctx.t1 != m_last_t1);
+        const std::uint64_t timestamp_revision = ctx.config
+            ? ctx.config->format_timestamp_revision
+            : 0;
+        const bool timestamp_formatter_changed =
+            timestamp_revision != m_last_timestamp_revision;
 
-        if (timestamp_style_changed || timestamp_values_changed || m_cached_from_ts.empty() || m_cached_to_ts.empty()) {
+        if (timestamp_style_changed || timestamp_values_changed
+            || timestamp_formatter_changed || m_cached_from_ts.empty()
+            || m_cached_to_ts.empty())
+        {
             const auto format_ts = (ctx.config && ctx.config->format_timestamp)
                 ? ctx.config->format_timestamp
                 : default_format_timestamp;
-            m_cached_from_ts = format_ts(ctx.t0, t_span_ns);
-            m_cached_to_ts = format_ts(ctx.t1, t_span_ns);
+            m_cached_from_ts = format_ts(ctx.t0, 0);
+            m_cached_to_ts = format_ts(ctx.t1, 0);
             m_last_t0 = ctx.t0;
             m_last_t1 = ctx.t1;
+            m_last_timestamp_revision = timestamp_revision;
             m_last_subsecond = pl.h_labels_subsecond;
         }
         m_fonts->batch_text(k_overlay_left_px + offset_from, llt, m_cached_from_ts.c_str());

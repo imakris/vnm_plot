@@ -537,6 +537,9 @@ struct layout_cache_key_t
     double    adjusted_font_size_in_pixels = 0.0;
     double    vbar_width_pixels            = 0.0;
     uint64_t  font_metrics_key             = 0;
+    uint64_t  config_revision              = 0;
+    uint64_t  format_timestamp_revision    = 0;
+    uint64_t  format_value_revision        = 0;
 
     [[nodiscard]] bool operator==(const layout_cache_key_t& other) const noexcept
     {
@@ -549,7 +552,10 @@ struct layout_cache_key_t
                adjusted_preview_height == other.adjusted_preview_height &&
                adjusted_font_size_in_pixels == other.adjusted_font_size_in_pixels &&
                vbar_width_pixels == other.vbar_width_pixels &&
-               font_metrics_key == other.font_metrics_key;
+               font_metrics_key == other.font_metrics_key &&
+               config_revision == other.config_revision &&
+               format_timestamp_revision == other.format_timestamp_revision &&
+               format_value_revision == other.format_value_revision;
     }
 
 };

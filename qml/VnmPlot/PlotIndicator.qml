@@ -118,6 +118,16 @@ Item {
         return root.label_prefix(label, "y") + value_text
     }
 
+    function formatted_y_value(sample, fallback_decimals) {
+        if (sample && sample.y_text !== undefined && sample.y_text !== null) {
+            var text = ("" + sample.y_text).trim()
+            if (text.length > 0) {
+                return text
+            }
+        }
+        return sample.y.toFixed(fallback_decimals)
+    }
+
     function refresh_indicator() {
         var in_main_plot = internal.has_mouse_in_plot
             && internal.in_main_plot_at_move
@@ -254,7 +264,7 @@ Item {
 
                 for (var i = 0; i < samples.length; ++i) {
                     var s = samples[i]
-                    var vtxt = s.y.toFixed(dry)
+                    var vtxt = root.formatted_y_value(s, dry)
                     var value_label = root.labeled_series_value(s.series_label, vtxt)
                     var w = ctx.measureText(value_label).width
                     if (w > max_value_width) max_value_width = w
@@ -353,7 +363,7 @@ Item {
                     y_sel = Math.max(0, Math.min(y_sel, height - 1))
 
                     var x_txt_sel = root.format_timestamp(ts_sel, tspan)
-                    var y_txt_sel = v_sel.toFixed(dry)
+                    var y_txt_sel = root.formatted_y_value(root.selected_sample, dry)
                     var y_labeled_sel = root.labeled_series_value(root.selected_sample.series_label, y_txt_sel)
 
                     var txt_sel = ""

@@ -323,6 +323,14 @@ Layout_calculator::parameters_t build_layout_params(
         }
         return default_format_timestamp(ts_ns, step_ns);
     };
+    params.format_timestamp_revision = config.format_timestamp_revision;
+    params.format_value_func = [config_ptr](double value, const value_format_context_t& context) -> std::string {
+        if (config_ptr->format_value) {
+            return config_ptr->format_value(value, context);
+        }
+        return {};
+    };
+    params.format_value_revision = config.format_value_revision;
     params.profiler = config.profiler.get();
     return params;
 }
@@ -345,6 +353,7 @@ struct Plot_renderer::impl_t
         double         base_label_height_px = 14.0;
         double         adjusted_preview_height = 0.0;
         double         vbar_width_pixels = 0.0;
+        std::uint64_t  config_revision = 0;
     };
 
     const Plot_widget* owner = nullptr;
@@ -413,6 +422,7 @@ void Plot_renderer::synchronize(QQuickRhiItem* item)
     m_impl->snapshot.base_label_height_px = widget->m_base_label_height;
     m_impl->snapshot.adjusted_preview_height = widget->m_adjusted_preview_height;
     m_impl->snapshot.vbar_width_pixels = widget->vbar_width_pixels();
+    m_impl->snapshot.config_revision = widget->m_config_revision.load(std::memory_order_acquire);
 }
 
 void Plot_renderer::render(QRhiCommandBuffer* cb)
@@ -522,6 +532,9 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
         key.adjusted_font_size_in_pixels = snapshot.adjusted_font_px;
         key.vbar_width_pixels = width_px;
         key.font_metrics_key = layout_fonts ? layout_fonts->text_measure_cache_key() : 0;
+        key.config_revision = snapshot.config_revision;
+        key.format_timestamp_revision = config.format_timestamp_revision;
+        key.format_value_revision = config.format_value_revision;
         return key;
     };
 

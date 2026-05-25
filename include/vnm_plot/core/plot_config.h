@@ -10,10 +10,25 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <string_view>
 
 namespace vnm::plot {
 
 class Asset_loader;
+
+enum class Value_format_role
+{
+    AXIS_LABEL,
+    INDICATOR,
+    INFO_OVERLAY,
+};
+
+struct value_format_context_t
+{
+    Value_format_role role = Value_format_role::AXIS_LABEL;
+    int suggested_fixed_digits = 0;
+    std::string_view series_label;
+};
 
 // -----------------------------------------------------------------------------
 // Auto V-Range Mode
@@ -103,6 +118,11 @@ struct Plot_config
     // effective output of format_timestamp changes without replacing the
     // callback identity (e.g. captured/stateful data updates).
     std::uint64_t format_timestamp_revision = 0;
+    // Generic value formatter for Y-axis labels, indicator values, and info
+    // overlay values. Applications own units, locale, and domain-specific
+    // precision. If null, vnm_plot uses its neutral numeric defaults.
+    std::function<std::string(double value, const value_format_context_t& context)> format_value;
+    std::uint64_t format_value_revision = 0;
 
     // --- Profiling (optional) ---
     // If provided, profiling scopes will be recorded.
@@ -155,7 +175,7 @@ struct Plot_config
 
     // Maintenance aid: bump when adding a field so that comparators (e.g.
     // plot_config_equivalent) fail to compile until they are updated.
-    static constexpr int field_count = 22;
+    static constexpr int field_count = 24;
 };
 
 // -----------------------------------------------------------------------------

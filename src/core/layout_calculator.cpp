@@ -252,13 +252,15 @@ private:
         uint32_t  coverage_bucket     = 0;
         uintptr_t formatter_identity  = 0;
         size_t    formatter_type_hash = 0;
+        uint64_t  formatter_revision  = 0;
 
         friend bool operator==(const Key& lhs, const Key& rhs) noexcept
         {
             return lhs.step_bits == rhs.step_bits &&
                    lhs.coverage_bucket == rhs.coverage_bucket &&
                    lhs.formatter_identity == rhs.formatter_identity &&
-                   lhs.formatter_type_hash == rhs.formatter_type_hash;
+                   lhs.formatter_type_hash == rhs.formatter_type_hash &&
+                   lhs.formatter_revision == rhs.formatter_revision;
         }
     };
 
@@ -274,6 +276,7 @@ private:
             seed = combine(seed, std::hash<uint32_t>{}(key.coverage_bucket));
             seed = combine(seed, std::hash<uintptr_t>{}(key.formatter_identity));
             seed = combine(seed, std::hash<size_t>{}(key.formatter_type_hash));
+            seed = combine(seed, std::hash<uint64_t>{}(key.formatter_revision));
             return seed;
         }
     };
@@ -312,6 +315,7 @@ private:
         // Use the function pointer address as identity
         key.formatter_identity = reinterpret_cast<uintptr_t>(
             params.format_timestamp_func.target_type().name());
+        key.formatter_revision = params.format_timestamp_revision;
 
         return key;
     }
@@ -661,7 +665,16 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
                 profiler,
                 "renderer.frame.calculate_layout.impl.cache_miss.pass1.vertical_axis.measure_text");
             for (auto& e : res.v_labels) {
-                std::string text = format_axis_fixed_or_int(e.value, res.v_label_fixed_digits);
+                value_format_context_t context;
+                context.role = Value_format_role::AXIS_LABEL;
+                context.suggested_fixed_digits = res.v_label_fixed_digits;
+
+                std::string text = params.format_value_func
+                    ? params.format_value_func(e.value, context)
+                    : std::string{};
+                if (text.empty()) {
+                    text = format_axis_fixed_or_int(e.value, res.v_label_fixed_digits);
+                }
                 if (text.empty() || text[0] != '-') {
                     text.insert(text.begin(), ' ');
                 }
