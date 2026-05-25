@@ -310,13 +310,19 @@ bool Text_renderer::render_info_overlay(const frame_context_t& ctx, bool fade_la
         m_horizontal_fade.initialized = true;
     }
 
-    if (ctx.show_info) {
+    const bool show_value_range =
+        (ctx.visible_info_flags & k_visible_info_value_range) != 0;
+    const bool show_time_range =
+        (ctx.visible_info_flags & k_visible_info_time_range) != 0;
+    const int overlay_line_count = (show_value_range ? 2 : 0) + (show_time_range ? 2 : 0);
+
+    if (overlay_line_count > 0) {
         const float overlay_baseline = m_fonts->compute_numeric_bottom();
         char buf[64];
 
         const double rh = ctx.adjusted_reserved_height;
         float llt = static_cast<float>(ctx.win_h) - static_cast<float>(rh)
-                  - static_cast<float>(ctx.adjusted_font_px * 4 * k_line_spacing)
+                  - static_cast<float>(ctx.adjusted_font_px * overlay_line_count * k_line_spacing)
                   + overlay_baseline;
 
         const auto format_info_value = [&](double value) {
@@ -333,55 +339,56 @@ bool Text_renderer::render_info_overlay(const frame_context_t& ctx, bool fade_la
             return std::string(buf);
         };
 
-        // High
-        const std::string high_text = "High: " + format_info_value(ctx.v1);
-        m_fonts->batch_text(k_overlay_left_px, llt, high_text.c_str());
+        if (show_value_range) {
+            const std::string high_text = "High: " + format_info_value(ctx.v1);
+            m_fonts->batch_text(k_overlay_left_px, llt, high_text.c_str());
 
-        // Low
-        llt += static_cast<float>(ctx.adjusted_font_px * k_line_spacing);
-        const std::string low_text = "Low:  " + format_info_value(ctx.v0);
-        m_fonts->batch_text(k_overlay_left_px, llt, low_text.c_str());
+            llt += static_cast<float>(ctx.adjusted_font_px * k_line_spacing);
+            const std::string low_text = "Low:  " + format_info_value(ctx.v0);
+            m_fonts->batch_text(k_overlay_left_px, llt, low_text.c_str());
 
-        // From timestamp
-        llt += static_cast<float>(ctx.adjusted_font_px * k_line_spacing);
-        const char* prefix_from = "From: ";
-        m_fonts->batch_text(k_overlay_left_px, llt, prefix_from);
-        const float offset_from = m_fonts->measure_text_px(prefix_from);
-
-        const bool timestamp_style_changed = (pl.h_labels_subsecond != m_last_subsecond);
-        const bool timestamp_values_changed =
-            (ctx.t0 != m_last_t0) || (ctx.t1 != m_last_t1);
-        const std::uint64_t timestamp_revision = ctx.config
-            ? ctx.config->format_timestamp_revision
-            : 0;
-        const bool timestamp_formatter_changed =
-            timestamp_revision != m_last_timestamp_revision;
-
-        if (timestamp_style_changed || timestamp_values_changed
-            || timestamp_formatter_changed || m_cached_from_ts.empty()
-            || m_cached_to_ts.empty())
-        {
-            const auto format_ts = (ctx.config && ctx.config->format_timestamp)
-                ? ctx.config->format_timestamp
-                : default_format_timestamp;
-            m_cached_from_ts = format_ts(ctx.t0, 0);
-            m_cached_to_ts = format_ts(ctx.t1, 0);
-            m_last_t0 = ctx.t0;
-            m_last_t1 = ctx.t1;
-            m_last_timestamp_revision = timestamp_revision;
-            m_last_subsecond = pl.h_labels_subsecond;
+            llt += static_cast<float>(ctx.adjusted_font_px * k_line_spacing);
         }
-        m_fonts->batch_text(k_overlay_left_px + offset_from, llt, m_cached_from_ts.c_str());
 
-        // To timestamp
-        llt += static_cast<float>(ctx.adjusted_font_px * k_line_spacing);
-        const char* prefix_to = "To:   ";
-        m_fonts->batch_text(k_overlay_left_px, llt, prefix_to);
-        const float offset_to = m_fonts->measure_text_px(prefix_to);
-        m_fonts->batch_text(k_overlay_left_px + offset_to, llt, m_cached_to_ts.c_str());
+        if (show_time_range) {
+            const char* prefix_from = "From: ";
+            m_fonts->batch_text(k_overlay_left_px, llt, prefix_from);
+            const float offset_from = m_fonts->measure_text_px(prefix_from);
+
+            const bool timestamp_style_changed = (pl.h_labels_subsecond != m_last_subsecond);
+            const bool timestamp_values_changed =
+                (ctx.t0 != m_last_t0) || (ctx.t1 != m_last_t1);
+            const std::uint64_t timestamp_revision = ctx.config
+                ? ctx.config->format_timestamp_revision
+                : 0;
+            const bool timestamp_formatter_changed =
+                timestamp_revision != m_last_timestamp_revision;
+
+            if (timestamp_style_changed || timestamp_values_changed
+                || timestamp_formatter_changed || m_cached_from_ts.empty()
+                || m_cached_to_ts.empty())
+            {
+                const auto format_ts = (ctx.config && ctx.config->format_timestamp)
+                    ? ctx.config->format_timestamp
+                    : default_format_timestamp;
+                m_cached_from_ts = format_ts(ctx.t0, 0);
+                m_cached_to_ts = format_ts(ctx.t1, 0);
+                m_last_t0 = ctx.t0;
+                m_last_t1 = ctx.t1;
+                m_last_timestamp_revision = timestamp_revision;
+                m_last_subsecond = pl.h_labels_subsecond;
+            }
+            m_fonts->batch_text(k_overlay_left_px + offset_from, llt, m_cached_from_ts.c_str());
+
+            llt += static_cast<float>(ctx.adjusted_font_px * k_line_spacing);
+            const char* prefix_to = "To:   ";
+            m_fonts->batch_text(k_overlay_left_px, llt, prefix_to);
+            const float offset_to = m_fonts->measure_text_px(prefix_to);
+            m_fonts->batch_text(k_overlay_left_px + offset_to, llt, m_cached_to_ts.c_str());
+        }
     }
 
-    if (!fade_labels || ctx.show_info) {
+    if (!fade_labels || overlay_line_count > 0) {
         if (ctx.rhi) {
             m_fonts->rhi_queue_draw(ctx, ctx.pmv, font_color);
         }

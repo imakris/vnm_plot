@@ -172,10 +172,12 @@ struct Plot_config
     Auto_v_range_mode auto_v_range_mode = Auto_v_range_mode::GLOBAL;
     // Extra scale applied to auto v-range (0 = no padding).
     double auto_v_range_extra_scale = 0.0;
+    // When true, padding cannot pull a nonnegative auto-computed range below zero.
+    bool floor_nonnegative_auto_v_range_at_zero = false;
 
     // Maintenance aid: bump when adding a field so that comparators (e.g.
     // plot_config_equivalent) fail to compile until they are updated.
-    static constexpr int field_count = 24;
+    static constexpr int field_count = 25;
 };
 
 // -----------------------------------------------------------------------------

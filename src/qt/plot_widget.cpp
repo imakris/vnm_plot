@@ -101,7 +101,7 @@ bool plot_config_equivalent(
     const vnm::plot::Plot_config& rhs)
 {
     // If a field is added to Plot_config, update this comparator and bump field_count.
-    static_assert(vnm::plot::Plot_config::field_count == 24,
+    static_assert(vnm::plot::Plot_config::field_count == 25,
         "Plot_config field_count changed — update plot_config_equivalent to cover new fields");
     return
         lhs.dark_mode == rhs.dark_mode &&
@@ -123,10 +123,12 @@ bool plot_config_equivalent(
         lhs.clear_to_transparent == rhs.clear_to_transparent &&
         lhs.snap_lines_to_pixels == rhs.snap_lines_to_pixels &&
         lhs.line_width_px == rhs.line_width_px &&
+        lhs.point_diameter_px == rhs.point_diameter_px &&
         lhs.area_fill_alpha == rhs.area_fill_alpha &&
         lhs.allow_renderer_self_scheduling == rhs.allow_renderer_self_scheduling &&
         lhs.auto_v_range_mode == rhs.auto_v_range_mode &&
-        lhs.auto_v_range_extra_scale == rhs.auto_v_range_extra_scale;
+        lhs.auto_v_range_extra_scale == rhs.auto_v_range_extra_scale &&
+        lhs.floor_nonnegative_auto_v_range_at_zero == rhs.floor_nonnegative_auto_v_range_at_zero;
 }
 
 } // anonymous namespace
@@ -828,10 +830,11 @@ double Plot_widget::update_dpi_scaling_factor()
     return scaling;
 }
 
-void Plot_widget::set_info_visible(bool v)
+void Plot_widget::set_visible_info(int flags)
 {
-    const bool prev = m_show_info.exchange(v, std::memory_order_acq_rel);
-    if (prev != v) {
+    const int visible_flags = flags & k_visible_info_all;
+    const int prev = m_visible_info_flags.exchange(visible_flags, std::memory_order_acq_rel);
+    if (prev != visible_flags) {
         update();
     }
 }

@@ -156,7 +156,7 @@ Benchmark_rhi_window::Benchmark_rhi_window(const Benchmark_config& config)
     m_plot->set_line_width_px(m_config.line_width_px);
     m_plot->set_preview_height(k_adjusted_preview_height);
     m_plot->set_vbar_width(k_vbar_width_pixels);
-    m_plot->set_info_visible(false);
+    m_plot->set_visible_info(vnm::plot::k_visible_info_none);
     m_plot->set_v_auto(false);
 
     connect(this, &QQuickWindow::widthChanged, this, [this](int w) {
@@ -735,7 +735,7 @@ bool Benchmark_rhi_offscreen_runner::render_frame(std::string& error_message)
     frame_ctx.base_label_height_px = k_base_label_height_px;
     frame_ctx.adjusted_reserved_height = adjusted_reserved_height;
     frame_ctx.adjusted_preview_height = k_adjusted_preview_height;
-    frame_ctx.show_info = false;
+    frame_ctx.visible_info_flags = vnm::plot::k_visible_info_none;
     frame_ctx.dark_mode = true;
     frame_ctx.config = &m_render_config;
     frame_ctx.rhi = m_rhi.get();

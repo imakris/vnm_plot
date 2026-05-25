@@ -332,6 +332,11 @@ inline bool operator!(Display_style s)
     return static_cast<int>(s) == 0;
 }
 
+constexpr int k_visible_info_none        = 0x0;
+constexpr int k_visible_info_value_range = 0x1;
+constexpr int k_visible_info_time_range  = 0x2;
+constexpr int k_visible_info_all         = k_visible_info_value_range | k_visible_info_time_range;
+
 enum class Empty_window_behavior
 {
     DRAW_NOTHING,
@@ -616,7 +621,7 @@ struct frame_context_t
     double adjusted_reserved_height = 0.0;
     double adjusted_preview_height  = 0.0;
 
-    bool show_info = false;
+    int visible_info_flags = k_visible_info_none;
     bool dark_mode = false;
 
     const Plot_config* config = nullptr;

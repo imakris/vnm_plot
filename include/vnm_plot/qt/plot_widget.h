@@ -217,7 +217,7 @@ public:
     Q_INVOKABLE void auto_adjust_view(bool adjust_t, double extra_v_scale, bool anchor_zero);
     Q_INVOKABLE virtual bool can_zoom_in() const;
     Q_INVOKABLE double update_dpi_scaling_factor();
-    Q_INVOKABLE void set_info_visible(bool v);
+    Q_INVOKABLE void set_visible_info(int flags);
     Q_INVOKABLE void set_relative_preview_height(float relative);
     Q_INVOKABLE void set_preview_height_min(double v);
     Q_INVOKABLE void set_preview_height_max(double v);
@@ -281,7 +281,7 @@ private:
     // UI state
     std::atomic<bool> m_visible{false};
     std::atomic<bool> m_v_auto{true};
-    std::atomic<bool> m_show_info{true};
+    std::atomic<int> m_visible_info_flags{k_visible_info_all};
     std::atomic<bool> m_view_state_reset_requested{false};
     mutable std::atomic<float> m_rendered_v_min{0.0f};
     mutable std::atomic<float> m_rendered_v_max{1.0f};

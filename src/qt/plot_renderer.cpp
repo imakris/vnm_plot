@@ -102,6 +102,33 @@ bool scan_series_range(
     return have_any;
 }
 
+void apply_auto_v_range_padding(
+    const Plot_config& config,
+    bool data_range_nonnegative,
+    float& v_min,
+    float& v_max)
+{
+    if (v_max == v_min) {
+        const float pad = std::max(std::abs(v_min) * 0.01f, 0.5f);
+        v_min -= pad;
+        v_max += pad;
+    }
+
+    if (config.auto_v_range_extra_scale > 0.0) {
+        const double span = double(v_max) - double(v_min);
+        if (span > 0.0) {
+            const double center = 0.5 * (double(v_min) + double(v_max));
+            const double padded_span = span * (1.0 + config.auto_v_range_extra_scale);
+            v_min = static_cast<float>(center - padded_span * 0.5);
+            v_max = static_cast<float>(center + padded_span * 0.5);
+        }
+    }
+
+    if (config.floor_nonnegative_auto_v_range_at_zero && data_range_nonnegative && v_min < 0.0f) {
+        v_min = 0.0f;
+    }
+}
+
 std::pair<float, float> resolve_v_range(
     const std::map<int, std::shared_ptr<const series_data_t>>& series,
     const data_config_t& data_cfg,
@@ -175,22 +202,8 @@ std::pair<float, float> resolve_v_range(
         return {data_cfg.v_min, data_cfg.v_max};
     }
 
-    if (v_max == v_min) {
-        const float pad = std::max(std::abs(v_min) * 0.01f, 0.5f);
-        v_min -= pad;
-        v_max += pad;
-    }
-
-    if (config.auto_v_range_extra_scale > 0.0) {
-        const double span = double(v_max) - double(v_min);
-        if (span > 0.0) {
-            const double center = 0.5 * (double(v_min) + double(v_max));
-            const double padded_span = span * (1.0 + config.auto_v_range_extra_scale);
-            v_min = static_cast<float>(center - padded_span * 0.5);
-            v_max = static_cast<float>(center + padded_span * 0.5);
-        }
-    }
-
+    const bool data_range_nonnegative = v_min >= 0.0f;
+    apply_auto_v_range_padding(config, data_range_nonnegative, v_min, v_max);
     return {v_min, v_max};
 }
 
@@ -262,22 +275,8 @@ std::pair<float, float> resolve_preview_v_range(
         return {data_cfg.v_min, data_cfg.v_max};
     }
 
-    if (v_max == v_min) {
-        const float pad = std::max(std::abs(v_min) * 0.01f, 0.5f);
-        v_min -= pad;
-        v_max += pad;
-    }
-
-    if (config.auto_v_range_extra_scale > 0.0) {
-        const double span = double(v_max) - double(v_min);
-        if (span > 0.0) {
-            const double center = 0.5 * (double(v_min) + double(v_max));
-            const double padded_span = span * (1.0 + config.auto_v_range_extra_scale);
-            v_min = static_cast<float>(center - padded_span * 0.5);
-            v_max = static_cast<float>(center + padded_span * 0.5);
-        }
-    }
-
+    const bool data_range_nonnegative = v_min >= 0.0f;
+    apply_auto_v_range_padding(config, data_range_nonnegative, v_min, v_max);
     return {v_min, v_max};
 }
 
@@ -348,7 +347,7 @@ struct Plot_renderer::impl_t
         data_config_t  data_cfg;
         std::map<int, std::shared_ptr<const series_data_t>> series;
         bool           v_auto = true;
-        bool           show_info = false;
+        int            visible_info_flags = k_visible_info_none;
         double         adjusted_font_px = 10.0;
         double         base_label_height_px = 14.0;
         double         adjusted_preview_height = 0.0;
@@ -417,7 +416,8 @@ void Plot_renderer::synchronize(QQuickRhiItem* item)
         m_impl->snapshot.series = widget->m_series;
     }
     m_impl->snapshot.v_auto = widget->m_v_auto.load(std::memory_order_acquire);
-    m_impl->snapshot.show_info = widget->m_show_info.load(std::memory_order_acquire);
+    m_impl->snapshot.visible_info_flags =
+        widget->m_visible_info_flags.load(std::memory_order_acquire);
     m_impl->snapshot.adjusted_font_px = widget->m_adjusted_font_size;
     m_impl->snapshot.base_label_height_px = widget->m_base_label_height;
     m_impl->snapshot.adjusted_preview_height = widget->m_adjusted_preview_height;
@@ -641,7 +641,7 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
     ctx.base_label_height_px = snapshot.base_label_height_px;
     ctx.adjusted_reserved_height = reserved_h;
     ctx.adjusted_preview_height = snapshot.adjusted_preview_height;
-    ctx.show_info = snapshot.show_info;
+    ctx.visible_info_flags = snapshot.visible_info_flags;
     ctx.dark_mode = config.dark_mode;
     ctx.config = &config;
     ctx.rhi = rhi_ptr;
