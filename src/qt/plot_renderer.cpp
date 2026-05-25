@@ -591,6 +591,9 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
 
     vbar_width = layout_ptr->v_bar_width;
     m_impl->last_vbar_width_pixels = vbar_width;
+    if (m_impl->owner) {
+        m_impl->owner->publish_measured_vbar_width(vbar_width);
+    }
 
     frame_context_t ctx{*layout_ptr};
     ctx.v0 = v_min;

@@ -772,6 +772,27 @@ void Plot_widget::apply_vbar_width_target(double target)
     }
 }
 
+void Plot_widget::publish_measured_vbar_width(double px) const
+{
+    if (!std::isfinite(px) || px <= 0.0) {
+        return;
+    }
+
+    const double current = m_vbar_width_px.load(std::memory_order_acquire);
+    if (std::isfinite(current) &&
+        std::abs(px - current) <= k_vbar_width_change_threshold_d)
+    {
+        return;
+    }
+
+    QMetaObject::invokeMethod(
+        const_cast<Plot_widget*>(this),
+        [this, px] {
+            const_cast<Plot_widget*>(this)->apply_vbar_width_target(px);
+        },
+        Qt::QueuedConnection);
+}
+
 double Plot_widget::update_dpi_scaling_factor()
 {
     // Get the native window handle for accurate DPI on multi-monitor setups

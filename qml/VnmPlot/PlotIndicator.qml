@@ -62,6 +62,8 @@ Item {
         target: plot_widget
         function onV_limits_changed() { refresh_indicator() }
         function onT_limits_changed() { refresh_indicator() }
+        function onVbar_width_changed() { refresh_indicator() }
+        function onPreview_height_changed() { refresh_indicator() }
     }
 
     Connections {

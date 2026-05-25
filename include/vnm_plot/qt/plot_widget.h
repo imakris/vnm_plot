@@ -341,6 +341,7 @@ private:
     void sync_time_axis_state();
     void clear_time_axis();
     void apply_vbar_width_target(double px);
+    void publish_measured_vbar_width(double px) const;
 
     QPointer<Plot_time_axis> m_time_axis;
     QMetaObject::Connection m_time_axis_connection;
