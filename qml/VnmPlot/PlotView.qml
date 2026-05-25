@@ -14,6 +14,60 @@ Item {
     property string indicator_y_label: "y"
 
     signal main_plot_clicked(real timestamp_ms)
+    signal main_plot_sample_hovered(real timestamp_ms)
+    signal main_plot_sample_exited()
+
+    function nearest_sample_timestamp_at(x, y) {
+        const usableWidth = plot.width - plot.vbar_width_qml
+        const usableHeight = plot.height - plot.reserved_height
+        if (usableWidth <= 0 || usableHeight <= 0) {
+            return null
+        }
+        if (x < 0 || x > usableWidth || y < 0 || y >= usableHeight) {
+            return null
+        }
+
+        const nearestSamples = plot.get_nearest_samples(0, usableWidth, usableHeight, x)
+        if (nearestSamples.length <= 0) {
+            return null
+        }
+
+        const timestampMs = nearestSamples[0].x
+        if (timestampMs === undefined || timestampMs === null || !isFinite(timestampMs)) {
+            return null
+        }
+
+        return timestampMs
+    }
+
+    function update_hover_sample(x, y) {
+        const timestampMs = nearest_sample_timestamp_at(x, y)
+        if (timestampMs === null) {
+            clear_hover_sample()
+            return
+        }
+
+        if (!internal.has_hover_sample || internal.hover_timestamp_ms !== timestampMs) {
+            internal.has_hover_sample = true
+            internal.hover_timestamp_ms = timestampMs
+            root.main_plot_sample_hovered(timestampMs)
+        }
+    }
+
+    function clear_hover_sample() {
+        if (!internal.has_hover_sample) {
+            return
+        }
+        internal.has_hover_sample = false
+        internal.hover_timestamp_ms = 0
+        root.main_plot_sample_exited()
+    }
+
+    QtObject {
+        id: internal
+        property bool has_hover_sample: false
+        property real hover_timestamp_ms: 0
+    }
 
     PlotWidget {
         id: plot
@@ -36,22 +90,17 @@ Item {
         plot_widget: plot
         interaction_enabled: root.interaction_enabled
 
-        onMouse_position_changed: (x, y) => indicator.update_mouse_position(x, y)
-        onMouse_exited: indicator.set_mouse_in_plot(false)
+        onMouse_position_changed: (x, y) => {
+            indicator.update_mouse_position(x, y)
+            root.update_hover_sample(x, y)
+        }
+        onMouse_exited: {
+            indicator.set_mouse_in_plot(false)
+            root.clear_hover_sample()
+        }
         onMouse_clicked: (x, y) => {
-            const usableWidth = plot.width - plot.vbar_width_qml
-            const usableHeight = plot.height - plot.reserved_height
-            if (usableWidth <= 0 || usableHeight <= 0) {
-                return
-            }
-
-            const nearestSamples = plot.get_nearest_samples(0, usableWidth, usableHeight, x)
-            if (nearestSamples.length <= 0) {
-                return
-            }
-
-            const timestampMs = nearestSamples[0].x
-            if (timestampMs === undefined || timestampMs === null || !isFinite(timestampMs)) {
+            const timestampMs = root.nearest_sample_timestamp_at(x, y)
+            if (timestampMs === null) {
                 return
             }
 
