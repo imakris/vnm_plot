@@ -52,6 +52,7 @@ signals:
     void interaction_enabled_changed();
     void mouse_position_changed(qreal x, qreal y);
     void mouse_exited();
+    void mouse_clicked(qreal x, qreal y);
 
 protected:
     void mousePressEvent(QMouseEvent* event) override;
@@ -80,6 +81,9 @@ private:
 
     bool m_dragging = false;
     bool m_dragging_preview = false;
+    bool m_click_candidate = false;
+    qreal m_press_x = 0;
+    qreal m_press_y = 0;
     qreal m_drag_start_x = 0;
     qreal m_drag_last_y = 0;
     qreal m_drag_preview_start = 0;
@@ -95,6 +99,7 @@ private:
     static constexpr qreal k_zoom_impulse_per_step = 1.0;
     static constexpr qreal k_zoom_max_vel = 5.0;
     static constexpr qreal k_zoom_per_notch = 1.05;
+    static constexpr qreal k_click_move_tolerance_px = 4.0;
     static constexpr int k_zoom_timer_interval_ms = 16;
 };
 

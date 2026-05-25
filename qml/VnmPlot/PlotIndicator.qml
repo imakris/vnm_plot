@@ -39,6 +39,10 @@ Item {
             internal.mouse_x = -1
             internal.mouse_y = -1
             internal.in_main_plot_at_move = false
+            internal.indicator_samples = []
+            internal.indicator_active = false
+            internal.last_samples = []
+            internal.last_samples_time_ms = 0.0
         }
         if (was_in_plot && !in_plot && root.link_indicator && root.time_axis) {
             root.time_axis.set_indicator_state(plot_widget, false, 0.0, 0.0)

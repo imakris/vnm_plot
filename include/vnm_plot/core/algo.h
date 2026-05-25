@@ -360,6 +360,95 @@ std::size_t upper_bound_timestamp(
         t_ns);
 }
 
+struct timestamp_bracket_t
+{
+    std::size_t i0 = 0;
+    std::size_t i1 = 0;
+    bool valid = false;
+
+    explicit operator bool() const noexcept { return valid; }
+};
+
+template<typename AddrFn, typename GetTimestampFn>
+timestamp_bracket_t bracket_timestamp_impl(
+    std::size_t count,
+    AddrFn&& addr,
+    GetTimestampFn&& get_timestamp,
+    double t_ns)
+{
+    if (count == 0) {
+        return {};
+    }
+
+    const void* first_sample = addr(0);
+    const void* last_sample = addr(count - 1);
+    if (!first_sample || !last_sample) {
+        return {};
+    }
+
+    const double first_ts = get_timestamp(first_sample);
+    const double last_ts = get_timestamp(last_sample);
+    const bool ascending = first_ts <= last_ts;
+
+    std::size_t lo = 0;
+    std::size_t hi = count - 1;
+    while (lo < hi) {
+        const std::size_t mid = lo + (hi - lo) / 2;
+        const void* mid_sample = addr(mid);
+        if (!mid_sample) {
+            return {};
+        }
+
+        const double ts = get_timestamp(mid_sample);
+        if (ascending ? (ts < t_ns) : (ts > t_ns)) {
+            lo = mid + 1;
+        }
+        else {
+            hi = mid;
+        }
+    }
+
+    if (count == 1) {
+        return {0, 0, true};
+    }
+
+    if (ascending) {
+        if (t_ns <= first_ts) {
+            return {0, 0, true};
+        }
+        if (t_ns >= last_ts) {
+            return {count - 1, count - 1, true};
+        }
+    }
+    else {
+        if (t_ns >= first_ts) {
+            return {0, 0, true};
+        }
+        if (t_ns <= last_ts) {
+            return {count - 1, count - 1, true};
+        }
+    }
+
+    return {lo > 0 ? lo - 1 : 0, lo, true};
+}
+
+template<typename GetTimestampFn>
+timestamp_bracket_t bracket_timestamp(
+    const data_snapshot_t& snapshot,
+    GetTimestampFn&& get_timestamp,
+    double t_ns)
+{
+    if (!snapshot.is_valid()) {
+        return {};
+    }
+
+    return bracket_timestamp_impl(
+        snapshot.count,
+        [&snapshot](std::size_t i) { return snapshot.at(i); },
+        std::forward<GetTimestampFn>(get_timestamp),
+        t_ns);
+}
+
 // -----------------------------------------------------------------------------
 // Origin Selection for fp32 GPU Time Rebasing
 // -----------------------------------------------------------------------------

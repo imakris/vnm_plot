@@ -225,9 +225,9 @@ public:
     Q_INVOKABLE void set_preview_height_steps(int steps);
 
     // Q_INVOKABLEs that take or return timestamps cross the QML boundary
-    // in milliseconds-since-epoch. The result map for get_indicator_samples
-    // also reports entry["x"] in ms.
+    // in milliseconds-since-epoch. Result maps also report entry["x"] in ms.
     Q_INVOKABLE QVariantList get_indicator_samples(double x_ms, double plot_width, double plot_height, double mouse_px = -1.0) const;
+    Q_INVOKABLE QVariantList get_nearest_samples(double x_ms, double plot_width, double plot_height, double mouse_px = -1.0) const;
     Q_INVOKABLE QString format_timestamp_precise(qint64 timestamp_ms) const;
 
     // --- Qt Quick RHI Interface ---
@@ -257,6 +257,19 @@ protected:
     bool rendered_t_range(qint64& out_min_ns, qint64& out_max_ns) const;
 
 private:
+    enum class Indicator_sample_mode
+    {
+        Interpolated,
+        Nearest,
+    };
+
+    QVariantList get_samples_for_time(
+        double x_ms,
+        double plot_width,
+        double plot_height,
+        double mouse_px,
+        Indicator_sample_mode mode) const;
+
     // Plot_renderer reads m_config / m_data_cfg under the matching shared_mutexes
     // during synchronize(); friending lets it touch those members directly
     // instead of going through accessors that would re-take the same locks.

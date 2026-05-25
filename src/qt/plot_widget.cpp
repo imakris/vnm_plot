@@ -1152,6 +1152,35 @@ QVariantList Plot_widget::get_indicator_samples(
     double plot_height,
     double mouse_px) const
 {
+    return get_samples_for_time(
+        x_ms,
+        plot_width,
+        plot_height,
+        mouse_px,
+        Indicator_sample_mode::Interpolated);
+}
+
+QVariantList Plot_widget::get_nearest_samples(
+    double x_ms,
+    double plot_width,
+    double plot_height,
+    double mouse_px) const
+{
+    return get_samples_for_time(
+        x_ms,
+        plot_width,
+        plot_height,
+        mouse_px,
+        Indicator_sample_mode::Nearest);
+}
+
+QVariantList Plot_widget::get_samples_for_time(
+    double x_ms,
+    double plot_width,
+    double plot_height,
+    double mouse_px,
+    Indicator_sample_mode mode) const
+{
     QVariantList result;
 
     if (plot_width <= 0.0 || plot_height <= 0.0) {
@@ -1166,9 +1195,9 @@ QVariantList Plot_widget::get_indicator_samples(
         tmax_ns = cfg.t_max;
     }
     // QML passes x_ms in milliseconds-since-epoch; the rest of this routine
-    // works in nanoseconds (cast to fp64 for arithmetic, as before). Bring
-    // x onto the same axis up front. entry["x"] is converted back to ms at
-    // the end so the QML side stays on the ms surface end-to-end.
+    // works in nanoseconds (cast to fp64 for arithmetic, as before). Bring x
+    // onto the same axis up front. entry["x"] is converted back to ms at the
+    // end so the QML side stays on the ms surface end-to-end.
     constexpr double k_ns_per_ms = 1'000'000.0;
     double x = x_ms * k_ns_per_ms;
     const double tmin = static_cast<double>(tmin_ns);
@@ -1217,77 +1246,22 @@ QVariantList Plot_widget::get_indicator_samples(
             continue;
         }
 
-        const std::size_t count = snap.count;
         const auto sample_at = [&](std::size_t index) -> const void* {
             return snap.at(index);
         };
 
-        const void* first_sample = sample_at(0);
-        const void* last_sample = sample_at(count - 1);
-        if (!first_sample || !last_sample) {
+        const detail::timestamp_bracket_t bracket = detail::bracket_timestamp(
+            snap,
+            [series](const void* sample) {
+                return series->get_timestamp(sample);
+            },
+            x);
+        if (!bracket) {
             continue;
         }
 
-        const double first_ts = series->get_timestamp(first_sample);
-        const double last_ts = series->get_timestamp(last_sample);
-        const bool ascending = first_ts <= last_ts;
-
-        std::size_t lo = 0;
-        std::size_t hi = count - 1;
-        while (lo < hi) {
-            std::size_t mid = (lo + hi) / 2;
-            const void* mid_sample = sample_at(mid);
-            if (!mid_sample) {
-                lo = hi;
-                break;
-            }
-            const double ts = series->get_timestamp(mid_sample);
-            if (ascending ? (ts < x) : (ts > x)) {
-                lo = mid + 1;
-            }
-            else {
-                hi = mid;
-            }
-        }
-
-        std::size_t i0 = 0;
-        std::size_t i1 = 0;
-
-        if (count > 1) {
-            if (ascending) {
-                if (x <= first_ts) {
-                    i0 = 0;
-                    i1 = 0;
-                }
-                else
-                if (x >= last_ts) {
-                    i0 = count - 1;
-                    i1 = count - 1;
-                }
-                else {
-                    i0 = lo > 0 ? lo - 1 : 0;
-                    i1 = lo;
-                }
-            }
-            else {
-                if (x >= first_ts) {
-                    i0 = 0;
-                    i1 = 0;
-                }
-                else
-                if (x <= last_ts) {
-                    i0 = count - 1;
-                    i1 = count - 1;
-                }
-                else {
-                    i0 = lo > 0 ? lo - 1 : 0;
-                    i1 = lo;
-                }
-            }
-        }
-
-        const void* sample0 = sample_at(i0);
-        const void* sample1 = sample_at(i1);
+        const void* sample0 = sample_at(bracket.i0);
+        const void* sample1 = sample_at(bracket.i1);
         if (!sample0 || !sample1) {
             continue;
         }
@@ -1298,14 +1272,23 @@ QVariantList Plot_widget::get_indicator_samples(
         const double y1 = static_cast<double>(series->get_value(sample1));
 
         double y = y0;
-        const double denom = x1 - x0;
-        if (i0 != i1 && std::abs(denom) > 1e-15) {
-            double t = (x - x0) / denom;
-            t = std::clamp(t, 0.0, 1.0);
-            y = y0 + t * (y1 - y0);
+        double resolved_x = x;
+
+        if (mode == Indicator_sample_mode::Nearest) {
+            const bool use_sample1 = std::abs(x1 - x) < std::abs(x0 - x);
+            resolved_x = use_sample1 ? x1 : x0;
+            y = use_sample1 ? y1 : y0;
+        }
+        else {
+            const double denom = x1 - x0;
+            if (bracket.i0 != bracket.i1 && std::abs(denom) > 1e-15) {
+                double t = (x - x0) / denom;
+                t = std::clamp(t, 0.0, 1.0);
+                y = y0 + t * (y1 - y0);
+            }
         }
 
-        double px = (x - tmin) / t_span * plot_width;
+        double px = (resolved_x - tmin) / t_span * plot_width;
         double py = (1.0 - (y - vmin) / v_span) * plot_height;
 
         px = std::clamp(px, 0.0, plot_width);
@@ -1321,7 +1304,7 @@ QVariantList Plot_widget::get_indicator_samples(
         QVariantMap entry;
         // x_ms keeps the QML side on the milliseconds-since-epoch surface;
         // see the Plot_widget class-level comment for the convention.
-        entry["x"] = x / k_ns_per_ms;
+        entry["x"] = resolved_x / k_ns_per_ms;
         entry["y"] = y;
         if (value_formatter) {
             value_format_context_t context;

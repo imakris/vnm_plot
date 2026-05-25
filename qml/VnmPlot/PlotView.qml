@@ -13,6 +13,8 @@ Item {
     property string indicator_x_label: "x"
     property string indicator_y_label: "y"
 
+    signal main_plot_clicked(real timestamp_ms)
+
     PlotWidget {
         id: plot
         anchors.fill: parent
@@ -36,6 +38,25 @@ Item {
 
         onMouse_position_changed: (x, y) => indicator.update_mouse_position(x, y)
         onMouse_exited: indicator.set_mouse_in_plot(false)
+        onMouse_clicked: (x, y) => {
+            const usableWidth = plot.width - plot.vbar_width_qml
+            const usableHeight = plot.height - plot.reserved_height
+            if (usableWidth <= 0 || usableHeight <= 0) {
+                return
+            }
+
+            const nearestSamples = plot.get_nearest_samples(0, usableWidth, usableHeight, x)
+            if (nearestSamples.length <= 0) {
+                return
+            }
+
+            const timestampMs = nearestSamples[0].x
+            if (timestampMs === undefined || timestampMs === null || !isFinite(timestampMs)) {
+                return
+            }
+
+            root.main_plot_clicked(timestampMs)
+        }
     }
 
     Component.onCompleted: {
