@@ -23,6 +23,7 @@ layout(std140, binding = 0) uniform Block
     Series_view_t view;
     vec4 zero_axis_color;
     int  axis_pass;
+    int  interpolation;
 } u;
 
 layout(location = 0) out vec4  vs_color;
@@ -63,7 +64,7 @@ void main()
         axis_color0.w = axis_color1.w = 0.57 * u.view.color.w;
 
         float cv0 = in_y0;
-        float cv1 = in_y1;
+        float cv1 = (u.interpolation == 1) ? in_y0 : in_y1;
 
         vec4 v0_color = u.view.color; v0_color.w = axis_color0.w + 0.3 * abs(cv0) / color_denom;
         vec4 v1_color = u.view.color; v1_color.w = axis_color1.w + 0.3 * abs(cv1) / color_denom;

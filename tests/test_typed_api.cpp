@@ -238,10 +238,12 @@ bool test_series_builder_preview_config()
     preview_cfg.data_source = preview_source;
     preview_cfg.access = policy.erase();
     preview_cfg.style = plot::Display_style::AREA;
+    preview_cfg.interpolation = plot::Series_interpolation::LINEAR;
 
     auto series = plot::Series_builder()
         .enabled(false)
         .style(plot::Display_style::LINE)
+        .interpolation(plot::Series_interpolation::STEP_AFTER)
         .empty_window_behavior(plot::Empty_window_behavior::HOLD_LAST_FORWARD)
         .data_source(main_source)
         .access(policy)
@@ -253,8 +255,30 @@ bool test_series_builder_preview_config()
         "preview data_source mismatch");
     TEST_ASSERT(series.preview_config->style && *series.preview_config->style == plot::Display_style::AREA,
         "preview style mismatch");
+    TEST_ASSERT(series.interpolation == plot::Series_interpolation::STEP_AFTER,
+        "series interpolation mismatch");
+    TEST_ASSERT(
+        series.preview_config->interpolation &&
+            *series.preview_config->interpolation == plot::Series_interpolation::LINEAR,
+        "preview interpolation mismatch");
+    TEST_ASSERT(series.effective_preview_interpolation() == plot::Series_interpolation::LINEAR,
+        "effective preview interpolation mismatch");
+    TEST_ASSERT(!series.preview_matches_main(),
+        "preview should not match main when interpolation/style/source differ");
     TEST_ASSERT(series.empty_window_behavior == plot::Empty_window_behavior::HOLD_LAST_FORWARD,
         "empty_window_behavior mismatch");
+
+    return true;
+}
+
+bool test_series_builder_default_interpolation_is_linear()
+{
+    auto series = plot::Series_builder().build_value();
+
+    TEST_ASSERT(series.interpolation == plot::Series_interpolation::LINEAR,
+        "default series interpolation should be linear");
+    TEST_ASSERT(series.effective_preview_interpolation() == plot::Series_interpolation::LINEAR,
+        "default preview interpolation should be linear");
 
     return true;
 }
@@ -275,6 +299,7 @@ int main()
     RUN_TEST(test_typed_api_floating_point_timestamp_member);
     RUN_TEST(test_function_sample_layout_key_matches_typed_factory);
     RUN_TEST(test_series_builder_preview_config);
+    RUN_TEST(test_series_builder_default_interpolation_is_linear);
 
     std::cout << "Results: " << passed << " passed, " << failed << " failed" << std::endl;
     return failed > 0 ? 1 : 0;

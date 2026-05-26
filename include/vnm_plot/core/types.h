@@ -317,6 +317,12 @@ enum class Display_style : int
     DOTS_LINE_AREA = DOTS | LINE | AREA
 };
 
+enum class Series_interpolation
+{
+    LINEAR,
+    STEP_AFTER
+};
+
 inline Display_style operator|(Display_style a, Display_style b)
 {
     return static_cast<Display_style>(static_cast<int>(a) | static_cast<int>(b));
@@ -351,6 +357,7 @@ struct preview_config_t
     Data_source_ref data_source;              // required when preview_config is set
     Data_access_policy access;                  // optional; if invalid, fall back to main access
     std::optional<Display_style> style;         // nullopt means use main style
+    std::optional<Series_interpolation> interpolation;  // nullopt means use main interpolation
 };
 
 // -----------------------------------------------------------------------------
@@ -385,6 +392,7 @@ struct series_data_t
 {
     bool enabled = true;
     Display_style style = Display_style::LINE;
+    Series_interpolation interpolation = Series_interpolation::LINEAR;
     Empty_window_behavior empty_window_behavior = Empty_window_behavior::DRAW_NOTHING;
     glm::vec4 color = glm::vec4(0.16f, 0.45f, 0.64f, 1.0f);
     std::string series_label;
@@ -460,6 +468,14 @@ struct series_data_t
         return style;
     }
 
+    Series_interpolation effective_preview_interpolation() const
+    {
+        if (preview_config && preview_config->interpolation) {
+            return *preview_config->interpolation;
+        }
+        return interpolation;
+    }
+
     bool has_preview_config() const { return preview_config.has_value(); }
 
     bool preview_matches_main() const
@@ -472,7 +488,8 @@ struct series_data_t
             return false;
         }
         return preview_access().layout_key == access.layout_key
-            && effective_preview_style() == style;
+            && effective_preview_style() == style
+            && effective_preview_interpolation() == interpolation;
     }
 
 };

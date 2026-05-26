@@ -40,6 +40,7 @@ struct sample_window_t
     std::size_t lod_level = 0;
     double pixels_per_sample = 0.0;
     std::uint64_t sample_sequence = 0;
+    Series_interpolation interpolation = Series_interpolation::LINEAR;
 
     std::int64_t t_min_ns = 0;
     std::int64_t t_max_ns = 0;

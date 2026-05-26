@@ -74,6 +74,8 @@ bool scan_series_range(
     Data_source& source,
     const Data_access_policy& access,
     std::size_t level,
+    Series_interpolation interpolation,
+    Empty_window_behavior empty_window_behavior,
     bool visible_only,
     std::int64_t t_min,
     std::int64_t t_max,
@@ -86,6 +88,8 @@ bool scan_series_range(
     }
 
     bool have_any = false;
+    const void* held_sample = nullptr;
+    bool have_sample_at_or_after_visible_start = false;
     for (std::size_t i = 0; i < snapshot.count; ++i) {
         const void* sample = snapshot.at(i);
         if (visible_only) {
@@ -93,11 +97,26 @@ bool scan_series_range(
                 continue;
             }
             const std::int64_t t = access.get_timestamp(sample);
+            if (interpolation == Series_interpolation::STEP_AFTER && t < t_min) {
+                held_sample = sample;
+                continue;
+            }
+            if (interpolation == Series_interpolation::STEP_AFTER && t >= t_min) {
+                have_sample_at_or_after_visible_start = true;
+            }
             if (t < t_min || t > t_max) {
                 continue;
             }
         }
         have_any = include_sample_range(access, sample, out_min, out_max) || have_any;
+    }
+    const bool held_sample_reaches_visible_window =
+        have_sample_at_or_after_visible_start ||
+        empty_window_behavior == Empty_window_behavior::HOLD_LAST_FORWARD;
+    if (visible_only && interpolation == Series_interpolation::STEP_AFTER && held_sample &&
+        held_sample_reaches_visible_window)
+    {
+        have_any = include_sample_range(access, held_sample, out_min, out_max) || have_any;
     }
     return have_any;
 }
@@ -182,6 +201,8 @@ std::pair<float, float> resolve_v_range(
                 *source,
                 item->main_access(),
                 level,
+                item->interpolation,
+                item->empty_window_behavior,
                 visible_only,
                 data_cfg.t_min,
                 data_cfg.t_max,
@@ -255,6 +276,8 @@ std::pair<float, float> resolve_preview_v_range(
                 *source,
                 access,
                 level,
+                item->effective_preview_interpolation(),
+                item->empty_window_behavior,
                 false,
                 data_cfg.t_available_min,
                 data_cfg.t_available_max,

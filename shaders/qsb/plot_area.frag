@@ -8,6 +8,7 @@ layout(std140, binding = 0) uniform Block
     Series_view_t view;
     vec4 zero_axis_color;
     int  axis_pass;
+    int  interpolation;
 } u;
 
 layout(location = 0) in vec4  vs_color;

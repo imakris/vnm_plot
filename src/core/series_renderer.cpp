@@ -43,6 +43,19 @@ bool is_default_series_color(const glm::vec4& color)
         glm::vec4(k_default_color_epsilon)));
 }
 
+std::size_t line_window_sample_count(
+    std::int32_t          source_count,
+    Series_interpolation  interpolation)
+{
+    if (source_count <= 0) {
+        return 0;
+    }
+    if (interpolation == Series_interpolation::STEP_AFTER) {
+        return static_cast<std::size_t>(source_count) * 2u - 1u;
+    }
+    return static_cast<std::size_t>(source_count);
+}
+
 } // anonymous namespace
 
 struct Series_renderer::gpu_sample_t
@@ -268,6 +281,7 @@ struct Series_renderer::rhi_state_t
         std::int32_t first = 0;
         std::int32_t count = 0;
         bool hold_last_forward = false;
+        Series_interpolation interpolation = Series_interpolation::LINEAR;
 
         bool operator==(const qrhi_layer_data_key_t& o) const noexcept
         {
@@ -276,7 +290,8 @@ struct Series_renderer::rhi_state_t
                 && t_origin_ns == o.t_origin_ns
                 && first == o.first
                 && count == o.count
-                && hold_last_forward == o.hold_last_forward;
+                && hold_last_forward == o.hold_last_forward
+                && interpolation == o.interpolation;
         }
     };
 
@@ -437,13 +452,14 @@ struct Area_block_std140
     Series_view_std140 view;                // offset 0
     float              zero_axis_color[4];  // offset 128
     int                axis_pass;           // offset 144
-    int                _pad0;               // offset 148
+    int                interpolation;       // offset 148
     int                _pad1;               // offset 152
     int                _pad2;               // offset 156
 };
 static_assert(sizeof(Area_block_std140) == 160, "Area_block_std140 must be a multiple of 16");
 static_assert(offsetof(Area_block_std140, zero_axis_color) == 128, "Area_block zero_axis_color offset");
 static_assert(offsetof(Area_block_std140, axis_pass)           == 144, "Area_block axis_pass offset");
+static_assert(offsetof(Area_block_std140, interpolation)       == 148, "Area_block interpolation offset");
 
 constexpr std::uint32_t k_series_ubo_bytes = 160;
 static_assert(sizeof(Line_block_std140) <= k_series_ubo_bytes, "ubo bytes fit LINE block");
@@ -523,6 +539,7 @@ private:
         result.height_px          = window.height_px;
         result.y_offset_px        = window.y_offset_px;
         result.window_alpha       = window.window_alpha;
+        result.interpolation      = window.interpolation;
         return result;
     }
 
@@ -655,10 +672,12 @@ Series_renderer::view_render_result_t Series_renderer::plan_view(
     std::int64_t t_origin_ns,
     double width_px,
     Empty_window_behavior empty_window_behavior,
+    Series_interpolation interpolation,
     Snapshot_requirement snapshot_requirement,
     vnm::plot::Profiler* profiler)
 {
     view_render_result_t result;
+    result.interpolation = interpolation;
     const auto& get_timestamp = access.get_timestamp;
 
     if (scales.empty() || t_max_ns <= t_min_ns || width_px <= 0.0) {
@@ -737,6 +756,7 @@ Series_renderer::view_render_result_t Series_renderer::plan_view(
         r.hold_last_forward = view_state.last_hold_last_forward;
         r.hold_timestamp_ns = view_state.last_hold_last_forward ? t_max_ns : 0;
         r.width_px = static_cast<float>(width_px);
+        r.interpolation = interpolation;
     };
     const auto try_stale_fallback = [&](view_render_result_t& r) -> bool {
         const void* current_identity = data_source.identity();
@@ -749,6 +769,7 @@ Series_renderer::view_render_result_t Series_renderer::plan_view(
             (view_state.active_vbo != UINT_MAX) &&
             (view_state.last_count > 0) &&
             (view_state.last_empty_window_behavior == empty_window_behavior) &&
+            (view_state.last_interpolation == interpolation) &&
             (view_state.uploaded_t_origin_ns == t_origin_ns);
         if (!identity_ok) {
             return false;
@@ -779,6 +800,7 @@ Series_renderer::view_render_result_t Series_renderer::plan_view(
             view_state.last_t_max == t_max_ns &&
             view_state.last_width_px == width_px &&
             view_state.last_empty_window_behavior == empty_window_behavior &&
+            view_state.last_interpolation == interpolation &&
             view_state.uploaded_t_origin_ns == t_origin_ns)
         {
             if (snapshot_requirement == Snapshot_requirement::Frame_snapshot_required) {
@@ -961,6 +983,7 @@ Series_renderer::view_render_result_t Series_renderer::plan_view(
         view_state.last_t_max = t_max_ns;
         view_state.last_width_px = width_px;
         view_state.last_empty_window_behavior = empty_window_behavior;
+        view_state.last_interpolation = interpolation;
 
         result.can_draw = true;
         result.first = view_state.last_first;
@@ -978,6 +1001,7 @@ Series_renderer::view_render_result_t Series_renderer::plan_view(
         result.hold_last_forward = hold_last_forward;
         result.hold_timestamp_ns = hold_last_forward ? t_max_ns : 0;
         result.width_px = static_cast<float>(width_px);
+        result.interpolation = interpolation;
         break;
     }
 
@@ -1092,6 +1116,7 @@ void Series_renderer::prepare(
         const Data_access_policy& main_access = s->main_access();
 
         Display_style main_style = s->style;
+        Series_interpolation main_interpolation = s->interpolation;
         const auto has_layer_for_view = [&](Series_view_kind view_kind) {
             return std::any_of(
                 s->qrhi_layers.begin(),
@@ -1109,6 +1134,7 @@ void Series_renderer::prepare(
         Data_source* preview_source = nullptr;
         const Data_access_policy* preview_access = nullptr;
         Display_style preview_style = static_cast<Display_style>(0);
+        Series_interpolation preview_interpolation = Series_interpolation::LINEAR;
         bool preview_matches_main = false;
         bool preview_valid = false;
         bool has_preview_layer = false;
@@ -1117,6 +1143,7 @@ void Series_renderer::prepare(
             preview_source = s->preview_source();
             preview_access = &s->preview_access();
             preview_style = s->effective_preview_style();
+            preview_interpolation = s->effective_preview_interpolation();
             preview_matches_main = s->preview_matches_main();
             has_preview_layer = has_layer_for_view(Series_view_kind::PREVIEW);
 
@@ -1156,7 +1183,7 @@ void Series_renderer::prepare(
             vbo_state.main_view, vbo_state, m_frame_id, *main_source,
             main_access, main_scales,
             ctx.t0, ctx.t1, main_origin_ns,
-            layout.usable_width, s->empty_window_behavior,
+            layout.usable_width, s->empty_window_behavior, main_interpolation,
             has_main_layer
                 ? Snapshot_requirement::Frame_snapshot_required
                 : Snapshot_requirement::Optional,
@@ -1182,7 +1209,7 @@ void Series_renderer::prepare(
                 vbo_state.preview_view, vbo_state, m_frame_id, *preview_source,
                 *preview_access, preview_scales,
                 ctx.t_available_min, ctx.t_available_max, preview_origin_ns,
-                ctx.win_w, s->empty_window_behavior,
+                ctx.win_w, s->empty_window_behavior, preview_interpolation,
                 has_preview_layer
                     ? Snapshot_requirement::Frame_snapshot_required
                     : Snapshot_requirement::Optional,
@@ -1205,6 +1232,8 @@ void Series_renderer::prepare(
         draw_state.preview_access = preview_access;
         draw_state.main_style = main_style;
         draw_state.preview_style = preview_style;
+        draw_state.main_interpolation = main_interpolation;
+        draw_state.preview_interpolation = preview_interpolation;
         draw_state.vbo_state = &vbo_state;
         draw_state.main_scales = std::move(main_scales);
         draw_state.preview_scales = std::move(preview_scales);
@@ -1233,6 +1262,7 @@ void Series_renderer::prepare(
         window.lod_level = view_result.applied_level;
         window.pixels_per_sample = view_result.applied_pps;
         window.sample_sequence = view_result.sample_sequence;
+        window.interpolation = view_result.interpolation;
         window.t_min_ns = view_result.t_min_ns;
         window.t_max_ns = view_result.t_max_ns;
         window.t_origin_ns = view_result.t_origin_ns;
@@ -1400,6 +1430,7 @@ void Series_renderer::prepare(
             data_key.first = window.first;
             data_key.count = window.count;
             data_key.hold_last_forward = window.hold_last_forward;
+            data_key.interpolation = window.interpolation;
 
             auto& cache_entry = m_rhi_state->qrhi_layer_cache[program_key];
             bool resources_changed = false;
@@ -1763,7 +1794,9 @@ bool Series_renderer::rhi_prepare_series_primitive(
     // accept zero UAVs; QRhi requires HLSL 5.0 bytecode for D3D11, so any
     // storage-buffer access in the vertex stage fails to compile.
     if (!is_dots && !is_area) {
-        const std::size_t padded_count = static_cast<std::size_t>(count) + 2;
+        const std::size_t window_count =
+            line_window_sample_count(count, view_result.interpolation);
+        const std::size_t padded_count = window_count + 2;
         const std::size_t needed_bytes = padded_count * sizeof(gpu_sample_t);
         const std::size_t alloc_bytes = needed_bytes + needed_bytes / 4;
         if (!view_state.rhi->line_window_vbo
@@ -1785,10 +1818,29 @@ bool Series_renderer::rhi_prepare_series_primitive(
             std::vector<gpu_sample_t> padded(padded_count);
             const std::size_t first_idx = static_cast<std::size_t>(view_result.first);
             const std::size_t last_idx = first_idx + static_cast<std::size_t>(count - 1);
+            std::size_t write_idx = 1;
+
             padded[0] = view_state.staging[first_idx];
-            for (std::int32_t i = 0; i < count; ++i) {
-                padded[1 + static_cast<std::size_t>(i)] =
-                    view_state.staging[first_idx + static_cast<std::size_t>(i)];
+            if (view_result.interpolation == Series_interpolation::STEP_AFTER) {
+                padded[write_idx++] = view_state.staging[first_idx];
+                for (std::int32_t i = 1; i < count; ++i) {
+                    const gpu_sample_t previous =
+                        view_state.staging[first_idx + static_cast<std::size_t>(i - 1)];
+                    const gpu_sample_t current =
+                        view_state.staging[first_idx + static_cast<std::size_t>(i)];
+                    gpu_sample_t held = current;
+                    held.y = previous.y;
+                    held.y_min = previous.y_min;
+                    held.y_max = previous.y_max;
+                    padded[write_idx++] = held;
+                    padded[write_idx++] = current;
+                }
+            }
+            else {
+                for (std::int32_t i = 0; i < count; ++i) {
+                    padded[write_idx++] =
+                        view_state.staging[first_idx + static_cast<std::size_t>(i)];
+                }
             }
             padded[padded_count - 1] = view_state.staging[last_idx];
             updates->uploadStaticBuffer(
@@ -1987,6 +2039,8 @@ bool Series_renderer::rhi_prepare_series_primitive(
         fill_block.zero_axis_color[2] = palette.grid_line.b;
         fill_block.zero_axis_color[3] = palette.grid_line.a;
         fill_block.axis_pass = 0;
+        fill_block.interpolation =
+            view_result.interpolation == Series_interpolation::STEP_AFTER ? 1 : 0;
 
         Area_block_std140 axis_block = fill_block;
         axis_block.axis_pass = 1;
@@ -2108,7 +2162,11 @@ void Series_renderer::rhi_record_series_primitive(
         // The four vertex inputs all reference the line_window_vbo at
         // increasing element offsets so each instance reads a sliding
         // (prev, p0, p1, next) window across the padded sample array.
-        const quint32 instance_count = static_cast<quint32>(count - 1);
+        const std::size_t window_count =
+            line_window_sample_count(count, view_result.interpolation);
+        const quint32 instance_count = window_count > 1
+            ? static_cast<quint32>(window_count - 1u)
+            : 0u;
         if (instance_count > 0 && view_state.rhi->line_window_vbo) {
             const quint32 stride =
                 static_cast<quint32>(sizeof(gpu_sample_t));

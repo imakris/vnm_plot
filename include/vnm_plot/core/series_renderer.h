@@ -90,6 +90,7 @@ private:
         Empty_window_behavior last_empty_window_behavior = Empty_window_behavior::DRAW_NOTHING;
         double last_applied_pps = 0.0;
         bool last_hold_last_forward = false;
+        Series_interpolation last_interpolation = Series_interpolation::LINEAR;
         // Origin (ns) that produced the bytes currently in the VBO. Used to
         // invalidate the upload when the view's chosen origin moves to a new
         // snap bucket. SENTINEL_NONE forces the first frame to upload.
@@ -155,6 +156,7 @@ private:
         float height_px = 0.0f;
         float y_offset_px = 0.0f;
         float window_alpha = 1.0f;
+        Series_interpolation interpolation = Series_interpolation::LINEAR;
     };
 
     enum class Snapshot_requirement
@@ -179,6 +181,8 @@ private:
         const Data_access_policy* preview_access = nullptr;
         Display_style main_style = static_cast<Display_style>(0);
         Display_style preview_style = static_cast<Display_style>(0);
+        Series_interpolation main_interpolation = Series_interpolation::LINEAR;
+        Series_interpolation preview_interpolation = Series_interpolation::LINEAR;
         vbo_state_t* vbo_state = nullptr;
         std::vector<std::size_t> main_scales;
         std::vector<std::size_t> preview_scales;
@@ -215,6 +219,7 @@ private:
         std::int64_t t_origin_ns,
         double width_px,
         Empty_window_behavior empty_window_behavior,
+        Series_interpolation interpolation,
         Snapshot_requirement snapshot_requirement,
         vnm::plot::Profiler* profiler);
 

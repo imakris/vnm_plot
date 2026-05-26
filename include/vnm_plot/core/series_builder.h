@@ -25,6 +25,12 @@ public:
         return *this;
     }
 
+    Series_builder& interpolation(Series_interpolation mode)
+    {
+        m_series.interpolation = mode;
+        return *this;
+    }
+
     Series_builder& empty_window_behavior(Empty_window_behavior behavior)
     {
         m_series.empty_window_behavior = behavior;

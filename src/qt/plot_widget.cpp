@@ -1040,12 +1040,25 @@ void Plot_widget::auto_adjust_view(bool adjust_t, double extra_v_scale, bool anc
             continue;
         }
 
+        const void* held_sample = nullptr;
+        bool have_sample_at_or_after_window_start = false;
         for (std::size_t i = 0; i < snapshot.count; ++i) {
             const void* sample = snapshot.at(i);
             if (!sample) {
                 continue;
             }
             const std::int64_t ts_ns = series->get_timestamp(sample);
+            if (series->interpolation == Series_interpolation::STEP_AFTER &&
+                ts_ns < window_tmin_ns)
+            {
+                held_sample = sample;
+                continue;
+            }
+            if (series->interpolation == Series_interpolation::STEP_AFTER &&
+                ts_ns >= window_tmin_ns)
+            {
+                have_sample_at_or_after_window_start = true;
+            }
             if (ts_ns < window_tmin_ns || ts_ns > window_tmax_ns) {
                 continue;
             }
@@ -1071,6 +1084,31 @@ void Plot_widget::auto_adjust_view(bool adjust_t, double extra_v_scale, bool anc
             }
 
             include_sample(ts_ns, dlow, dhigh);
+        }
+
+        const bool held_sample_reaches_window =
+            have_sample_at_or_after_window_start ||
+            series->empty_window_behavior == Empty_window_behavior::HOLD_LAST_FORWARD;
+        if (held_sample && held_sample_reaches_window) {
+            float low = 0.0f;
+            float high = 0.0f;
+            if (series->access.get_range) {
+                std::tie(low, high) = series->get_range(held_sample);
+            }
+            else
+            if (series->access.get_value) {
+                low = series->get_value(held_sample);
+                high = low;
+            }
+            else {
+                continue;
+            }
+
+            const double dlow = std::min<double>(low, high);
+            const double dhigh = std::max<double>(low, high);
+            if (std::isfinite(dlow) && std::isfinite(dhigh)) {
+                include_sample(window_tmin_ns, dlow, dhigh);
+            }
         }
     }
 
@@ -1280,11 +1318,18 @@ QVariantList Plot_widget::get_samples_for_time(
             y = use_sample1 ? y1 : y0;
         }
         else {
-            const double denom = x1 - x0;
-            if (bracket.i0 != bracket.i1 && std::abs(denom) > 1e-15) {
-                double t = (x - x0) / denom;
-                t = std::clamp(t, 0.0, 1.0);
-                y = y0 + t * (y1 - y0);
+            if (series->interpolation == Series_interpolation::STEP_AFTER) {
+                if (bracket.i0 != bracket.i1 && x >= x1) {
+                    y = y1;
+                }
+            }
+            else {
+                const double denom = x1 - x0;
+                if (bracket.i0 != bracket.i1 && std::abs(denom) > 1e-15) {
+                    double t = (x - x0) / denom;
+                    t = std::clamp(t, 0.0, 1.0);
+                    y = y0 + t * (y1 - y0);
+                }
             }
         }
 
