@@ -48,12 +48,12 @@ inline glm::vec4 rgba_u8(std::uint8_t r, std::uint8_t g, std::uint8_t b, std::ui
 // All colors used by the plot renderer, organized by theme.
 struct Color_palette
 {
-    glm::vec4 background              = hex_to_vec4("ff1c1e22");
-    glm::vec4 h_label_background      = hex_to_vec4("ff3f4f60");
-    glm::vec4 v_label_background      = hex_to_vec4("ff2c2f34");
-    glm::vec4 preview_background      = hex_to_vec4("ff1f1f1f");
-    glm::vec4 separator               = hex_to_vec4("ff999999");
-    glm::vec4 grid_line               = hex_to_vec4("ffd2d4d7");
+    glm::vec4 background              = hex_to_vec4("ff1b1c20");
+    glm::vec4 h_label_background      = hex_to_vec4("ff343940");
+    glm::vec4 v_label_background      = hex_to_vec4("ff292c31");
+    glm::vec4 preview_background      = hex_to_vec4("ff1e1f22");
+    glm::vec4 separator               = hex_to_vec4("ff8f9399");
+    glm::vec4 grid_line               = hex_to_vec4("ffd5d7da");
     glm::vec4 preview_cover           = hex_to_vec4("26555555");
     glm::vec4 preview_cover_secondary = hex_to_vec4("10505050");
 
