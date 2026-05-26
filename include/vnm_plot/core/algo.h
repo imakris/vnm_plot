@@ -249,17 +249,17 @@ std::vector<std::size_t> compute_lod_scales(const DataSourceT& data_source)
 // These functions perform binary search on a contiguous array of samples,
 // using a callback to extract timestamps. Assumes ascending timestamp order.
 
-// Core binary-search loop shared by lower_bound / upper_bound and by raw
-// strided / data_snapshot_t addressing. The Addr functor maps an index to a
+// Core binary-search loop shared by lower_bound / upper_bound / bracket and by
+// raw strided / data_snapshot_t addressing. The Addr functor maps an index to a
 // sample pointer; if it returns nullptr the search short-circuits at the
 // current bound (used by segmented snapshots to bail out on torn views).
-template<typename AddrFn, typename GetTimestampFn, typename Cmp>
+template<typename AddrFn, typename GetTimestampFn, typename Cmp, typename Query>
 std::size_t bsearch_ts_impl(
     std::size_t count,
     AddrFn&& addr,
     GetTimestampFn&& get_timestamp,
     Cmp&& cmp,
-    std::int64_t t_ns)
+    Query t_ns)
 {
     std::size_t lo = 0;
     std::size_t hi = count;
@@ -390,24 +390,6 @@ timestamp_bracket_t bracket_timestamp_impl(
     const double last_ts = get_timestamp(last_sample);
     const bool ascending = first_ts <= last_ts;
 
-    std::size_t lo = 0;
-    std::size_t hi = count - 1;
-    while (lo < hi) {
-        const std::size_t mid = lo + (hi - lo) / 2;
-        const void* mid_sample = addr(mid);
-        if (!mid_sample) {
-            return {};
-        }
-
-        const double ts = get_timestamp(mid_sample);
-        if (ascending ? (ts < t_ns) : (ts > t_ns)) {
-            lo = mid + 1;
-        }
-        else {
-            hi = mid;
-        }
-    }
-
     if (count == 1) {
         return {0, 0, true};
     }
@@ -429,6 +411,14 @@ timestamp_bracket_t bracket_timestamp_impl(
         }
     }
 
+    // Strictly interior query: reuse the shared search loop. lo is the first
+    // index on the far side of t_ns, so [lo - 1, lo] brackets it.
+    const std::size_t lo = bsearch_ts_impl(
+        count,
+        addr,
+        get_timestamp,
+        [ascending](double ts, double t) { return ascending ? (ts < t) : (ts > t); },
+        t_ns);
     return {lo > 0 ? lo - 1 : 0, lo, true};
 }
 

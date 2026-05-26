@@ -258,6 +258,14 @@ void Plot_interaction_item::mousePressEvent(QMouseEvent* event)
     }
 }
 
+bool Plot_interaction_item::within_click_tolerance(qreal x, qreal y) const
+{
+    const qreal dx = x - m_press_x;
+    const qreal dy = y - m_press_y;
+    return (dx * dx + dy * dy) <=
+        (k_click_move_tolerance_px * k_click_move_tolerance_px);
+}
+
 void Plot_interaction_item::mouseMoveEvent(QMouseEvent* event)
 {
     if (!m_interaction_enabled) {
@@ -274,16 +282,10 @@ void Plot_interaction_item::mouseMoveEvent(QMouseEvent* event)
     }
 
     if (m_dragging) {
-        const qreal move_dx = x - m_press_x;
-        const qreal move_dy = y - m_press_y;
-        if ((move_dx * move_dx + move_dy * move_dy) <=
-            (k_click_move_tolerance_px * k_click_move_tolerance_px))
-        {
+        if (within_click_tolerance(x, y)) {
             return;
         }
-        if (m_click_candidate) {
-            m_click_candidate = false;
-        }
+        m_click_candidate = false;
 
         const auto mods = event->modifiers();
         const bool ctrl_held = mods & Qt::ControlModifier;
@@ -315,15 +317,10 @@ void Plot_interaction_item::mouseReleaseEvent(QMouseEvent* event)
 {
     const qreal x = event->position().x();
     const qreal y = event->position().y();
-    const qreal move_dx = x - m_press_x;
-    const qreal move_dy = y - m_press_y;
-    const bool within_click_tolerance =
-        (move_dx * move_dx + move_dy * move_dy) <=
-        (k_click_move_tolerance_px * k_click_move_tolerance_px);
     const bool clicked = m_interaction_enabled &&
         m_dragging &&
         m_click_candidate &&
-        within_click_tolerance &&
+        within_click_tolerance(x, y) &&
         m_press_x >= 0.0 && m_press_x <= usable_width() &&
         m_press_y >= 0.0 && m_press_y < usable_height();
 

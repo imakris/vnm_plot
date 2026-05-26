@@ -73,6 +73,8 @@ private:
     void apply_zoom_step();
     void apply_zoom_step(std::chrono::steady_clock::time_point now);
     Plot_widget* time_target_widget() const;
+    // True while (x, y) is still within the click slop radius of the press point.
+    bool within_click_tolerance(qreal x, qreal y) const;
 
     Plot_widget* m_plot_widget = nullptr;
     Plot_widget* m_time_plot_widget = nullptr;

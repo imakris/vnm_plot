@@ -533,8 +533,6 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
         key.vbar_width_pixels = width_px;
         key.font_metrics_key = layout_fonts ? layout_fonts->text_measure_cache_key() : 0;
         key.config_revision = snapshot.config_revision;
-        key.format_timestamp_revision = config.format_timestamp_revision;
-        key.format_value_revision = config.format_value_revision;
         return key;
     };
 
