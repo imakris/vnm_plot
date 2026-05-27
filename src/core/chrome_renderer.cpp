@@ -186,7 +186,7 @@ void Chrome_renderer::render_grid_and_backgrounds(
         palette.grid_line.g,
         palette.grid_line.b,
         palette.grid_line.a * static_cast<float>(grid_visibility));
-    const glm::vec4 tick_rgb = palette.grid_line;  // Tick marks stay visible
+    const glm::vec4 tick_rgb = grid_rgb;
     const glm::vec4 preview_background = palette.preview_background;
     const glm::vec4 separator_color = palette.separator;
 
@@ -280,14 +280,14 @@ void Chrome_renderer::render_grid_and_backgrounds(
         [](const h_label_t& l) { return l.position.x; }, pl.h_labels, horizontal_levels);
     const grid_layer_params_t vertical_tick_levels_gl = flip_grid_levels_y(vertical_tick_levels, main_size.y);
 
-    if (pl.v_bar_width > 0.5 && vertical_tick_levels_gl.count > 0) {
+    if (grid_visibility > 0.0 && pl.v_bar_width > 0.5 && vertical_tick_levels_gl.count > 0) {
         const glm::vec2 top_left{float(pl.usable_width), 0.0f};
         const glm::vec2 size{float(pl.v_bar_width), float(pl.usable_height)};
         const glm::vec2 origin = to_gl_origin(ctx, top_left, size);
         prims.draw_grid_shader(ctx, origin, size, tick_rgb, vertical_tick_levels_gl, empty_levels);
     }
 
-    if (ctx.base_label_height_px > 0.5 && horizontal_tick_levels.count > 0) {
+    if (grid_visibility > 0.0 && ctx.base_label_height_px > 0.5 && horizontal_tick_levels.count > 0) {
         const glm::vec2 top_left{0.0f, float(pl.usable_height)};
         const glm::vec2 size{float(pl.usable_width), float(ctx.base_label_height_px)};
         const glm::vec2 origin = to_gl_origin(ctx, top_left, size);
