@@ -1,7 +1,6 @@
 #include <vnm_plot/core/series_renderer.h>
 #include <vnm_plot/core/algo.h>
 #include <vnm_plot/core/asset_loader.h>
-#include <vnm_plot/core/color_palette.h>
 #include <vnm_plot/core/constants.h>
 #include <vnm_plot/core/plot_config.h>
 #include <vnm_plot/qt/qrhi_series_layer.h>
@@ -129,7 +128,7 @@ struct Series_renderer::vbo_view_state_t::rhi_buffers_t
     // SSBOs in the D3D11 vertex stage.
     std::unique_ptr<QRhiBuffer> line_window_vbo;
 
-    // Per-(view, primitive_style/pass) UBO + SRB cache. Each drawable primitive
+    // Per-(view, primitive_style) UBO + SRB cache. Each drawable primitive
     // needs an independent UBO because every resource update is submitted
     // before the render pass starts; combined Display_style values would
     // otherwise overwrite the previously prepared uniform bytes before the
@@ -144,7 +143,6 @@ struct Series_renderer::vbo_view_state_t::rhi_buffers_t
     srb_entry_t dots_srb;
     srb_entry_t line_srb;
     srb_entry_t area_fill_srb;
-    srb_entry_t area_axis_srb;
 
 };
 
@@ -361,8 +359,7 @@ struct Series_renderer::rhi_state_t
 //         float         line_px;          // for LINE
 //         int           snap;             // for LINE
 //         float         dot_px;           // for DOTS
-//         vec4          axis_color;       // for AREA
-//         int           axis_pass;        // for AREA
+//         int           interpolation;    // for AREA
 //     } u;
 //
 // std140 requires:
@@ -450,18 +447,15 @@ static_assert(offsetof(Dot_block_std140, point_diameter_px) == 128, "Dot_block p
 struct Area_block_std140
 {
     Series_view_std140 view;                // offset 0
-    float              zero_axis_color[4];  // offset 128
-    int                axis_pass;           // offset 144
-    int                interpolation;       // offset 148
-    int                _pad1;               // offset 152
-    int                _pad2;               // offset 156
+    int                interpolation;       // offset 128
+    int                _pad0;               // offset 132
+    int                _pad1;               // offset 136
+    int                _pad2;               // offset 140
 };
-static_assert(sizeof(Area_block_std140) == 160, "Area_block_std140 must be a multiple of 16");
-static_assert(offsetof(Area_block_std140, zero_axis_color) == 128, "Area_block zero_axis_color offset");
-static_assert(offsetof(Area_block_std140, axis_pass)           == 144, "Area_block axis_pass offset");
-static_assert(offsetof(Area_block_std140, interpolation)       == 148, "Area_block interpolation offset");
+static_assert(sizeof(Area_block_std140) == 144, "Area_block_std140 must be a multiple of 16");
+static_assert(offsetof(Area_block_std140, interpolation) == 128, "Area_block interpolation offset");
 
-constexpr std::uint32_t k_series_ubo_bytes = 160;
+constexpr std::uint32_t k_series_ubo_bytes = 144;
 static_assert(sizeof(Line_block_std140) <= k_series_ubo_bytes, "ubo bytes fit LINE block");
 static_assert(sizeof(Dot_block_std140)  <= k_series_ubo_bytes, "ubo bytes fit DOTS block");
 static_assert(sizeof(Area_block_std140) == k_series_ubo_bytes, "ubo bytes match AREA block");
@@ -1706,10 +1700,6 @@ bool Series_renderer::rhi_prepare_series_primitive(
     if (!ensure_ubo(primary_srb_entry)) {
         return false;
     }
-    if (is_area && !ensure_ubo(view_state.rhi->area_axis_srb)) {
-        return false;
-    }
-
     const data_snapshot_t& snapshot = view_result.cached_snapshot;
     if (snapshot && access && access->get_timestamp && updates) {
         const std::size_t needed_elements =
@@ -1984,9 +1974,6 @@ bool Series_renderer::rhi_prepare_series_primitive(
     };
 
     ensure_srb(primary_srb_entry);
-    if (is_area) {
-        ensure_srb(view_state.rhi->area_axis_srb);
-    }
 
     Series_view_std140 view_block{};
     std::memcpy(view_block.pmv, glm::value_ptr(ctx.pmv), sizeof(float) * 16);
@@ -2028,30 +2015,15 @@ bool Series_renderer::rhi_prepare_series_primitive(
     }
     else
     if (is_area) {
-        const Color_palette palette = ctx.dark_mode
-            ? Color_palette::dark()
-            : Color_palette::light();
-
-        Area_block_std140 fill_block{};
-        fill_block.view = view_block;
-        fill_block.zero_axis_color[0] = palette.grid_line.r;
-        fill_block.zero_axis_color[1] = palette.grid_line.g;
-        fill_block.zero_axis_color[2] = palette.grid_line.b;
-        fill_block.zero_axis_color[3] = palette.grid_line.a;
-        fill_block.axis_pass = 0;
-        fill_block.interpolation =
+        Area_block_std140 block{};
+        block.view = view_block;
+        block.interpolation =
             view_result.interpolation == Series_interpolation::STEP_AFTER ? 1 : 0;
-
-        Area_block_std140 axis_block = fill_block;
-        axis_block.axis_pass = 1;
 
         if (updates) {
             updates->updateDynamicBuffer(
                 view_state.rhi->area_fill_srb.ubo.get(), 0,
-                sizeof(fill_block), &fill_block);
-            updates->updateDynamicBuffer(
-                view_state.rhi->area_axis_srb.ubo.get(), 0,
-                sizeof(axis_block), &axis_block);
+                sizeof(block), &block);
         }
     }
     else {
@@ -2110,10 +2082,6 @@ void Series_renderer::rhi_record_series_primitive(
     if (!srb_entry.srb) {
         return;
     }
-    if (is_area && !view_state.rhi->area_axis_srb.srb) {
-        return;
-    }
-
     cb->setGraphicsPipeline(cached.pipeline.get());
 
     if (is_dots) {
@@ -2151,9 +2119,6 @@ void Series_renderer::rhi_record_series_primitive(
 
             cb->setShaderResources(srb_entry.srb.get());
             cb->draw(6, instance_count);
-
-            cb->setShaderResources(view_state.rhi->area_axis_srb.srb.get());
-            cb->draw(4, instance_count);
         }
     }
     else {
