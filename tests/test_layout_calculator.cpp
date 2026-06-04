@@ -11,6 +11,7 @@
 #include <vnm_plot/core/types.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <iostream>
@@ -203,6 +204,45 @@ bool test_format_timestamp_step_matches_nanosecond_seconds_grid()
     return true;
 }
 
+bool test_vertical_labels_keep_dense_level_when_glyphs_fit()
+{
+    std::vector<Recorded_call> recorded;
+    auto params = make_minimal_params(0LL, 60LL * k_ns_per_second, recorded);
+    params.v_min = -5000.0f;
+    params.v_max = 45000.0f;
+    params.usable_height = 140.0;
+    params.label_visible_height = params.usable_height;
+    params.adjusted_font_size_in_pixels = 10.0;
+
+    plot::Layout_calculator calc;
+    const auto result = calc.calculate(params);
+
+    const std::vector<double> expected_values{
+        0.0,
+        10000.0,
+        20000.0,
+        30000.0,
+        40000.0
+    };
+
+    TEST_ASSERT(result.v_labels.size() >= expected_values.size(),
+        std::string("expected dense vertical labels to fit, got ") +
+            std::to_string(result.v_labels.size()));
+
+    for (const double value : expected_values) {
+        const bool found = std::any_of(
+            result.v_labels.begin(),
+            result.v_labels.end(),
+            [value](const plot::v_label_t& label) {
+                return std::abs(label.value - value) < 1e-6;
+            });
+        TEST_ASSERT(found,
+            std::string("expected vertical label value ") + std::to_string(value));
+    }
+
+    return true;
+}
+
 } // namespace
 
 int main()
@@ -214,6 +254,7 @@ int main()
 
     RUN_TEST(test_format_timestamp_receives_nanosecond_units);
     RUN_TEST(test_format_timestamp_step_matches_nanosecond_seconds_grid);
+    RUN_TEST(test_vertical_labels_keep_dense_level_when_glyphs_fit);
 
     std::cout << "Results: " << passed << " passed, " << failed << " failed" << std::endl;
     return failed > 0 ? 1 : 0;

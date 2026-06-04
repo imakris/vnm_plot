@@ -330,6 +330,13 @@ void Chrome_renderer::render_zero_line(
 
     grid_layer_params_t empty_levels;
     prims.draw_grid_shader(ctx, main_origin, main_size, color, zero_level, empty_levels);
+
+    if (pl.v_bar_width > 0.5) {
+        const glm::vec2 v_bar_top_left{float(pl.usable_width), 0.0f};
+        const glm::vec2 v_bar_size{float(pl.v_bar_width), float(pl.usable_height)};
+        const glm::vec2 v_bar_origin = to_gl_origin(ctx, v_bar_top_left, v_bar_size);
+        prims.draw_grid_shader(ctx, v_bar_origin, v_bar_size, color, zero_level, empty_levels);
+    }
 }
 
 void Chrome_renderer::render_preview_overlay(

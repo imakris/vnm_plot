@@ -447,7 +447,9 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
         int initial_level_index = 0;
         double initial_level_step = 0.0;
         double px_per_unit = 0.0;
-        float k_min_gap = 0.0f;
+        float label_box_height_px = 0.0f;
+        float label_gap_px = 0.0f;
+        float min_label_spacing_px = 0.0f;
         double finest_step_accepted = 0.0;
 
         auto& accepted_boxes = m_scratch_accepted_boxes;
@@ -499,7 +501,11 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
             level.clear();
             accepted_y.clear();
 
-            k_min_gap = static_cast<float>(params.adjusted_font_size_in_pixels + 10.0f);
+            label_box_height_px = std::max(
+                1.0f,
+                static_cast<float>(params.adjusted_font_size_in_pixels));
+            label_gap_px = 10.0f;
+            min_label_spacing_px = label_box_height_px + label_gap_px;
             finest_step_accepted = step;
         }
 
@@ -551,7 +557,7 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
                     if (!coincides) {
                         if (!this_vals.empty()) {
                             const float prev_y = this_vals.back().second;
-                            if (std::fabs(prev_y - y) < k_min_gap) {
+                            if (std::fabs(prev_y - y) < min_label_spacing_px) {
                                 skip_level_due_to_conflict = true;
                                 break;
                             }
@@ -576,7 +582,9 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
                             profiler,
                             "renderer.frame.calculate_layout.impl.cache_miss.pass1.vertical_axis.level_build");
                         for (const auto& vy : this_vals) {
-                            level.emplace_back(vy.second - 0.5f * k_min_gap, vy.second + 0.5f * k_min_gap);
+                            level.emplace_back(
+                                vy.second - 0.5f * label_box_height_px,
+                                vy.second + 0.5f * label_box_height_px);
                         }
                         std::sort(level.begin(), level.end());
                     }
@@ -585,7 +593,7 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
                         VNM_PLOT_PROFILE_SCOPE(
                             profiler,
                             "renderer.frame.calculate_layout.impl.cache_miss.pass1.vertical_axis.fits_with_gap");
-                        level_fits = fits_with_gap(level, accepted_boxes, 10.0f);
+                        level_fits = fits_with_gap(level, accepted_boxes, label_gap_px);
                     }
 
                     if (level_fits) {
