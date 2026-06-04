@@ -28,6 +28,30 @@ namespace {
 using detail::to_int_rounded;
 using detail::to_positive_int;
 
+constexpr float k_text_shadow_alpha = 0.76f;
+constexpr float k_text_shadow_min_radius_px = 1.05f;
+constexpr float k_text_shadow_max_radius_px = 2.25f;
+constexpr float k_text_shadow_radius_factor = 0.19f;
+
+glm::vec4 text_color_for_theme(bool dark_mode)
+{
+    return dark_mode
+        ? glm::vec4(1.f, 1.f, 1.f, 1.f)
+        : glm::vec4(0.f, 0.f, 0.f, 1.f);
+}
+
+text_shadow_t text_shadow_for_background(const glm::vec4& background, double font_px)
+{
+    text_shadow_t shadow;
+    shadow.color = background;
+    shadow.color.a *= k_text_shadow_alpha;
+    shadow.radius_px = std::clamp(
+        static_cast<float>(font_px) * k_text_shadow_radius_factor,
+        k_text_shadow_min_radius_px,
+        k_text_shadow_max_radius_px);
+    return shadow;
+}
+
 template <typename Labels, typename DrawFunc>
 bool update_and_draw_faded_labels(
     const Labels& labels,
@@ -164,7 +188,7 @@ bool Text_renderer::render_axis_labels(const frame_context_t& ctx, bool fade_lab
 {
     const auto& pl = ctx.layout;
     const bool dark_mode = ctx.dark_mode;
-    const glm::vec4 font_color = dark_mode ? glm::vec4(1.f, 1.f, 1.f, 1.f) : glm::vec4(0.f, 0.f, 0.f, 1.f);
+    const glm::vec4 font_color = text_color_for_theme(dark_mode);
 
     const float right_edge_x = static_cast<float>(pl.usable_width + pl.v_bar_width - k_v_label_horizontal_padding_px);
     const float min_x = static_cast<float>(pl.usable_width + k_text_margin_px);
@@ -257,7 +281,9 @@ bool Text_renderer::render_info_overlay(const frame_context_t& ctx, bool fade_la
 {
     const auto& pl = ctx.layout;
     const bool dark_mode = ctx.dark_mode;
-    const glm::vec4 font_color = dark_mode ? glm::vec4(1.f, 1.f, 1.f, 1.f) : glm::vec4(0.f, 0.f, 0.f, 1.f);
+    const glm::vec4 font_color = text_color_for_theme(dark_mode);
+    const text_shadow_t overlay_shadow =
+        text_shadow_for_background(ctx.plot_body_background, ctx.adjusted_font_px);
     // Subtract first, then convert: keeps sub-ms precision near modern epochs.
     const std::int64_t t_span_ns = ctx.t1 - ctx.t0;
     const double t_span = static_cast<double>(t_span_ns);
@@ -308,6 +334,12 @@ bool Text_renderer::render_info_overlay(const frame_context_t& ctx, bool fade_la
         }
         m_horizontal_fade.last_update = now;
         m_horizontal_fade.initialized = true;
+    }
+
+    if (!fade_labels) {
+        if (ctx.rhi) {
+            m_fonts->rhi_queue_draw(ctx, ctx.pmv, font_color);
+        }
     }
 
     const bool show_value_range =
@@ -388,9 +420,9 @@ bool Text_renderer::render_info_overlay(const frame_context_t& ctx, bool fade_la
         }
     }
 
-    if (!fade_labels || overlay_line_count > 0) {
+    if (overlay_line_count > 0) {
         if (ctx.rhi) {
-            m_fonts->rhi_queue_draw(ctx, ctx.pmv, font_color);
+            m_fonts->rhi_queue_draw(ctx, ctx.pmv, font_color, {}, overlay_shadow);
         }
     }
     return any_active;

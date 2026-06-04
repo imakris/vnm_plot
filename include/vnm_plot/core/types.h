@@ -640,6 +640,7 @@ struct frame_context_t
 
     int visible_info_flags = k_visible_info_none;
     bool dark_mode = false;
+    glm::vec4 plot_body_background = glm::vec4(0.f, 0.f, 0.f, 1.f);
 
     const Plot_config* config = nullptr;
 

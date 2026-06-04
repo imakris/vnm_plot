@@ -25,6 +25,12 @@ struct text_scissor_t
     int  height  = 0;
 };
 
+struct text_shadow_t
+{
+    glm::vec4 color     = glm::vec4(0.f);
+    float     radius_px = 0.0f;
+};
+
 // -----------------------------------------------------------------------------
 // Font Cache Configuration
 // -----------------------------------------------------------------------------
@@ -103,7 +109,8 @@ public:
         const frame_context_t& ctx,
         const glm::mat4& pmv,
         const glm::vec4& color,
-        const text_scissor_t& scissor = {});
+        const text_scissor_t& scissor = {},
+        const text_shadow_t& shadow = {});
 
     // Uploads the accumulated QRhi text geometry after all draw batches are queued.
     void rhi_finalize_frame(const frame_context_t& ctx);

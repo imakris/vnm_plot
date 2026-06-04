@@ -37,6 +37,15 @@ glm::mat4 to_glm_mat4(const QMatrix4x4& matrix)
     return glm::make_mat4(matrix.constData());
 }
 
+glm::vec4 qcolor_to_vec4(const QColor& color)
+{
+    return glm::vec4(
+        static_cast<float>(color.redF()),
+        static_cast<float>(color.greenF()),
+        static_cast<float>(color.blueF()),
+        static_cast<float>(color.alphaF()));
+}
+
 bool include_sample_range(
     const Data_access_policy& access,
     const void* sample,
@@ -375,6 +384,7 @@ struct Plot_renderer::impl_t
         double         base_label_height_px = 14.0;
         double         adjusted_preview_height = 0.0;
         double         vbar_width_pixels = 0.0;
+        glm::vec4      window_background = glm::vec4(0.f, 0.f, 0.f, 1.f);
         std::uint64_t  config_revision = 0;
     };
 
@@ -445,6 +455,9 @@ void Plot_renderer::synchronize(QQuickRhiItem* item)
     m_impl->snapshot.base_label_height_px = widget->m_base_label_height;
     m_impl->snapshot.adjusted_preview_height = widget->m_adjusted_preview_height;
     m_impl->snapshot.vbar_width_pixels = widget->vbar_width_pixels();
+    if (QQuickWindow* window = widget->window()) {
+        m_impl->snapshot.window_background = qcolor_to_vec4(window->color());
+    }
     m_impl->snapshot.config_revision = widget->m_config_revision.load(std::memory_order_acquire);
 }
 
@@ -471,8 +484,9 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
     VNM_PLOT_PROFILE_SCOPE(profiler, "renderer");
     VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame");
 
-    const Color_palette palette =
-        config.dark_mode ? Color_palette::dark() : Color_palette::light();
+    const Color_palette palette = Color_palette::for_theme(config.dark_mode);
+    const glm::vec4 plot_body_background =
+        config.clear_to_transparent ? snapshot.window_background : palette.background;
 
     QColor clear_color;
     if (config.clear_to_transparent) {
@@ -666,6 +680,7 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
     ctx.adjusted_preview_height = snapshot.adjusted_preview_height;
     ctx.visible_info_flags = snapshot.visible_info_flags;
     ctx.dark_mode = config.dark_mode;
+    ctx.plot_body_background = plot_body_background;
     ctx.config = &config;
     ctx.rhi = rhi_ptr;
     ctx.cb = cb;

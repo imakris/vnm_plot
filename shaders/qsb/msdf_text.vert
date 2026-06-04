@@ -4,7 +4,9 @@ layout(std140, binding = 0) uniform Block
 {
     mat4  pmv;
     vec4  color;
+    vec4  shadow_color;
     float px_range;
+    float shadow_radius;
 } u;
 
 layout(location = 0) in vec2 vertex;

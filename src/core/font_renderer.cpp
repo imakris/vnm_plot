@@ -35,7 +35,7 @@ namespace {
 
 constexpr std::uint32_t k_cache_version = 1;
 constexpr double k_min_atlas_font_size = 48.0;
-constexpr float k_atlas_px_range = 2.0f;
+constexpr float k_atlas_px_range = 10.0f;
 constexpr float k_sharpness_bias = 2.5f;
 constexpr int k_atlas_texture_size = 2048;
 
@@ -529,14 +529,18 @@ struct Text_block_std140
 {
     float pmv[16] = {};
     float color[4] = {};
+    float shadow_color[4] = {};
     float px_range = 0.f;
-    float padding[3] = {};
+    float shadow_radius = 0.f;
+    float padding[2] = {};
 };
 
-static_assert(offsetof(Text_block_std140, pmv)      ==  0, "Text UBO pmv offset");
-static_assert(offsetof(Text_block_std140, color)    == 64, "Text UBO color offset");
-static_assert(offsetof(Text_block_std140, px_range) == 80, "Text UBO px_range offset");
-static_assert(sizeof(Text_block_std140)             == 96, "Text UBO std140 size");
+static_assert(offsetof(Text_block_std140, pmv)              ==  0, "Text UBO pmv offset");
+static_assert(offsetof(Text_block_std140, color)            == 64, "Text UBO color offset");
+static_assert(offsetof(Text_block_std140, shadow_color)     == 80, "Text UBO shadow color offset");
+static_assert(offsetof(Text_block_std140, px_range)         == 96, "Text UBO px_range offset");
+static_assert(offsetof(Text_block_std140, shadow_radius)    == 100, "Text UBO shadow radius offset");
+static_assert(sizeof(Text_block_std140)                     == 112, "Text UBO std140 size");
 
 constexpr std::uint32_t k_text_ubo_bytes = sizeof(Text_block_std140);
 
@@ -549,12 +553,19 @@ struct rhi_text_call_t
     QRhiSampler*     srb_last_sampler = nullptr;
 };
 
+enum class rhi_text_pass_t : std::uint8_t
+{
+    SHADOW,
+    FOREGROUND,
+};
+
 struct rhi_text_draw_op_t
 {
     std::uint32_t call_index  = 0;
     std::uint32_t index_start = 0;
     std::uint32_t index_count = 0;
     text_scissor_t scissor;
+    rhi_text_pass_t pass = rhi_text_pass_t::FOREGROUND;
 };
 
 struct rhi_text_state_t
@@ -785,7 +796,8 @@ void Font_renderer::rhi_queue_draw(
     const frame_context_t& ctx,
     const glm::mat4& pmv,
     const glm::vec4& color,
-    const text_scissor_t& scissor)
+    const text_scissor_t& scissor,
+    const text_shadow_t& shadow)
 {
     if (!ctx.rhi || !ctx.rhi_updates || !ctx.render_target || !m_impl->m_font_cache) {
         m_impl->m_rhi_vertex_data.clear();
@@ -871,57 +883,79 @@ void Font_renderer::rhi_queue_draw(
         }
     }
 
-    if (rhi_state.call_used == rhi_state.calls.size()) {
-        rhi_state.calls.emplace_back();
-    }
-    const std::size_t call_index = rhi_state.call_used++;
-    auto& call = rhi_state.calls[call_index];
+    const auto acquire_call = [&]() -> std::size_t {
+        if (rhi_state.call_used == rhi_state.calls.size()) {
+            rhi_state.calls.emplace_back();
+        }
+        const std::size_t call_index = rhi_state.call_used++;
+        auto& call = rhi_state.calls[call_index];
 
-    if (!call.ubo) {
-        call.ubo.reset(rhi->newBuffer(
-            QRhiBuffer::Dynamic,
-            QRhiBuffer::UniformBuffer,
-            k_text_ubo_bytes));
-        if (!call.ubo || !call.ubo->create()) {
-            call.ubo.reset();
-            --rhi_state.call_used;
+        if (!call.ubo) {
+            call.ubo.reset(rhi->newBuffer(
+                QRhiBuffer::Dynamic,
+                QRhiBuffer::UniformBuffer,
+                k_text_ubo_bytes));
+            if (!call.ubo || !call.ubo->create()) {
+                call.ubo.reset();
+                --rhi_state.call_used;
+                return std::numeric_limits<std::size_t>::max();
+            }
+        }
+
+        if (!call.srb ||
+            call.srb_last_ubo != call.ubo.get() ||
+            call.srb_last_texture != rhi_state.atlas_texture.get() ||
+            call.srb_last_sampler != rhi_state.sampler.get())
+        {
+            call.srb.reset(rhi->newShaderResourceBindings());
+            call.srb->setBindings({
+                QRhiShaderResourceBinding::uniformBuffer(
+                    0,
+                    QRhiShaderResourceBinding::VertexStage
+                        | QRhiShaderResourceBinding::FragmentStage,
+                    call.ubo.get(),
+                    0,
+                    k_text_ubo_bytes),
+                QRhiShaderResourceBinding::sampledTexture(
+                    1,
+                    QRhiShaderResourceBinding::FragmentStage,
+                    rhi_state.atlas_texture.get(),
+                    rhi_state.sampler.get())
+            });
+            if (!call.srb->create()) {
+                call.srb.reset();
+                --rhi_state.call_used;
+                return std::numeric_limits<std::size_t>::max();
+            }
+            call.srb_last_ubo     = call.ubo.get();
+            call.srb_last_texture = rhi_state.atlas_texture.get();
+            call.srb_last_sampler = rhi_state.sampler.get();
+        }
+
+        return call_index;
+    };
+
+    const bool has_shadow = shadow.radius_px > 0.0f && shadow.color.a > 0.0f;
+    const std::size_t first_call_index = acquire_call();
+    if (first_call_index == std::numeric_limits<std::size_t>::max()) {
+        m_impl->m_rhi_vertex_data.clear();
+        m_impl->m_rhi_index_data.clear();
+        return;
+    }
+
+    std::size_t shadow_call_index = std::numeric_limits<std::size_t>::max();
+    std::size_t foreground_call_index = first_call_index;
+    if (has_shadow) {
+        shadow_call_index = first_call_index;
+        foreground_call_index = acquire_call();
+        if (foreground_call_index == std::numeric_limits<std::size_t>::max()) {
             m_impl->m_rhi_vertex_data.clear();
             m_impl->m_rhi_index_data.clear();
             return;
         }
     }
 
-    if (!call.srb ||
-        call.srb_last_ubo != call.ubo.get() ||
-        call.srb_last_texture != rhi_state.atlas_texture.get() ||
-        call.srb_last_sampler != rhi_state.sampler.get())
-    {
-        call.srb.reset(rhi->newShaderResourceBindings());
-        call.srb->setBindings({
-            QRhiShaderResourceBinding::uniformBuffer(
-                0,
-                QRhiShaderResourceBinding::VertexStage
-                    | QRhiShaderResourceBinding::FragmentStage,
-                call.ubo.get(),
-                0,
-                k_text_ubo_bytes),
-            QRhiShaderResourceBinding::sampledTexture(
-                1,
-                QRhiShaderResourceBinding::FragmentStage,
-                rhi_state.atlas_texture.get(),
-                rhi_state.sampler.get())
-        });
-        if (!call.srb->create()) {
-            call.srb.reset();
-            --rhi_state.call_used;
-            m_impl->m_rhi_vertex_data.clear();
-            m_impl->m_rhi_index_data.clear();
-            return;
-        }
-        call.srb_last_ubo     = call.ubo.get();
-        call.srb_last_texture = rhi_state.atlas_texture.get();
-        call.srb_last_sampler = rhi_state.sampler.get();
-    }
+    auto& first_call = rhi_state.calls[first_call_index];
 
     QRhiRenderPassDescriptor* current_rpd = ctx.render_target->renderPassDescriptor();
     const int current_samples = ctx.render_target->sampleCount();
@@ -940,7 +974,7 @@ void Font_renderer::rhi_queue_draw(
                 0,
                 QRhiShaderResourceBinding::VertexStage
                     | QRhiShaderResourceBinding::FragmentStage,
-                call.ubo.get(),
+                first_call.ubo.get(),
                 0,
                 k_text_ubo_bytes),
             QRhiShaderResourceBinding::sampledTexture(
@@ -1000,21 +1034,50 @@ void Font_renderer::rhi_queue_draw(
         rhi_state.pipeline_samples = current_samples;
     }
 
-    Text_block_std140 block{};
-    std::memcpy(block.pmv, glm::value_ptr(pmv), sizeof(block.pmv));
-    block.color[0] = color.r;
-    block.color[1] = color.g;
-    block.color[2] = color.b;
-    block.color[3] = color.a;
-    block.px_range = cached.atlas.px_range;
-    updates->updateDynamicBuffer(call.ubo.get(), 0, sizeof(block), &block);
+    const auto queue_text_pass = [&](std::size_t call_index,
+                                     const glm::vec4& draw_color,
+                                     const text_shadow_t& draw_shadow,
+                                     rhi_text_pass_t pass) {
+        auto& call = rhi_state.calls[call_index];
 
-    rhi_text_draw_op_t op{};
-    op.call_index  = static_cast<std::uint32_t>(call_index);
-    op.index_start = index_start;
-    op.index_count = static_cast<std::uint32_t>(m_impl->m_rhi_index_data.size());
-    op.scissor     = scissor;
-    rhi_state.ops.push_back(op);
+        Text_block_std140 block{};
+        std::memcpy(block.pmv, glm::value_ptr(pmv), sizeof(block.pmv));
+        block.color[0] = draw_color.r;
+        block.color[1] = draw_color.g;
+        block.color[2] = draw_color.b;
+        block.color[3] = draw_color.a;
+        block.shadow_color[0] = draw_shadow.color.r;
+        block.shadow_color[1] = draw_shadow.color.g;
+        block.shadow_color[2] = draw_shadow.color.b;
+        block.shadow_color[3] = draw_shadow.color.a;
+        block.px_range = cached.atlas.px_range;
+        block.shadow_radius = draw_shadow.radius_px;
+        updates->updateDynamicBuffer(call.ubo.get(), 0, sizeof(block), &block);
+
+        rhi_text_draw_op_t op{};
+        op.call_index  = static_cast<std::uint32_t>(call_index);
+        op.index_start = index_start;
+        op.index_count = static_cast<std::uint32_t>(m_impl->m_rhi_index_data.size());
+        op.scissor     = scissor;
+        op.pass        = pass;
+        rhi_state.ops.push_back(op);
+    };
+
+    if (has_shadow) {
+        glm::vec4 transparent_text = color;
+        transparent_text.a = 0.0f;
+        queue_text_pass(
+            shadow_call_index,
+            transparent_text,
+            shadow,
+            rhi_text_pass_t::SHADOW);
+    }
+
+    queue_text_pass(
+        foreground_call_index,
+        color,
+        text_shadow_t{},
+        rhi_text_pass_t::FOREGROUND);
 
     m_impl->m_rhi_vertex_data.clear();
     m_impl->m_rhi_index_data.clear();
@@ -1090,35 +1153,43 @@ void Font_renderer::rhi_record_frame(const frame_context_t& ctx)
     cb->setGraphicsPipeline(rhi_state.pipeline.get());
 
     QRhiCommandBuffer::VertexInput vertex_input{rhi_state.vbo.get(), 0u};
-    for (const auto& op : rhi_state.ops) {
-        if (op.call_index >= rhi_state.calls.size() || op.index_count == 0) {
-            continue;
-        }
-        const auto& call = rhi_state.calls[op.call_index];
-        if (!call.srb) {
-            continue;
-        }
+    const auto record_pass = [&](rhi_text_pass_t pass) {
+        for (const auto& op : rhi_state.ops) {
+            if (op.pass != pass ||
+                op.call_index >= rhi_state.calls.size() ||
+                op.index_count == 0)
+            {
+                continue;
+            }
+            const auto& call = rhi_state.calls[op.call_index];
+            if (!call.srb) {
+                continue;
+            }
 
-        cb->setShaderResources(call.srb.get());
-        cb->setVertexInput(
-            0,
-            1,
-            &vertex_input,
-            rhi_state.ibo.get(),
-            0,
-            QRhiCommandBuffer::IndexUInt32);
-        if (op.scissor.enabled) {
-            cb->setScissor(QRhiScissor(
-                op.scissor.x,
-                op.scissor.y,
-                op.scissor.width,
-                op.scissor.height));
+            cb->setShaderResources(call.srb.get());
+            cb->setVertexInput(
+                0,
+                1,
+                &vertex_input,
+                rhi_state.ibo.get(),
+                0,
+                QRhiCommandBuffer::IndexUInt32);
+            if (op.scissor.enabled) {
+                cb->setScissor(QRhiScissor(
+                    op.scissor.x,
+                    op.scissor.y,
+                    op.scissor.width,
+                    op.scissor.height));
+            }
+            else {
+                cb->setScissor(QRhiScissor(0, 0, ctx.win_w, ctx.win_h));
+            }
+            cb->drawIndexed(op.index_count, 1, op.index_start, 0, 0);
         }
-        else {
-            cb->setScissor(QRhiScissor(0, 0, ctx.win_w, ctx.win_h));
-        }
-        cb->drawIndexed(op.index_count, 1, op.index_start, 0, 0);
-    }
+    };
+
+    record_pass(rhi_text_pass_t::SHADOW);
+    record_pass(rhi_text_pass_t::FOREGROUND);
 
     rhi_reset_frame();
 }
