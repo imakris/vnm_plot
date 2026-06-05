@@ -175,8 +175,7 @@ void Chrome_renderer::render_grid_and_backgrounds(
         "renderer.frame.chrome.grid_and_backgrounds");
 
     const auto& pl = ctx.layout;
-    const bool dark_mode = ctx.dark_mode;
-    const Color_palette palette = dark_mode ? Color_palette::dark() : Color_palette::light();
+    const Color_palette palette = resolved_color_palette(ctx.config, ctx.dark_mode);
 
     const glm::vec4 h_label_color = palette.h_label_background;
     const glm::vec4 v_label_color = palette.v_label_background;
@@ -312,8 +311,7 @@ void Chrome_renderer::render_zero_line(
         return;
     }
 
-    const bool dark_mode = ctx.dark_mode;
-    const Color_palette palette = dark_mode ? Color_palette::dark() : Color_palette::light();
+    const Color_palette palette = resolved_color_palette(ctx.config, ctx.dark_mode);
     const glm::vec4 color = palette.grid_line;
 
     const auto& pl = ctx.layout;
@@ -361,8 +359,7 @@ void Chrome_renderer::render_preview_overlay(
     }
     const double t_avail_span = static_cast<double>(t_avail_span_ns);
 
-    const bool dark_mode = ctx.dark_mode;
-    const Color_palette palette = dark_mode ? Color_palette::dark() : Color_palette::light();
+    const Color_palette palette = resolved_color_palette(ctx.config, ctx.dark_mode);
     const glm::vec4 cover_color = palette.preview_cover;
     const glm::vec4 cover_color2 = palette.preview_cover_secondary;
     const glm::vec4 separator_color = palette.separator;

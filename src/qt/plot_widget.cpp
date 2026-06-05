@@ -96,18 +96,46 @@ bool function_targets_equivalent(
     return true;
 }
 
+bool color_equivalent(const glm::vec4& lhs, const glm::vec4& rhs)
+{
+    return
+        lhs.r == rhs.r &&
+        lhs.g == rhs.g &&
+        lhs.b == rhs.b &&
+        lhs.a == rhs.a;
+}
+
+bool color_palette_equivalent(
+    const vnm::plot::Color_palette& lhs,
+    const vnm::plot::Color_palette& rhs)
+{
+    static_assert(vnm::plot::Color_palette::field_count == 8,
+        "Color_palette field_count changed - update color_palette_equivalent to cover new fields");
+    return
+        color_equivalent(lhs.background,              rhs.background)              &&
+        color_equivalent(lhs.h_label_background,      rhs.h_label_background)      &&
+        color_equivalent(lhs.v_label_background,      rhs.v_label_background)      &&
+        color_equivalent(lhs.preview_background,      rhs.preview_background)      &&
+        color_equivalent(lhs.separator,               rhs.separator)               &&
+        color_equivalent(lhs.grid_line,               rhs.grid_line)               &&
+        color_equivalent(lhs.preview_cover,           rhs.preview_cover)           &&
+        color_equivalent(lhs.preview_cover_secondary, rhs.preview_cover_secondary);
+}
+
 bool plot_config_equivalent(
     const vnm::plot::Plot_config& lhs,
     const vnm::plot::Plot_config& rhs)
 {
     // If a field is added to Plot_config, update this comparator and bump field_count.
-    static_assert(vnm::plot::Plot_config::field_count == 25,
+    static_assert(vnm::plot::Plot_config::field_count == 27,
         "Plot_config field_count changed — update plot_config_equivalent to cover new fields");
     return
         lhs.dark_mode == rhs.dark_mode &&
         lhs.show_text == rhs.show_text &&
         lhs.grid_visibility == rhs.grid_visibility &&
         lhs.preview_visibility == rhs.preview_visibility &&
+        color_palette_equivalent(lhs.dark_color_palette, rhs.dark_color_palette) &&
+        color_palette_equivalent(lhs.light_color_palette, rhs.light_color_palette) &&
         function_targets_equivalent(lhs.format_timestamp, rhs.format_timestamp) &&
         lhs.format_timestamp_revision == rhs.format_timestamp_revision &&
         function_targets_equivalent(lhs.format_value, rhs.format_value) &&

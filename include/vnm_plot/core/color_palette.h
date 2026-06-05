@@ -57,6 +57,8 @@ struct Color_palette
     glm::vec4 preview_cover           = hex_to_vec4("26555555");
     glm::vec4 preview_cover_secondary = hex_to_vec4("10505050");
 
+    static constexpr int field_count = 8;
+
     // --- Factory methods ---
 
     static Color_palette dark()

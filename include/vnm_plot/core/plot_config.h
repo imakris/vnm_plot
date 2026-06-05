@@ -5,6 +5,8 @@
 // This allows vnm_plot to work without downstream dependencies while
 // still being customizable by the host application.
 
+#include <vnm_plot/core/color_palette.h>
+
 #include <cstdint>
 #include <ctime>
 #include <functional>
@@ -105,6 +107,8 @@ struct Plot_config
     bool show_text = true;
     double grid_visibility = 1.0;     // 0..1 alpha; 0 = hidden (skipped), 1 = fully visible
     double preview_visibility = 1.0;  // 0..1 alpha; 0 = hidden (skipped), 1 = fully visible
+    Color_palette dark_color_palette = Color_palette::dark();
+    Color_palette light_color_palette = Color_palette::light();
 
     // --- Timestamp Formatting ---
     // Callback to format timestamps for axis labels.
@@ -177,8 +181,19 @@ struct Plot_config
 
     // Maintenance aid: bump when adding a field so that comparators (e.g.
     // plot_config_equivalent) fail to compile until they are updated.
-    static constexpr int field_count = 25;
+    static constexpr int field_count = 27;
 };
+
+inline Color_palette resolved_color_palette(const Plot_config* config, bool dark_mode)
+{
+    if (config == nullptr) {
+        return Color_palette::for_theme(dark_mode);
+    }
+
+    return dark_mode
+        ? config->dark_color_palette
+        : config->light_color_palette;
+}
 
 // -----------------------------------------------------------------------------
 // Default Timestamp Formatter

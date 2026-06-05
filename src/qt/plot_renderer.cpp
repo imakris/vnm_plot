@@ -6,6 +6,7 @@
 #include <vnm_plot/core/constants.h>
 #include <vnm_plot/core/font_renderer.h>
 #include <vnm_plot/core/layout_calculator.h>
+#include <vnm_plot/core/plot_config.h>
 #include <vnm_plot/core/primitive_renderer.h>
 #include <vnm_plot/core/series_renderer.h>
 #include <vnm_plot/core/text_renderer.h>
@@ -484,7 +485,7 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
     VNM_PLOT_PROFILE_SCOPE(profiler, "renderer");
     VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame");
 
-    const Color_palette palette = Color_palette::for_theme(config.dark_mode);
+    const Color_palette palette = resolved_color_palette(&config, config.dark_mode);
     const glm::vec4 plot_body_background =
         config.clear_to_transparent ? snapshot.window_background : palette.background;
 

@@ -127,6 +127,8 @@ target_include_directories(test_ring_buffer
 
 target_compile_features(test_ring_buffer PRIVATE cxx_std_20)
 
+target_link_libraries(test_ring_buffer PRIVATE vnm_plot::core)
+
 if(WIN32)
     target_compile_definitions(test_ring_buffer PRIVATE NOMINMAX)
 endif()

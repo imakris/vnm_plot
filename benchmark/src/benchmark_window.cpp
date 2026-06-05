@@ -2,7 +2,7 @@
 
 #include "benchmark_window.h"
 
-#include <vnm_plot/core/color_palette.h>
+#include <vnm_plot/core/plot_config.h>
 
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -736,8 +736,12 @@ bool Benchmark_rhi_offscreen_runner::render_frame(std::string& error_message)
     frame_ctx.adjusted_reserved_height = adjusted_reserved_height;
     frame_ctx.adjusted_preview_height = k_adjusted_preview_height;
     frame_ctx.visible_info_flags = vnm::plot::k_visible_info_none;
-    frame_ctx.dark_mode = true;
+    frame_ctx.dark_mode = m_render_config.dark_mode;
     frame_ctx.config = &m_render_config;
+    const auto palette = vnm::plot::resolved_color_palette(
+        &m_render_config,
+        frame_ctx.dark_mode);
+    frame_ctx.plot_body_background = palette.background;
     frame_ctx.rhi = m_rhi.get();
     frame_ctx.cb = cb;
     frame_ctx.render_target = m_render_target.get();
@@ -760,7 +764,6 @@ bool Benchmark_rhi_offscreen_runner::render_frame(std::string& error_message)
         }
 #endif
 
-        const auto palette = vnm::plot::Color_palette::for_theme(m_render_config.dark_mode);
         const QColor clear_color = QColor::fromRgbF(
             palette.background.r,
             palette.background.g,
