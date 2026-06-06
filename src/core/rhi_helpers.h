@@ -5,6 +5,7 @@
 #include <rhi/qshader.h>
 
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <memory>

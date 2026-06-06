@@ -8,6 +8,7 @@
 #include <vnm_plot/core/series_renderer.h>
 #undef private
 #include <vnm_plot/core/plot_config.h>
+#include <vnm_plot/core/time_units.h>
 
 #include <array>
 #include <cassert>
@@ -561,11 +562,11 @@ bool test_upload_origin_records_per_view_origin()
 {
     // The renderer's per-view upload-invalidation key must include the view
     // origin. After a render, view_state.uploaded_t_origin_ns must equal
-    // choose_origin_ns(t_view_min, span) for that view, otherwise the next
-    // frame's origin-change branch in plan_view will not fire when it
-    // should. This is the visible state-trace of the upload-invalidation
-    // contract; the inline predicate inside plan_view is hard to test
-    // directly without refactoring the renderer.
+    // the renderer's signed-span origin for that view, otherwise the next
+    // frame's origin-change branch in plan_view will not fire when it should.
+    // This is the visible state-trace of the upload-invalidation contract; the
+    // inline predicate inside plan_view is hard to test directly without
+    // refactoring the renderer.
 
     auto data_source = std::make_shared<Single_level_source>();
     data_source->samples.resize(8);
@@ -608,8 +609,10 @@ bool test_upload_origin_records_per_view_origin()
     TEST_ASSERT(state_it != renderer.m_vbo_states.end(),
         "expected vbo state for upload-origin test");
 
+    const std::int64_t expected_span_ns =
+        plot::detail::positive_span_ns_for_signed_api(ctx.t0, ctx.t1);
     const std::int64_t expected_origin_ns =
-        plot::detail::choose_origin_ns(ctx.t0, ctx.t1 - ctx.t0);
+        plot::detail::choose_origin_ns(ctx.t0, expected_span_ns);
     TEST_ASSERT(state_it->second.main_view.uploaded_t_origin_ns == expected_origin_ns,
         std::string("uploaded_t_origin_ns must match choose_origin_ns; got ") +
         std::to_string(state_it->second.main_view.uploaded_t_origin_ns) +
@@ -732,15 +735,13 @@ bool test_upload_invalidates_when_origin_changes_across_snap_bucket()
 bool test_renderer_assigns_distinct_origins_to_main_and_preview()
 {
     // The renderer chooses per-view origins from each view's own visible
-    // window: choose_origin_ns(ctx.t0, ctx.t1 - ctx.t0) for main and
-    // choose_origin_ns(ctx.t_available_min,
-    //                  ctx.t_available_max - ctx.t_available_min)
-    // for preview. When the main span lands in a finer snap bucket (e.g.
-    // a 1-hour span -> 1 s snap) and the preview span in a coarser one
-    // (e.g. a 10-year span -> 1 day snap), the two origins must end up at
-    // different floored boundaries. A regression that fed main_origin_ns
-    // into the preview's plan_view call would leave both views with
-    // the same uploaded_t_origin_ns and break fp32 precision in preview.
+    // window through the same signed-span adapter used by production. When the
+    // main span lands in a finer snap bucket (e.g. a 1-hour span -> 1 s snap)
+    // and the preview span in a coarser one (e.g. a 10-year span -> 1 day
+    // snap), the two origins must end up at different floored boundaries. A
+    // regression that fed main_origin_ns into the preview's plan_view call
+    // would leave both views with the same uploaded_t_origin_ns and break fp32
+    // precision in preview.
     auto data_source = std::make_shared<Single_level_source>();
     // Sparse 10-year coverage: one sample per day is enough for the
     // renderer to find data within both windows without ballooning memory.
@@ -797,11 +798,16 @@ bool test_renderer_assigns_distinct_origins_to_main_and_preview()
     const std::int64_t preview_origin =
         state_it->second.preview_view.uploaded_t_origin_ns;
 
+    const std::int64_t expected_main_span =
+        plot::detail::positive_span_ns_for_signed_api(ctx.t0, ctx.t1);
+    const std::int64_t expected_preview_span =
+        plot::detail::positive_span_ns_for_signed_api(
+            ctx.t_available_min,
+            ctx.t_available_max);
     const std::int64_t expected_main_origin =
-        plot::detail::choose_origin_ns(ctx.t0, ctx.t1 - ctx.t0);
+        plot::detail::choose_origin_ns(ctx.t0, expected_main_span);
     const std::int64_t expected_preview_origin =
-        plot::detail::choose_origin_ns(ctx.t_available_min,
-                                       ctx.t_available_max - ctx.t_available_min);
+        plot::detail::choose_origin_ns(ctx.t_available_min, expected_preview_span);
 
     TEST_ASSERT(main_origin == expected_main_origin,
         std::string("main view must record its own per-view origin; got ") +
