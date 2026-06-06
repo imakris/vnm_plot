@@ -66,6 +66,102 @@ inline float to_view_seconds(std::int64_t ts_ns, std::int64_t origin_ns)
         1.0e-9L);
 }
 
+inline bool to_qrhi_u32(std::size_t value, quint32& out)
+{
+    if (value > static_cast<std::size_t>(std::numeric_limits<quint32>::max())) {
+        return false;
+    }
+    out = static_cast<quint32>(value);
+    return true;
+}
+
+inline bool to_qrhi_count(std::size_t count, quint32& out)
+{
+    return to_qrhi_u32(count, out);
+}
+
+inline bool to_qrhi_byte_count(std::size_t bytes, quint32& out)
+{
+    return to_qrhi_u32(bytes, out);
+}
+
+inline bool checked_size_add(std::size_t lhs, std::size_t rhs, std::size_t& out)
+{
+    if (lhs > std::numeric_limits<std::size_t>::max() - rhs) {
+        return false;
+    }
+    out = lhs + rhs;
+    return true;
+}
+
+inline bool checked_size_product(std::size_t lhs, std::size_t rhs, std::size_t& out)
+{
+    if (rhs != 0 && lhs > std::numeric_limits<std::size_t>::max() / rhs) {
+        return false;
+    }
+    out = lhs * rhs;
+    return true;
+}
+
+inline bool qrhi_byte_size(
+    std::size_t element_count,
+    std::size_t element_bytes,
+    std::size_t& out_bytes,
+    quint32& out_qrhi_bytes)
+{
+    std::size_t bytes = 0;
+    if (!checked_size_product(element_count, element_bytes, bytes) ||
+        !to_qrhi_byte_count(bytes, out_qrhi_bytes))
+    {
+        return false;
+    }
+    out_bytes = bytes;
+    return true;
+}
+
+inline bool qrhi_byte_size(
+    std::size_t element_count,
+    std::size_t element_bytes,
+    quint32& out_qrhi_bytes)
+{
+    std::size_t bytes = 0;
+    return qrhi_byte_size(element_count, element_bytes, bytes, out_qrhi_bytes);
+}
+
+inline bool qrhi_buffer_offset(
+    std::size_t element_index,
+    std::size_t element_bytes,
+    quint32& out_offset)
+{
+    return qrhi_byte_size(element_index, element_bytes, out_offset);
+}
+
+inline bool qrhi_grown_capacity_bytes(
+    std::size_t bytes_needed,
+    std::size_t& out_capacity_bytes,
+    quint32& out_qrhi_capacity_bytes)
+{
+    if (!to_qrhi_byte_count(bytes_needed, out_qrhi_capacity_bytes)) {
+        return false;
+    }
+
+    const std::size_t max_qrhi_bytes =
+        static_cast<std::size_t>(std::numeric_limits<quint32>::max());
+    const std::size_t headroom = bytes_needed / 4u;
+    std::size_t capacity_bytes = 0;
+    if (!checked_size_add(bytes_needed, headroom, capacity_bytes) ||
+        capacity_bytes > max_qrhi_bytes)
+    {
+        capacity_bytes = max_qrhi_bytes;
+    }
+
+    if (!to_qrhi_byte_count(capacity_bytes, out_qrhi_capacity_bytes)) {
+        return false;
+    }
+    out_capacity_bytes = capacity_bytes;
+    return true;
+}
+
 // Rebuilds an SRB that contains a single uniform buffer binding at slot 0.
 // Replaces the ~6-line "newShaderResourceBindings + setBindings + create"
 // dance that recurred across primitive/grid/series renderers.

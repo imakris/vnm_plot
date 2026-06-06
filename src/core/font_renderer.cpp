@@ -233,9 +233,31 @@ void add_text_to_vectors(
         return;
     }
 
-    const std::uint32_t base_vertex =
-        static_cast<std::uint32_t>(vertex_data.size() / 8);
-    index_data.reserve(index_data.size() + indices.size());
+    if (vertex_data.size() % 8u != 0u) {
+        return;
+    }
+    quint32 base_vertex = 0;
+    if (!detail::to_qrhi_count(vertex_data.size() / 8u, base_vertex)) {
+        return;
+    }
+
+    std::size_t added_float_count = 0;
+    std::size_t new_float_count = 0;
+    std::size_t new_index_count = 0;
+    std::size_t new_vertex_count = 0;
+    quint32 checked_qrhi_value = 0;
+    if (!detail::checked_size_product(vertices.size(), 8u, added_float_count) ||
+        !detail::checked_size_add(vertex_data.size(), added_float_count, new_float_count) ||
+        !detail::checked_size_add(index_data.size(), indices.size(), new_index_count) ||
+        !detail::checked_size_add(vertex_data.size() / 8u, vertices.size(), new_vertex_count) ||
+        !detail::to_qrhi_count(new_vertex_count, checked_qrhi_value) ||
+        !detail::qrhi_byte_size(new_float_count, sizeof(float), checked_qrhi_value) ||
+        !detail::qrhi_byte_size(
+            new_index_count, sizeof(std::uint32_t), checked_qrhi_value))
+    {
+        return;
+    }
+    index_data.reserve(new_index_count);
     for (std::uint32_t index : indices) {
         index_data.push_back(base_vertex + index);
     }
@@ -621,9 +643,9 @@ enum class rhi_text_pass_t : std::uint8_t
 
 struct rhi_text_draw_op_t
 {
-    std::uint32_t call_index  = 0;
-    std::uint32_t index_start = 0;
-    std::uint32_t index_count = 0;
+    std::size_t call_index  = 0;
+    quint32     index_start = 0;
+    quint32     index_count = 0;
     text_scissor_t scissor;
     rhi_text_pass_t pass = rhi_text_pass_t::FOREGROUND;
 };
@@ -870,16 +892,59 @@ void Font_renderer::rhi_queue_draw(
 
     const std::size_t vertex_start_float_count =
         m_impl->m_rhi_frame_vertex_data.size();
-    const std::uint32_t index_start =
-        static_cast<std::uint32_t>(m_impl->m_rhi_frame_index_data.size());
-    const std::uint32_t base_vertex =
-        static_cast<std::uint32_t>(vertex_start_float_count / 8);
+    if (vertex_start_float_count % 8u != 0u ||
+        m_impl->m_rhi_vertex_data.size() % 8u != 0u)
+    {
+        m_impl->m_rhi_vertex_data.clear();
+        m_impl->m_rhi_index_data.clear();
+        return;
+    }
+
+    quint32 index_start = 0;
+    quint32 base_vertex = 0;
+    quint32 index_count = 0;
+    if (!detail::to_qrhi_count(
+            m_impl->m_rhi_frame_index_data.size(), index_start) ||
+        !detail::to_qrhi_count(vertex_start_float_count / 8u, base_vertex) ||
+        !detail::to_qrhi_count(m_impl->m_rhi_index_data.size(), index_count))
+    {
+        m_impl->m_rhi_vertex_data.clear();
+        m_impl->m_rhi_index_data.clear();
+        return;
+    }
+
+    std::size_t new_vertex_float_count = 0;
+    std::size_t new_index_count = 0;
+    std::size_t queued_vertex_count = 0;
+    quint32 checked_qrhi_bytes = 0;
+    if (!detail::checked_size_add(
+            m_impl->m_rhi_frame_vertex_data.size(),
+            m_impl->m_rhi_vertex_data.size(),
+            new_vertex_float_count) ||
+        !detail::checked_size_add(
+            m_impl->m_rhi_frame_index_data.size(),
+            m_impl->m_rhi_index_data.size(),
+            new_index_count) ||
+        !detail::checked_size_add(
+            vertex_start_float_count / 8u,
+            m_impl->m_rhi_vertex_data.size() / 8u,
+            queued_vertex_count) ||
+        !detail::to_qrhi_count(queued_vertex_count, checked_qrhi_bytes) ||
+        !detail::qrhi_byte_size(
+            new_vertex_float_count, sizeof(float), checked_qrhi_bytes) ||
+        !detail::qrhi_byte_size(
+            new_index_count, sizeof(std::uint32_t), checked_qrhi_bytes))
+    {
+        m_impl->m_rhi_vertex_data.clear();
+        m_impl->m_rhi_index_data.clear();
+        return;
+    }
+
     m_impl->m_rhi_frame_vertex_data.insert(
         m_impl->m_rhi_frame_vertex_data.end(),
         m_impl->m_rhi_vertex_data.begin(),
         m_impl->m_rhi_vertex_data.end());
-    m_impl->m_rhi_frame_index_data.reserve(
-        m_impl->m_rhi_frame_index_data.size() + m_impl->m_rhi_index_data.size());
+    m_impl->m_rhi_frame_index_data.reserve(new_index_count);
     for (std::uint32_t index : m_impl->m_rhi_index_data) {
         m_impl->m_rhi_frame_index_data.push_back(index + base_vertex);
     }
@@ -1115,9 +1180,9 @@ void Font_renderer::rhi_queue_draw(
         updates->updateDynamicBuffer(call.ubo.get(), 0, sizeof(block), &block);
 
         rhi_text_draw_op_t op{};
-        op.call_index  = static_cast<std::uint32_t>(call_index);
+        op.call_index  = call_index;
         op.index_start = index_start;
-        op.index_count = static_cast<std::uint32_t>(m_impl->m_rhi_index_data.size());
+        op.index_count = index_count;
         op.scissor     = scissor;
         op.pass        = pass;
         rhi_state.ops.push_back(op);
@@ -1156,17 +1221,32 @@ void Font_renderer::rhi_finalize_frame(const frame_context_t& ctx)
     QRhi* rhi = ctx.rhi;
     QRhiResourceUpdateBatch* updates = ctx.rhi_updates;
 
-    const std::size_t vertex_bytes =
-        m_impl->m_rhi_frame_vertex_data.size() * sizeof(float);
-    const std::size_t index_bytes =
-        m_impl->m_rhi_frame_index_data.size() * sizeof(std::uint32_t);
+    std::size_t vertex_bytes = 0;
+    std::size_t index_bytes = 0;
+    quint32 qrhi_vertex_bytes = 0;
+    quint32 qrhi_index_bytes = 0;
+    if (!detail::qrhi_byte_size(
+            m_impl->m_rhi_frame_vertex_data.size(), sizeof(float),
+            vertex_bytes, qrhi_vertex_bytes) ||
+        !detail::qrhi_byte_size(
+            m_impl->m_rhi_frame_index_data.size(), sizeof(std::uint32_t),
+            index_bytes, qrhi_index_bytes))
+    {
+        rhi_reset_frame();
+        return;
+    }
 
     if (!rhi_state.vbo || rhi_state.vbo_capacity_bytes < vertex_bytes) {
-        const std::size_t alloc = vertex_bytes + vertex_bytes / 4;
+        std::size_t alloc = 0;
+        quint32 qrhi_alloc = 0;
+        if (!detail::qrhi_grown_capacity_bytes(vertex_bytes, alloc, qrhi_alloc)) {
+            rhi_reset_frame();
+            return;
+        }
         rhi_state.vbo.reset(rhi->newBuffer(
             QRhiBuffer::Dynamic,
             QRhiBuffer::VertexBuffer,
-            static_cast<quint32>(alloc)));
+            qrhi_alloc));
         if (!rhi_state.vbo || !rhi_state.vbo->create()) {
             rhi_state.vbo.reset();
             rhi_reset_frame();
@@ -1176,11 +1256,16 @@ void Font_renderer::rhi_finalize_frame(const frame_context_t& ctx)
     }
 
     if (!rhi_state.ibo || rhi_state.ibo_capacity_bytes < index_bytes) {
-        const std::size_t alloc = index_bytes + index_bytes / 4;
+        std::size_t alloc = 0;
+        quint32 qrhi_alloc = 0;
+        if (!detail::qrhi_grown_capacity_bytes(index_bytes, alloc, qrhi_alloc)) {
+            rhi_reset_frame();
+            return;
+        }
         rhi_state.ibo.reset(rhi->newBuffer(
             QRhiBuffer::Dynamic,
             QRhiBuffer::IndexBuffer,
-            static_cast<quint32>(alloc)));
+            qrhi_alloc));
         if (!rhi_state.ibo || !rhi_state.ibo->create()) {
             rhi_state.ibo.reset();
             rhi_reset_frame();
@@ -1192,12 +1277,12 @@ void Font_renderer::rhi_finalize_frame(const frame_context_t& ctx)
     updates->updateDynamicBuffer(
         rhi_state.vbo.get(),
         0,
-        static_cast<quint32>(vertex_bytes),
+        qrhi_vertex_bytes,
         m_impl->m_rhi_frame_vertex_data.data());
     updates->updateDynamicBuffer(
         rhi_state.ibo.get(),
         0,
-        static_cast<quint32>(index_bytes),
+        qrhi_index_bytes,
         m_impl->m_rhi_frame_index_data.data());
 }
 

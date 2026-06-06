@@ -1701,11 +1701,29 @@ bool Series_renderer::rhi_prepare_series_primitive(
     if (!ensure_ubo(primary_srb_entry)) {
         return false;
     }
+
+    const auto invalidate_uploaded_vbo = [&]() {
+        view_state.has_uploaded_vbo = false;
+        view_state.uploaded_t_origin_ns = vbo_view_state_t::SENTINEL_NONE;
+        view_state.staging.clear();
+    };
+
     const data_snapshot_t& snapshot = view_result.cached_snapshot;
     if (snapshot && access && access->get_timestamp && updates) {
-        const std::size_t needed_elements =
-            snapshot.count + (view_result.hold_last_forward ? 1 : 0);
-        const std::size_t needed_bytes = needed_elements * sizeof(gpu_sample_t);
+        std::size_t needed_elements = 0;
+        std::size_t needed_bytes = 0;
+        quint32 upload_bytes = 0;
+        if (!detail::checked_size_add(
+                snapshot.count,
+                view_result.hold_last_forward ? 1u : 0u,
+                needed_elements) ||
+            !detail::qrhi_byte_size(
+                needed_elements, sizeof(gpu_sample_t),
+                needed_bytes, upload_bytes))
+        {
+            invalidate_uploaded_vbo();
+            return false;
+        }
 
         auto& staging = view_state.staging;
         staging.resize(needed_elements);
@@ -1747,23 +1765,33 @@ bool Series_renderer::rhi_prepare_series_primitive(
             }
         }
 
-        const std::size_t alloc_bytes = needed_bytes + needed_bytes / 4;
+        std::size_t alloc_bytes = 0;
+        quint32 qrhi_alloc_bytes = 0;
+        if (!detail::qrhi_grown_capacity_bytes(
+                needed_bytes, alloc_bytes, qrhi_alloc_bytes))
+        {
+            invalidate_uploaded_vbo();
+            return false;
+        }
         if (!view_state.rhi->vbo || view_state.rhi_vbo_capacity_bytes < alloc_bytes) {
             view_state.rhi->vbo.reset(rhi->newBuffer(
                 QRhiBuffer::Static,
                 QRhiBuffer::VertexBuffer,
-                static_cast<quint32>(alloc_bytes)));
+                qrhi_alloc_bytes));
             if (view_state.rhi->vbo && view_state.rhi->vbo->create()) {
                 view_state.rhi_vbo_capacity_bytes = alloc_bytes;
             }
             else {
+                view_state.rhi->vbo.reset();
+                view_state.rhi_vbo_capacity_bytes = 0;
+                invalidate_uploaded_vbo();
                 return false;
             }
         }
         updates->uploadStaticBuffer(
             view_state.rhi->vbo.get(),
             0,
-            static_cast<quint32>(staging.size() * sizeof(gpu_sample_t)),
+            upload_bytes,
             staging.data());
         view_state.has_uploaded_vbo = true;
     }
@@ -1786,21 +1814,37 @@ bool Series_renderer::rhi_prepare_series_primitive(
     if (!is_dots && !is_area) {
         const std::size_t window_count =
             line_window_sample_count(count, view_result.interpolation);
-        const std::size_t padded_count = window_count + 2;
-        const std::size_t needed_bytes = padded_count * sizeof(gpu_sample_t);
-        const std::size_t alloc_bytes = needed_bytes + needed_bytes / 4;
+        std::size_t padded_count = 0;
+        std::size_t needed_bytes = 0;
+        quint32 upload_bytes = 0;
+        if (!detail::checked_size_add(window_count, 2u, padded_count) ||
+            !detail::qrhi_byte_size(
+                padded_count, sizeof(gpu_sample_t),
+                needed_bytes, upload_bytes))
+        {
+            return false;
+        }
+        std::size_t alloc_bytes = 0;
+        quint32 qrhi_alloc_bytes = 0;
+        if (!detail::qrhi_grown_capacity_bytes(
+                needed_bytes, alloc_bytes, qrhi_alloc_bytes))
+        {
+            return false;
+        }
         if (!view_state.rhi->line_window_vbo
             || view_state.rhi_line_window_vbo_capacity_bytes < needed_bytes)
         {
             view_state.rhi->line_window_vbo.reset(rhi->newBuffer(
                 QRhiBuffer::Static, QRhiBuffer::VertexBuffer,
-                static_cast<quint32>(alloc_bytes)));
+                qrhi_alloc_bytes));
             if (view_state.rhi->line_window_vbo
                 && view_state.rhi->line_window_vbo->create())
             {
                 view_state.rhi_line_window_vbo_capacity_bytes = alloc_bytes;
             }
             else {
+                view_state.rhi->line_window_vbo.reset();
+                view_state.rhi_line_window_vbo_capacity_bytes = 0;
                 return false;
             }
         }
@@ -1836,7 +1880,7 @@ bool Series_renderer::rhi_prepare_series_primitive(
             updates->uploadStaticBuffer(
                 view_state.rhi->line_window_vbo.get(),
                 0,
-                static_cast<quint32>(needed_bytes),
+                upload_bytes,
                 padded.data());
         }
     }
@@ -2066,6 +2110,10 @@ void Series_renderer::rhi_record_series_primitive(
     if (!view_state.rhi) {
         return;
     }
+    if (view_result.first < 0) {
+        return;
+    }
+    const std::size_t first_sample = static_cast<std::size_t>(view_result.first);
 
     rhi_state_t::pipeline_key_t key{
         is_dots
@@ -2096,27 +2144,46 @@ void Series_renderer::rhi_record_series_primitive(
             // BaseInstance semantics, and emulating it on other backends can
             // be slow. The buffer itself is bound at sample[first], and the
             // shader reads samples relative to that origin.
-            const quint32 vbo_offset =
-                static_cast<quint32>(view_result.first) *
-                static_cast<quint32>(sizeof(gpu_sample_t));
+            quint32 vbo_offset = 0;
+            if (!detail::qrhi_buffer_offset(
+                    first_sample, sizeof(gpu_sample_t), vbo_offset))
+            {
+                return;
+            }
             QRhiCommandBuffer::VertexInput input{
                 view_state.rhi->vbo.get(), vbo_offset};
             cb->setVertexInput(0, 1, &input);
         }
-        cb->draw(4, static_cast<quint32>(count));
+        quint32 instance_count = 0;
+        if (!detail::to_qrhi_count(static_cast<std::size_t>(count), instance_count)) {
+            return;
+        }
+        cb->draw(4, instance_count);
     }
     else
     if (is_area) {
-        const quint32 instance_count = static_cast<quint32>(count - 1);
+        quint32 instance_count = 0;
+        if (!detail::to_qrhi_count(
+                static_cast<std::size_t>(count - 1), instance_count))
+        {
+            return;
+        }
         if (instance_count > 0 && view_state.rhi->vbo) {
-            const quint32 stride =
-                static_cast<quint32>(sizeof(gpu_sample_t));
-            const quint32 vbo_offset =
-                static_cast<quint32>(view_result.first) * stride;
+            quint32 vbo_offset = 0;
+            quint32 next_vbo_offset = 0;
+            std::size_t next_sample = 0;
+            if (!detail::qrhi_buffer_offset(
+                    first_sample, sizeof(gpu_sample_t), vbo_offset) ||
+                !detail::checked_size_add(first_sample, 1u, next_sample) ||
+                !detail::qrhi_buffer_offset(
+                    next_sample, sizeof(gpu_sample_t), next_vbo_offset))
+            {
+                return;
+            }
             QRhiBuffer* const vbo = view_state.rhi->vbo.get();
             const QRhiCommandBuffer::VertexInput inputs[2] = {
                 { vbo, vbo_offset },
-                { vbo, vbo_offset + stride }
+                { vbo, next_vbo_offset }
             };
             cb->setVertexInput(0, 2, inputs);
 
@@ -2132,9 +2199,12 @@ void Series_renderer::rhi_record_series_primitive(
         // (prev, p0, p1, next) window across the padded sample array.
         const std::size_t window_count =
             line_window_sample_count(count, view_result.interpolation);
-        const quint32 instance_count = window_count > 1
-            ? static_cast<quint32>(window_count - 1u)
-            : 0u;
+        quint32 instance_count = 0;
+        if (window_count > 1 &&
+            !detail::to_qrhi_count(window_count - 1u, instance_count))
+        {
+            return;
+        }
         if (instance_count > 0 && view_state.rhi->line_window_vbo) {
             const quint32 stride =
                 static_cast<quint32>(sizeof(gpu_sample_t));

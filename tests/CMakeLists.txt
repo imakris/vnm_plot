@@ -11,6 +11,7 @@ set(_vnm_plot_core_tests
     test_concurrent_series
     test_gpu_sample_origin
     test_layout_calculator
+    test_rhi_helpers
     test_qrhi_layer_lifecycle
     test_qrhi_public_api
 )
@@ -35,6 +36,7 @@ endif()
 
 target_link_libraries(test_qrhi_layer_lifecycle PRIVATE Qt6::GuiPrivate Qt6::Gui)
 target_link_libraries(test_qrhi_public_api PRIVATE Qt6::GuiPrivate Qt6::Gui)
+target_link_libraries(test_rhi_helpers PRIVATE Qt6::GuiPrivate Qt6::Gui)
 
 if(TARGET vnm_plot)
     add_executable(test_plot_interaction_item test_plot_interaction_item.cpp)
@@ -68,6 +70,7 @@ vnm_plot_add_test(AssetLoader test_asset_loader)
 vnm_plot_add_test(ConcurrentSeries test_concurrent_series)
 vnm_plot_add_test(GpuSampleOrigin test_gpu_sample_origin)
 vnm_plot_add_test(LayoutCalculator test_layout_calculator)
+vnm_plot_add_test(RhiHelpers test_rhi_helpers)
 vnm_plot_add_test(QrhiLayerLifecycle test_qrhi_layer_lifecycle)
 vnm_plot_add_test(QrhiPublicApi test_qrhi_public_api)
 

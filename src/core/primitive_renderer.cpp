@@ -128,14 +128,14 @@ struct Primitive_renderer::rhi_state_t
     {
         op_kind_t  kind;
         // Index into rect_calls / grid_calls depending on kind. Stored as
-        // uint32_t because each op references exactly one preallocated call
+        // size_t because each op references exactly one preallocated call
         // resource; the indices are stable for the duration of the frame.
-        uint32_t   resource_index;
+        std::size_t resource_index;
         // For RECT: number of instances (== quads) in vbo.
         // For GRID: scissor rectangle in QRhi's bottom-left coordinates.
         union {
             struct {
-                uint32_t instance_count;
+                quint32 instance_count;
             } rect;
             struct {
                 int x, y, w, h;
@@ -414,6 +414,18 @@ void Primitive_renderer::flush_rects(const frame_context_t& ctx, const glm::mat4
             return;
         }
 
+        std::size_t bytes_needed = 0;
+        quint32 upload_bytes = 0;
+        quint32 instance_count = 0;
+        if (!detail::qrhi_byte_size(
+                m_cpu_buffer.size(), sizeof(rect_vertex_t),
+                bytes_needed, upload_bytes) ||
+            !detail::to_qrhi_count(m_cpu_buffer.size(), instance_count))
+        {
+            m_cpu_buffer.clear();
+            return;
+        }
+
         // Acquire the next per-call resource slot. The pool grows on demand
         // and is recycled across frames; rect_used is bumped here and reset
         // by record_draws().
@@ -423,18 +435,23 @@ void Primitive_renderer::flush_rects(const frame_context_t& ctx, const glm::mat4
         const std::size_t slot = m_rhi_state->rect_used++;
         auto& call = m_rhi_state->rect_calls[slot];
 
-        const std::size_t bytes_needed =
-            m_cpu_buffer.size() * sizeof(rect_vertex_t);
-
         if (!call.vbo || call.vbo_capacity_bytes < bytes_needed) {
             // Headroom of 25% on grow keeps reallocations rare across frames
             // where the rect count drifts slightly. The grow reseats call.vbo,
             // which invalidates the SRB's last_ubo handle (UBO is unchanged),
             // and forces ensure-* to upload fresh contents.
-            const std::size_t alloc = bytes_needed + bytes_needed / 4;
+            std::size_t alloc = 0;
+            quint32 qrhi_alloc = 0;
+            if (!detail::qrhi_grown_capacity_bytes(
+                    bytes_needed, alloc, qrhi_alloc))
+            {
+                m_cpu_buffer.clear();
+                m_rhi_state->rect_used--;
+                return;
+            }
             call.vbo.reset(rhi->newBuffer(
                 QRhiBuffer::Static, QRhiBuffer::VertexBuffer,
-                static_cast<quint32>(alloc)));
+                qrhi_alloc));
             if (!call.vbo || !call.vbo->create()) {
                 call.vbo.reset();
                 m_cpu_buffer.clear();
@@ -468,7 +485,7 @@ void Primitive_renderer::flush_rects(const frame_context_t& ctx, const glm::mat4
 
         updates->uploadStaticBuffer(
             call.vbo.get(), 0,
-            static_cast<quint32>(bytes_needed),
+            upload_bytes,
             m_cpu_buffer.data());
 
         Rect_block_std140 block{};
@@ -477,8 +494,8 @@ void Primitive_renderer::flush_rects(const frame_context_t& ctx, const glm::mat4
 
         rhi_state_t::draw_op_t op{};
         op.kind = rhi_state_t::op_kind_t::RECT;
-        op.resource_index = static_cast<uint32_t>(slot);
-        op.rect.instance_count = static_cast<uint32_t>(m_cpu_buffer.size());
+        op.resource_index = slot;
+        op.rect.instance_count = instance_count;
         m_rhi_state->ops.push_back(op);
 
         m_cpu_buffer.clear();
@@ -610,7 +627,7 @@ void Primitive_renderer::draw_grid_shader(
 
         rhi_state_t::draw_op_t op{};
         op.kind = rhi_state_t::op_kind_t::GRID;
-        op.resource_index = static_cast<uint32_t>(slot);
+        op.resource_index = slot;
         op.grid.x = sx;
         op.grid.y = sy;
         op.grid.w = sw;
