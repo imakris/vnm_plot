@@ -1,8 +1,8 @@
 # Build outputs
 /build/
+/build-*/
 /build_*/
 /examples/build-*
-/build-benchmark-*/
 /benchmark_headless/build/
 
 # Test binaries

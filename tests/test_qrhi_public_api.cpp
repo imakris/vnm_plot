@@ -96,6 +96,7 @@ static_assert(!has_colormap_line<plot::series_data_t>::value);
 static_assert(!has_colormap_area<plot::Series_builder>::value);
 static_assert(!has_colormap_line<plot::Series_builder>::value);
 
+static_assert(static_cast<int>(plot::Display_style::NONE) == 0x0);
 static_assert(static_cast<int>(plot::Display_style::DOTS) == 0x1);
 static_assert(static_cast<int>(plot::Display_style::LINE) == 0x2);
 static_assert(static_cast<int>(plot::Display_style::AREA) == 0x4);

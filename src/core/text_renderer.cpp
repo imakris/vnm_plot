@@ -2,6 +2,7 @@
 #include <vnm_plot/core/constants.h>
 #include <vnm_plot/core/plot_config.h>
 #include <vnm_plot/core/font_renderer.h>
+#include <vnm_plot/core/time_units.h>
 #include "rhi_helpers.h"
 
 #include <glm/glm.hpp>
@@ -52,13 +53,16 @@ text_shadow_t text_shadow_for_background(const glm::vec4& background, double fon
     return shadow;
 }
 
-template <typename Labels, typename DrawFunc>
+template <typename Labels, typename Tracker, typename KeyFunc, typename DrawFunc>
 bool update_and_draw_faded_labels(
     const Labels& labels,
-    Text_renderer::axis_fade_tracker_t& tracker,
+    Tracker& tracker,
     float fade_duration_ms,
+    KeyFunc&& key_fn,
     DrawFunc&& draw_fn)
 {
+    using key_t = typename Tracker::key_type;
+
     const auto now = std::chrono::steady_clock::now();
     float dt_ms = 0.0f;
     if (tracker.initialized) {
@@ -71,24 +75,20 @@ bool update_and_draw_faded_labels(
         ? std::clamp(dt_ms / fade_duration_ms, 0.0f, 1.0f)
         : 1.0f;
 
-    std::unordered_set<double> current_values;
+    std::unordered_set<key_t> current_values;
     current_values.reserve(labels.size());
 
     for (const auto& label : labels) {
-        // Tracker key is double; v_label_t::value is double already, h_label_t::
-        // value is int64 ns and round-trips through double here. Within one
-        // session the same int64 always maps to the same double, which is what
-        // the fade tracker needs.
-        const double v = static_cast<double>(label.value);
-        current_values.insert(v);
+        const key_t key = key_fn(label);
+        current_values.insert(key);
 
-        auto it = tracker.states.find(v);
+        auto it = tracker.states.find(key);
         if (it == tracker.states.end()) {
             Text_renderer::label_fade_state_t state;
             state.alpha = 0.0f;
             state.direction = 1;
             state.text = label.text;
-            tracker.states.emplace(v, std::move(state));
+            tracker.states.emplace(key, std::move(state));
         }
         else {
             auto& state = it->second;
@@ -252,6 +252,7 @@ bool Text_renderer::render_axis_labels(const frame_context_t& ctx, bool fade_lab
             pl.v_labels,
             m_vertical_fade,
             k_label_fade_duration_ms,
+            [](const v_label_t& label) { return label.value; },
             draw_label);
     }
     else {
@@ -284,20 +285,18 @@ bool Text_renderer::render_info_overlay(const frame_context_t& ctx, bool fade_la
     const glm::vec4 font_color = text_color_for_theme(dark_mode);
     const text_shadow_t overlay_shadow =
         text_shadow_for_background(ctx.plot_body_background, ctx.adjusted_font_px);
-    // Subtract first, then convert: keeps sub-ms precision near modern epochs.
-    const std::int64_t t_span_ns = ctx.t1 - ctx.t0;
-    const double t_span = static_cast<double>(t_span_ns);
+    const auto t_span = positive_span_ns_as_long_double(ctx.t0, ctx.t1);
 
-    const auto draw_label = [&](double t_ns_as_double, const label_fade_state_t& state) {
-        if (!(t_span > 0.0) || !(pl.usable_width > 0.0)) {
+    const auto draw_label = [&](std::int64_t t_ns, const label_fade_state_t& state) {
+        if (!t_span || !(pl.usable_width > 0.0)) {
             return;
         }
 
-        // The fade tracker keys labels by their double-cast value; treat that
-        // as the int64-nanosecond domain it came from when computing pixels.
-        const double px_per_unit = pl.usable_width / t_span;
+        const long double px_per_unit =
+            static_cast<long double>(pl.usable_width) / *t_span;
+        const long double t_delta = span_ns_as_long_double(ctx.t0, t_ns);
         const float x_anchor = static_cast<float>(
-            (t_ns_as_double - static_cast<double>(ctx.t0)) * px_per_unit);
+            t_delta * px_per_unit);
         const float pen_x = x_anchor + k_text_margin_px;
         const float pen_y = static_cast<float>(pl.usable_height + k_h_label_vertical_nudge_px * ctx.adjusted_font_px);
 
@@ -317,6 +316,7 @@ bool Text_renderer::render_info_overlay(const frame_context_t& ctx, bool fade_la
             pl.h_labels,
             m_horizontal_fade,
             k_label_fade_duration_ms,
+            [](const h_label_t& label) { return label.value; },
             draw_label);
     }
     else {
@@ -327,8 +327,7 @@ bool Text_renderer::render_info_overlay(const frame_context_t& ctx, bool fade_la
             state.alpha = 1.0f;
             state.direction = 0;
             state.text = label.text;
-            // Tracker key is double; cast int64 ns once at the boundary.
-            const double key = static_cast<double>(label.value);
+            const std::int64_t key = label.value;
             m_horizontal_fade.states.emplace(key, state);
             draw_label(key, state);
         }

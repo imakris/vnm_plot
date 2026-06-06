@@ -18,7 +18,6 @@
 #include <cmath>
 #include <limits>
 #include <tuple>
-#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -68,97 +67,6 @@ double dpi_scaling_for_window([[maybe_unused]] void* native_handle)
 #endif
 }
 
-template <typename Signature>
-bool function_targets_equivalent(
-    const std::function<Signature>& lhs,
-    const std::function<Signature>& rhs)
-{
-    if (static_cast<bool>(lhs) != static_cast<bool>(rhs)) {
-        return false;
-    }
-    if (!lhs) {
-        return true;
-    }
-    if (lhs.target_type() != rhs.target_type()) {
-        return false;
-    }
-
-    using function_ptr_t = std::add_pointer_t<Signature>;
-    const auto* lhs_fn = lhs.template target<function_ptr_t>();
-    const auto* rhs_fn = rhs.template target<function_ptr_t>();
-    if (lhs_fn || rhs_fn) {
-        return lhs_fn && rhs_fn && (*lhs_fn == *rhs_fn);
-    }
-
-    // For stateful callables (lambdas/functors), there is no portable way to
-    // compare captured state inside std::function. Treat same target type as
-    // equivalent and rely on explicit revision fields where needed.
-    return true;
-}
-
-bool color_equivalent(const glm::vec4& lhs, const glm::vec4& rhs)
-{
-    return
-        lhs.r == rhs.r &&
-        lhs.g == rhs.g &&
-        lhs.b == rhs.b &&
-        lhs.a == rhs.a;
-}
-
-bool color_palette_equivalent(
-    const vnm::plot::Color_palette& lhs,
-    const vnm::plot::Color_palette& rhs)
-{
-    static_assert(vnm::plot::Color_palette::field_count == 8,
-        "Color_palette field_count changed - update color_palette_equivalent to cover new fields");
-    return
-        color_equivalent(lhs.background,              rhs.background)              &&
-        color_equivalent(lhs.h_label_background,      rhs.h_label_background)      &&
-        color_equivalent(lhs.v_label_background,      rhs.v_label_background)      &&
-        color_equivalent(lhs.preview_background,      rhs.preview_background)      &&
-        color_equivalent(lhs.separator,               rhs.separator)               &&
-        color_equivalent(lhs.grid_line,               rhs.grid_line)               &&
-        color_equivalent(lhs.preview_cover,           rhs.preview_cover)           &&
-        color_equivalent(lhs.preview_cover_secondary, rhs.preview_cover_secondary);
-}
-
-bool plot_config_equivalent(
-    const vnm::plot::Plot_config& lhs,
-    const vnm::plot::Plot_config& rhs)
-{
-    // If a field is added to Plot_config, update this comparator and bump field_count.
-    static_assert(vnm::plot::Plot_config::field_count == 27,
-        "Plot_config field_count changed — update plot_config_equivalent to cover new fields");
-    return
-        lhs.dark_mode == rhs.dark_mode &&
-        lhs.show_text == rhs.show_text &&
-        lhs.grid_visibility == rhs.grid_visibility &&
-        lhs.preview_visibility == rhs.preview_visibility &&
-        color_palette_equivalent(lhs.dark_color_palette, rhs.dark_color_palette) &&
-        color_palette_equivalent(lhs.light_color_palette, rhs.light_color_palette) &&
-        function_targets_equivalent(lhs.format_timestamp, rhs.format_timestamp) &&
-        lhs.format_timestamp_revision == rhs.format_timestamp_revision &&
-        function_targets_equivalent(lhs.format_value, rhs.format_value) &&
-        lhs.format_value_revision == rhs.format_value_revision &&
-        lhs.profiler.get() == rhs.profiler.get() &&
-        lhs.font_size_px == rhs.font_size_px &&
-        lhs.base_label_height_px == rhs.base_label_height_px &&
-        function_targets_equivalent(lhs.log_debug, rhs.log_debug) &&
-        function_targets_equivalent(lhs.log_error, rhs.log_error) &&
-        function_targets_equivalent(lhs.register_assets, rhs.register_assets) &&
-        lhs.assets_revision == rhs.assets_revision &&
-        lhs.preview_height_px == rhs.preview_height_px &&
-        lhs.clear_to_transparent == rhs.clear_to_transparent &&
-        lhs.snap_lines_to_pixels == rhs.snap_lines_to_pixels &&
-        lhs.line_width_px == rhs.line_width_px &&
-        lhs.point_diameter_px == rhs.point_diameter_px &&
-        lhs.area_fill_alpha == rhs.area_fill_alpha &&
-        lhs.allow_renderer_self_scheduling == rhs.allow_renderer_self_scheduling &&
-        lhs.auto_v_range_mode == rhs.auto_v_range_mode &&
-        lhs.auto_v_range_extra_scale == rhs.auto_v_range_extra_scale &&
-        lhs.floor_nonnegative_auto_v_range_at_zero == rhs.floor_nonnegative_auto_v_range_at_zero;
-}
-
 } // anonymous namespace
 
 namespace vnm::plot {
@@ -204,6 +112,8 @@ Plot_widget::~Plot_widget()
         m_time_axis_connection = {};
         m_time_axis_destroyed_connection = {};
         m_time_axis_vbar_connection = {};
+        m_time_axis_sync_vbar_connection = {};
+        m_sync_vbar_width_active.store(false, std::memory_order_release);
         m_time_axis = nullptr;
     }
 }
@@ -266,7 +176,6 @@ void Plot_widget::set_config(const Plot_config& config)
 
     {
         std::unique_lock lock(m_config_mutex);
-        const Plot_config prev_config = m_config;
         const double prev_grid_visibility = m_config.grid_visibility;
         const double prev_preview_visibility = m_config.preview_visibility;
         const double prev_line_width_px = m_config.line_width_px;
@@ -274,9 +183,7 @@ void Plot_widget::set_config(const Plot_config& config)
         m_config.grid_visibility = prev_grid_visibility;      // Preserve QML-controlled setting
         m_config.preview_visibility = prev_preview_visibility; // Preserve QML-controlled setting
         m_config.line_width_px = prev_line_width_px;          // Preserve QML-controlled setting
-        if (!plot_config_equivalent(prev_config, m_config)) {
-            m_config_revision.fetch_add(1, std::memory_order_relaxed);
-        }
+        m_config_revision.fetch_add(1, std::memory_order_relaxed);
         effective_config = m_config;
     }
     m_adjusted_font_size = effective_config.font_size_px * m_scaling_factor;
@@ -433,22 +340,18 @@ void Plot_widget::set_t_range(qint64 t_min_ns, qint64 t_max_ns)
 
 void Plot_widget::clamp_t_range_to_available(qint64 t_avail_min_ns, qint64 t_avail_max_ns)
 {
-    const qint64 span = t_avail_max_ns - t_avail_min_ns;
-    const qint64 cur_span = m_data_cfg.t_max - m_data_cfg.t_min;
-    if (cur_span > span) {
+    const auto clamped = clamp_time_range_to_available_ns(
+        time_range_t{m_data_cfg.t_min, m_data_cfg.t_max},
+        time_range_t{t_avail_min_ns, t_avail_max_ns});
+    if (clamped) {
+        m_data_cfg.t_min = clamped->min_ns;
+        m_data_cfg.t_max = clamped->max_ns;
+    }
+    else {
         m_data_cfg.t_min = t_avail_min_ns;
         m_data_cfg.t_max = t_avail_max_ns;
     }
-    else {
-        if (m_data_cfg.t_min < t_avail_min_ns) {
-            m_data_cfg.t_min = t_avail_min_ns;
-            m_data_cfg.t_max = t_avail_min_ns + cur_span;
-        }
-        if (m_data_cfg.t_max > t_avail_max_ns) {
-            m_data_cfg.t_max = t_avail_max_ns;
-            m_data_cfg.t_min = t_avail_max_ns - cur_span;
-        }
-    }
+
     m_data_cfg.t_available_min = t_avail_min_ns;
     m_data_cfg.t_available_max = t_avail_max_ns;
 }
@@ -560,11 +463,16 @@ void Plot_widget::set_time_axis(Plot_time_axis* axis)
         m_time_axis_connection = {};
         m_time_axis_destroyed_connection = {};
         m_time_axis_vbar_connection = {};
+        m_time_axis_sync_vbar_connection = {};
+        m_sync_vbar_width_active.store(false, std::memory_order_release);
     }
 
     m_time_axis = axis;
 
     if (m_time_axis) {
+        m_sync_vbar_width_active.store(
+            m_time_axis->sync_vbar_width(),
+            std::memory_order_release);
         m_time_axis_connection = QObject::connect(
             m_time_axis,
             &Plot_time_axis::t_limits_changed,
@@ -588,19 +496,35 @@ void Plot_widget::set_time_axis(Plot_time_axis* axis)
                 }
                 apply_vbar_width_target(px);
             });
-        // Seed an uninitialized axis from the widget's existing configuration
-        // before pulling. This preserves a user-set view (typically applied
-        // via set_view before the QML time_axis binding fires) and gives
-        // subsequent mouse interactions a real span to operate on, since
-        // adjust_t_from_* on Plot_time_axis is gated on view_initialized().
-        // Subsequent attachments to a shared axis still pull through
-        // sync_time_axis_state() because the axis is no longer uninitialized.
+        m_time_axis_sync_vbar_connection = QObject::connect(
+            m_time_axis,
+            &Plot_time_axis::sync_vbar_width_changed,
+            this,
+            [this]() {
+                if (!m_time_axis || !m_time_axis->sync_vbar_width()) {
+                    m_sync_vbar_width_active.store(false, std::memory_order_release);
+                    return;
+                }
+                m_sync_vbar_width_active.store(true, std::memory_order_release);
+                const double current_px =
+                    m_vbar_width_px.load(std::memory_order_acquire);
+                if (std::isfinite(current_px) && current_px > 0.0) {
+                    m_time_axis->update_shared_vbar_width(this, current_px);
+                }
+                const double shared_px = m_time_axis->shared_vbar_width_px();
+                if (std::isfinite(shared_px) && shared_px > 0.0) {
+                    apply_vbar_width_target(shared_px);
+                }
+            });
+        // Seed only ranges with no initialized bounds from the widget's
+        // existing configuration before pulling. A half-seeded axis carries a
+        // caller-provided bound and must not be overwritten by widget defaults.
         {
             const auto cfg = data_cfg_snapshot();
-            if (!m_time_axis->view_initialized() && cfg.t_max > cfg.t_min) {
+            if (!m_time_axis->any_view_bound_initialized() && cfg.t_max > cfg.t_min) {
                 m_time_axis->set_t_range(cfg.t_min, cfg.t_max);
             }
-            if (!m_time_axis->available_initialized()
+            if (!m_time_axis->any_available_bound_initialized()
                 && cfg.t_available_max > cfg.t_available_min)
             {
                 m_time_axis->set_available_t_range(
@@ -762,7 +686,7 @@ void Plot_widget::set_vbar_width(double vbar_width)
     }
 }
 
-void Plot_widget::apply_vbar_width_target(double target)
+void Plot_widget::apply_vbar_width_target(double target, bool publish_shared)
 {
     if (!std::isfinite(target) || target <= 0.0) {
         return;
@@ -775,25 +699,35 @@ void Plot_widget::apply_vbar_width_target(double target)
     }
 
     const double current = m_vbar_width_px.load(std::memory_order_acquire);
+    const auto publish_shared_width = [&]() {
+        if (publish_shared && m_time_axis && m_time_axis->sync_vbar_width()) {
+            m_time_axis->update_shared_vbar_width(this, target);
+        }
+    };
 
     if (!std::isfinite(current) || current <= 0.0) {
         m_vbar_width_px.store(target, std::memory_order_release);
         emit vbar_width_changed();
         update();
+        publish_shared_width();
         return;
     }
 
     if (std::abs(target - current) <= k_vbar_width_change_threshold_d &&
         !m_vbar_width_timer.isActive())
     {
+        publish_shared_width();
         return;
     }
 
     if (m_vbar_width_timer.isActive() &&
         std::abs(target - m_vbar_width_anim_target_px) <= 1e-6)
     {
+        publish_shared_width();
         return;
     }
+
+    publish_shared_width();
 
     m_vbar_width_anim_start_px = current;
     m_vbar_width_anim_target_px = target;
@@ -814,13 +748,22 @@ void Plot_widget::publish_measured_vbar_width(double px) const
     if (std::isfinite(current) &&
         std::abs(px - current) <= k_vbar_width_change_threshold_d)
     {
+        if (!m_sync_vbar_width_active.load(std::memory_order_acquire)) {
+            return;
+        }
+        QMetaObject::invokeMethod(
+            const_cast<Plot_widget*>(this),
+            [this, px] {
+                const_cast<Plot_widget*>(this)->apply_vbar_width_target(px, true);
+            },
+            Qt::QueuedConnection);
         return;
     }
 
     QMetaObject::invokeMethod(
         const_cast<Plot_widget*>(this),
         [this, px] {
-            const_cast<Plot_widget*>(this)->apply_vbar_width_target(px);
+            const_cast<Plot_widget*>(this)->apply_vbar_width_target(px, true);
         },
         Qt::QueuedConnection);
 }
@@ -1209,7 +1152,8 @@ bool Plot_widget::can_zoom_in() const
     // 0.1 second is the floor for zoom-in (== 100 ms). Below that the axis
     // is dominated by tick-label clutter and gives no actionable detail.
     constexpr std::int64_t k_min_zoom_span_ns = std::int64_t{100} * 1'000'000;
-    return (cfg.t_max - cfg.t_min) > k_min_zoom_span_ns;
+    const auto span_ns = positive_span_ns(cfg.t_min, cfg.t_max);
+    return span_ns && *span_ns > static_cast<std::uint64_t>(k_min_zoom_span_ns);
 }
 
 QVariantList Plot_widget::get_indicator_samples(
@@ -1441,7 +1385,7 @@ void Plot_widget::sync_time_axis_state()
     }
 
     // Only pull bounds the axis has actually been told about. A freshly-
-    // attached axis reports k_t_unset for every slot; pulling those into
+    // attached axis has no initialized ranges; pulling default values into
     // m_data_cfg would silently overwrite a view that was set via set_view
     // before the axis was attached.
     const bool view_init = m_time_axis->view_initialized();
@@ -1472,6 +1416,8 @@ void Plot_widget::clear_time_axis()
     m_time_axis_connection = {};
     m_time_axis_destroyed_connection = {};
     m_time_axis_vbar_connection = {};
+    m_time_axis_sync_vbar_connection = {};
+    m_sync_vbar_width_active.store(false, std::memory_order_release);
     emit time_axis_changed();
     update();
 }
@@ -1540,34 +1486,17 @@ void Plot_widget::adjust_t_to_target(qint64 target_tmin_ns, qint64 target_tmax_n
     const qint64 avail_min_ns = cfg.t_available_min;
     const qint64 avail_max_ns = cfg.t_available_max;
 
-    const qint64 avail_span_ns = avail_max_ns - avail_min_ns;
-    qint64 span_ns = target_tmax_ns - target_tmin_ns;
-    if (avail_span_ns > 0 && span_ns > avail_span_ns) {
-        span_ns = avail_span_ns;
-    }
-
-    // Use integer midpoint that rounds toward zero; the resulting +- half_ns
-    // pair sums back to span_ns regardless of parity.
-    const qint64 half_ns = span_ns / 2;
-    const qint64 center_ns = target_tmin_ns + (target_tmax_ns - target_tmin_ns) / 2;
-    qint64 new_min_ns = center_ns - half_ns;
-    qint64 new_max_ns = new_min_ns + span_ns;
-
-    if (avail_span_ns > 0) {
-        if (new_max_ns > avail_max_ns) {
-            new_max_ns = avail_max_ns;
-            new_min_ns = new_max_ns - span_ns;
-        }
-        if (new_min_ns < avail_min_ns) {
-            new_min_ns = avail_min_ns;
-            new_max_ns = new_min_ns + span_ns;
-        }
+    const auto clamped = clamp_time_range_to_available_ns(
+        time_range_t{target_tmin_ns, target_tmax_ns},
+        time_range_t{avail_min_ns, avail_max_ns});
+    if (!clamped) {
+        return;
     }
 
     {
         std::unique_lock lock(m_data_cfg_mutex);
-        m_data_cfg.t_min = new_min_ns;
-        m_data_cfg.t_max = new_max_ns;
+        m_data_cfg.t_min = clamped->min_ns;
+        m_data_cfg.t_max = clamped->max_ns;
     }
 
     emit t_limits_changed();
@@ -1671,7 +1600,6 @@ void Plot_widget::geometryChange(const QRectF& newGeometry, const QRectF& oldGeo
     QQuickRhiItem::geometryChange(newGeometry, oldGeometry);
 
     if (newGeometry.size() != oldGeometry.size()) {
-        m_visible.store(newGeometry.width() > 0 && newGeometry.height() > 0, std::memory_order_release);
         recalculate_preview_height();
         update();
     }

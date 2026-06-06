@@ -4,6 +4,7 @@
 #include <vnm_plot/core/constants.h>
 #include <vnm_plot/core/plot_config.h>
 #include <vnm_plot/core/algo.h>
+#include <vnm_plot/core/time_units.h>
 
 #include <glm/glm.hpp>
 
@@ -350,14 +351,13 @@ void Chrome_renderer::render_preview_overlay(
         return;
     }
 
-    // Subtract nearby int64 nanoseconds first, then convert to fp64 once for
-    // the proportional math below. Going straight to double on each operand
-    // would lose sub-ms precision near modern wall-clock epochs.
-    const std::int64_t t_avail_span_ns = ctx.t_available_max - ctx.t_available_min;
-    if (t_avail_span_ns <= 0) {
+    const auto t_avail_span_ns = positive_span_ns_as_long_double(
+        ctx.t_available_min,
+        ctx.t_available_max);
+    if (!t_avail_span_ns) {
         return;
     }
-    const double t_avail_span = static_cast<double>(t_avail_span_ns);
+    const long double t_avail_span = *t_avail_span_ns;
 
     const Color_palette palette = resolved_color_palette(ctx.config, ctx.dark_mode);
     const glm::vec4 cover_color = palette.preview_cover;
@@ -365,10 +365,12 @@ void Chrome_renderer::render_preview_overlay(
     const glm::vec4 separator_color = palette.separator;
 
     // CPU calculations
-    const double x0 = ctx.win_w *
-        static_cast<double>(ctx.t0 - ctx.t_available_min) / t_avail_span;
-    const double x1 = ctx.win_w * (1.0 -
-        static_cast<double>(ctx.t_available_max - ctx.t1) / t_avail_span);
+    const double x0 = static_cast<double>(
+        static_cast<long double>(ctx.win_w) *
+        span_ns_as_long_double(ctx.t_available_min, ctx.t0) / t_avail_span);
+    const double x1 = static_cast<double>(
+        static_cast<long double>(ctx.win_w) *
+        (1.0L - span_ns_as_long_double(ctx.t1, ctx.t_available_max) / t_avail_span));
 
     const double dd = x1 - x0;
     const double win_w = ctx.win_w;

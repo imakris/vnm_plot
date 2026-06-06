@@ -5,6 +5,7 @@
 
 #include <vnm_plot/core/types.h>
 #include <vnm_plot/core/plot_config.h>
+#include <vnm_plot/core/time_units.h>
 
 #include <QBasicTimer>
 #include <QElapsedTimer>
@@ -28,34 +29,6 @@ namespace vnm::plot {
 
 class Plot_renderer;
 class Plot_time_axis;
-
-// QML/JS double precision boundary helpers.
-//
-// QML's JavaScript engine has no true int64 type; qint64 values cross the
-// QML boundary as JS doubles, which lose precision above 2^53 (~9.0e15).
-// Modern wall-clock timestamps in nanoseconds since 1970 are around 1.78e18,
-// well past that limit. The library keeps every C++ time value in
-// int64 nanoseconds, but every QML-facing property and signal exposes
-// milliseconds-since-epoch instead. ms-since-epoch fits exactly in a JS
-// double until roughly the year 285,000 AD, so cursor/indicator tooling
-// keeps full integer fidelity. The precision lost in the QML layer is
-// bounded to one millisecond, which the indicator does not depend on for
-// sub-ms accuracy. C++ callers continue to use the ns-typed methods.
-inline qint64 ns_to_ms_for_qml(qint64 ns_value)
-{
-    // Signed floor division so negative values round toward -inf, matching
-    // the inverse multiplication's symmetry around zero.
-    constexpr qint64 k_ns_per_ms = 1'000'000;
-    const qint64 q = ns_value / k_ns_per_ms;
-    const qint64 r = ns_value % k_ns_per_ms;
-    return (r != 0 && ((r < 0) != (k_ns_per_ms < 0))) ? q - 1 : q;
-}
-
-inline qint64 ms_for_qml_to_ns(qint64 ms_value)
-{
-    constexpr qint64 k_ns_per_ms = 1'000'000;
-    return ms_value * k_ns_per_ms;
-}
 
 // -----------------------------------------------------------------------------
 // Plot_view
@@ -292,7 +265,6 @@ private:
     mutable std::shared_mutex m_series_mutex;
 
     // UI state
-    std::atomic<bool> m_visible{false};
     std::atomic<bool> m_v_auto{true};
     std::atomic<int> m_visible_info_flags{k_visible_info_all};
     std::atomic<bool> m_view_state_reset_requested{false};
@@ -308,6 +280,7 @@ private:
     QElapsedTimer m_vbar_width_anim_elapsed;
     double m_vbar_width_anim_start_px = 0.0;
     double m_vbar_width_anim_target_px = 0.0;
+    std::atomic<bool> m_sync_vbar_width_active{false};
 
     double m_preview_height = 0.0;
     double m_preview_height_target = 0.0;
@@ -353,13 +326,14 @@ private:
     void set_rendered_t_range(qint64 t_min_ns, qint64 t_max_ns) const;
     void sync_time_axis_state();
     void clear_time_axis();
-    void apply_vbar_width_target(double px);
+    void apply_vbar_width_target(double px, bool publish_shared = false);
     void publish_measured_vbar_width(double px) const;
 
     QPointer<Plot_time_axis> m_time_axis;
     QMetaObject::Connection m_time_axis_connection;
     QMetaObject::Connection m_time_axis_destroyed_connection;
     QMetaObject::Connection m_time_axis_vbar_connection;
+    QMetaObject::Connection m_time_axis_sync_vbar_connection;
 };
 
 } // namespace vnm::plot

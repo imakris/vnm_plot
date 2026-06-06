@@ -358,7 +358,7 @@ std::shared_ptr<plot::series_data_t> make_layer_only_series(
     std::vector<std::shared_ptr<const plot::Qrhi_series_layer>> layers)
 {
     auto series = std::make_shared<plot::series_data_t>();
-    series->style = static_cast<plot::Display_style>(0);
+    series->style = plot::Display_style::NONE;
     series->data_source = source;
     series->access = make_access_policy();
     series->qrhi_layers = std::move(layers);

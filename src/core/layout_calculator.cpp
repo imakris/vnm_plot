@@ -2,6 +2,7 @@
 #include <vnm_plot/core/algo.h>
 #include <vnm_plot/core/constants.h>
 #include <vnm_plot/core/plot_config.h>
+#include <vnm_plot/core/time_units.h>
 #include "tls_registry.h"
 
 #include <algorithm>
@@ -36,6 +37,65 @@ static auto to_ieee_bits(T value)
     Bits bits = 0;
     std::memcpy(&bits, &value, sizeof(bits));
     return bits;
+}
+
+std::int64_t saturating_round_to_int64(long double value) noexcept
+{
+    constexpr long double k_min =
+        static_cast<long double>(std::numeric_limits<std::int64_t>::min());
+    constexpr long double k_max =
+        static_cast<long double>(std::numeric_limits<std::int64_t>::max());
+
+    if (std::isnan(value)) {
+        return 0;
+    }
+    if (!std::isfinite(value)) {
+        return value < 0.0L
+            ? std::numeric_limits<std::int64_t>::min()
+            : std::numeric_limits<std::int64_t>::max();
+    }
+
+    const long double rounded = std::round(value);
+    if (rounded <= k_min) {
+        return std::numeric_limits<std::int64_t>::min();
+    }
+    if (rounded >= k_max) {
+        return std::numeric_limits<std::int64_t>::max();
+    }
+    return static_cast<std::int64_t>(rounded);
+}
+
+std::int64_t saturating_floor_to_int64(long double value) noexcept
+{
+    constexpr long double k_min =
+        static_cast<long double>(std::numeric_limits<std::int64_t>::min());
+    constexpr long double k_max =
+        static_cast<long double>(std::numeric_limits<std::int64_t>::max());
+
+    if (std::isnan(value)) {
+        return 0;
+    }
+    if (!std::isfinite(value)) {
+        return value < 0.0L
+            ? std::numeric_limits<std::int64_t>::min()
+            : std::numeric_limits<std::int64_t>::max();
+    }
+
+    const long double floored = std::floor(value);
+    if (floored <= k_min) {
+        return std::numeric_limits<std::int64_t>::min();
+    }
+    if (floored >= k_max) {
+        return std::numeric_limits<std::int64_t>::max();
+    }
+    return static_cast<std::int64_t>(floored);
+}
+
+std::int64_t saturating_seconds_to_ns(double seconds) noexcept
+{
+    constexpr long double k_ns_per_second = 1.0e9L;
+    return saturating_round_to_int64(
+        static_cast<long double>(seconds) * k_ns_per_second);
 }
 
 struct Cached_label
@@ -222,8 +282,7 @@ public:
             std::int64_t{123'456'789},          // 0.123456789 s
             std::int64_t{12'345'678'900'000}    // 12345.6789 s
         };
-        const std::int64_t step_ns =
-            static_cast<std::int64_t>(std::llround(step * 1.0e9));
+        const std::int64_t step_ns = saturating_seconds_to_ns(step);
 
         bool first = true;
         for (std::int64_t sample_ns : k_sample_ns) {
@@ -639,7 +698,10 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
             VNM_PLOT_PROFILE_SCOPE(
                 profiler,
                 "renderer.frame.calculate_layout.impl.cache_miss.pass1.vertical_axis.fixed_digits");
-            res.v_label_fixed_digits = std::max(0, params.get_required_fixed_digits_func(finest_step_accepted));
+            const int required_digits = params.get_required_fixed_digits_func
+                ? params.get_required_fixed_digits_func(finest_step_accepted)
+                : 0;
+            res.v_label_fixed_digits = std::max(0, required_digits);
 
             auto& vals = m_scratch_vals_d;
             vals.clear();
@@ -709,9 +771,9 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
 
     // --- Horizontal (T) Axis Label Selection ---
     // Time math runs in fp64 seconds because the existing axis-step ladder
-    // (build_time_steps_covering) is expressed in seconds. The span is computed
-    // by subtracting nearby int64 nanoseconds first, then scaling once, so we
-    // never feed two raw nanosecond values into a double subtraction.
+    // (build_time_steps_covering) is expressed in seconds. The span goes
+    // through the int64-safe nanosecond helper before scaling, so extreme
+    // timestamp bounds cannot overflow before the double-domain layout math.
     constexpr double k_ns_per_second_d = 1.0e9;
     constexpr double k_seconds_per_ns  = 1.0 / k_ns_per_second_d;
     double t_range = 0.0;
@@ -720,7 +782,11 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
         VNM_PLOT_PROFILE_SCOPE(
             profiler,
             "renderer.frame.calculate_layout.impl.cache_miss.pass1.t_range");
-        t_range = static_cast<double>(params.t_max - params.t_min) * k_seconds_per_ns;
+        const auto t_range_ns = positive_span_ns_as_long_double(params.t_min, params.t_max);
+        if (t_range_ns) {
+            t_range = static_cast<double>(
+                *t_range_ns * static_cast<long double>(k_seconds_per_ns));
+        }
     }
     if (t_range > 0.0 && params.usable_width > 0.0f) {
         VNM_PLOT_PROFILE_SCOPE(
@@ -749,7 +815,7 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
         };
 
         const auto seconds_to_ns = [](double seconds) -> std::int64_t {
-            return static_cast<std::int64_t>(std::llround(seconds * k_ns_per_second_d));
+            return saturating_seconds_to_ns(seconds);
         };
 
         const auto label_text = [&](double t_seconds, double step_seconds) -> std::string {
@@ -842,8 +908,8 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
                 const float label_extent_px = estimated_label_width + k_text_margin_px;
                 const double left_steps =
                     static_cast<double>(label_extent_px) / static_cast<double>(pixel_step);
-                const int64_t k_min = static_cast<int64_t>(
-                    std::floor((t_min_seconds / step) - 1.0 - left_steps));
+                const int64_t k_min = saturating_floor_to_int64(
+                    (t_min_seconds / step) - 1.0 - left_steps);
                 t_start = k_min * step;
             }
 
@@ -1129,8 +1195,7 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
         if (any_level && finest_step > 0.0 && params.format_timestamp_func &&
             res.h_labels.size() > 1)
         {
-            const std::int64_t finest_step_ns =
-                static_cast<std::int64_t>(std::llround(finest_step * k_ns_per_second_d));
+            const std::int64_t finest_step_ns = seconds_to_ns(finest_step);
             for (auto& label : res.h_labels) {
                 label.text = params.format_timestamp_func(label.value, finest_step_ns);
             }

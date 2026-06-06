@@ -8,10 +8,12 @@
 
 namespace {
 
+namespace plot_examples = vnm::plot::examples;
+
 constexpr double k_x_min = -20.0;
 constexpr double k_x_max = 20.0;
 // Plot_view::t_range / t_available_range are int64 nanoseconds; sample x
-// values from Function_data_source come in as fp seconds and the access
+// values from the example Function_data_source come in as fp seconds and the access
 // policy auto-converts at the data boundary, but the view-range setters
 // take qint64 directly and need explicit conversion here.
 constexpr qint64 k_ns_per_second = 1'000'000'000;
@@ -31,8 +33,8 @@ float sample_signal(double x)
 
 Preview_controller::Preview_controller(QObject* parent)
     : QObject(parent)
-    , m_main_source(std::make_shared<vnm::plot::Function_data_source>())
-    , m_preview_source(std::make_shared<vnm::plot::Function_data_source>())
+    , m_main_source(std::make_shared<plot_examples::Function_data_source>())
+    , m_preview_source(std::make_shared<plot_examples::Function_data_source>())
 {
     setup_series();
     generate_samples();
@@ -83,7 +85,7 @@ void Preview_controller::setup_series()
         .style(vnm::plot::Display_style::LINE)
         .color(vnm::plot::rgba_u8(64, 217, 140))
         .data_source(m_main_source)
-        .access(vnm::plot::make_function_sample_policy_typed())
+        .access(plot_examples::make_function_sample_policy_typed())
         .build_shared();
 
     vnm::plot::preview_config_t preview_cfg;

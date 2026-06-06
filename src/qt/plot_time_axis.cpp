@@ -34,19 +34,28 @@ qint64 Plot_time_axis::t_available_max() const
 
 bool Plot_time_axis::view_initialized() const
 {
-    return m_t_min != k_t_unset && m_t_max != k_t_unset;
+    return m_t_min_initialized && m_t_max_initialized;
 }
 
 bool Plot_time_axis::available_initialized() const
 {
-    return m_t_available_min != k_t_unset && m_t_available_max != k_t_unset;
+    return m_t_available_min_initialized && m_t_available_max_initialized;
 }
 
-// QML-facing readers. While the axis is still uninitialized, surface 0
-// instead of the sentinel mapped through ns_to_ms_for_qml(): QML eagerly
-// evaluates property bindings before any user code runs set_t_range, and
-// a giant negative integer would feed straight into spans and pixel math
-// in PlotIndicator-style consumers.
+bool Plot_time_axis::any_view_bound_initialized() const
+{
+    return m_t_min_initialized || m_t_max_initialized;
+}
+
+bool Plot_time_axis::any_available_bound_initialized() const
+{
+    return m_t_available_min_initialized || m_t_available_max_initialized;
+}
+
+// QML-facing readers surface 0 until both bounds of the relevant range have
+// been initialized. QML eagerly evaluates property bindings before user code
+// runs set_t_range, and default values would feed straight into spans and
+// pixel math in PlotIndicator-style consumers.
 qint64 Plot_time_axis::t_min_qml_ms() const
 {
     return view_initialized() ? ns_to_ms_for_qml(m_t_min) : 0;
@@ -161,74 +170,117 @@ void Plot_time_axis::clear_shared_vbar_width(const QObject* owner)
 void Plot_time_axis::set_t_min(qint64 v)
 {
     // While uninitialized, treat this as a seed: store the value but leave
-    // the paired bound at sentinel. QML property bindings can only call
+    // the paired bound uninitialized. QML property bindings can only call
     // single-side setters, so without this they could never bring the axis
     // online; downstream consumers (sync_time_axis_state) gate on
     // view_initialized() and ignore half-seeded state. Once both sides are
     // real values the slide-on-overshoot logic below kicks in.
     if (!view_initialized()) {
-        if (v == m_t_min) {
+        if (m_t_min_initialized && v == m_t_min) {
             return;
         }
         // If this seed would complete initialization (paired bound is real),
         // enforce ordering so the axis never goes online with an inverted
         // range. Matches set_t_range's silent-refusal contract.
-        if (m_t_max != k_t_unset && !(v < m_t_max)) {
+        if (m_t_max_initialized && !(v < m_t_max)) {
             return;
         }
-        set_limits_if_changed(v, m_t_max, m_t_available_min, m_t_available_max);
+        set_limits_if_changed(
+            v,
+            m_t_max,
+            m_t_available_min,
+            m_t_available_max,
+            true,
+            m_t_max_initialized,
+            m_t_available_min_initialized,
+            m_t_available_max_initialized);
         return;
     }
     qint64 new_min = v;
     qint64 new_max = m_t_max;
     if (v >= m_t_max) {
-        const qint64 span = m_t_max - m_t_min;
-        if (span <= 0) {
+        const auto span_ns = positive_span_ns(m_t_min, m_t_max);
+        if (!span_ns) {
             return;
         }
-        new_max = v + span;
+        new_max = saturating_add_duration_ns(v, *span_ns);
+        if (positive_span_ns(new_min, new_max) != span_ns) {
+            return;
+        }
     }
-    set_limits_if_changed(new_min, new_max, m_t_available_min, m_t_available_max);
+    set_limits_if_changed(
+        new_min,
+        new_max,
+        m_t_available_min,
+        m_t_available_max,
+        true,
+        true,
+        m_t_available_min_initialized,
+        m_t_available_max_initialized);
 }
 
 void Plot_time_axis::set_t_max(qint64 v)
 {
     if (!view_initialized()) {
-        if (v == m_t_max) {
+        if (m_t_max_initialized && v == m_t_max) {
             return;
         }
-        if (m_t_min != k_t_unset && !(v > m_t_min)) {
+        if (m_t_min_initialized && !(v > m_t_min)) {
             return;
         }
-        set_limits_if_changed(m_t_min, v, m_t_available_min, m_t_available_max);
+        set_limits_if_changed(
+            m_t_min,
+            v,
+            m_t_available_min,
+            m_t_available_max,
+            m_t_min_initialized,
+            true,
+            m_t_available_min_initialized,
+            m_t_available_max_initialized);
         return;
     }
     qint64 new_min = m_t_min;
     qint64 new_max = v;
     if (v <= m_t_min) {
-        const qint64 span = m_t_max - m_t_min;
-        if (span <= 0) {
+        const auto span_ns = positive_span_ns(m_t_min, m_t_max);
+        if (!span_ns) {
             return;
         }
-        new_min = v - span;
+        new_min = saturating_sub_duration_ns(v, *span_ns);
+        if (positive_span_ns(new_min, new_max) != span_ns) {
+            return;
+        }
     }
-    set_limits_if_changed(new_min, new_max, m_t_available_min, m_t_available_max);
+    set_limits_if_changed(
+        new_min,
+        new_max,
+        m_t_available_min,
+        m_t_available_max,
+        true,
+        true,
+        m_t_available_min_initialized,
+        m_t_available_max_initialized);
 }
 
 void Plot_time_axis::set_t_available_min(qint64 v)
 {
-    // First-bound seed: paired bound still sentinel, no range to validate or
-    // clamp against. Once the paired bound arrives, delegate to the atomic
-    // setter so ordering, view-clamp, and view auto-init from available all
-    // live in one place — applying both to a "completing seed" update and to
-    // any post-init change. Without delegation a QML write that shrinks the
-    // available range below the current view leaves the view dangling
-    // outside available, which sync_time_axis_state would propagate.
-    if (m_t_available_max == k_t_unset) {
-        if (v == m_t_available_min) {
+    // First-bound seed: the paired bound is still uninitialized, so there is
+    // no range to validate or clamp against. Once the paired bound arrives,
+    // delegate to the atomic setter so ordering, view-clamp, and view auto-init
+    // from available all live in one place.
+    if (!m_t_available_max_initialized) {
+        if (m_t_available_min_initialized && v == m_t_available_min) {
             return;
         }
-        set_limits_if_changed(m_t_min, m_t_max, v, m_t_available_max);
+        set_limits_if_changed(
+            m_t_min,
+            m_t_max,
+            v,
+            m_t_available_max,
+            m_t_min_initialized,
+            m_t_max_initialized,
+            true,
+            false);
         return;
     }
     set_available_t_range(v, m_t_available_max);
@@ -236,11 +288,19 @@ void Plot_time_axis::set_t_available_min(qint64 v)
 
 void Plot_time_axis::set_t_available_max(qint64 v)
 {
-    if (m_t_available_min == k_t_unset) {
-        if (v == m_t_available_max) {
+    if (!m_t_available_min_initialized) {
+        if (m_t_available_max_initialized && v == m_t_available_max) {
             return;
         }
-        set_limits_if_changed(m_t_min, m_t_max, m_t_available_min, v);
+        set_limits_if_changed(
+            m_t_min,
+            m_t_max,
+            m_t_available_min,
+            v,
+            m_t_min_initialized,
+            m_t_max_initialized,
+            false,
+            true);
         return;
     }
     set_available_t_range(m_t_available_min, v);
@@ -251,7 +311,15 @@ void Plot_time_axis::set_t_range(qint64 t_min_ns, qint64 t_max_ns)
     if (!(t_max_ns > t_min_ns)) {
         return;
     }
-    set_limits_if_changed(t_min_ns, t_max_ns, m_t_available_min, m_t_available_max);
+    set_limits_if_changed(
+        t_min_ns,
+        t_max_ns,
+        m_t_available_min,
+        m_t_available_max,
+        true,
+        true,
+        m_t_available_min_initialized,
+        m_t_available_max_initialized);
 }
 
 void Plot_time_axis::set_t_range_qml_ms(qint64 t_min_ms, qint64 t_max_ms)
@@ -274,18 +342,23 @@ void Plot_time_axis::set_available_t_range(qint64 t_available_min_ns, qint64 t_a
 
     qint64 new_t_min;
     qint64 new_t_max;
-    const bool view_unset = (m_t_min == k_t_unset && m_t_max == k_t_unset);
+    bool new_t_min_initialized = m_t_min_initialized;
+    bool new_t_max_initialized = m_t_max_initialized;
+    const bool view_unset = !m_t_min_initialized && !m_t_max_initialized;
     if (view_unset) {
         // No view at all; adopt the entire available range as the initial
-        // view. Without this, the clamp logic below would read the sentinel
-        // as a real bound and collapse new_t_min/new_t_max onto t_available_min.
+        // view so a QML caller that configures available bounds first still
+        // gives subsequent interactions a real range to operate on.
         new_t_min = t_available_min_ns;
         new_t_max = t_available_max_ns;
+        new_t_min_initialized = true;
+        new_t_max_initialized = true;
     }
     else if (!view_initialized()) {
-        // Half-seeded view (one bound real, one sentinel). Preserve as-is:
+        // Half-seeded view (one bound real, one unset). Preserve as-is:
         // adopting available would clobber the user's half-seeded value, and
-        // running the clamp logic on a sentinel bound would produce garbage.
+        // running the clamp logic before both view bounds exist would produce
+        // a range the caller did not ask for.
         // The next set_t_min / set_t_max seed completes the view, at which
         // point any subsequent set_available_t_range hits the clamp branch.
         new_t_min = m_t_min;
@@ -295,25 +368,28 @@ void Plot_time_axis::set_available_t_range(qint64 t_available_min_ns, qint64 t_a
         new_t_min = m_t_min;
         new_t_max = m_t_max;
 
-        const qint64 span = t_available_max_ns - t_available_min_ns;
-        const qint64 cur_span = new_t_max - new_t_min;
-        if (cur_span > span) {
+        const auto clamped = clamp_time_range_to_available_ns(
+            time_range_t{new_t_min, new_t_max},
+            time_range_t{t_available_min_ns, t_available_max_ns});
+        if (clamped) {
+            new_t_min = clamped->min_ns;
+            new_t_max = clamped->max_ns;
+        }
+        else {
             new_t_min = t_available_min_ns;
             new_t_max = t_available_max_ns;
         }
-        else {
-            if (new_t_min < t_available_min_ns) {
-                new_t_min = t_available_min_ns;
-                new_t_max = t_available_min_ns + cur_span;
-            }
-            if (new_t_max > t_available_max_ns) {
-                new_t_max = t_available_max_ns;
-                new_t_min = t_available_max_ns - cur_span;
-            }
-        }
     }
 
-    set_limits_if_changed(new_t_min, new_t_max, t_available_min_ns, t_available_max_ns);
+    set_limits_if_changed(
+        new_t_min,
+        new_t_max,
+        t_available_min_ns,
+        t_available_max_ns,
+        new_t_min_initialized,
+        new_t_max_initialized,
+        true,
+        true);
 }
 
 namespace {
@@ -371,29 +447,26 @@ void Plot_time_axis::adjust_t_to_target(qint64 target_min_ns, qint64 target_max_
         return;
     }
 
-    const qint64 avail_span_ns = m_t_available_max - m_t_available_min;
-    qint64 span_ns = target_max_ns - target_min_ns;
-    if (avail_span_ns > 0 && span_ns > avail_span_ns) {
-        span_ns = avail_span_ns;
+    time_range_t target{target_min_ns, target_max_ns};
+    if (available_initialized()) {
+        const auto clamped = clamp_time_range_to_available_ns(
+            target,
+            time_range_t{m_t_available_min, m_t_available_max});
+        if (!clamped) {
+            return;
+        }
+        target = *clamped;
     }
 
-    const qint64 half_ns = span_ns / 2;
-    const qint64 center_ns = target_min_ns + (target_max_ns - target_min_ns) / 2;
-    qint64 new_min_ns = center_ns - half_ns;
-    qint64 new_max_ns = new_min_ns + span_ns;
-
-    if (avail_span_ns > 0) {
-        if (new_max_ns > m_t_available_max) {
-            new_max_ns = m_t_available_max;
-            new_min_ns = new_max_ns - span_ns;
-        }
-        if (new_min_ns < m_t_available_min) {
-            new_min_ns = m_t_available_min;
-            new_max_ns = new_min_ns + span_ns;
-        }
-    }
-
-    set_limits_if_changed(new_min_ns, new_max_ns, m_t_available_min, m_t_available_max);
+    set_limits_if_changed(
+        target.min_ns,
+        target.max_ns,
+        m_t_available_min,
+        m_t_available_max,
+        true,
+        true,
+        m_t_available_min_initialized,
+        m_t_available_max_initialized);
 }
 
 void Plot_time_axis::set_indicator_state(QObject* owner, bool active, qint64 t_ms)
@@ -495,13 +568,21 @@ bool Plot_time_axis::set_limits_if_changed(
     qint64 t_min_ns,
     qint64 t_max_ns,
     qint64 t_available_min_ns,
-    qint64 t_available_max_ns)
+    qint64 t_available_max_ns,
+    bool t_min_initialized,
+    bool t_max_initialized,
+    bool t_available_min_initialized,
+    bool t_available_max_initialized)
 {
     const bool changed =
         m_t_min != t_min_ns ||
         m_t_max != t_max_ns ||
         m_t_available_min != t_available_min_ns ||
-        m_t_available_max != t_available_max_ns;
+        m_t_available_max != t_available_max_ns ||
+        m_t_min_initialized != t_min_initialized ||
+        m_t_max_initialized != t_max_initialized ||
+        m_t_available_min_initialized != t_available_min_initialized ||
+        m_t_available_max_initialized != t_available_max_initialized;
 
     if (!changed) {
         return false;
@@ -511,6 +592,10 @@ bool Plot_time_axis::set_limits_if_changed(
     m_t_max = t_max_ns;
     m_t_available_min = t_available_min_ns;
     m_t_available_max = t_available_max_ns;
+    m_t_min_initialized = t_min_initialized;
+    m_t_max_initialized = t_max_initialized;
+    m_t_available_min_initialized = t_available_min_initialized;
+    m_t_available_max_initialized = t_available_max_initialized;
     emit t_limits_changed();
     return true;
 }

@@ -204,6 +204,51 @@ bool test_format_timestamp_step_matches_nanosecond_seconds_grid()
     return true;
 }
 
+bool test_horizontal_axis_handles_full_int64_time_span()
+{
+    constexpr std::int64_t k_int64_min = std::numeric_limits<std::int64_t>::min();
+    constexpr std::int64_t k_int64_max = std::numeric_limits<std::int64_t>::max();
+
+    std::vector<Recorded_call> recorded;
+    auto params = make_minimal_params(k_int64_min, k_int64_max, recorded);
+    params.format_timestamp_revision = 1;
+
+    plot::Layout_calculator calc;
+    const auto result = calc.calculate(params);
+
+    TEST_ASSERT(result.horizontal_seed_index >= 0,
+        "full int64 timestamp range should enter horizontal-axis layout");
+    TEST_ASSERT(result.horizontal_seed_step > 0.0,
+        "full int64 timestamp range should compute a positive horizontal step");
+    TEST_ASSERT(!recorded.empty(),
+        "formatter-enabled full int64 timestamp range should call the formatter");
+    TEST_ASSERT(result.h_labels.size() > 1,
+        "formatter-enabled full int64 timestamp range should emit multiple horizontal labels");
+
+    bool saw_signature_zero = false;
+    bool saw_signature_subsecond = false;
+    bool saw_signature_large = false;
+    bool saw_saturated_step = false;
+    for (const auto& call : recorded) {
+        saw_signature_zero = saw_signature_zero || call.timestamp_ns == 0;
+        saw_signature_subsecond =
+            saw_signature_subsecond || call.timestamp_ns == 123'456'789;
+        saw_signature_large =
+            saw_signature_large || call.timestamp_ns == 12'345'678'900'000;
+        saw_saturated_step = saw_saturated_step || call.step_ns == k_int64_max;
+
+        TEST_ASSERT(call.step_ns > 0,
+            "formatter step_ns should remain positive after saturated conversion");
+    }
+
+    TEST_ASSERT(saw_signature_zero && saw_signature_subsecond && saw_signature_large,
+        "formatter-enabled full int64 range should exercise format-signature probes");
+    TEST_ASSERT(saw_saturated_step,
+        "full int64 range should saturate formatter step_ns instead of converting out of range");
+
+    return true;
+}
+
 bool test_vertical_labels_keep_dense_level_when_glyphs_fit()
 {
     std::vector<Recorded_call> recorded;
@@ -254,6 +299,7 @@ int main()
 
     RUN_TEST(test_format_timestamp_receives_nanosecond_units);
     RUN_TEST(test_format_timestamp_step_matches_nanosecond_seconds_grid);
+    RUN_TEST(test_horizontal_axis_handles_full_int64_time_span);
     RUN_TEST(test_vertical_labels_keep_dense_level_when_glyphs_fit);
 
     std::cout << "Results: " << passed << " passed, " << failed << " failed" << std::endl;

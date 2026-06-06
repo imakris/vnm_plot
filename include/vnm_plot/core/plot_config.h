@@ -6,10 +6,12 @@
 // still being customizable by the host application.
 
 #include <vnm_plot/core/color_palette.h>
+#include <vnm_plot/core/time_units.h>
 
 #include <cstdint>
 #include <ctime>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -166,11 +168,6 @@ struct Plot_config
     // Area fill alpha multiplier (0..1).
     double area_fill_alpha = 0.3;
 
-    // When true, renderer may request additional frames for smooth animations.
-    // When false, renderer suppresses self-posted updates and may skip unchanged
-    // frames based on a render signature to minimize idle CPU usage.
-    bool allow_renderer_self_scheduling = false;
-
     // --- Auto V-Range ---
     // Default is GLOBAL.
     Auto_v_range_mode auto_v_range_mode = Auto_v_range_mode::GLOBAL;
@@ -179,9 +176,6 @@ struct Plot_config
     // When true, padding cannot pull a nonnegative auto-computed range below zero.
     bool floor_nonnegative_auto_v_range_at_zero = false;
 
-    // Maintenance aid: bump when adding a field so that comparators (e.g.
-    // plot_config_equivalent) fail to compile until they are updated.
-    static constexpr int field_count = 27;
 };
 
 inline Color_palette resolved_color_palette(const Plot_config* config, bool dark_mode)
@@ -206,19 +200,36 @@ inline std::string default_format_timestamp(std::int64_t timestamp_ns, std::int6
 {
     // Simple formatting with step-appropriate precision.
     // Applications should override for timezone-aware formatting.
-    constexpr std::int64_t k_ns_per_second = 1'000'000'000;
     constexpr std::int64_t k_ns_per_minute = 60 * k_ns_per_second;
-    // Floor-divide so negative timestamps map to the matching second-of-epoch.
-    const std::int64_t whole_seconds = (timestamp_ns >= 0)
-        ? (timestamp_ns / k_ns_per_second)
-        : -((-timestamp_ns + k_ns_per_second - 1) / k_ns_per_second);
+    const std::int64_t whole_seconds =
+        floor_div_int64(timestamp_ns, k_ns_per_second);
+
+    if constexpr (std::numeric_limits<time_t>::is_signed) {
+        if (whole_seconds < static_cast<std::int64_t>(std::numeric_limits<time_t>::min()) ||
+            whole_seconds > static_cast<std::int64_t>(std::numeric_limits<time_t>::max()))
+        {
+            return std::to_string(whole_seconds) + "s";
+        }
+    }
+    else {
+        if (whole_seconds < 0 ||
+            static_cast<std::uint64_t>(whole_seconds) >
+                static_cast<std::uint64_t>(std::numeric_limits<time_t>::max()))
+        {
+            return std::to_string(whole_seconds) + "s";
+        }
+    }
     time_t t = static_cast<time_t>(whole_seconds);
-    struct tm tm_buf;
+    struct tm tm_buf{};
 
 #ifdef _WIN32
-    gmtime_s(&tm_buf, &t);
+    if (gmtime_s(&tm_buf, &t) != 0) {
+        return std::to_string(whole_seconds) + "s";
+    }
 #else
-    gmtime_r(&t, &tm_buf);
+    if (gmtime_r(&t, &tm_buf) == nullptr) {
+        return std::to_string(whole_seconds) + "s";
+    }
 #endif
 
     char buf[32];

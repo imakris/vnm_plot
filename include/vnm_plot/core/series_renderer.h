@@ -69,8 +69,7 @@ private:
 
     struct vbo_view_state_t
     {
-        std::uint32_t active_vbo = std::numeric_limits<std::uint32_t>::max();
-        std::size_t last_ring_size = 0;
+        bool has_uploaded_vbo = false;
         std::size_t last_snapshot_elements = 0;
         uint64_t last_sequence = 0;
         const void* cached_data_identity = nullptr;
@@ -179,8 +178,8 @@ private:
         Data_source* preview_source = nullptr;
         const Data_access_policy* main_access = nullptr;
         const Data_access_policy* preview_access = nullptr;
-        Display_style main_style = static_cast<Display_style>(0);
-        Display_style preview_style = static_cast<Display_style>(0);
+        Display_style main_style = Display_style::NONE;
+        Display_style preview_style = Display_style::NONE;
         Series_interpolation main_interpolation = Series_interpolation::LINEAR;
         Series_interpolation preview_interpolation = Series_interpolation::LINEAR;
         vbo_state_t* vbo_state = nullptr;

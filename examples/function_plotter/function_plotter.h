@@ -4,6 +4,8 @@
 // A Qt Quick component that evaluates mathematical expressions using mexce
 // and displays them using vnm_plot.
 
+#include "function_sample_source.h"
+
 #include <vnm_plot/vnm_plot.h>
 
 #include <QtCore/QAbstractListModel>
@@ -68,7 +70,7 @@ public:
 
     // Internal access
     int series_id() const { return m_series_id; }
-    vnm::plot::Function_data_source* data_source() { return &m_data_source; }
+    vnm::plot::examples::Function_data_source* data_source() { return &m_data_source; }
     std::shared_ptr<vnm::plot::series_data_t> series() const { return m_series; }
 
     // Generate samples using plotter's x range and own sample count
@@ -100,7 +102,7 @@ private:
 
     Function_plotter* m_plotter;
     std::unique_ptr<mexce::evaluator> m_evaluator;
-    vnm::plot::Function_data_source m_data_source;
+    vnm::plot::examples::Function_data_source m_data_source;
     std::shared_ptr<vnm::plot::series_data_t> m_series;
 
     int m_series_id;

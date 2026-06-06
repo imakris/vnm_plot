@@ -1,5 +1,7 @@
 #include <vnm_plot/qt/plot_interaction_item.h>
 
+#include <vnm_plot/core/time_units.h>
+
 #include <QMouseEvent>
 #include <QWheelEvent>
 #include <QHoverEvent>
@@ -109,13 +111,19 @@ qreal Plot_interaction_item::t_stop_min() const
     if (!target) {
         return 0.0;
     }
-    // Subtract qint64 nanoseconds first, then widen to qreal once for the
-    // proportional math. A floor of 1 ns prevents division-by-zero when the
-    // available range is empty.
-    const qreal t_available_span = std::max<qreal>(1.0,
-        static_cast<qreal>(target->t_available_max() - target->t_available_min()));
-    return static_cast<qreal>(target->t_min() - target->t_available_min())
-        / t_available_span;
+
+    const auto t_available_span = positive_span_ns_as_long_double(
+        target->t_available_min(),
+        target->t_available_max());
+    if (!t_available_span) {
+        return 0.0;
+    }
+
+    const long double denominator = std::max(1.0L, *t_available_span);
+    const long double numerator = span_ns_as_long_double(
+        target->t_available_min(),
+        target->t_min());
+    return static_cast<qreal>(numerator / denominator);
 }
 
 qreal Plot_interaction_item::t_stop_max() const
@@ -124,10 +132,19 @@ qreal Plot_interaction_item::t_stop_max() const
     if (!target) {
         return 1.0;
     }
-    const qreal t_available_span = std::max<qreal>(1.0,
-        static_cast<qreal>(target->t_available_max() - target->t_available_min()));
-    return 1.0 - static_cast<qreal>(target->t_available_max() - target->t_max())
-        / t_available_span;
+
+    const auto t_available_span = positive_span_ns_as_long_double(
+        target->t_available_min(),
+        target->t_available_max());
+    if (!t_available_span) {
+        return 1.0;
+    }
+
+    const long double denominator = std::max(1.0L, *t_available_span);
+    const long double numerator = span_ns_as_long_double(
+        target->t_max(),
+        target->t_available_max());
+    return 1.0 - static_cast<qreal>(numerator / denominator);
 }
 
 qreal Plot_interaction_item::zoom_animation_scale_factor(qreal velocity, qreal elapsed_timer_steps)

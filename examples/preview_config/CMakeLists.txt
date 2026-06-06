@@ -31,6 +31,7 @@ add_executable(vnm_plot_preview_config
 )
 
 target_include_directories(vnm_plot_preview_config PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../common
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 

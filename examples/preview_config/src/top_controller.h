@@ -1,5 +1,7 @@
 #pragma once
 
+#include "function_sample_source.h"
+
 #include <vnm_plot/vnm_plot.h>
 
 #include <QtCore/QObject>
@@ -27,7 +29,7 @@ private:
     void generate_samples();
 
     vnm::plot::Plot_widget* m_plot_widget = nullptr;
-    std::shared_ptr<vnm::plot::Function_data_source> m_data_source;
+    std::shared_ptr<vnm::plot::examples::Function_data_source> m_data_source;
     std::shared_ptr<vnm::plot::series_data_t> m_series;
     QMetaObject::Connection m_time_axis_connection;
 };

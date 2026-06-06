@@ -20,6 +20,7 @@
 #include <cstdint>
 #include <iomanip>
 #include <limits>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -35,8 +36,19 @@ namespace vnm::plot {
 // Used for axis label formatting. Can be used in custom format_timestamp callbacks.
 inline std::string format_axis_fixed_or_int(double v, int digits)
 {
+    if (!std::isfinite(v)) {
+        return "0";
+    }
+
     if (digits <= 0) {
-        const std::int64_t iv = std::llround(v);
+        const double rounded = std::round(v);
+        const long double rounded_ld = static_cast<long double>(rounded);
+        if (rounded_ld < static_cast<long double>(std::numeric_limits<std::int64_t>::min()) ||
+            rounded_ld > static_cast<long double>(std::numeric_limits<std::int64_t>::max()))
+        {
+            return "0";
+        }
+        const std::int64_t iv = static_cast<std::int64_t>(rounded);
         if (iv == 0) {
             return "0";
         }
@@ -44,7 +56,26 @@ inline std::string format_axis_fixed_or_int(double v, int digits)
     }
 
     const double scale = std::pow(10.0, double(digits));
-    double r = std::round(v * scale) / scale;
+    if (!std::isfinite(scale) || scale <= 0.0) {
+        return "0";
+    }
+    const long double scale_ld = static_cast<long double>(scale);
+    const long double scaled = static_cast<long double>(v) * scale_ld;
+    if (!std::isfinite(scaled) ||
+        std::abs(scaled) > static_cast<long double>(std::numeric_limits<double>::max()))
+    {
+        return "0";
+    }
+
+    const long double rounded_scaled = std::round(scaled);
+    const long double rounded = rounded_scaled / scale_ld;
+    if (!std::isfinite(rounded) ||
+        std::abs(rounded) > static_cast<long double>(std::numeric_limits<double>::max()))
+    {
+        return "0";
+    }
+
+    double r = static_cast<double>(rounded);
     const double eps = 0.5 / scale;
 
     if (std::abs(r) < eps) {
@@ -81,11 +112,31 @@ inline bool any_fractional_at_precision(const std::vector<double>& values, int d
     }
 
     const double scale = std::pow(10.0, double(digits));
+    if (!std::isfinite(scale) || scale <= 0.0) {
+        return false;
+    }
     const double eps = 0.5 / scale;
 
     for (double v : values) {
-        double r = std::round(v * scale) / scale;
-        if (std::abs(r - std::round(r)) > eps) {
+        const double scaled = v * scale;
+        if (!std::isfinite(scaled) ||
+            static_cast<long double>(std::abs(scaled)) >
+                static_cast<long double>(std::numeric_limits<std::int64_t>::max()))
+        {
+            return false;
+        }
+
+        const double rounded_scaled = std::round(scaled);
+        if (!std::isfinite(rounded_scaled)) {
+            return false;
+        }
+
+        const double r = rounded_scaled / scale;
+        const double rounded = std::round(r);
+        if (!std::isfinite(r) || !std::isfinite(rounded)) {
+            return false;
+        }
+        if (std::abs(r - rounded) > eps) {
             return true;
         }
     }
@@ -101,7 +152,14 @@ inline bool trailing_zero_decimal_for_all(const std::vector<double>& values, int
 
     const double scale = std::pow(10.0, double(digits));
     for (double v : values) {
-        const std::int64_t q = std::llround(std::abs(v) * scale);
+        const double scaled = std::abs(v) * scale;
+        if (!std::isfinite(scaled) ||
+            static_cast<long double>(scaled) >
+                static_cast<long double>(std::numeric_limits<std::int64_t>::max()))
+        {
+            return false;
+        }
+        const std::int64_t q = static_cast<std::int64_t>(std::round(scaled));
         if ((q % 10) != 0) {
             return false;
         }
@@ -146,17 +204,46 @@ inline std::size_t circular_index(const ContainerT& c, int index)
 // Compute phase shift for grid lines to align nicely with a minimum value.
 inline double get_shift(double section_size, double minval)
 {
+    if (!(section_size > 0.0) || !std::isfinite(section_size) || !std::isfinite(minval)) {
+        return 0.0;
+    }
+
     double a = std::floor(std::log10(std::fabs(section_size)));
+    if (!std::isfinite(a)) {
+        return 0.0;
+    }
+
     double m = 1.0;
     if (a < 0.0) {
         m = std::pow(10.0, -a);
+        if (!std::isfinite(m) || !(m > 0.0)) {
+            return 0.0;
+        }
     }
 
-    double ret = std::fmod(section_size * m - minval * m + section_size * m, section_size * m) / m;
+    const double denom = section_size * m;
+    const double scaled_min = minval * m;
+    if (!(denom > 0.0) || !std::isfinite(denom) || !std::isfinite(scaled_min)) {
+        return 0.0;
+    }
+
+    const double numerator = denom - scaled_min + denom;
+    if (!std::isfinite(numerator)) {
+        return 0.0;
+    }
+
+    double ret = std::fmod(numerator, denom);
+    if (!std::isfinite(ret)) {
+        return 0.0;
+    }
+    ret /= m;
+    if (!std::isfinite(ret)) {
+        return 0.0;
+    }
     if (ret < 0) {
         ret += section_size;
     }
-    return ret;
+    return std::isfinite(ret) ? ret : 0.0;
 }
 
 // -----------------------------------------------------------------------------
@@ -169,7 +256,7 @@ inline std::vector<double> build_time_steps_covering(double max_span)
     std::vector<double> steps;
     steps.reserve(64);
 
-    // Sub-second: 1-2-5 from 1ms up to 0.5s
+    // Sub-second: 1/5 multiples from 1ms up to 0.5s.
     static const double subsec[] = {0.001, 0.005, 0.01, 0.05, 0.1, 0.5};
     steps.insert(steps.end(), std::begin(subsec), std::end(subsec));
 
@@ -251,10 +338,9 @@ std::vector<std::size_t> compute_lod_scales(const DataSourceT& data_source)
 
 // Core binary-search loop shared by lower_bound / upper_bound and by raw
 // strided / data_snapshot_t addressing. The Addr functor maps an index to a
-// sample pointer; if it returns nullptr the search short-circuits at the
-// current bound (used by segmented snapshots to bail out on torn views).
+// sample pointer; nullptr means malformed or torn input and fails the search.
 template<typename AddrFn, typename GetTimestampFn, typename Cmp>
-std::size_t bsearch_ts_impl(
+std::optional<std::size_t> bsearch_ts_impl(
     std::size_t count,
     AddrFn&& addr,
     GetTimestampFn&& get_timestamp,
@@ -267,7 +353,7 @@ std::size_t bsearch_ts_impl(
         std::size_t mid = lo + (hi - lo) / 2;
         const void* sample = addr(mid);
         if (!sample) {
-            break;
+            return std::nullopt;
         }
         if (cmp(get_timestamp(sample), t_ns)) {
             lo = mid + 1;
@@ -290,16 +376,17 @@ std::size_t lower_bound_timestamp(
     GetTimestampFn&& get_timestamp,
     std::int64_t t_ns)
 {
-    if (data == nullptr || count == 0) {
+    if (data == nullptr || count == 0 || stride == 0) {
         return 0;
     }
     const auto* base = static_cast<const std::uint8_t*>(data);
-    return bsearch_ts_impl(
+    const auto result = bsearch_ts_impl(
         count,
         [base, stride](std::size_t i) -> const void* { return base + i * stride; },
         std::forward<GetTimestampFn>(get_timestamp),
         [](std::int64_t ts, std::int64_t t) { return ts < t; },
         t_ns);
+    return result.value_or(0);
 }
 
 // Overload for data_snapshot_t (supports segmented snapshots).
@@ -312,12 +399,13 @@ std::size_t lower_bound_timestamp(
     if (!snapshot.is_valid()) {
         return 0;
     }
-    return bsearch_ts_impl(
+    const auto result = bsearch_ts_impl(
         snapshot.count,
         [&snapshot](std::size_t i) { return snapshot.at(i); },
         std::forward<GetTimestampFn>(get_timestamp),
         [](std::int64_t ts, std::int64_t t) { return ts < t; },
         t_ns);
+    return result.value_or(0);
 }
 
 // Returns index of first sample with timestamp > t_ns (upper_bound semantics).
@@ -330,16 +418,17 @@ std::size_t upper_bound_timestamp(
     GetTimestampFn&& get_timestamp,
     std::int64_t t_ns)
 {
-    if (data == nullptr || count == 0) {
+    if (data == nullptr || count == 0 || stride == 0) {
         return 0;
     }
     const auto* base = static_cast<const std::uint8_t*>(data);
-    return bsearch_ts_impl(
+    const auto result = bsearch_ts_impl(
         count,
         [base, stride](std::size_t i) -> const void* { return base + i * stride; },
         std::forward<GetTimestampFn>(get_timestamp),
         [](std::int64_t ts, std::int64_t t) { return ts <= t; },
         t_ns);
+    return result.value_or(0);
 }
 
 // Overload for data_snapshot_t (supports segmented snapshots).
@@ -352,12 +441,13 @@ std::size_t upper_bound_timestamp(
     if (!snapshot.is_valid()) {
         return 0;
     }
-    return bsearch_ts_impl(
+    const auto result = bsearch_ts_impl(
         snapshot.count,
         [&snapshot](std::size_t i) { return snapshot.at(i); },
         std::forward<GetTimestampFn>(get_timestamp),
         [](std::int64_t ts, std::int64_t t) { return ts <= t; },
         t_ns);
+    return result.value_or(0);
 }
 
 struct timestamp_bracket_t
@@ -502,9 +592,9 @@ inline std::int64_t floor_div_i64(std::int64_t a, std::int64_t b)
 //
 // Saturates at the int64 floor: t_view_min_ns within one snap step of
 // INT64_MIN cannot have a snap-aligned origin <= t_view_min_ns inside
-// int64 range, so we return INT64_MIN. INT64_MIN is also used as a
-// sentinel by callers (e.g. Plot_time_axis::k_t_unset), and saturating
-// keeps the multiply from overflowing into UB on signed wrap.
+// int64 range, so we return INT64_MIN. INT64_MIN is a valid public
+// timestamp, and saturating keeps the multiply from overflowing into UB
+// on signed wrap.
 inline std::int64_t choose_origin_ns(std::int64_t t_view_min_ns, std::int64_t span_ns)
 {
     const std::int64_t snap_ns = choose_snap_ns(span_ns);

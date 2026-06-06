@@ -390,8 +390,8 @@ bool test_empty_window_behavior_invalidates_fast_path_cache()
     auto state_it = renderer.m_vbo_states.find(series_id);
     TEST_ASSERT(state_it != renderer.m_vbo_states.end(),
                 "expected vbo state for test series");
-    // QRhi-less tests seed active_vbo to // exercise the CPU fast-path conditions in process_view().
-    state_it->second.main_view.active_vbo = 1u;
+    // QRhi-less tests seed upload state to exercise the CPU fast-path conditions in plan_view().
+    state_it->second.main_view.has_uploaded_vbo = true;
 
     renderer.render(ctx, series_map);
     TEST_ASSERT(data_source->snapshot_calls == 1,
@@ -562,9 +562,9 @@ bool test_upload_origin_records_per_view_origin()
     // The renderer's per-view upload-invalidation key must include the view
     // origin. After a render, view_state.uploaded_t_origin_ns must equal
     // choose_origin_ns(t_view_min, span) for that view, otherwise the next
-    // frame's origin-change branch in process_view will not fire when it
+    // frame's origin-change branch in plan_view will not fire when it
     // should. This is the visible state-trace of the upload-invalidation
-    // contract; the inline predicate inside process_view is hard to test
+    // contract; the inline predicate inside plan_view is hard to test
     // directly without refactoring the renderer.
 
     auto data_source = std::make_shared<Single_level_source>();
@@ -620,7 +620,7 @@ bool test_upload_origin_records_per_view_origin()
 
 bool test_upload_invalidates_when_origin_changes_across_snap_bucket()
 {
-    // The cache-fast-path predicate inside process_view requires
+    // The cache-fast-path predicate inside plan_view requires
     // view_state.uploaded_t_origin_ns == t_origin_ns. With sequence,
     // identity, and width all unchanged, an origin change (achieved by
     // moving t_min/t_max across a snap-step boundary) must still force the
@@ -667,10 +667,10 @@ bool test_upload_invalidates_when_origin_changes_across_snap_bucket()
         ctx.t_available_min = ctx.t0;
         ctx.t_available_max = ctx.t1;
         renderer.render(ctx, series_map);
-        // QRhi-less tests seed active_vbo // to keep the cache-hit predicate's other terms truthy.
+        // QRhi-less tests seed upload state to keep the cache-hit predicate's other terms truthy.
         auto it = renderer.m_vbo_states.find(series_id);
         if (it != renderer.m_vbo_states.end()) {
-            it->second.main_view.active_vbo = 1u;
+            it->second.main_view.has_uploaded_vbo = true;
         }
     };
 
@@ -739,7 +739,7 @@ bool test_renderer_assigns_distinct_origins_to_main_and_preview()
     // a 1-hour span -> 1 s snap) and the preview span in a coarser one
     // (e.g. a 10-year span -> 1 day snap), the two origins must end up at
     // different floored boundaries. A regression that fed main_origin_ns
-    // into the preview's process_view call would leave both views with
+    // into the preview's plan_view call would leave both views with
     // the same uploaded_t_origin_ns and break fp32 precision in preview.
     auto data_source = std::make_shared<Single_level_source>();
     // Sparse 10-year coverage: one sample per day is enough for the

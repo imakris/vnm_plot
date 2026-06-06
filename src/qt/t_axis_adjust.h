@@ -6,35 +6,14 @@
 // t_available_min, t_available_max) and how they apply the result. The
 // helpers below isolate the arithmetic so the two classes stay in sync.
 
+#include <vnm_plot/core/time_units.h>
+
 #include <QtGlobal>
 
 #include <cmath>
 #include <cstdint>
-#include <limits>
 
 namespace vnm::plot::detail {
-
-// Round-to-nearest helper for fp64 -> qint64 conversions on the time axis.
-// Saturates instead of overflowing on extreme inputs so a stray Infinity
-// from a misuse cannot tear the integer field.
-inline qint64 to_qint64_rounded(double value)
-{
-    if (!std::isfinite(value)) {
-        return 0;
-    }
-    const long double rounded = std::round(static_cast<long double>(value));
-    const long double min_value =
-        static_cast<long double>(std::numeric_limits<qint64>::min());
-    const long double max_value =
-        static_cast<long double>(std::numeric_limits<qint64>::max());
-    if (rounded <= min_value) {
-        return std::numeric_limits<qint64>::min();
-    }
-    if (rounded >= max_value) {
-        return std::numeric_limits<qint64>::max();
-    }
-    return static_cast<qint64>(rounded);
-}
 
 // Snapshot of the four ns-timestamp fields the adjust_* family reads. The
 // caller assembles this from whichever storage it owns (mutex-protected
@@ -57,12 +36,26 @@ inline void adjust_t_from_mouse_diff_impl(
     if (ref_width <= 0.0) {
         return;
     }
-    // Pixel deltas are double; the visible span is in int64 nanoseconds.
-    // Convert through fp64 once, round when re-attaching to the qint64 axis.
-    const qint64 span_ns = view.t_max - view.t_min;
-    const qint64 delta_ns = to_qint64_rounded(
-        diff * static_cast<double>(span_ns) / ref_width);
-    commit(view.t_min - delta_ns, view.t_max - delta_ns);
+
+    const auto span_ns = positive_span_ns(view.t_min, view.t_max);
+    if (!span_ns) {
+        return;
+    }
+
+    const long double fraction =
+        std::abs(static_cast<long double>(diff) / static_cast<long double>(ref_width));
+    const std::uint64_t duration_ns = scaled_duration_ns(*span_ns, fraction);
+    const auto direction = (diff >= 0.0)
+        ? Time_translation_direction::BACKWARD
+        : Time_translation_direction::FORWARD;
+    const auto shifted = translate_time_range_by_duration_ns(
+        time_range_t{view.t_min, view.t_max},
+        duration_ns,
+        direction);
+    if (!shifted) {
+        return;
+    }
+    commit(shifted->min_ns, shifted->max_ns);
 }
 
 // Preview-bar analogue of adjust_t_from_mouse_diff: the same pixel ratio is
@@ -76,10 +69,28 @@ inline void adjust_t_from_mouse_diff_on_preview_impl(
     if (ref_width <= 0.0) {
         return;
     }
-    const qint64 avail_span_ns = view.t_available_max - view.t_available_min;
-    const qint64 delta_ns = to_qint64_rounded(
-        diff * static_cast<double>(avail_span_ns) / ref_width);
-    commit(view.t_min + delta_ns, view.t_max + delta_ns);
+
+    const auto avail_span_ns = positive_span_ns(
+        view.t_available_min,
+        view.t_available_max);
+    if (!avail_span_ns) {
+        return;
+    }
+
+    const long double fraction =
+        std::abs(static_cast<long double>(diff) / static_cast<long double>(ref_width));
+    const std::uint64_t duration_ns = scaled_duration_ns(*avail_span_ns, fraction);
+    const auto direction = (diff >= 0.0)
+        ? Time_translation_direction::FORWARD
+        : Time_translation_direction::BACKWARD;
+    const auto shifted = translate_time_range_by_duration_ns(
+        time_range_t{view.t_min, view.t_max},
+        duration_ns,
+        direction);
+    if (!shifted) {
+        return;
+    }
+    commit(shifted->min_ns, shifted->max_ns);
 }
 
 // Recenter the view on `x_pos` interpreted as a fraction of the preview-bar
@@ -92,12 +103,20 @@ inline void adjust_t_from_mouse_pos_on_preview_impl(
     if (ref_width <= 0.0) {
         return;
     }
-    const qint64 span_ns = view.t_max - view.t_min;
-    const qint64 avail_span_ns = view.t_available_max - view.t_available_min;
-    const qint64 new_center_ns = view.t_available_min + to_qint64_rounded(
-        (x_pos / ref_width) * static_cast<double>(avail_span_ns));
-    const qint64 half_ns = span_ns / 2;
-    commit(new_center_ns - half_ns, new_center_ns + (span_ns - half_ns));
+
+    const auto span_ns = positive_span_ns(view.t_min, view.t_max);
+    if (!span_ns) {
+        return;
+    }
+
+    const auto new_center_ns = time_at_fraction_ns(
+        time_range_t{view.t_available_min, view.t_available_max},
+        static_cast<long double>(x_pos) / static_cast<long double>(ref_width));
+    if (!new_center_ns) {
+        return;
+    }
+    const time_range_t target = centered_time_range_ns(*new_center_ns, *span_ns);
+    commit(target.min_ns, target.max_ns);
 }
 
 // Zoom around a normalized pivot in [0, 1] by `scale` (1.0 = no change,
@@ -110,14 +129,32 @@ inline void adjust_t_from_pivot_and_scale_impl(
     if (scale <= 0.0) {
         return;
     }
-    const qint64 span_ns = view.t_max - view.t_min;
-    const qint64 t_pivot_ns = view.t_min + to_qint64_rounded(
-        pivot * static_cast<double>(span_ns));
-    const qint64 left_ns = to_qint64_rounded(
-        static_cast<double>(t_pivot_ns - view.t_min) * scale);
-    const qint64 right_ns = to_qint64_rounded(
-        static_cast<double>(view.t_max - t_pivot_ns) * scale);
-    commit(t_pivot_ns - left_ns, t_pivot_ns + right_ns);
+
+    const auto span_ns = positive_span_ns(view.t_min, view.t_max);
+    if (!span_ns) {
+        return;
+    }
+
+    const auto t_pivot_ns = time_at_fraction_ns(
+        time_range_t{view.t_min, view.t_max},
+        static_cast<long double>(pivot));
+    if (!t_pivot_ns) {
+        return;
+    }
+
+    const auto left_span_ns = positive_span_ns(view.t_min, *t_pivot_ns);
+    const auto right_span_ns = positive_span_ns(*t_pivot_ns, view.t_max);
+    const std::uint64_t left_ns = left_span_ns
+        ? scaled_duration_ns(*left_span_ns, static_cast<long double>(scale))
+        : 0;
+    const std::uint64_t right_ns = right_span_ns
+        ? scaled_duration_ns(*right_span_ns, static_cast<long double>(scale))
+        : 0;
+    const time_range_t target = time_range_around_pivot_ns(
+        *t_pivot_ns,
+        left_ns,
+        right_ns);
+    commit(target.min_ns, target.max_ns);
 }
 
 } // namespace vnm::plot::detail

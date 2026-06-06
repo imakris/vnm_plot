@@ -13,11 +13,6 @@
 //   2. Create a Data_access_policy for your sample type
 //   3. Create a VNM_plot widget (Qt Quick) and add data sources
 //
-// For simple function plotting:
-//   #include <vnm_plot/vnm_plot.h>
-//   auto source = std::make_shared<vnm::plot::Function_data_source>();
-//   source->generate([](double x) { return std::sin(x); }, 0, 10, 1000);
-//
 // Use core.h or qt.h directly when you only need one side.
 #include <vnm_plot/core.h>
 

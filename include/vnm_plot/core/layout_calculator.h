@@ -20,7 +20,8 @@ class Profiler;
 // Layout Calculator
 // -----------------------------------------------------------------------------
 // Computes axis labels and layout metrics based on data ranges and viewport.
-// Stateless - all inputs provided via parameters struct.
+// Inputs are provided via parameters_t; instances keep reusable scratch buffers
+// and are not reentrant.
 class Layout_calculator
 {
 public:

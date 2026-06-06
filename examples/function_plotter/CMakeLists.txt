@@ -87,6 +87,7 @@ target_link_libraries(function_plotter PRIVATE
 )
 
 target_include_directories(function_plotter PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../common
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 

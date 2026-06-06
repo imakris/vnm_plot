@@ -136,12 +136,16 @@ struct cached_font_data_t
 static std::mutex s_cached_fonts_mutex;
 static std::unordered_map<int, std::shared_ptr<cached_font_data_t>> s_cached_fonts;
 
-std::shared_ptr<cached_font_data_t> get_cached_font(int pixel_height)
+std::shared_ptr<cached_font_data_t> get_cached_font(
+    int pixel_height,
+    const Sha256::Digest& font_digest)
 {
     std::lock_guard<std::mutex> lock(s_cached_fonts_mutex);
     auto it = s_cached_fonts.find(pixel_height);
     if (it != s_cached_fonts.end()) {
-        return it->second;
+        if (it->second && it->second->font_digest == font_digest) {
+            return it->second;
+        }
     }
     return nullptr;
 }
@@ -184,6 +188,30 @@ const std::vector<char32_t>& glyph_codepoints()
 std::string glyph_seed_string()
 {
     return vnm::msdf_text::codepoints_to_utf8(glyph_codepoints());
+}
+
+bool uv_in_range(float value)
+{
+    constexpr float k_uv_slop = 0.001f;
+    return std::isfinite(value) && value >= -k_uv_slop && value <= 1.0f + k_uv_slop;
+}
+
+bool validate_cached_glyph(const msdf_glyph_t& g)
+{
+    return
+        std::isfinite(g.advance_x) &&
+        std::isfinite(g.plane_left) &&
+        std::isfinite(g.plane_bottom) &&
+        std::isfinite(g.plane_right) &&
+        std::isfinite(g.plane_top) &&
+        g.plane_right >= g.plane_left &&
+        g.plane_top >= g.plane_bottom &&
+        uv_in_range(g.uv_left) &&
+        uv_in_range(g.uv_bottom) &&
+        uv_in_range(g.uv_right) &&
+        uv_in_range(g.uv_top) &&
+        g.uv_right >= g.uv_left &&
+        g.uv_bottom >= g.uv_top;
 }
 
 void add_text_to_vectors(
@@ -319,11 +347,20 @@ std::shared_ptr<cached_font_data_t> load_cached_font_from_disk(
     if (!read(atlas_size)) {
         return nullptr;
     }
+    if (atlas_size != static_cast<std::uint32_t>(k_atlas_texture_size)) {
+        return nullptr;
+    }
     font->atlas.atlas_size = static_cast<int>(atlas_size);
 
     if (!read(font->atlas.px_range) ||
         !read(font->atlas.baseline_offset_px) ||
         !read(font->atlas.monospace_advance_px))
+    {
+        return nullptr;
+    }
+    if (!std::isfinite(font->atlas.px_range) ||
+        !std::isfinite(font->atlas.baseline_offset_px) ||
+        !std::isfinite(font->atlas.monospace_advance_px))
     {
         return nullptr;
     }
@@ -336,6 +373,11 @@ std::shared_ptr<cached_font_data_t> load_cached_font_from_disk(
 
     std::uint32_t glyph_count = 0;
     if (!read(glyph_count)) {
+        return nullptr;
+    }
+    const std::size_t glyph_count_limit =
+        std::max<std::size_t>(glyph_codepoints().size() + 16u, 256u);
+    if (glyph_count > glyph_count_limit) {
         return nullptr;
     }
     for (std::uint32_t i = 0; i < glyph_count; ++i) {
@@ -354,11 +396,19 @@ std::shared_ptr<cached_font_data_t> load_cached_font_from_disk(
         {
             return nullptr;
         }
+        if (!validate_cached_glyph(g)) {
+            return nullptr;
+        }
         font->atlas.glyphs.emplace(static_cast<char32_t>(code), g);
     }
 
     std::uint32_t kerning_count = 0;
     if (!read(kerning_count)) {
+        return nullptr;
+    }
+    const std::size_t kerning_limit =
+        static_cast<std::size_t>(glyph_count) * static_cast<std::size_t>(glyph_count);
+    if (kerning_count > kerning_limit) {
         return nullptr;
     }
     for (std::uint32_t i = 0; i < kerning_count; ++i) {
@@ -367,11 +417,21 @@ std::shared_ptr<cached_font_data_t> load_cached_font_from_disk(
         if (!read(key.left) || !read(key.right) || !read(value)) {
             return nullptr;
         }
+        if (!std::isfinite(value)) {
+            return nullptr;
+        }
         font->atlas.kerning_px.emplace(key, value);
     }
 
     std::uint32_t atlas_bytes = 0;
     if (!read(atlas_bytes)) {
+        return nullptr;
+    }
+    const std::uint32_t expected_atlas_bytes =
+        static_cast<std::uint32_t>(k_atlas_texture_size) *
+        static_cast<std::uint32_t>(k_atlas_texture_size) *
+        4u;
+    if (atlas_bytes != expected_atlas_bytes) {
         return nullptr;
     }
     font->atlas.rgba.resize(atlas_bytes);
@@ -497,7 +557,7 @@ std::shared_ptr<cached_font_data_t> load_or_build_font_cache(
     const auto font_digest = compute_font_digest();
     const bool disk_cache = s_disk_cache_enabled.load(std::memory_order_relaxed);
 
-    auto cached = get_cached_font(pixel_height);
+    auto cached = get_cached_font(pixel_height, font_digest);
     if (!cached && disk_cache) {
         const auto cache_path = cache_file_path(pixel_height, font_digest);
         cached = load_cached_font_from_disk(cache_path, font_digest, pixel_height);
@@ -748,7 +808,7 @@ float Font_renderer::compute_numeric_bottom() const
             }
         }
     }
-    return max_bottom;
+    return std::isfinite(max_bottom) ? max_bottom : 0.0f;
 }
 
 float Font_renderer::baseline_offset_px() const

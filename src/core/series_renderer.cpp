@@ -3,6 +3,7 @@
 #include <vnm_plot/core/asset_loader.h>
 #include <vnm_plot/core/constants.h>
 #include <vnm_plot/core/plot_config.h>
+#include <vnm_plot/core/time_units.h>
 #include <vnm_plot/qt/qrhi_series_layer.h>
 #include "rhi_helpers.h"
 
@@ -25,6 +26,7 @@ using detail::choose_origin_ns;
 using detail::compute_lod_scales;
 using detail::k_scissor_pad_px;
 using detail::lower_bound_timestamp;
+using detail::positive_span_ns_for_signed_api;
 using detail::upper_bound_timestamp;
 
 namespace {
@@ -326,11 +328,6 @@ struct Series_renderer::rhi_state_t
 
     QRhi*                last_rhi             = nullptr;
     QRhiResourceUpdateBatch* pending_updates  = nullptr;
-    // Render target captured at the start of Series_renderer::render. The
-    // pipeline state object needs the render-pass descriptor and sample
-    // count from the active target, and QRhiCommandBuffer does not expose a
-    // public accessor for it â€” Plot_renderer hands it over instead.
-    QRhiRenderTarget*    last_render_target   = nullptr;
 
     // Per-frame draw plan computed in prepare() and replayed in render().
     // The vector lives on the renderer rather than in a stack
@@ -760,7 +757,7 @@ Series_renderer::view_render_result_t Series_renderer::plan_view(
         const bool identity_ok =
             (view_state.cached_data_identity != nullptr) &&
             (view_state.cached_data_identity == current_identity) &&
-            (view_state.active_vbo != UINT_MAX) &&
+            view_state.has_uploaded_vbo &&
             (view_state.last_count > 0) &&
             (view_state.last_empty_window_behavior == empty_window_behavior) &&
             (view_state.last_interpolation == interpolation) &&
@@ -787,7 +784,7 @@ Series_renderer::view_render_result_t Series_renderer::plan_view(
         if (current_seq != 0 &&
             current_seq == view_state.last_sequence &&
             applied_level == view_state.last_lod_level &&
-            view_state.active_vbo != UINT_MAX &&
+            view_state.has_uploaded_vbo &&
             view_state.last_count > 0 &&
             view_state.cached_data_identity == data_source.identity() &&
             view_state.last_t_min == t_min_ns &&
@@ -1073,9 +1070,13 @@ void Series_renderer::prepare(
     const bool preview_visible = ctx.adjusted_preview_height > 0.0 && preview_visibility > 0.0;
     m_rhi_state->frame_preview_visible = preview_visible;
 
-    const std::int64_t main_origin_ns = choose_origin_ns(ctx.t0, ctx.t1 - ctx.t0);
+    const std::int64_t main_span_ns = positive_span_ns_for_signed_api(ctx.t0, ctx.t1);
+    const std::int64_t preview_span_ns = positive_span_ns_for_signed_api(
+        ctx.t_available_min,
+        ctx.t_available_max);
+    const std::int64_t main_origin_ns = choose_origin_ns(ctx.t0, main_span_ns);
     const std::int64_t preview_origin_ns = preview_visible
-        ? choose_origin_ns(ctx.t_available_min, ctx.t_available_max - ctx.t_available_min)
+        ? choose_origin_ns(ctx.t_available_min, preview_span_ns)
         : main_origin_ns;
 
     enum class Error_cat : uint32_t {
@@ -1127,7 +1128,7 @@ void Series_renderer::prepare(
         const bool has_preview_config = s->has_preview_config();
         Data_source* preview_source = nullptr;
         const Data_access_policy* preview_access = nullptr;
-        Display_style preview_style = static_cast<Display_style>(0);
+        Display_style preview_style = Display_style::NONE;
         Series_interpolation preview_interpolation = Series_interpolation::LINEAR;
         bool preview_matches_main = false;
         bool preview_valid = false;
@@ -1145,7 +1146,7 @@ void Series_renderer::prepare(
                 log_error_once(Error_cat::PREVIEW_MISSING_SOURCE, id,
                     "Preview config set but preview data_source is null (series "
                         + std::to_string(id) + ")");
-                preview_style = static_cast<Display_style>(0);
+                preview_style = Display_style::NONE;
             }
 
             if (preview_source &&
@@ -1754,7 +1755,6 @@ bool Series_renderer::rhi_prepare_series_primitive(
                 static_cast<quint32>(alloc_bytes)));
             if (view_state.rhi->vbo && view_state.rhi->vbo->create()) {
                 view_state.rhi_vbo_capacity_bytes = alloc_bytes;
-                view_state.last_ring_size = alloc_bytes;
             }
             else {
                 return false;
@@ -1765,7 +1765,7 @@ bool Series_renderer::rhi_prepare_series_primitive(
             0,
             static_cast<quint32>(staging.size() * sizeof(gpu_sample_t)),
             staging.data());
-        view_state.active_vbo = 1u;
+        view_state.has_uploaded_vbo = true;
     }
 
     if (!view_state.rhi->vbo) {
@@ -1980,9 +1980,12 @@ bool Series_renderer::rhi_prepare_series_primitive(
 
     glm::vec4 draw_color = series->color;
     if (is_area) {
+        const bool use_dark_default_color =
+            ctx.dark_mode && is_default_series_color(draw_color);
         draw_color.w *= area_fill_alpha;
-        if (ctx.dark_mode && is_default_series_color(draw_color)) {
+        if (use_dark_default_color) {
             draw_color = k_default_series_color_dark;
+            draw_color.w *= area_fill_alpha;
         }
     }
     draw_color.w *= view_result.window_alpha;

@@ -4,6 +4,7 @@
 #include "test_macros.h"
 
 #include <vnm_plot/core/algo.h>
+#include <vnm_plot/core/time_units.h>
 
 #include <cmath>
 #include <cstdint>
@@ -256,8 +257,7 @@ bool test_main_and_preview_can_have_different_origins_in_same_frame()
 
 bool test_choose_origin_ns_handles_int64_min()
 {
-    // Plot_time_axis::k_t_unset == INT64_MIN is used as a sentinel and may
-    // leak into a choose_origin_ns call. Naive floor-then-multiply UBs:
+    // INT64_MIN is a valid public timestamp. Naive floor-then-multiply UBs:
     // floor(INT64_MIN / 1e9) == -9223372037, and -9223372037 * 1e9 wraps
     // below INT64_MIN. The function must saturate, not invoke UB.
     constexpr std::int64_t k_int64_min = std::numeric_limits<std::int64_t>::min();
@@ -283,6 +283,24 @@ bool test_choose_origin_ns_handles_int64_min()
     return true;
 }
 
+bool test_full_int64_span_saturates_for_origin_api()
+{
+    constexpr std::int64_t k_int64_min = std::numeric_limits<std::int64_t>::min();
+    constexpr std::int64_t k_int64_max = std::numeric_limits<std::int64_t>::max();
+
+    const std::int64_t span_ns =
+        plot::detail::positive_span_ns_for_signed_api(k_int64_min, k_int64_max);
+    TEST_ASSERT(span_ns == k_int64_max,
+        "full int64 timestamp range must saturate to INT64_MAX for signed span APIs");
+
+    const std::int64_t origin_ns =
+        plot::detail::choose_origin_ns(k_int64_min, span_ns);
+    TEST_ASSERT(origin_ns == k_int64_min,
+        "full-range origin selection must keep INT64_MIN without signed subtraction overflow");
+
+    return true;
+}
+
 } // namespace
 
 int main()
@@ -301,6 +319,7 @@ int main()
     RUN_TEST(test_fp32_snap_step_resolution_at_bucket_boundaries);
     RUN_TEST(test_main_and_preview_can_have_different_origins_in_same_frame);
     RUN_TEST(test_choose_origin_ns_handles_int64_min);
+    RUN_TEST(test_full_int64_span_saturates_for_origin_api);
 
     std::cout << "Results: " << passed << " passed, " << failed << " failed" << std::endl;
     return failed > 0 ? 1 : 0;

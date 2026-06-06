@@ -17,10 +17,13 @@
 #include <cstdint>
 #include <cstdio>
 #include <limits>
+#include <optional>
 #include <utility>
 #include <vector>
 
 namespace {
+
+namespace plot_examples = vnm::plot::examples;
 
 // Color palette for multiple functions
 const QColor k_function_colors[] = {
@@ -264,7 +267,7 @@ void Function_entry::generate_samples(double x_min, double x_max)
     }
 
     const int num_samples = m_num_samples;
-    std::vector<vnm::plot::function_sample_t> samples;
+    std::vector<plot_examples::function_sample_t> samples;
     samples.reserve(static_cast<size_t>(num_samples));
 
     const double range = x_max - x_min;
@@ -273,22 +276,22 @@ void Function_entry::generate_samples(double x_min, double x_max)
     for (int i = 0; i < num_samples; ++i) {
         m_x = x_min + i * step;
 
-        float y = 0.0f;
+        std::optional<float> y;
         try {
-            double result = m_evaluator->evaluate();
-
-            if (std::isfinite(result)) {
-                y = static_cast<float>(result);
-            }
-            else {
-                y = 0.0f;
-            }
+            y = static_cast<float>(m_evaluator->evaluate());
         }
         catch (...) {
-            y = 0.0f;
+            y = std::nullopt;
         }
 
-        samples.emplace_back(m_x, y);
+        if (!y) {
+            continue;
+        }
+
+        const auto sample = plot_examples::make_function_sample(m_x, *y);
+        if (sample) {
+            samples.push_back(*sample);
+        }
     }
 
     // Update the data source
@@ -514,7 +517,7 @@ void Function_entry::setup_series()
         .enabled(true)
         .style(vnm::plot::Display_style::LINE)
         .data_source_ref(m_data_source)
-        .access(vnm::plot::make_function_sample_policy_typed())
+        .access(plot_examples::make_function_sample_policy_typed())
         .build_shared();
 
     update_series_color();

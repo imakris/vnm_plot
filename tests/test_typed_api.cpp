@@ -3,7 +3,6 @@
 #include "test_macros.h"
 
 #include <vnm_plot/core/access_policy.h>
-#include <vnm_plot/core/function_sample.h>
 #include <vnm_plot/core/series_builder.h>
 #include <vnm_plot/core/types.h>
 
@@ -213,21 +212,6 @@ bool test_typed_api_floating_point_timestamp_member()
     return true;
 }
 
-bool test_function_sample_layout_key_matches_typed_factory()
-{
-    // Contract: make_function_sample_policy_typed().layout_key must equal
-    // function_sample_layout_key() so renderer-internal caches recognize the
-    // typed factory consistently.
-    const auto policy = plot::make_function_sample_policy_typed();
-    TEST_ASSERT(policy.layout_key == plot::function_sample_layout_key(),
-        "make_function_sample_policy_typed().layout_key must equal "
-        "function_sample_layout_key()");
-    TEST_ASSERT(policy.layout_key != 0,
-        "function_sample layout_key should be non-zero");
-
-    return true;
-}
-
 bool test_series_builder_preview_config()
 {
     auto main_source = std::make_shared<plot::Vector_data_source<sample_t>>();
@@ -297,7 +281,6 @@ int main()
     RUN_TEST(test_make_access_policy_and_erase);
     RUN_TEST(test_clone_with_timestamp_for_both_overloads);
     RUN_TEST(test_typed_api_floating_point_timestamp_member);
-    RUN_TEST(test_function_sample_layout_key_matches_typed_factory);
     RUN_TEST(test_series_builder_preview_config);
     RUN_TEST(test_series_builder_default_interpolation_is_linear);
 

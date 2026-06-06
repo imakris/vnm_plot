@@ -85,19 +85,23 @@ struct data_snapshot_t
     size_t      count2   = 0;        ///< Samples in second segment
     std::shared_ptr<void> hold;      ///< Optional ownership/lock guard
 
-    explicit operator bool() const { return data != nullptr && count > 0; }
+    explicit operator bool() const { return is_valid(); }
 
     bool is_valid() const noexcept
     {
-        return data != nullptr && count > 0 && stride > 0;
+        return data != nullptr
+            && count > 0
+            && stride > 0
+            && count2 <= count
+            && (count2 == 0 || data2 != nullptr);
     }
 
     const void* at(size_t index) const
     {
-        if (index >= count || stride == 0) {
+        if (!data || index >= count || stride == 0) {
             return nullptr;
         }
-        if (count2 > count) {
+        if (count2 > count || (count2 > 0 && !data2)) {
             return nullptr;
         }
         const size_t count1 = count - count2;
@@ -110,7 +114,7 @@ struct data_snapshot_t
         return static_cast<const char*>(data2) + (index - count1) * stride;
     }
 
-    size_t count1() const { return count - count2; }
+    size_t count1() const { return count2 <= count ? count - count2 : 0; }
 
     bool is_segmented() const { return data2 != nullptr && count2 > 0; }
 };
@@ -138,7 +142,7 @@ public:
     data_snapshot_t snapshot(size_t lod_level = 0)
     {
         auto result = try_snapshot(lod_level);
-        return result.status == snapshot_result_t::Snapshot_status::READY ? result.snapshot : data_snapshot_t{};
+        return result ? result.snapshot : data_snapshot_t{};
     }
 
     virtual size_t lod_levels() const { return 1; }
@@ -308,6 +312,7 @@ struct Data_access_policy
 // -----------------------------------------------------------------------------
 enum class Display_style : int
 {
+    NONE           = 0x0,
     DOTS           = 0x1,
     LINE           = 0x2,
     AREA           = 0x4,

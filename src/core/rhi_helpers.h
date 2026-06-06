@@ -6,6 +6,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <memory>
 
 namespace vnm::plot::detail {
@@ -25,7 +26,14 @@ inline bool to_int_rounded(double value, int& out)
         return false;
     }
 
-    out = static_cast<int>(lround(value));
+    const double rounded = std::round(value);
+    if (rounded < static_cast<double>(std::numeric_limits<int>::min()) ||
+        rounded > static_cast<double>(std::numeric_limits<int>::max()))
+    {
+        return false;
+    }
+
+    out = static_cast<int>(rounded);
     return true;
 }
 
@@ -35,8 +43,10 @@ inline bool to_positive_int(double value, int& out)
         return false;
     }
 
-    const long rounded = lround(value);
-    if (rounded <= 0) {
+    const double rounded = std::round(value);
+    if (rounded <= 0.0 ||
+        rounded > static_cast<double>(std::numeric_limits<int>::max()))
+    {
         return false;
     }
 
@@ -51,7 +61,9 @@ inline bool to_positive_int(double value, int& out)
 // time it appears in the renderer.
 inline float to_view_seconds(std::int64_t ts_ns, std::int64_t origin_ns)
 {
-    return static_cast<float>(ts_ns - origin_ns) * 1.0e-9f;
+    return static_cast<float>(
+        (static_cast<long double>(ts_ns) - static_cast<long double>(origin_ns)) *
+        1.0e-9L);
 }
 
 // Rebuilds an SRB that contains a single uniform buffer binding at slot 0.

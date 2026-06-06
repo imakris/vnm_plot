@@ -18,19 +18,21 @@ Public headers: `#include <vnm_plot/vnm_plot.h>` (umbrella), `#include <vnm_plot
 ## Architecture
 
 ```
-vnm_plot_core (standalone core library)
+vnm_plot_core (static QRhi core implementation)
   -> Chrome_renderer (grid and axes)
   -> Series_renderer (data series)
   -> Text_renderer (labels)
   -> Font_renderer (MSDF glyphs)
 
-vnm_plot (Qt wrapper)
+vnm_plot (Qt Quick wrapper)
   -> Plot_widget (QQuickRhiItem)
      -> Plot_renderer (RHI render thread)
         -> vnm_plot_core
 ```
 
-- `vnm_plot_core` is the standalone rendering and data logic
+- `vnm_plot_core` owns data/layout logic and the built-in QRhi renderers; it
+  privately links Qt Gui/GuiPrivate because the renderers use QRhi private
+  headers
 - `vnm_plot` is the Qt Quick wrapper (QML-friendly Plot_widget)
 - `Plot_renderer` runs on the Qt RHI render thread and coordinates the sub-renderers
 - `Series_renderer` handles lines, dots, and area fills with VBO management
@@ -39,25 +41,35 @@ vnm_plot (Qt wrapper)
 
 ## Usage
 
-### Plotting a Function
+### Plotting Samples
 
 ```cpp
 #include <vnm_plot/vnm_plot.h>
 
-// plot_widget is a vnm::plot::Plot_widget* from QML or C++
-// Create data source and generate samples
-auto source = std::make_shared<vnm::plot::Function_data_source>();
-source->generate([](double x) { return std::sin(x); }, 0.0, 10.0, 1000);
+struct sample_t
+{
+    std::int64_t t_ns;
+    float        value;
+};
 
-// Create series
+std::vector<sample_t> samples;
+samples.push_back({0, 0.0f});
+samples.push_back({1'000'000'000, 1.0f});
+
+auto source = std::make_shared<vnm::plot::Vector_data_source<sample_t>>();
+source->set_data(std::move(samples));
+
+auto access = vnm::plot::make_access_policy<sample_t>(
+    &sample_t::t_ns,
+    &sample_t::value);
+
 auto series = vnm::plot::Series_builder()
     .style(vnm::plot::Display_style::LINE)
     .color(vnm::plot::rgba_u8(51, 153, 255))
     .data_source(source)
-    .access(vnm::plot::make_function_sample_policy_typed())
+    .access(access)
     .build_shared();
 
-// Add to widget
 plot_widget->add_series(0, series);
 ```
 
@@ -104,7 +116,8 @@ Column {
 Implement a `vnm::plot::Data_access_policy` to tell the renderer how to read your samples:
 
 ```cpp
-struct my_sample_t {
+struct my_sample_t
+{
     double timestamp;
     float  value;
     float  low;
@@ -140,7 +153,7 @@ cmake --build build
 Qt 6 (Core, Gui, Quick, GuiPrivate, ShaderTools) is required. The build fetches
 glm when it is not already available. Text rendering uses `vnm_msdf_text`; CMake
 uses a sibling `../vnm_msdf_text` checkout when present, otherwise it fetches the
-pinned GitHub dependency. `vnm_msdf_text` fetches FreeType and msdfgen when they
+GitHub `master` branch. `vnm_msdf_text` fetches FreeType and msdfgen when they
 are not already available as targets.
 
 CI currently builds QRhi and QRhi+Text on Linux, macOS, Windows, and FreeBSD.
@@ -163,7 +176,7 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DVNM_PLOT_BUILD_EXAMPLES=ON
 cmake --build build
 ```
 
-- `vnm_plot_hello` - renders a sine wave using `Function_data_source`
+- `vnm_plot_hello` - renders a sine wave using the example function-source helper
 - `vnm_plot_preview_config` - preview uses a separate data source and AREA style via `preview_config`
 - `function_plotter` - multiple functions, per-series styles, expression evaluation via mexce
 
@@ -200,11 +213,25 @@ Via FetchContent:
 include(FetchContent)
 FetchContent_Declare(vnm_plot
     GIT_REPOSITORY https://github.com/imakris/vnm_plot.git
-    GIT_TAG        1.0.4
+    GIT_TAG        master
 )
 FetchContent_MakeAvailable(vnm_plot)
 target_link_libraries(your_app PRIVATE vnm_plot::vnm_plot)
 ```
+
+This source tree declares CMake project version `0.1.0`. Use `master` for this
+source line, or replace it with a chosen release tag or commit when your
+application needs a frozen revision.
+
+Install exports are find_package-ready only when exported dependencies are
+already imported package targets. Configure with `-DVNM_PLOT_USE_SYSTEM_LIBS=ON`
+and provide find_package-able `glm` and, when text rendering is enabled,
+`vnm_msdf_text`. When those dependencies are built locally through
+FetchContent, install still installs headers and libraries, but skips the CMake
+package export because CMake cannot export those local dependency targets from
+this project. Installed `find_package(vnm_plot)` consumers must have Qt Core,
+Gui, GuiPrivate, and Quick available; Qt ShaderTools is required only when
+building vnm_plot from source.
 
 ## Requirements
 

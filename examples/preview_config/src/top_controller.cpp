@@ -8,6 +8,8 @@
 
 namespace {
 
+namespace plot_examples = vnm::plot::examples;
+
 constexpr double k_x_min = -20.0;
 constexpr double k_x_max = 20.0;
 // Plot_view::t_range expects int64 nanoseconds. The function-domain
@@ -30,7 +32,7 @@ float sample_signal(double x)
 
 Top_controller::Top_controller(QObject* parent)
     : QObject(parent)
-    , m_data_source(std::make_shared<vnm::plot::Function_data_source>())
+    , m_data_source(std::make_shared<plot_examples::Function_data_source>())
 {
     setup_series();
     generate_samples();
@@ -82,7 +84,7 @@ void Top_controller::setup_series()
         .style(vnm::plot::Display_style::AREA)
         .color(vnm::plot::rgba_u8(230, 89, 51, 230))
         .data_source(m_data_source)
-        .access(vnm::plot::make_function_sample_policy_typed())
+        .access(plot_examples::make_function_sample_policy_typed())
         .build_shared();
 }
 

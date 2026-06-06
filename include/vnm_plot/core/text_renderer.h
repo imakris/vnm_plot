@@ -40,12 +40,18 @@ public:
         std::string text;
     };
 
+    template<typename Key>
     struct axis_fade_tracker_t
     {
-        std::map<double, label_fade_state_t> states;
+        using key_type = Key;
+
+        std::map<Key, label_fade_state_t> states;
         std::chrono::steady_clock::time_point last_update{};
         bool initialized = false;
     };
+
+    using vertical_axis_fade_tracker_t = axis_fade_tracker_t<double>;
+    using horizontal_axis_fade_tracker_t = axis_fade_tracker_t<std::int64_t>;
 
 private:
     Font_renderer* m_fonts = nullptr;
@@ -61,8 +67,8 @@ private:
 
     static constexpr float k_label_fade_duration_ms = 250.0f;
 
-    axis_fade_tracker_t m_vertical_fade;
-    axis_fade_tracker_t m_horizontal_fade;
+    vertical_axis_fade_tracker_t m_vertical_fade;
+    horizontal_axis_fade_tracker_t m_horizontal_fade;
 
     bool render_axis_labels(const frame_context_t& ctx, bool fade_labels);
     bool render_info_overlay(const frame_context_t& ctx, bool fade_labels);

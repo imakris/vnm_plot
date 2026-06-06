@@ -8,10 +8,12 @@
 
 namespace {
 
+namespace plot_examples = vnm::plot::examples;
+
 constexpr double k_x_min = -10.0;
 constexpr double k_x_max = 10.0;
 // vnm_plot's view-range API works in int64 nanoseconds (the access policy
-// for function_sample_t auto-converts the fp seconds member at the data
+// for the example function sample auto-converts the fp seconds member at the data
 // boundary, but Plot_view::t_range is on the C++ qint64 surface and has
 // to be set explicitly).
 constexpr qint64 k_ns_per_second = 1'000'000'000;
@@ -68,7 +70,7 @@ void Plot_controller::setup_series()
         .style(vnm::plot::Display_style::LINE)
         .color(vnm::plot::rgba_u8(51, 179, 230))
         .data_source_ref(m_data_source)
-        .access(vnm::plot::make_function_sample_policy_typed())
+        .access(plot_examples::make_function_sample_policy_typed())
         .build_shared();
 }
 

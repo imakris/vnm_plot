@@ -2,16 +2,28 @@
 
 #include "test_macros.h"
 
+#include <vnm_plot/core/time_units.h>
+#include <vnm_plot/qt/plot_widget.h>
 #include <vnm_plot/qt/plot_interaction_item.h>
+
+#include <QGuiApplication>
+#include <QMouseEvent>
 
 #include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <limits>
 #include <vector>
 
 namespace plot = vnm::plot;
 
 namespace {
+
+class test_interaction_item_t : public plot::Plot_interaction_item
+{
+public:
+    using plot::Plot_interaction_item::mousePressEvent;
+};
 
 struct zoom_state_t
 {
@@ -89,10 +101,44 @@ bool test_zoom_math_handles_zero_velocity()
     return true;
 }
 
+bool test_preview_thumb_press_handles_full_int64_availability()
+{
+    constexpr std::int64_t k_min = std::numeric_limits<std::int64_t>::min();
+    constexpr std::int64_t k_max = std::numeric_limits<std::int64_t>::max();
+
+    plot::Plot_widget widget;
+    widget.set_available_t_range(k_min, k_max);
+    widget.set_t_range(-100, 100);
+    widget.set_preview_height(20.0);
+
+    test_interaction_item_t item;
+    item.set_plot_widget(&widget);
+    item.setWidth(100.0);
+    item.setHeight(100.0);
+
+    QMouseEvent press(
+        QEvent::MouseButtonPress,
+        QPointF{50.0, 90.0},
+        QPointF{50.0, 90.0},
+        Qt::LeftButton,
+        Qt::LeftButton,
+        Qt::NoModifier);
+    item.mousePressEvent(&press);
+
+    TEST_ASSERT(press.isAccepted(),
+        "preview-thumb press should be handled");
+    TEST_ASSERT(widget.t_min() == -100 && widget.t_max() == 100,
+        "center preview-thumb press should not recenter over full int64 availability");
+
+    return true;
+}
+
 } // namespace
 
-int main()
+int main(int argc, char** argv)
 {
+    QGuiApplication app(argc, argv);
+
     std::cout << "Plot interaction item tests" << std::endl;
 
     int passed = 0;
@@ -102,6 +148,7 @@ int main()
     RUN_TEST(test_zoom_math_stays_composable_across_small_velocity_decay);
     RUN_TEST(test_zoom_math_handles_negative_velocity);
     RUN_TEST(test_zoom_math_handles_zero_velocity);
+    RUN_TEST(test_preview_thumb_press_handles_full_int64_availability);
 
     std::cout << "Results: " << passed << " passed, " << failed << " failed" << std::endl;
     return failed > 0 ? 1 : 0;
