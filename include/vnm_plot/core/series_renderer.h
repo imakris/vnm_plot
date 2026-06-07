@@ -3,6 +3,7 @@
 // VNM Plot Library - Core Series Renderer
 // QRhi series data rendering with LOD support.
 
+#include "series_window.h"
 #include "types.h"
 
 #include <cstddef>
@@ -174,21 +175,10 @@ private:
     {
         int id = 0;
         std::shared_ptr<const series_data_t> series;
-        Data_source* main_source = nullptr;
-        Data_source* preview_source = nullptr;
-        const Data_access_policy* main_access = nullptr;
-        const Data_access_policy* preview_access = nullptr;
-        Display_style main_style = Display_style::NONE;
-        Display_style preview_style = Display_style::NONE;
-        Series_interpolation main_interpolation = Series_interpolation::LINEAR;
-        Series_interpolation preview_interpolation = Series_interpolation::LINEAR;
         vbo_state_t* vbo_state = nullptr;
-        std::vector<std::size_t> main_scales;
-        std::vector<std::size_t> preview_scales;
-        view_render_result_t main_result;
-        view_render_result_t preview_result;
+        Series_view_plan main_plan;
+        Series_view_plan preview_plan;
         bool has_preview = false;
-        bool preview_matches_main = false;
     };
 
     Asset_loader* m_asset_loader = nullptr;
