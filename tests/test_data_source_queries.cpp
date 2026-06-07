@@ -21,6 +21,8 @@ struct sample_t
     float        v = 0.0f;
 };
 
+constexpr std::uint64_t k_query_semantics_key = 0x5155455259;
+
 class Query_source final : public plot::Data_source
 {
 public:
@@ -107,7 +109,9 @@ plot::data_query_context_t make_query(
 {
     plot::data_query_context_t query;
     query.access = &access;
-    query.semantics_key.value = access.layout_key;
+    query.semantics_key.value = k_query_semantics_key;
+    query.semantics_key.revision = 1;
+    query.semantics_key.conservative = false;
     query.time_window = {t_min, t_max};
     return query;
 }

@@ -35,6 +35,13 @@ template<typename Sample>
 struct Data_access_policy_typed;
 class Qrhi_series_layer;
 
+struct sample_semantics_key_t
+{
+    std::uint64_t value = 0;
+    std::uint64_t revision = 0;
+    bool          conservative = true;
+};
+
 namespace detail {
 
 enum class access_dispatch_kind_t : std::uint8_t
@@ -136,6 +143,8 @@ erased_access_policy_t make_erased_access_policy_view(
 access_policy_cache_key_t make_access_policy_cache_key(
     const Data_access_policy* policy,
     const erased_access_policy_t& view);
+sample_semantics_key_t make_sample_semantics_key(
+    const Data_access_policy* policy);
 
 template<typename Signature>
 class access_function_slot_t;
@@ -218,16 +227,21 @@ private:
 
     void bind_internal_access(
         erased_access_policy_t* access,
-        std::uint64_t* revision) noexcept
+        std::uint64_t* revision,
+        sample_semantics_key_t* semantics_key = nullptr) noexcept
     {
         m_internal_access = access;
         m_revision = revision;
+        m_semantics_key = semantics_key;
     }
 
     void clear_internal_access() noexcept
     {
         if (m_internal_access) {
             *m_internal_access = erased_access_policy_t{};
+        }
+        if (m_semantics_key) {
+            *m_semantics_key = sample_semantics_key_t{};
         }
         if (m_revision) {
             ++(*m_revision);
@@ -237,6 +251,7 @@ private:
     function_t m_function;
     erased_access_policy_t* m_internal_access = nullptr;
     std::uint64_t* m_revision = nullptr;
+    sample_semantics_key_t* m_semantics_key = nullptr;
 };
 
 } // namespace detail
@@ -366,6 +381,7 @@ struct Data_access_policy
         get_value(other.get_value),
         get_range(other.get_range),
         layout_key(other.layout_key),
+        semantics_key(other.semantics_key),
         internal_access(other.internal_access),
         access_revision(other.access_revision)
     {
@@ -378,6 +394,7 @@ struct Data_access_policy
         get_value(other.get_value),
         get_range(other.get_range),
         layout_key(other.layout_key),
+        semantics_key(other.semantics_key),
         internal_access(other.internal_access),
         access_revision(other.access_revision)
     {
@@ -391,6 +408,7 @@ struct Data_access_policy
             get_value = other.get_value;
             get_range = other.get_range;
             layout_key = other.layout_key;
+            semantics_key = other.semantics_key;
             internal_access = other.internal_access;
             ++access_revision;
             bind_accessor_slots();
@@ -405,6 +423,7 @@ struct Data_access_policy
             get_value = other.get_value;
             get_range = other.get_range;
             layout_key = other.layout_key;
+            semantics_key = other.semantics_key;
             internal_access = other.internal_access;
             ++access_revision;
             bind_accessor_slots();
@@ -421,7 +440,15 @@ struct Data_access_policy
     value_accessor_t     get_value;      ///< Extract primary value
     range_accessor_t     get_range;      ///< Extract min/max range
 
-    uint64_t layout_key = 0;  ///< Cache key distinguishing user sample types in renderer-internal caches
+    ///< Byte-layout cache key for renderer-internal caches. It is not a
+    ///< unique sample type identity and does not describe accessor semantics.
+    uint64_t layout_key = 0;
+
+    ///< Accessor-transform identity for source query caches. Member-pointer
+    ///< typed policies populate a stable key; callable policies stay
+    ///< conservative unless the caller supplies a non-zero value and maintains
+    ///< revision when the callable semantics change.
+    sample_semantics_key_t semantics_key;
 
     bool is_valid() const
     {
@@ -434,6 +461,8 @@ private:
     friend detail::access_policy_cache_key_t detail::make_access_policy_cache_key(
         const Data_access_policy* policy,
         const detail::erased_access_policy_t& view);
+    friend sample_semantics_key_t detail::make_sample_semantics_key(
+        const Data_access_policy* policy);
     template<typename>
     friend struct Data_access_policy_typed;
 
@@ -448,13 +477,16 @@ private:
     {
         get_timestamp.bind_internal_access(
             &internal_access,
-            &access_revision);
+            &access_revision,
+            &semantics_key);
         get_value.bind_internal_access(
             &internal_access,
-            &access_revision);
+            &access_revision,
+            &semantics_key);
         get_range.bind_internal_access(
             &internal_access,
-            &access_revision);
+            &access_revision,
+            &semantics_key);
     }
 
     detail::erased_access_policy_t internal_access;  ///< Renderer/planner fast-path view
@@ -537,6 +569,24 @@ inline access_policy_cache_key_t make_access_policy_cache_key(
     return key;
 }
 
+inline sample_semantics_key_t make_sample_semantics_key(
+    const Data_access_policy* policy)
+{
+    if (!policy) {
+        return {};
+    }
+
+    sample_semantics_key_t key = policy->semantics_key;
+    if (key.conservative || key.value == 0) {
+        key.value = 0;
+        if (key.revision < policy->access_revision) {
+            key.revision = policy->access_revision;
+        }
+        key.conservative = true;
+    }
+    return key;
+}
+
 } // namespace detail
 
 enum class Series_interpolation
@@ -586,13 +636,6 @@ struct value_range_t
 {
     float min = 0.0f;
     float max = 0.0f;
-};
-
-struct sample_semantics_key_t
-{
-    std::uint64_t value = 0;
-    std::uint64_t revision = 0;
-    bool          conservative = true;
 };
 
 template<typename T>

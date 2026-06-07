@@ -125,6 +125,58 @@ inline std::uint64_t compute_sample_layout_key(
     return h;
 }
 
+template<typename Member>
+constexpr std::uint64_t member_semantics_tag()
+{
+    using member_t = std::decay_t<Member>;
+    constexpr std::uint64_t k_floating_tag = 1ULL << 56;
+    constexpr std::uint64_t k_signed_integral_tag = 2ULL << 56;
+    constexpr std::uint64_t k_unsigned_integral_tag = 3ULL << 56;
+    constexpr std::uint64_t k_other_arithmetic_tag = 4ULL << 56;
+
+    if constexpr (std::is_floating_point_v<member_t>) {
+        return k_floating_tag | sizeof(member_t);
+    }
+    else
+    if constexpr (std::is_integral_v<member_t> && std::is_signed_v<member_t>) {
+        return k_signed_integral_tag | sizeof(member_t);
+    }
+    else
+    if constexpr (std::is_integral_v<member_t>) {
+        return k_unsigned_integral_tag | sizeof(member_t);
+    }
+    else {
+        return k_other_arithmetic_tag | sizeof(member_t);
+    }
+}
+
+inline std::uint64_t compute_sample_semantics_key(
+    std::size_t sample_stride,
+    std::size_t timestamp_offset,
+    std::uint64_t timestamp_tag,
+    std::size_t value_offset,
+    std::uint64_t value_tag,
+    bool has_range,
+    std::size_t range_min_offset,
+    std::uint64_t range_min_tag,
+    std::size_t range_max_offset,
+    std::uint64_t range_max_tag)
+{
+    std::uint64_t h = k_fnv_offset_basis;
+    h = fnv1a_mix(h, 0x53454D414E544943ULL);
+    h = fnv1a_mix(h, sample_stride);
+    h = fnv1a_mix(h, timestamp_offset);
+    h = fnv1a_mix(h, timestamp_tag);
+    h = fnv1a_mix(h, value_offset);
+    h = fnv1a_mix(h, value_tag);
+    h = fnv1a_mix(h, has_range ? 1ULL : 0ULL);
+    h = fnv1a_mix(h, range_min_offset);
+    h = fnv1a_mix(h, range_min_tag);
+    h = fnv1a_mix(h, range_max_offset);
+    h = fnv1a_mix(h, range_max_tag);
+    return h;
+}
+
 } // namespace detail
 
 template<typename Sample>
@@ -148,7 +200,9 @@ struct Data_access_policy_typed
         get_value(other.get_value),
         get_range(other.get_range),
         layout_key(other.layout_key),
-        internal_access(other.internal_access)
+        semantics_key(other.semantics_key),
+        internal_access(other.internal_access),
+        access_revision(other.access_revision)
     {
         bind_accessor_slots();
     }
@@ -159,7 +213,9 @@ struct Data_access_policy_typed
         get_value(other.get_value),
         get_range(other.get_range),
         layout_key(other.layout_key),
-        internal_access(other.internal_access)
+        semantics_key(other.semantics_key),
+        internal_access(other.internal_access),
+        access_revision(other.access_revision)
     {
         bind_accessor_slots();
     }
@@ -171,7 +227,9 @@ struct Data_access_policy_typed
             get_value = other.get_value;
             get_range = other.get_range;
             layout_key = other.layout_key;
+            semantics_key = other.semantics_key;
             internal_access = other.internal_access;
+            ++access_revision;
             bind_accessor_slots();
         }
         return *this;
@@ -184,7 +242,9 @@ struct Data_access_policy_typed
             get_value = other.get_value;
             get_range = other.get_range;
             layout_key = other.layout_key;
+            semantics_key = other.semantics_key;
             internal_access = other.internal_access;
+            ++access_revision;
             bind_accessor_slots();
         }
         return *this;
@@ -196,6 +256,7 @@ struct Data_access_policy_typed
     range_accessor_t get_range;
 
     uint64_t layout_key = 0;
+    sample_semantics_key_t semantics_key;
 
     bool is_valid() const
     {
@@ -221,6 +282,7 @@ struct Data_access_policy_typed
             policy.get_range = erase_accessor(get_range);
         }
         policy.layout_key = layout_key;
+        policy.semantics_key = semantics_key;
         policy.set_internal_access(internal_access);
         return policy;
     }
@@ -248,17 +310,28 @@ private:
     void set_internal_access(detail::erased_access_policy_t access)
     {
         internal_access = access;
+        ++access_revision;
         bind_accessor_slots();
     }
 
     void bind_accessor_slots() noexcept
     {
-        get_timestamp.bind_internal_access(&internal_access, nullptr);
-        get_value.bind_internal_access(&internal_access, nullptr);
-        get_range.bind_internal_access(&internal_access, nullptr);
+        get_timestamp.bind_internal_access(
+            &internal_access,
+            &access_revision,
+            &semantics_key);
+        get_value.bind_internal_access(
+            &internal_access,
+            &access_revision,
+            &semantics_key);
+        get_range.bind_internal_access(
+            &internal_access,
+            &access_revision,
+            &semantics_key);
     }
 
     detail::erased_access_policy_t internal_access;
+    std::uint64_t access_revision = 1;
 };
 
 template<typename Sample, typename Timestamp_member, typename Value_member>
@@ -296,6 +369,11 @@ inline Data_access_policy_typed<Sample> make_access_policy(
     Range_max_member Sample::* range_max_member)
 {
     Data_access_policy_typed<Sample> policy;
+    const std::size_t timestamp_offset = detail::member_offset(timestamp_member);
+    const std::size_t value_offset = detail::member_offset(value_member);
+    const std::size_t range_min_offset = detail::member_offset(range_min_member);
+    const std::size_t range_max_offset = detail::member_offset(range_max_member);
+
     assign_standard_accessors(policy, timestamp_member, value_member);
     policy.get_range = [range_min_member, range_max_member](const Sample& sample) {
         const float low = static_cast<float>(sample.*range_min_member);
@@ -309,23 +387,33 @@ inline Data_access_policy_typed<Sample> make_access_policy(
         &detail::member_value_access<Value_member>;
     internal_access.get_range =
         &detail::member_range_access<Range_min_member, Range_max_member>;
-    internal_access.timestamp_offset =
-        detail::member_offset(timestamp_member);
-    internal_access.value_offset = detail::member_offset(value_member);
-    internal_access.range_min_offset =
-        detail::member_offset(range_min_member);
-    internal_access.range_max_offset =
-        detail::member_offset(range_max_member);
+    internal_access.timestamp_offset = timestamp_offset;
+    internal_access.value_offset = value_offset;
+    internal_access.range_min_offset = range_min_offset;
+    internal_access.range_max_offset = range_max_offset;
     internal_access.dispatch_kind =
         detail::access_dispatch_kind_t::MEMBER_POINTER;
     policy.set_internal_access(internal_access);
     policy.layout_key = detail::compute_sample_layout_key(
         sizeof(Sample),
-        detail::member_offset(timestamp_member),
-        detail::member_offset(value_member),
+        timestamp_offset,
+        value_offset,
         true,
-        detail::member_offset(range_min_member),
-        detail::member_offset(range_max_member));
+        range_min_offset,
+        range_max_offset);
+    policy.semantics_key.value = detail::compute_sample_semantics_key(
+        sizeof(Sample),
+        timestamp_offset,
+        detail::member_semantics_tag<Timestamp_member>(),
+        value_offset,
+        detail::member_semantics_tag<Value_member>(),
+        true,
+        range_min_offset,
+        detail::member_semantics_tag<Range_min_member>(),
+        range_max_offset,
+        detail::member_semantics_tag<Range_max_member>());
+    policy.semantics_key.revision = 0;
+    policy.semantics_key.conservative = false;
     return policy;
 }
 
@@ -335,14 +423,30 @@ inline Data_access_policy_typed<Sample> make_access_policy(
     Value_member Sample::* value_member)
 {
     Data_access_policy_typed<Sample> policy;
+    const std::size_t timestamp_offset = detail::member_offset(timestamp_member);
+    const std::size_t value_offset = detail::member_offset(value_member);
+
     assign_standard_accessors(policy, timestamp_member, value_member);
     policy.layout_key = detail::compute_sample_layout_key(
         sizeof(Sample),
-        detail::member_offset(timestamp_member),
-        detail::member_offset(value_member),
+        timestamp_offset,
+        value_offset,
         false,
         0,
         0);
+    policy.semantics_key.value = detail::compute_sample_semantics_key(
+        sizeof(Sample),
+        timestamp_offset,
+        detail::member_semantics_tag<Timestamp_member>(),
+        value_offset,
+        detail::member_semantics_tag<Value_member>(),
+        false,
+        0,
+        0,
+        0,
+        0);
+    policy.semantics_key.revision = 0;
+    policy.semantics_key.conservative = false;
     return policy;
 }
 

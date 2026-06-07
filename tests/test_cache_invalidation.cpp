@@ -5,6 +5,7 @@
 #include "../src/core/auto_range_resolver.h"
 #include "../src/core/frame_range_planner.h"
 
+#include <vnm_plot/core/access_policy.h>
 #include <vnm_plot/core/plot_config.h>
 #include <vnm_plot/core/types.h>
 
@@ -38,6 +39,8 @@ struct Test_sample {
     std::int64_t t = 0;
     float v = 0.0f;
 };
+
+constexpr std::uint64_t k_stable_policy_semantics = 0x535441424C45;
 
 class Query_range_source final : public Data_source {
 public:
@@ -115,6 +118,22 @@ Data_access_policy make_policy()
     return policy;
 }
 
+Data_access_policy make_stable_policy()
+{
+    Data_access_policy policy = make_policy();
+    policy.semantics_key.value = k_stable_policy_semantics;
+    policy.semantics_key.revision = 1;
+    policy.semantics_key.conservative = false;
+    return policy;
+}
+
+Data_access_policy make_member_pointer_policy()
+{
+    return plot::make_access_policy<Test_sample>(
+        &Test_sample::t,
+        &Test_sample::v).erase();
+}
+
 Data_access_policy make_value_only_policy()
 {
     Data_access_policy policy;
@@ -131,6 +150,14 @@ std::shared_ptr<series_data_t> make_series(const std::shared_ptr<Query_range_sou
     series->style = Display_style::LINE;
     series->data_source = source;
     series->access = make_policy();
+    return series;
+}
+
+std::shared_ptr<series_data_t> make_stable_series(
+    const std::shared_ptr<Query_range_source>& source)
+{
+    auto series = make_series(source);
+    series->access = make_stable_policy();
     return series;
 }
 
@@ -195,6 +222,40 @@ bool test_visible_auto_range_uses_source_query_without_snapshot_fallback()
                 "default access semantics key should not reuse layout identity");
     TEST_ASSERT(source->last_query.semantics_key.conservative,
                 "default access semantics key should be conservative");
+    TEST_ASSERT(source->last_query.semantics_key.revision != 0,
+                "conservative access semantics should carry accessor revision");
+
+    return true;
+}
+
+bool test_member_pointer_query_uses_stable_semantics_key()
+{
+    auto source = std::make_shared<Query_range_source>();
+    source->query_status = Data_query_status::READY;
+    source->query_range = {2.0f, 5.0f};
+
+    auto series = make_series(source);
+    series->access = make_member_pointer_policy();
+
+    Plot_config config;
+    config.auto_v_range_mode = Auto_v_range_mode::VISIBLE;
+
+    const auto range = plot::detail::resolve_main_v_range(
+        make_series_map(series),
+        make_data_config(),
+        config,
+        true);
+
+    TEST_ASSERT(range.first == 2.0f && range.second == 5.0f,
+                "member-pointer query should use the source query result");
+    TEST_ASSERT(!source->last_query.semantics_key.conservative,
+                "member-pointer query should expose stable semantics");
+    TEST_ASSERT(source->last_query.semantics_key.value != 0,
+                "member-pointer query semantics key should be non-zero");
+    TEST_ASSERT(source->last_query.semantics_key.value != series->access.layout_key,
+                "query semantics key should not reuse layout identity");
+    TEST_ASSERT(source->last_query.semantics_key.revision == 0,
+                "member-pointer query semantics should not consume accessor revision");
 
     return true;
 }
@@ -323,7 +384,7 @@ bool test_ready_query_result_is_cached_by_current_sequence()
     source->query_sequence = 5;
     source->current_sequence_value = 5;
 
-    auto series = make_series(source);
+    auto series = make_stable_series(source);
     auto series_map = make_series_map(series);
     plot::detail::auto_range_cache_t cache;
     Plot_config config;
@@ -352,6 +413,41 @@ bool test_ready_query_result_is_cached_by_current_sequence()
     return true;
 }
 
+bool test_conservative_query_result_is_not_cached()
+{
+    auto source = std::make_shared<Query_range_source>();
+    source->query_status = Data_query_status::READY;
+    source->query_range = {1.0f, 4.0f};
+    source->query_sequence = 5;
+    source->current_sequence_value = 5;
+
+    auto series = make_series(source);
+    auto series_map = make_series_map(series);
+    plot::detail::auto_range_cache_t cache;
+    Plot_config config;
+    config.auto_v_range_mode = Auto_v_range_mode::VISIBLE;
+
+    (void)plot::detail::resolve_main_v_range(
+        series_map,
+        make_data_config(),
+        config,
+        true,
+        &cache);
+    (void)plot::detail::resolve_main_v_range(
+        series_map,
+        make_data_config(),
+        config,
+        true,
+        &cache);
+
+    TEST_ASSERT(source->query_calls == 2,
+                "conservative callable semantics should not reuse cached query results");
+    TEST_ASSERT(cache.main_entries.empty(),
+                "conservative callable semantics should not populate resolver cache");
+
+    return true;
+}
+
 bool test_empty_query_result_is_cached_by_current_sequence()
 {
     auto source = std::make_shared<Query_range_source>();
@@ -359,7 +455,7 @@ bool test_empty_query_result_is_cached_by_current_sequence()
     source->query_sequence = 5;
     source->current_sequence_value = 5;
 
-    auto series = make_series(source);
+    auto series = make_stable_series(source);
     auto series_map = make_series_map(series);
     plot::detail::auto_range_cache_t cache;
     Plot_config config;
@@ -397,7 +493,7 @@ bool test_sequence_change_invalidates_auto_range_cache()
     source->query_sequence = 5;
     source->current_sequence_value = 5;
 
-    auto series = make_series(source);
+    auto series = make_stable_series(source);
     auto series_map = make_series_map(series);
     plot::detail::auto_range_cache_t cache;
     Plot_config config;
@@ -436,7 +532,7 @@ bool test_visible_window_change_invalidates_auto_range_cache()
     source->query_sequence = 5;
     source->current_sequence_value = 5;
 
-    auto series = make_series(source);
+    auto series = make_stable_series(source);
     auto series_map = make_series_map(series);
     plot::detail::auto_range_cache_t cache;
     Plot_config config;
@@ -476,7 +572,7 @@ bool test_access_policy_change_invalidates_auto_range_cache()
     source->query_sequence = 5;
     source->current_sequence_value = 5;
 
-    auto series = make_series(source);
+    auto series = make_stable_series(source);
     plot::detail::auto_range_cache_t cache;
     Plot_config config;
     config.auto_v_range_mode = Auto_v_range_mode::VISIBLE;
@@ -488,7 +584,7 @@ bool test_access_policy_change_invalidates_auto_range_cache()
         true,
         &cache);
 
-    auto changed_series = make_series(source);
+    auto changed_series = make_stable_series(source);
     changed_series->access.layout_key = series->access.layout_key;
     source->query_range = {10.0f, 12.0f};
     const auto range = plot::detail::resolve_main_v_range(
@@ -514,7 +610,7 @@ bool test_removed_series_prunes_auto_range_cache()
     source->query_sequence = 5;
     source->current_sequence_value = 5;
 
-    auto series = make_series(source);
+    auto series = make_stable_series(source);
     plot::detail::auto_range_cache_t cache;
     Plot_config config;
     config.auto_v_range_mode = Auto_v_range_mode::VISIBLE;
@@ -589,10 +685,10 @@ bool test_frame_range_planner_populates_ranges_and_reuses_cache()
     preview_source->query_sequence = 9;
     preview_source->current_sequence_value = 9;
 
-    auto series = make_series(main_source);
+    auto series = make_stable_series(main_source);
     plot::preview_config_t preview;
     preview.data_source = preview_source;
-    preview.access = make_policy();
+    preview.access = make_stable_policy();
     preview.style = Display_style::AREA;
     series->preview_config = preview;
 
@@ -757,11 +853,13 @@ int main()
     int failed = 0;
 
     RUN_TEST(test_visible_auto_range_uses_source_query_without_snapshot_fallback);
+    RUN_TEST(test_member_pointer_query_uses_stable_semantics_key);
     RUN_TEST(test_global_lod_auto_range_uses_query_when_no_legacy_range_exists);
     RUN_TEST(test_unsupported_query_falls_back_to_snapshot_scan);
     RUN_TEST(test_global_value_only_access_falls_back_to_snapshot_scan);
     RUN_TEST(test_failed_query_does_not_fall_back_to_stale_scan);
     RUN_TEST(test_ready_query_result_is_cached_by_current_sequence);
+    RUN_TEST(test_conservative_query_result_is_not_cached);
     RUN_TEST(test_empty_query_result_is_cached_by_current_sequence);
     RUN_TEST(test_sequence_change_invalidates_auto_range_cache);
     RUN_TEST(test_visible_window_change_invalidates_auto_range_cache);

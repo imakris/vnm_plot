@@ -153,6 +153,7 @@ data_query_context_t make_query(
 {
     data_query_context_t query;
     query.access = &access;
+    query.semantics_key = make_sample_semantics_key(&access);
     query.time_window = time_window;
     query.interpolation = interpolation;
     query.empty_window_behavior = empty_window_behavior;
@@ -280,7 +281,9 @@ bool query_or_scan_series_range(
 
     std::map<int, auto_range_cache_entry_t>* entries = cache_entries(cache, preview);
     const std::uint64_t current_sequence = source.current_sequence(level);
-    if (entries && current_sequence != 0) {
+    const bool cacheable_query =
+        entries && current_sequence != 0 && !query.semantics_key.conservative;
+    if (cacheable_query) {
         const auto found = entries->find(series_id);
         if (found != entries->end() &&
             same_cache_shape(found->second, source, access, level, query, current_sequence))
@@ -304,7 +307,7 @@ bool query_or_scan_series_range(
         }
         out_min = query_result.value.min;
         out_max = query_result.value.max;
-        if (entries && query_result.sequence != 0) {
+        if (!query.semantics_key.conservative && entries && query_result.sequence != 0) {
             (*entries)[series_id] = make_cache_entry(
                 source,
                 access,
@@ -318,7 +321,7 @@ bool query_or_scan_series_range(
     }
 
     if (query_result.status == Data_query_status::EMPTY) {
-        if (entries && query_result.sequence != 0) {
+        if (!query.semantics_key.conservative && entries && query_result.sequence != 0) {
             (*entries)[series_id] = make_cache_entry(
                 source,
                 access,

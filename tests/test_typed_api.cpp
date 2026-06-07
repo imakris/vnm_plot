@@ -69,6 +69,55 @@ bool test_layout_key_distinguishes_sample_types()
     return true;
 }
 
+bool test_member_pointer_semantics_key_is_distinct_from_layout_key()
+{
+    struct int_timestamp_sample_t
+    {
+        std::int64_t t = 0;
+        float        v = 0.0f;
+    };
+
+    struct fp_timestamp_sample_t
+    {
+        double t_seconds = 0.0;
+        float  v = 0.0f;
+    };
+
+    const auto int_policy = plot::make_access_policy<int_timestamp_sample_t>(
+        &int_timestamp_sample_t::t,
+        &int_timestamp_sample_t::v);
+    const auto fp_policy = plot::make_access_policy<fp_timestamp_sample_t>(
+        &fp_timestamp_sample_t::t_seconds,
+        &fp_timestamp_sample_t::v);
+
+    TEST_ASSERT(int_policy.layout_key == fp_policy.layout_key,
+        "layout_key should describe byte layout, not full accessor semantics");
+    TEST_ASSERT(!int_policy.semantics_key.conservative,
+        "member-pointer policies should produce stable semantics keys");
+    TEST_ASSERT(!fp_policy.semantics_key.conservative,
+        "member-pointer policies should produce stable semantics keys");
+    TEST_ASSERT(int_policy.semantics_key.value != 0,
+        "member-pointer semantics key should be non-zero");
+    TEST_ASSERT(fp_policy.semantics_key.value != 0,
+        "member-pointer semantics key should be non-zero");
+    TEST_ASSERT(int_policy.semantics_key.value != int_policy.layout_key,
+        "semantics key must not reuse layout identity");
+    TEST_ASSERT(int_policy.semantics_key.value != fp_policy.semantics_key.value,
+        "semantics key should distinguish integer-ns and floating-second timestamp transforms");
+
+    const plot::Data_access_policy erased = int_policy.erase();
+    const plot::sample_semantics_key_t effective_key =
+        plot::detail::make_sample_semantics_key(&erased);
+    TEST_ASSERT(!effective_key.conservative,
+        "erased member-pointer policy should keep stable semantics");
+    TEST_ASSERT(effective_key.value == int_policy.semantics_key.value,
+        "erase() should propagate member-pointer semantics");
+    TEST_ASSERT(effective_key.revision == 0,
+        "stable member-pointer semantics should not consume accessor revision");
+
+    return true;
+}
+
 bool test_make_access_policy_and_erase()
 {
     auto policy = plot::make_access_policy<sample_t>(
@@ -105,6 +154,49 @@ bool test_make_access_policy_and_erase()
     const auto erased_range = erased.get_range(&s);
     TEST_ASSERT(erased_range.first == 1.0f && erased_range.second == 6.0f,
         "erased range accessor mismatch");
+
+    return true;
+}
+
+bool test_callable_semantics_key_is_conservative_until_explicit()
+{
+    plot::Data_access_policy callable;
+    callable.get_timestamp = [](const void* sample) -> std::int64_t {
+        return static_cast<const sample_t*>(sample)->t;
+    };
+    callable.get_value = [](const void* sample) {
+        return static_cast<const sample_t*>(sample)->v;
+    };
+    callable.layout_key = 0x43414C4C;
+
+    const plot::sample_semantics_key_t conservative_key =
+        plot::detail::make_sample_semantics_key(&callable);
+    TEST_ASSERT(conservative_key.conservative,
+        "callable policies should default to conservative semantics");
+    TEST_ASSERT(conservative_key.value == 0,
+        "conservative callable semantics must not reuse layout identity");
+    TEST_ASSERT(conservative_key.revision != 0,
+        "conservative callable semantics should carry accessor revision");
+
+    callable.semantics_key.value = 0x535441424C45;
+    callable.semantics_key.revision = 7;
+    callable.semantics_key.conservative = false;
+    const plot::sample_semantics_key_t explicit_key =
+        plot::detail::make_sample_semantics_key(&callable);
+    TEST_ASSERT(!explicit_key.conservative,
+        "explicit non-zero callable semantics should be accepted");
+    TEST_ASSERT(explicit_key.value == 0x535441424C45 && explicit_key.revision == 7,
+        "explicit callable semantics should preserve caller-maintained key and revision");
+
+    callable.get_value = [](const void*) {
+        return 12.0f;
+    };
+    const plot::sample_semantics_key_t mutated_key =
+        plot::detail::make_sample_semantics_key(&callable);
+    TEST_ASSERT(mutated_key.conservative,
+        "mutating a callable accessor should clear explicit semantics until reset");
+    TEST_ASSERT(mutated_key.value == 0 && mutated_key.revision > conservative_key.revision,
+        "mutated callable semantics should conservatively advance revision");
 
     return true;
 }
@@ -190,6 +282,8 @@ bool test_erased_access_view_uses_direct_member_accessors()
             mutated_value_calls == 1 &&
             mutated_range_calls == 1,
         "mutated erased policy should invoke each replacement callable once");
+    TEST_ASSERT(mutated.semantics_key.conservative,
+        "mutating an erased direct policy should clear member-pointer semantics");
 
     plot::Data_access_policy slot_source;
     int slot_source_timestamp_calls = 0;
@@ -292,6 +386,19 @@ bool test_erased_access_view_uses_direct_member_accessors()
             revision_view_after);
     TEST_ASSERT(revision_key_before != revision_key_after,
         "access policy cache key should change after accessor mutation");
+
+    auto semantic_mutated = policy;
+    semantic_mutated.get_value = [](const sample_t&) {
+        return 13.0f;
+    };
+    TEST_ASSERT(semantic_mutated.semantics_key.conservative,
+        "mutating a typed member-pointer policy should clear stable semantics");
+    const plot::Data_access_policy erased_semantic_mutated =
+        semantic_mutated.erase();
+    const plot::sample_semantics_key_t semantic_mutated_key =
+        plot::detail::make_sample_semantics_key(&erased_semantic_mutated);
+    TEST_ASSERT(semantic_mutated_key.conservative,
+        "erasing a mutated typed policy should expose conservative semantics");
 
     return true;
 }
@@ -402,7 +509,9 @@ int main()
 
     RUN_TEST(test_member_offset_matches_offsetof);
     RUN_TEST(test_layout_key_distinguishes_sample_types);
+    RUN_TEST(test_member_pointer_semantics_key_is_distinct_from_layout_key);
     RUN_TEST(test_make_access_policy_and_erase);
+    RUN_TEST(test_callable_semantics_key_is_conservative_until_explicit);
     RUN_TEST(test_erased_access_view_uses_direct_member_accessors);
     RUN_TEST(test_typed_api_floating_point_timestamp_member);
     RUN_TEST(test_series_builder_preview_config);
