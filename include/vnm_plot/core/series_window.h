@@ -123,12 +123,10 @@ struct Series_view_plan
     double pixels_per_sample = 0.0;
 };
 
-struct Frame_plan
+struct Frame_range_plan
 {
     value_range_plan_t main_v_range;
     value_range_plan_t preview_v_range;
-    std::vector<Series_view_plan> main_views;
-    std::vector<Series_view_plan> preview_views;
 };
 
 } // namespace vnm::plot

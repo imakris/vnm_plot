@@ -154,7 +154,7 @@ static_assert(std::is_default_constructible_v<plot::value_range_plan_t>);
 static_assert(std::is_default_constructible_v<plot::Planned_snapshot>);
 static_assert(std::is_default_constructible_v<plot::drawable_sample_span_t>);
 static_assert(std::is_default_constructible_v<plot::Series_view_plan>);
-static_assert(std::is_default_constructible_v<plot::Frame_plan>);
+static_assert(std::is_default_constructible_v<plot::Frame_range_plan>);
 static_assert(std::is_same_v<
     decltype(std::declval<plot::Series_view_plan&>().drawable_spans),
     std::vector<plot::drawable_sample_span_t>>);
@@ -369,22 +369,18 @@ bool test_core_plan_types_are_usable()
     view_plan.window_alpha = 0.75f;
     view_plan.pixels_per_sample = 2.5;
 
-    plot::Frame_plan frame_plan;
+    plot::Frame_range_plan frame_plan;
     frame_plan.main_v_range = range;
     frame_plan.preview_v_range = range;
-    frame_plan.main_views.push_back(view_plan);
-    frame_plan.preview_views.push_back(view_plan);
 
     TEST_ASSERT(frame_plan.main_v_range.valid, "main range validity mismatch");
-    TEST_ASSERT(frame_plan.main_views.size() == 1, "main view plan count mismatch");
-    TEST_ASSERT(frame_plan.preview_views.size() == 1, "preview view plan count mismatch");
-    TEST_ASSERT(frame_plan.main_views[0].snapshot.sequence == 17,
+    TEST_ASSERT(view_plan.snapshot.sequence == 17,
         "planned snapshot sequence mismatch");
-    TEST_ASSERT(frame_plan.main_views[0].drawable_spans[0].source_count == 5,
+    TEST_ASSERT(view_plan.drawable_spans[0].source_count == 5,
         "drawable span source count mismatch");
-    TEST_ASSERT(frame_plan.main_views[0].synthetic_hold_count == 1,
+    TEST_ASSERT(view_plan.synthetic_hold_count == 1,
         "synthetic hold count mismatch");
-    TEST_ASSERT(frame_plan.main_views[0].gpu_count == 6, "gpu count mismatch");
+    TEST_ASSERT(view_plan.gpu_count == 6, "gpu count mismatch");
 
     plot::sample_window_t window;
     TEST_ASSERT(window.view_kind == plot::Series_view_kind::MAIN,

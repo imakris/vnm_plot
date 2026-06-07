@@ -251,7 +251,7 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
     const double reserved_h = snapshot.base_label_height_px + snapshot.adjusted_preview_height;
     const bool preview_enabled =
         snapshot.adjusted_preview_height > 0.0 && config.preview_visibility > 0.0;
-    const Frame_plan frame_plan = m_impl->frame_range_planner.plan(
+    const Frame_range_plan frame_plan = m_impl->frame_range_planner.plan(
         snapshot.series,
         snapshot.data_cfg,
         config,

@@ -14,7 +14,7 @@ namespace vnm::plot::detail {
 class Frame_range_planner
 {
 public:
-    Frame_plan plan(
+    Frame_range_plan plan(
         const std::map<int, std::shared_ptr<const series_data_t>>& series,
         const data_config_t& data_cfg,
         const Plot_config& config,
