@@ -661,6 +661,92 @@ bool test_builtin_upload_reuses_vbo_capacity_headroom()
     return true;
 }
 
+bool test_combined_builtin_uploads_samples_once_per_view()
+{
+    constexpr std::int64_t k_second_ns = 1'000'000'000LL;
+    constexpr std::size_t k_gpu_sample_bytes = sizeof(float) * 4u;
+
+    std::vector<layer_event_t> events;
+    int create_count = 0;
+    auto layer = std::make_shared<Recording_layer>(
+        "combined-upload", 1, 20, events, create_count);
+    auto source = std::make_shared<Test_source>();
+    std::vector<test_sample_t> samples;
+    samples.reserve(128);
+    for (std::size_t i = 0; i < 128; ++i) {
+        samples.push_back({
+            static_cast<std::int64_t>(i) * k_second_ns,
+            static_cast<float>(i)
+        });
+    }
+    source->set_samples(std::move(samples));
+
+    auto series = make_builtin_plus_layer_series(
+        source,
+        plot::Display_style::DOTS_LINE_AREA,
+        {layer});
+    std::map<int, std::shared_ptr<const plot::series_data_t>> series_map;
+    const int series_id = 41;
+    series_map[series_id] = series;
+
+    plot::Asset_loader asset_loader;
+    plot::Series_renderer renderer;
+    renderer.initialize(asset_loader);
+
+    Offscreen_rhi_fixture rhi_fixture;
+    std::string error_message;
+    TEST_ASSERT(rhi_fixture.initialize(error_message), error_message);
+
+    plot::Plot_config config;
+    const plot::frame_layout_result_t layout = make_layout();
+    plot::frame_context_t ctx = make_context(layout, config);
+    ctx.t0 = 40LL * k_second_ns;
+    ctx.t1 = 42LL * k_second_ns;
+    ctx.t_available_min = ctx.t0;
+    ctx.t_available_max = ctx.t1;
+
+    TEST_ASSERT(
+        rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
+        error_message);
+    const layer_event_t* prepare = find_prepare_event(events, "combined-upload");
+    TEST_ASSERT(prepare, "expected combined-upload layer prepare event");
+    TEST_ASSERT(prepare->gpu_count > 0,
+        "combined upload test should plan a drawable GPU window");
+
+    auto state_it = renderer.m_vbo_states.find(series_id);
+    TEST_ASSERT(state_it != renderer.m_vbo_states.end(),
+        "expected renderer VBO state for combined upload test");
+    const auto& view_state = state_it->second.main_view;
+    TEST_ASSERT(view_state.last_primitive_prepare_count == 3,
+        "combined DOTS_LINE_AREA style must prepare three built-in primitives");
+    TEST_ASSERT(view_state.last_sample_upload_count == 1,
+        "combined DOTS_LINE_AREA style must upload compact samples once");
+    TEST_ASSERT(view_state.last_staged_sample_count == prepare->gpu_count,
+        "combined style upload must stage the shared compact GPU window");
+    TEST_ASSERT(view_state.last_sample_upload_bytes ==
+            prepare->gpu_count * k_gpu_sample_bytes,
+        "combined style upload bytes must match one compact GPU window");
+    TEST_ASSERT(view_state.last_line_window_sample_count == prepare->gpu_count,
+        "combined style LINE primitive should still prepare its padded window");
+
+    events.clear();
+    TEST_ASSERT(
+        rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
+        error_message);
+    const layer_event_t* second_prepare =
+        find_prepare_event(events, "combined-upload");
+    TEST_ASSERT(second_prepare,
+        "expected second combined-upload layer prepare event");
+    TEST_ASSERT(view_state.last_primitive_prepare_count == 3,
+        "combined primitive prepare count must describe the current frame");
+    TEST_ASSERT(view_state.last_sample_upload_count == 1,
+        "combined sample upload count must describe the current frame");
+    TEST_ASSERT(view_state.last_staged_sample_count == second_prepare->gpu_count,
+        "second combined frame must stage the shared compact GPU window");
+
+    return true;
+}
+
 bool test_builtin_upload_stages_visible_windows_for_dots_and_area()
 {
     constexpr std::int64_t k_second_ns = 1'000'000'000LL;
@@ -1421,6 +1507,7 @@ int main()
     RUN_TEST(test_layer_only_zero_style_prepare_record_order);
     RUN_TEST(test_builtin_upload_stages_visible_window_only);
     RUN_TEST(test_builtin_upload_reuses_vbo_capacity_headroom);
+    RUN_TEST(test_combined_builtin_uploads_samples_once_per_view);
     RUN_TEST(test_builtin_upload_stages_visible_windows_for_dots_and_area);
     RUN_TEST(test_builtin_upload_stages_single_synthetic_hold_sample);
     RUN_TEST(test_builtin_upload_stages_hold_windows_for_dots_and_area);

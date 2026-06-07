@@ -481,7 +481,6 @@ public:
         return m_renderer.rhi_prepare_series_primitive(
             *ctx.frame,
             ctx.series,
-            ctx.window.access,
             m_primitive_style,
             m_view_state,
             view_result_from_window(ctx.window),
@@ -995,6 +994,10 @@ void Series_renderer::prepare(
             const Series_view_plan& plan,
             vbo_view_state_t& view_state)
     {
+        view_state.last_sample_upload_count = 0;
+        view_state.last_primitive_prepare_count = 0;
+        view_state.last_line_window_sample_count = 0;
+
         if (!draw_state.series || plan.gpu_count == 0) {
             return;
         }
@@ -1004,6 +1007,7 @@ void Series_renderer::prepare(
             std::shared_ptr<const Qrhi_series_layer> layer;
             bool needs_view_ubo = true;
             bool requires_snapshot = true;
+            bool is_builtin = false;
         };
 
         std::vector<planned_layer_t> layers;
@@ -1014,7 +1018,8 @@ void Series_renderer::prepare(
                     Display_style::AREA,
                     view_state),
                 false,
-                false});
+                false,
+                true});
         }
         if (!!(plan.style & Display_style::LINE)) {
             layers.push_back({
@@ -1023,7 +1028,8 @@ void Series_renderer::prepare(
                     Display_style::LINE,
                     view_state),
                 false,
-                false});
+                false,
+                true});
         }
         if (!!(plan.style & Display_style::DOTS)) {
             layers.push_back({
@@ -1032,11 +1038,12 @@ void Series_renderer::prepare(
                     Display_style::DOTS,
                     view_state),
                 false,
-                false});
+                false,
+                true});
         }
         for (const auto& layer : draw_state.series->qrhi_layers) {
             if (layer && layer->draws_view(plan.view_kind)) {
-                layers.push_back({layer, true, true});
+                layers.push_back({layer, true, true, false});
             }
         }
         std::stable_sort(
@@ -1050,6 +1057,40 @@ void Series_renderer::prepare(
         }
 
         sample_window_t window = make_window(plan);
+        const auto make_view_result = [](const sample_window_t& w) {
+            view_render_result_t result;
+            result.source_first       = w.source_first;
+            result.source_count       = w.source_count;
+            result.synthetic_hold_count = w.synthetic_hold_count;
+            result.gpu_count          = w.gpu_count;
+            result.cached_snapshot    = w.snapshot;
+            result.t_min_ns           = w.t_min_ns;
+            result.t_max_ns           = w.t_max_ns;
+            result.t_origin_ns        = w.t_origin_ns;
+            result.hold_last_forward  = w.hold_last_forward;
+            result.hold_timestamp_ns  = w.hold_timestamp_ns;
+            result.v_min              = w.v_min;
+            result.v_max              = w.v_max;
+            result.width_px           = w.width_px;
+            result.height_px          = w.height_px;
+            result.y_offset_px        = w.y_offset_px;
+            result.window_alpha       = w.window_alpha;
+            result.interpolation      = w.interpolation;
+            return result;
+        };
+        const bool has_drawable_builtin_layer =
+            !!(plan.style & Display_style::DOTS) ||
+            (plan.gpu_count >= 2 &&
+             (!!(plan.style & Display_style::LINE) ||
+              !!(plan.style & Display_style::AREA)));
+        bool builtin_samples_ready = true;
+        if (has_drawable_builtin_layer) {
+            builtin_samples_ready = rhi_prepare_series_view_samples(
+                ctx,
+                window.access,
+                view_state,
+                make_view_result(window));
+        }
         const bool needs_view_ubo = std::any_of(
             layers.begin(),
             layers.end(),
@@ -1072,6 +1113,9 @@ void Series_renderer::prepare(
         for (const auto& planned_layer : layers) {
             const auto& layer = planned_layer.layer;
             if (!layer) {
+                continue;
+            }
+            if (planned_layer.is_builtin && !builtin_samples_ready) {
                 continue;
             }
             rhi_state_t::qrhi_layer_program_key_t program_key;
@@ -1301,84 +1345,20 @@ void Series_renderer::render(
     clear_frame_snapshot_caches();
 }
 
-bool Series_renderer::rhi_prepare_series_primitive(
+bool Series_renderer::rhi_prepare_series_view_samples(
     const frame_context_t& ctx,
-    const series_data_t* series,
     const Data_access_policy* access,
-    Display_style primitive_style,
     vbo_view_state_t& view_state,
-    const view_render_result_t& view_result,
-    float line_width_px,
-    float point_diameter_px,
-    float area_fill_alpha)
+    const view_render_result_t& view_result)
 {
-    if (!series) {
-        return false;
-    }
     QRhi* rhi = ctx.rhi;
     QRhiResourceUpdateBatch* updates = ctx.rhi_updates;
-
-    const bool is_dots = (primitive_style == Display_style::DOTS);
-    const bool is_area = (primitive_style == Display_style::AREA);
-    const std::size_t count = view_result.gpu_count;
-    if (count == 0) {
+    if (!rhi || view_result.gpu_count == 0) {
         return false;
     }
-    if (!is_dots && count < 2) {
-        return false;
-    }
-
-    QRhiRenderTarget* rt = ctx.render_target;
-
-    // Lazy QShader load.
-    if (!m_rhi_state->shaders_loaded) {
-        m_rhi_state->cached_dot_vert  = load_qsb("plot_dot_quad.vert.qsb");
-        m_rhi_state->cached_dot_frag  = load_qsb("plot_dot_quad.frag.qsb");
-        m_rhi_state->cached_line_vert = load_qsb("plot_line.vert.qsb");
-        m_rhi_state->cached_line_frag = load_qsb("plot_line.frag.qsb");
-        m_rhi_state->cached_area_vert = load_qsb("plot_area.vert.qsb");
-        m_rhi_state->cached_area_frag = load_qsb("plot_area.frag.qsb");
-        m_rhi_state->shaders_loaded   = true;
-    }
-
-    const QShader& vert = is_dots
-        ? m_rhi_state->cached_dot_vert
-        : (is_area ? m_rhi_state->cached_area_vert : m_rhi_state->cached_line_vert);
-    const QShader& frag = is_dots
-        ? m_rhi_state->cached_dot_frag
-        : (is_area ? m_rhi_state->cached_area_frag : m_rhi_state->cached_line_frag);
-    if (!vert.isValid() || !frag.isValid()) {
-        return false;
-    }
-    view_state.last_prepared_t_max_ns = view_result.t_max_ns;
 
     if (!view_state.rhi) {
         view_state.rhi = std::make_unique<vbo_view_state_t::rhi_buffers_t>();
-    }
-
-    auto ensure_ubo = [&](vbo_view_state_t::rhi_buffers_t::srb_entry_t& entry) -> bool {
-        const bool already_sized =
-            entry.ubo && entry.ubo_capacity_bytes >= k_series_ubo_bytes;
-        if (!detail::ensure_dynamic_ubo(
-                rhi, entry.ubo, entry.ubo_capacity_bytes, k_series_ubo_bytes))
-        {
-            return false;
-        }
-        if (!already_sized) {
-            // ensure_dynamic_ubo replaced the QRhiBuffer; the SRB still holds
-            // the old handle. Invalidate so the per-view SRB rebuild below
-            // captures the new pointer.
-            entry.srb.reset();
-            entry.last_ubo = nullptr;
-        }
-        return true;
-    };
-
-    auto& primary_srb_entry = is_dots
-        ? view_state.rhi->dots_srb
-        : (is_area ? view_state.rhi->area_fill_srb : view_state.rhi->line_srb);
-    if (!ensure_ubo(primary_srb_entry)) {
-        return false;
     }
 
     const auto invalidate_uploaded_vbo = [&]() {
@@ -1495,7 +1475,93 @@ bool Series_renderer::rhi_prepare_series_primitive(
             staging.data());
         view_state.last_staged_sample_count = needed_elements;
         view_state.last_sample_upload_bytes = upload_bytes;
+        ++view_state.last_sample_upload_count;
         view_state.has_uploaded_vbo = true;
+    }
+
+    if (!view_state.rhi->vbo) {
+        return false;
+    }
+    view_state.last_prepared_t_max_ns = view_result.t_max_ns;
+    return true;
+}
+
+bool Series_renderer::rhi_prepare_series_primitive(
+    const frame_context_t& ctx,
+    const series_data_t* series,
+    Display_style primitive_style,
+    vbo_view_state_t& view_state,
+    const view_render_result_t& view_result,
+    float line_width_px,
+    float point_diameter_px,
+    float area_fill_alpha)
+{
+    if (!series) {
+        return false;
+    }
+    QRhi* rhi = ctx.rhi;
+    QRhiResourceUpdateBatch* updates = ctx.rhi_updates;
+
+    const bool is_dots = (primitive_style == Display_style::DOTS);
+    const bool is_area = (primitive_style == Display_style::AREA);
+    const std::size_t count = view_result.gpu_count;
+    if (count == 0) {
+        return false;
+    }
+    if (!is_dots && count < 2) {
+        return false;
+    }
+
+    QRhiRenderTarget* rt = ctx.render_target;
+
+    // Lazy QShader load.
+    if (!m_rhi_state->shaders_loaded) {
+        m_rhi_state->cached_dot_vert  = load_qsb("plot_dot_quad.vert.qsb");
+        m_rhi_state->cached_dot_frag  = load_qsb("plot_dot_quad.frag.qsb");
+        m_rhi_state->cached_line_vert = load_qsb("plot_line.vert.qsb");
+        m_rhi_state->cached_line_frag = load_qsb("plot_line.frag.qsb");
+        m_rhi_state->cached_area_vert = load_qsb("plot_area.vert.qsb");
+        m_rhi_state->cached_area_frag = load_qsb("plot_area.frag.qsb");
+        m_rhi_state->shaders_loaded   = true;
+    }
+
+    const QShader& vert = is_dots
+        ? m_rhi_state->cached_dot_vert
+        : (is_area ? m_rhi_state->cached_area_vert : m_rhi_state->cached_line_vert);
+    const QShader& frag = is_dots
+        ? m_rhi_state->cached_dot_frag
+        : (is_area ? m_rhi_state->cached_area_frag : m_rhi_state->cached_line_frag);
+    if (!vert.isValid() || !frag.isValid()) {
+        return false;
+    }
+
+    if (!view_state.rhi) {
+        view_state.rhi = std::make_unique<vbo_view_state_t::rhi_buffers_t>();
+    }
+
+    auto ensure_ubo = [&](vbo_view_state_t::rhi_buffers_t::srb_entry_t& entry) -> bool {
+        const bool already_sized =
+            entry.ubo && entry.ubo_capacity_bytes >= k_series_ubo_bytes;
+        if (!detail::ensure_dynamic_ubo(
+                rhi, entry.ubo, entry.ubo_capacity_bytes, k_series_ubo_bytes))
+        {
+            return false;
+        }
+        if (!already_sized) {
+            // ensure_dynamic_ubo replaced the QRhiBuffer; the SRB still holds
+            // the old handle. Invalidate so the per-view SRB rebuild below
+            // captures the new pointer.
+            entry.srb.reset();
+            entry.last_ubo = nullptr;
+        }
+        return true;
+    };
+
+    auto& primary_srb_entry = is_dots
+        ? view_state.rhi->dots_srb
+        : (is_area ? view_state.rhi->area_fill_srb : view_state.rhi->line_srb);
+    if (!ensure_ubo(primary_srb_entry)) {
+        return false;
     }
 
     if (!view_state.rhi->vbo) {
@@ -1792,6 +1858,7 @@ bool Series_renderer::rhi_prepare_series_primitive(
                 primary_srb_entry.ubo.get(), 0, sizeof(block), &block);
         }
     }
+    ++view_state.last_primitive_prepare_count;
     return true;
 }
 

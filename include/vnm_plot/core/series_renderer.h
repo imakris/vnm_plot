@@ -83,6 +83,8 @@ private:
         std::vector<gpu_sample_t> staging;
         std::size_t last_staged_sample_count = 0;
         std::size_t last_sample_upload_bytes = 0;
+        std::size_t last_sample_upload_count = 0;
+        std::size_t last_primitive_prepare_count = 0;
         std::size_t last_line_window_sample_count = 0;
         std::int64_t last_prepared_t_max_ns = 0;
         std::size_t last_vbo_generation = 0;
@@ -172,6 +174,10 @@ private:
 
     void clear_frame_snapshot_caches();
 
+    // rhi_prepare_series_view_samples: writes the compact sample VBO for one
+    //   planned series/view window. Built-in AREA/LINE/DOTS primitives share
+    //   this upload.
+    //
     // rhi_prepare_series_primitive: writes to ctx.rhi_updates only. Builds the
     //   per-primitive UBO(s) and (LINE-only) the per-frame line_window_vbo, and
     //   ensures the cached pipeline / SRB are valid. No cb->* draw calls. Must
@@ -182,10 +188,14 @@ private:
     //   setShaderResources / setVertexInput / draw only. Scissor is owned by
     //   the outer layer replay loop. No buffer writes; safe to call inside the
     //   open render pass.
+    bool rhi_prepare_series_view_samples(
+        const frame_context_t& ctx,
+        const Data_access_policy* access,
+        vbo_view_state_t& view_state,
+        const view_render_result_t& view_result);
     bool rhi_prepare_series_primitive(
         const frame_context_t& ctx,
         const series_data_t* series,
-        const Data_access_policy* access,
         Display_style primitive_style,
         vbo_view_state_t& view_state,
         const view_render_result_t& view_result,
