@@ -6,6 +6,7 @@
 #include <vnm_plot/core/time_units.h>
 #include <vnm_plot/qt/plot_widget.h>
 #include <vnm_plot/qt/plot_interaction_item.h>
+#include <vnm_plot/qt/plot_time_axis.h>
 
 #include <QGuiApplication>
 #include <QMouseEvent>
@@ -97,6 +98,17 @@ void configure_view(
     view.v_auto = false;
 
     widget.set_view(view);
+}
+
+void configure_time_window(
+    plot::Plot_widget& widget,
+    std::int64_t tmin_ns,
+    std::int64_t tmax_ns,
+    std::int64_t t_available_min_ns,
+    std::int64_t t_available_max_ns)
+{
+    widget.set_t_range(tmin_ns, tmax_ns);
+    widget.set_available_t_range(t_available_min_ns, t_available_max_ns);
 }
 
 void configure_indicator_widget(
@@ -266,6 +278,59 @@ bool test_auto_adjust_view_includes_step_after_held_sample()
     return true;
 }
 
+bool test_widget_local_available_clamp_matches_shared_axis()
+{
+    plot::Plot_widget local_widget;
+    configure_time_window(local_widget, 100, 200, 0, 500);
+
+    plot::Plot_time_axis shared_axis;
+    plot::Plot_widget shared_widget;
+    shared_widget.set_time_axis(&shared_axis);
+    configure_time_window(shared_widget, 100, 200, 0, 500);
+
+    local_widget.set_available_t_range(0, 150);
+    shared_widget.set_available_t_range(0, 150);
+
+    TEST_ASSERT(local_widget.t_min() == shared_widget.t_min(),
+        "widget-local available clamp should match shared-axis t_min");
+    TEST_ASSERT(local_widget.t_max() == shared_widget.t_max(),
+        "widget-local available clamp should match shared-axis t_max");
+    TEST_ASSERT(local_widget.t_min() == 50 && local_widget.t_max() == 150,
+        "available clamp should preserve the 100 ns view span at the right edge");
+
+    return true;
+}
+
+bool test_widget_local_preview_adjustment_matches_shared_axis()
+{
+    constexpr std::int64_t k_min = std::numeric_limits<std::int64_t>::min();
+    constexpr std::int64_t k_max = std::numeric_limits<std::int64_t>::max();
+
+    plot::Plot_widget local_widget;
+    configure_time_window(local_widget, k_min, k_min + 100, k_min, k_max);
+
+    plot::Plot_time_axis shared_axis;
+    plot::Plot_widget shared_widget;
+    shared_widget.set_time_axis(&shared_axis);
+    configure_time_window(shared_widget, k_min, k_min + 100, k_min, k_max);
+
+    local_widget.adjust_t_from_mouse_diff_on_preview(100.0, 75.0);
+    shared_widget.adjust_t_from_mouse_diff_on_preview(100.0, 75.0);
+
+    TEST_ASSERT(local_widget.t_min() == shared_widget.t_min(),
+        "widget-local preview drag should match shared-axis t_min");
+    TEST_ASSERT(local_widget.t_max() == shared_widget.t_max(),
+        "widget-local preview drag should match shared-axis t_max");
+
+    const auto moved_span = plot::positive_span_ns(
+        local_widget.t_min(),
+        local_widget.t_max());
+    TEST_ASSERT(moved_span && *moved_span == 100,
+        "widget-local preview drag should preserve the 100 ns view span");
+
+    return true;
+}
+
 bool test_preview_thumb_press_handles_full_int64_availability()
 {
     constexpr std::int64_t k_min = std::numeric_limits<std::int64_t>::min();
@@ -318,6 +383,8 @@ int main(int argc, char** argv)
     RUN_TEST(test_nearest_samples_choose_closer_sample);
     RUN_TEST(test_auto_adjust_view_uses_visible_samples_for_value_and_time_range);
     RUN_TEST(test_auto_adjust_view_includes_step_after_held_sample);
+    RUN_TEST(test_widget_local_available_clamp_matches_shared_axis);
+    RUN_TEST(test_widget_local_preview_adjustment_matches_shared_axis);
     RUN_TEST(test_preview_thumb_press_handles_full_int64_availability);
 
     std::cout << "Results: " << passed << " passed, " << failed << " failed" << std::endl;

@@ -110,7 +110,7 @@ signals:
     void indicator_state_changed();
 
 private:
-    bool set_limits_if_changed(
+    bool apply_time_axis_limits_if_changed(
         qint64 t_min_ns,
         qint64 t_max_ns,
         qint64 t_available_min_ns,

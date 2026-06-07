@@ -1,10 +1,6 @@
 #pragma once
 
-// Shared math for time-axis pan/zoom operations. Plot_widget and
-// Plot_time_axis each have a near-identical adjust_t_from_* family of
-// functions; they only differ in how they load (t_min, t_max,
-// t_available_min, t_available_max) and how they apply the result. The
-// helpers below isolate the arithmetic so the two classes stay in sync.
+// Shared state transitions and math for time-axis pan/zoom operations.
 
 #include <vnm_plot/core/time_units.h>
 
@@ -24,6 +20,12 @@ struct t_view_snapshot_t
     qint64 t_max = 0;
     qint64 t_available_min = 0;
     qint64 t_available_max = 0;
+};
+
+struct time_axis_update_result_t
+{
+    bool accepted = false;
+    bool changed  = false;
 };
 
 // Translate the view by `diff` pixels of horizontal motion expressed
@@ -156,5 +158,432 @@ inline void adjust_t_from_pivot_and_scale_impl(
         right_ns);
     commit(target.min_ns, target.max_ns);
 }
+
+class Time_axis_model
+{
+public:
+    Time_axis_model() = default;
+
+    Time_axis_model(
+        qint64 t_min,
+        qint64 t_max,
+        qint64 t_available_min,
+        qint64 t_available_max,
+        bool t_min_initialized,
+        bool t_max_initialized,
+        bool t_available_min_initialized,
+        bool t_available_max_initialized)
+    :
+        m_t_min(t_min),
+        m_t_max(t_max),
+        m_t_available_min(t_available_min),
+        m_t_available_max(t_available_max),
+        m_t_min_initialized(t_min_initialized),
+        m_t_max_initialized(t_max_initialized),
+        m_t_available_min_initialized(t_available_min_initialized),
+        m_t_available_max_initialized(t_available_max_initialized)
+    {}
+
+    static Time_axis_model initialized(
+        qint64 t_min,
+        qint64 t_max,
+        qint64 t_available_min,
+        qint64 t_available_max)
+    {
+        return Time_axis_model(
+            t_min,
+            t_max,
+            t_available_min,
+            t_available_max,
+            true,
+            true,
+            true,
+            true);
+    }
+
+    qint64 t_min() const { return m_t_min; }
+    qint64 t_max() const { return m_t_max; }
+    qint64 t_available_min() const { return m_t_available_min; }
+    qint64 t_available_max() const { return m_t_available_max; }
+
+    bool t_min_initialized() const { return m_t_min_initialized; }
+    bool t_max_initialized() const { return m_t_max_initialized; }
+    bool t_available_min_initialized() const { return m_t_available_min_initialized; }
+    bool t_available_max_initialized() const { return m_t_available_max_initialized; }
+
+    bool view_initialized() const
+    {
+        return m_t_min_initialized && m_t_max_initialized;
+    }
+
+    bool available_initialized() const
+    {
+        return m_t_available_min_initialized && m_t_available_max_initialized;
+    }
+
+    bool any_view_bound_initialized() const
+    {
+        return m_t_min_initialized || m_t_max_initialized;
+    }
+
+    bool any_available_bound_initialized() const
+    {
+        return m_t_available_min_initialized || m_t_available_max_initialized;
+    }
+
+    time_axis_update_result_t set_t_min(qint64 v)
+    {
+        // Single-bound writes seed an uninitialized view. Completing the pair
+        // must enforce ordering before the axis becomes initialized.
+        if (!view_initialized()) {
+            if (m_t_min_initialized && v == m_t_min) {
+                return {true, false};
+            }
+            if (m_t_max_initialized && !(v < m_t_max)) {
+                return {};
+            }
+            return set_limits_if_changed(
+                v,
+                m_t_max,
+                m_t_available_min,
+                m_t_available_max,
+                true,
+                m_t_max_initialized,
+                m_t_available_min_initialized,
+                m_t_available_max_initialized);
+        }
+
+        qint64 new_min = v;
+        qint64 new_max = m_t_max;
+        if (v >= m_t_max) {
+            const auto span_ns = positive_span_ns(m_t_min, m_t_max);
+            if (!span_ns) {
+                return {};
+            }
+            new_max = saturating_add_duration_ns(v, *span_ns);
+            if (positive_span_ns(new_min, new_max) != span_ns) {
+                return {};
+            }
+        }
+
+        return set_limits_if_changed(
+            new_min,
+            new_max,
+            m_t_available_min,
+            m_t_available_max,
+            true,
+            true,
+            m_t_available_min_initialized,
+            m_t_available_max_initialized);
+    }
+
+    time_axis_update_result_t set_t_max(qint64 v)
+    {
+        // See set_t_min(): QML property bindings can initialize the range
+        // one side at a time, but a completed range is always ordered.
+        if (!view_initialized()) {
+            if (m_t_max_initialized && v == m_t_max) {
+                return {true, false};
+            }
+            if (m_t_min_initialized && !(v > m_t_min)) {
+                return {};
+            }
+            return set_limits_if_changed(
+                m_t_min,
+                v,
+                m_t_available_min,
+                m_t_available_max,
+                m_t_min_initialized,
+                true,
+                m_t_available_min_initialized,
+                m_t_available_max_initialized);
+        }
+
+        qint64 new_min = m_t_min;
+        qint64 new_max = v;
+        if (v <= m_t_min) {
+            const auto span_ns = positive_span_ns(m_t_min, m_t_max);
+            if (!span_ns) {
+                return {};
+            }
+            new_min = saturating_sub_duration_ns(v, *span_ns);
+            if (positive_span_ns(new_min, new_max) != span_ns) {
+                return {};
+            }
+        }
+
+        return set_limits_if_changed(
+            new_min,
+            new_max,
+            m_t_available_min,
+            m_t_available_max,
+            true,
+            true,
+            m_t_available_min_initialized,
+            m_t_available_max_initialized);
+    }
+
+    time_axis_update_result_t set_t_range(qint64 t_min_ns, qint64 t_max_ns)
+    {
+        if (!(t_max_ns > t_min_ns)) {
+            return {};
+        }
+
+        return set_limits_if_changed(
+            t_min_ns,
+            t_max_ns,
+            m_t_available_min,
+            m_t_available_max,
+            true,
+            true,
+            m_t_available_min_initialized,
+            m_t_available_max_initialized);
+    }
+
+    time_axis_update_result_t set_t_available_min(qint64 v)
+    {
+        if (!m_t_available_max_initialized) {
+            if (m_t_available_min_initialized && v == m_t_available_min) {
+                return {true, false};
+            }
+            return set_limits_if_changed(
+                m_t_min,
+                m_t_max,
+                v,
+                m_t_available_max,
+                m_t_min_initialized,
+                m_t_max_initialized,
+                true,
+                false);
+        }
+
+        return set_available_t_range(v, m_t_available_max);
+    }
+
+    time_axis_update_result_t set_t_available_max(qint64 v)
+    {
+        if (!m_t_available_min_initialized) {
+            if (m_t_available_max_initialized && v == m_t_available_max) {
+                return {true, false};
+            }
+            return set_limits_if_changed(
+                m_t_min,
+                m_t_max,
+                m_t_available_min,
+                v,
+                m_t_min_initialized,
+                m_t_max_initialized,
+                false,
+                true);
+        }
+
+        return set_available_t_range(m_t_available_min, v);
+    }
+
+    time_axis_update_result_t set_available_t_range(
+        qint64 t_available_min_ns,
+        qint64 t_available_max_ns)
+    {
+        if (!(t_available_max_ns > t_available_min_ns)) {
+            return {};
+        }
+
+        qint64 new_t_min = m_t_min;
+        qint64 new_t_max = m_t_max;
+        bool new_t_min_initialized = m_t_min_initialized;
+        bool new_t_max_initialized = m_t_max_initialized;
+        const bool view_unset = !m_t_min_initialized && !m_t_max_initialized;
+        if (view_unset) {
+            // A fully unset view adopts the first complete available range so
+            // subsequent interactions have a real window to operate on.
+            new_t_min = t_available_min_ns;
+            new_t_max = t_available_max_ns;
+            new_t_min_initialized = true;
+            new_t_max_initialized = true;
+        }
+        else
+        if (view_initialized()) {
+            // Half-seeded views fall through unchanged; only complete views
+            // are clamped.
+            const auto clamped = clamp_time_range_to_available_ns(
+                time_range_t{new_t_min, new_t_max},
+                time_range_t{t_available_min_ns, t_available_max_ns});
+            if (clamped) {
+                new_t_min = clamped->min_ns;
+                new_t_max = clamped->max_ns;
+            }
+            else {
+                new_t_min = t_available_min_ns;
+                new_t_max = t_available_max_ns;
+            }
+        }
+
+        return set_limits_if_changed(
+            new_t_min,
+            new_t_max,
+            t_available_min_ns,
+            t_available_max_ns,
+            new_t_min_initialized,
+            new_t_max_initialized,
+            true,
+            true);
+    }
+
+    time_axis_update_result_t adjust_t_to_target(
+        qint64 target_min_ns,
+        qint64 target_max_ns)
+    {
+        if (!(target_max_ns > target_min_ns)) {
+            return {};
+        }
+
+        time_range_t target{target_min_ns, target_max_ns};
+        if (available_initialized()) {
+            const auto clamped = clamp_time_range_to_available_ns(
+                target,
+                time_range_t{m_t_available_min, m_t_available_max});
+            if (!clamped) {
+                return {};
+            }
+            target = *clamped;
+        }
+
+        return set_limits_if_changed(
+            target.min_ns,
+            target.max_ns,
+            m_t_available_min,
+            m_t_available_max,
+            true,
+            true,
+            m_t_available_min_initialized,
+            m_t_available_max_initialized);
+    }
+
+    time_axis_update_result_t adjust_t_from_mouse_diff(
+        double ref_width,
+        double diff)
+    {
+        if (!view_initialized()) {
+            return {};
+        }
+
+        time_axis_update_result_t result;
+        adjust_t_from_mouse_diff_impl(
+            snapshot(),
+            ref_width,
+            diff,
+            [this, &result](qint64 mn, qint64 mx) {
+                result = adjust_t_to_target(mn, mx);
+            });
+        return result;
+    }
+
+    time_axis_update_result_t adjust_t_from_mouse_diff_on_preview(
+        double ref_width,
+        double diff)
+    {
+        if (!view_initialized() || !available_initialized()) {
+            return {};
+        }
+
+        time_axis_update_result_t result;
+        adjust_t_from_mouse_diff_on_preview_impl(
+            snapshot(),
+            ref_width,
+            diff,
+            [this, &result](qint64 mn, qint64 mx) {
+                result = adjust_t_to_target(mn, mx);
+            });
+        return result;
+    }
+
+    time_axis_update_result_t adjust_t_from_mouse_pos_on_preview(
+        double ref_width,
+        double x_pos)
+    {
+        if (!view_initialized() || !available_initialized()) {
+            return {};
+        }
+
+        time_axis_update_result_t result;
+        adjust_t_from_mouse_pos_on_preview_impl(
+            snapshot(),
+            ref_width,
+            x_pos,
+            [this, &result](qint64 mn, qint64 mx) {
+                result = adjust_t_to_target(mn, mx);
+            });
+        return result;
+    }
+
+    time_axis_update_result_t adjust_t_from_pivot_and_scale(
+        double pivot,
+        double scale)
+    {
+        if (!view_initialized()) {
+            return {};
+        }
+
+        time_axis_update_result_t result;
+        adjust_t_from_pivot_and_scale_impl(
+            snapshot(),
+            pivot,
+            scale,
+            [this, &result](qint64 mn, qint64 mx) {
+                result = adjust_t_to_target(mn, mx);
+            });
+        return result;
+    }
+
+private:
+    t_view_snapshot_t snapshot() const
+    {
+        return {m_t_min, m_t_max, m_t_available_min, m_t_available_max};
+    }
+
+    time_axis_update_result_t set_limits_if_changed(
+        qint64 t_min_ns,
+        qint64 t_max_ns,
+        qint64 t_available_min_ns,
+        qint64 t_available_max_ns,
+        bool t_min_initialized,
+        bool t_max_initialized,
+        bool t_available_min_initialized,
+        bool t_available_max_initialized)
+    {
+        const bool changed =
+            m_t_min != t_min_ns ||
+            m_t_max != t_max_ns ||
+            m_t_available_min != t_available_min_ns ||
+            m_t_available_max != t_available_max_ns ||
+            m_t_min_initialized != t_min_initialized ||
+            m_t_max_initialized != t_max_initialized ||
+            m_t_available_min_initialized != t_available_min_initialized ||
+            m_t_available_max_initialized != t_available_max_initialized;
+
+        if (changed) {
+            m_t_min = t_min_ns;
+            m_t_max = t_max_ns;
+            m_t_available_min = t_available_min_ns;
+            m_t_available_max = t_available_max_ns;
+            m_t_min_initialized = t_min_initialized;
+            m_t_max_initialized = t_max_initialized;
+            m_t_available_min_initialized = t_available_min_initialized;
+            m_t_available_max_initialized = t_available_max_initialized;
+        }
+
+        return {true, changed};
+    }
+
+    qint64 m_t_min = 0;
+    qint64 m_t_max = 0;
+    qint64 m_t_available_min = 0;
+    qint64 m_t_available_max = 0;
+
+    bool m_t_min_initialized = false;
+    bool m_t_max_initialized = false;
+    bool m_t_available_min_initialized = false;
+    bool m_t_available_max_initialized = false;
+};
 
 } // namespace vnm::plot::detail

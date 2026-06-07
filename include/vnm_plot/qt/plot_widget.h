@@ -319,8 +319,6 @@ private:
         return true;
     }
 
-    void clamp_t_range_to_available(qint64 t_avail_min_ns, qint64 t_avail_max_ns);
-
     bool consume_view_state_reset_request();
     void set_rendered_v_range(float v_min, float v_max) const;
     void set_rendered_t_range(qint64 t_min_ns, qint64 t_max_ns) const;
