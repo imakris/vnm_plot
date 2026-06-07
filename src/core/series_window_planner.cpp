@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <vector>
@@ -34,6 +35,36 @@ bool checked_size_product(std::size_t lhs, std::size_t rhs, std::size_t& out)
     }
     out = lhs * rhs;
     return true;
+}
+
+double lod_level_error(const std::vector<std::size_t>& scales, std::size_t level, double base_pps)
+{
+    return std::abs(base_pps * static_cast<double>(scales[level]) - 1.0);
+}
+
+std::size_t choose_lod_level_with_hysteresis(
+    const std::vector<std::size_t>& scales,
+    double base_pps,
+    std::size_t last_lod_level,
+    bool has_lod_history)
+{
+    const std::size_t desired_level = choose_lod_level(scales, base_pps);
+    if (!has_lod_history ||
+        desired_level == last_lod_level ||
+        last_lod_level >= scales.size())
+    {
+        return desired_level;
+    }
+
+    constexpr double k_lod_hysteresis_error = 0.10;
+    const double last_error = lod_level_error(scales, last_lod_level, base_pps);
+    const double desired_error = lod_level_error(scales, desired_level, base_pps);
+    if (!std::isfinite(last_error) || !std::isfinite(desired_error)) {
+        return desired_level;
+    }
+    return (desired_error + k_lod_hysteresis_error < last_error)
+        ? desired_level
+        : last_lod_level;
 }
 
 } // anonymous namespace
@@ -84,8 +115,12 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
     const std::size_t level_count = scales.size();
     const std::size_t max_level_index = level_count > 0 ? level_count - 1 : 0;
     std::size_t target_level = std::min<std::size_t>(
-        state.last_lod_level,
+        state.has_last_lod_level ? state.last_lod_level : 0,
         max_level_index);
+    const bool has_lod_history =
+        state.has_last_lod_level &&
+        state.cached_data_identity == data_source.identity() &&
+        state.last_lod_level < level_count;
 
     constexpr std::size_t k_tried_stack_levels = 32;
     std::array<std::uint8_t, k_tried_stack_levels> tried_stack{};
@@ -400,7 +435,11 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
         const double base_pps = (base_samples > 0)
             ? request.width_px / static_cast<double>(base_samples) : 0.0;
 
-        const std::size_t desired_level = choose_lod_level(scales, base_pps);
+        const std::size_t desired_level = choose_lod_level_with_hysteresis(
+            scales,
+            base_pps,
+            state.last_lod_level,
+            has_lod_history);
         if (desired_level != applied_level) {
             if (!was_tried(desired_level)) {
                 target_level = desired_level;
@@ -417,6 +456,7 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
         state.last_count = count;
 
         state.last_lod_level = applied_level;
+        state.has_last_lod_level = true;
         state.last_t_min = request.t_min_ns;
         state.last_t_max = request.t_max_ns;
         state.last_width_px = request.width_px;

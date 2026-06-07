@@ -213,6 +213,30 @@ void fill_lod_samples(Two_level_source& source)
     }
 }
 
+plot::Series_view_plan plan_two_level_lod_width(
+    Two_level_source& source,
+    const Data_access_policy& access,
+    const std::vector<std::size_t>& scales,
+    plot::detail::series_window_planner_state_t& state,
+    plot::detail::Series_window_snapshot_cache& cache,
+    std::uint64_t frame_id,
+    double width_px)
+{
+    plot::detail::series_window_plan_request_t request;
+    request.planner_state = &state;
+    request.snapshot_cache = &cache;
+    request.frame_id = frame_id;
+    request.data_source = &source;
+    request.access = &access;
+    request.scales = &scales;
+    request.t_min_ns = 0;
+    request.t_max_ns = 99;
+    request.t_origin_ns = 0;
+    request.width_px = width_px;
+    request.style = Display_style::LINE;
+    return plot::detail::plan_series_window(request);
+}
+
 std::shared_ptr<Single_level_source> make_single_level_source(
     std::vector<std::int64_t> timestamps,
     plot::Time_order order)
@@ -913,6 +937,96 @@ bool test_lod_level_separation()
     return true;
 }
 
+bool test_lod_hysteresis_keeps_previous_level_inside_band()
+{
+    Two_level_source source;
+    fill_lod_samples(source);
+
+    const Data_access_policy access = make_policy();
+    const std::vector<std::size_t> scales = {1, 4};
+    plot::detail::series_window_planner_state_t state;
+    plot::detail::Series_window_snapshot_cache cache;
+    std::uint64_t frame_id = 1;
+
+    const auto initial_plan = plan_two_level_lod_width(
+        source,
+        access,
+        scales,
+        state,
+        cache,
+        frame_id++,
+        50.0);
+    TEST_ASSERT(initial_plan.lod_level == 0,
+        "initial wide LOD plan should choose the full-resolution level");
+
+    TEST_ASSERT(plot::detail::choose_lod_level(scales, 0.39) == 1,
+        "direct LOD chooser should still switch at the raw midpoint");
+    const auto held_plan = plan_two_level_lod_width(
+        source,
+        access,
+        scales,
+        state,
+        cache,
+        frame_id++,
+        39.0);
+    TEST_ASSERT(held_plan.lod_level == 0,
+        "planner hysteresis should keep the previous level inside the lower switch band");
+    TEST_ASSERT(state.last_lod_level == 0,
+        "state should retain the held LOD level inside the lower switch band");
+
+    return true;
+}
+
+bool test_lod_hysteresis_switches_after_band_crossed()
+{
+    Two_level_source source;
+    fill_lod_samples(source);
+
+    const Data_access_policy access = make_policy();
+    const std::vector<std::size_t> scales = {1, 4};
+    plot::detail::series_window_planner_state_t state;
+    plot::detail::Series_window_snapshot_cache cache;
+    std::uint64_t frame_id = 1;
+
+    (void)plan_two_level_lod_width(source, access, scales, state, cache, frame_id++, 50.0);
+    const auto coarser_plan = plan_two_level_lod_width(
+        source,
+        access,
+        scales,
+        state,
+        cache,
+        frame_id++,
+        37.0);
+    TEST_ASSERT(coarser_plan.lod_level == 1,
+        "planner hysteresis should switch coarser after crossing the lower band edge");
+
+    TEST_ASSERT(plot::detail::choose_lod_level(scales, 0.41) == 0,
+        "direct LOD chooser should switch finer at the raw midpoint");
+    const auto held_coarse_plan = plan_two_level_lod_width(
+        source,
+        access,
+        scales,
+        state,
+        cache,
+        frame_id++,
+        41.0);
+    TEST_ASSERT(held_coarse_plan.lod_level == 1,
+        "planner hysteresis should keep the coarser level inside the upper switch band");
+
+    const auto finer_plan = plan_two_level_lod_width(
+        source,
+        access,
+        scales,
+        state,
+        cache,
+        frame_id++,
+        43.0);
+    TEST_ASSERT(finer_plan.lod_level == 0,
+        "planner hysteresis should switch finer after crossing the upper band edge");
+
+    return true;
+}
+
 bool test_snapshot_released_after_render()
 {
     auto data_source = std::make_shared<Single_level_source>();
@@ -1314,6 +1428,8 @@ int main()
     RUN_TEST(test_empty_window_behavior_invalidates_fast_path_cache);
     RUN_TEST(test_preview_honors_hold_last_forward);
     RUN_TEST(test_lod_level_separation);
+    RUN_TEST(test_lod_hysteresis_keeps_previous_level_inside_band);
+    RUN_TEST(test_lod_hysteresis_switches_after_band_crossed);
     RUN_TEST(test_snapshot_released_after_render);
     RUN_TEST(test_render_empty_series_map);
     RUN_TEST(test_upload_origin_records_per_view_origin);

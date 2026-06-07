@@ -52,6 +52,7 @@ struct series_window_planner_state_t
 
     std::size_t last_first = 0;
     std::size_t last_count = 0;
+    bool has_last_lod_level = false;
     std::size_t last_lod_level = 0;
     std::int64_t last_t_min = k_no_timestamp;
     std::int64_t last_t_max = k_no_timestamp;
