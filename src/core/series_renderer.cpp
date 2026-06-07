@@ -7,28 +7,24 @@
 #include <vnm_plot/core/time_units.h>
 #include <vnm_plot/qt/qrhi_series_layer.h>
 #include "rhi_helpers.h"
+#include "series_window_planner.h"
 
 #include <glm/gtc/type_ptr.hpp>
 #include <rhi/qrhi.h>
 
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
-#include <limits>
 #include <string>
 #include <string_view>
 #include <unordered_set>
 
 namespace vnm::plot {
-using detail::choose_lod_level;
 using detail::choose_origin_ns;
 using detail::compute_lod_scales;
 using detail::k_scissor_pad_px;
-using detail::lower_bound_timestamp;
 using detail::positive_span_ns_for_signed_api;
-using detail::upper_bound_timestamp;
 
 namespace {
 
@@ -149,7 +145,10 @@ struct Series_renderer::vbo_view_state_t::rhi_buffers_t
 
 };
 
-Series_renderer::vbo_view_state_t::vbo_view_state_t() = default;
+Series_renderer::vbo_view_state_t::vbo_view_state_t()
+:
+    planner(std::make_unique<detail::series_window_planner_state_t>())
+{}
 Series_renderer::vbo_view_state_t::~vbo_view_state_t() = default;
 Series_renderer::vbo_view_state_t::vbo_view_state_t(vbo_view_state_t&&) noexcept = default;
 Series_renderer::vbo_view_state_t&
@@ -159,6 +158,15 @@ void Series_renderer::vbo_view_state_t::reset()
 {
     *this = vbo_view_state_t{};
 }
+
+Series_renderer::vbo_state_t::vbo_state_t()
+:
+    snapshot_cache(std::make_unique<detail::Series_window_snapshot_cache>())
+{}
+Series_renderer::vbo_state_t::~vbo_state_t() = default;
+Series_renderer::vbo_state_t::vbo_state_t(vbo_state_t&&) noexcept = default;
+Series_renderer::vbo_state_t&
+Series_renderer::vbo_state_t::operator=(vbo_state_t&&) noexcept = default;
 
 // -----------------------------------------------------------------------------
 // RHI state: pipelines, shaders, and the global UBO mirror.
@@ -640,384 +648,10 @@ void Series_renderer::cleanup_resources()
 void Series_renderer::clear_frame_snapshot_caches()
 {
     for (auto& [_, state] : m_vbo_states) {
-        state.cached_snapshot_frame_id = 0;
-        state.cached_snapshot_level = SIZE_MAX;
-        state.cached_snapshot_source = nullptr;
-        state.cached_snapshot = {};
-        state.cached_snapshot_hold.reset();
+        if (state.snapshot_cache) {
+            *state.snapshot_cache = detail::Series_window_snapshot_cache{};
+        }
     }
-}
-
-Series_view_plan Series_renderer::plan_view(
-    int series_id,
-    Series_view_kind view_kind,
-    vbo_view_state_t& view_state,
-    vbo_state_t& shared_state,
-    uint64_t frame_id,
-    Data_source& data_source,
-    const Data_access_policy& access,
-    const std::vector<std::size_t>& scales,
-    std::int64_t t_min_ns,
-    std::int64_t t_max_ns,
-    std::int64_t t_origin_ns,
-    double width_px,
-    Empty_window_behavior empty_window_behavior,
-    Display_style style,
-    Series_interpolation interpolation,
-    Snapshot_requirement snapshot_requirement,
-    vnm::plot::Profiler* profiler)
-{
-    Series_view_plan plan;
-    plan.series_id = series_id;
-    plan.view_kind = view_kind;
-    plan.source = &data_source;
-    plan.access = &access;
-    plan.lod_scale = 1;
-    plan.interpolation = interpolation;
-    plan.empty_window_behavior = empty_window_behavior;
-    plan.style = style;
-    const auto& get_timestamp = access.get_timestamp;
-
-    if (scales.empty() || t_max_ns <= t_min_ns || width_px <= 0.0) {
-        return plan;
-    }
-
-    if (shared_state.cached_snapshot_frame_id != frame_id) {
-        shared_state.cached_snapshot_frame_id = 0;
-        shared_state.cached_snapshot_level = SIZE_MAX;
-        shared_state.cached_snapshot_source = nullptr;
-        shared_state.cached_snapshot = {};
-        shared_state.cached_snapshot_hold.reset();
-    }
-
-    const std::size_t level_count = scales.size();
-    const std::size_t max_level_index = level_count > 0 ? level_count - 1 : 0;
-    std::size_t target_level = std::min<std::size_t>(view_state.last_lod_level, max_level_index);
-
-    constexpr std::size_t k_tried_stack_levels = 32;
-    std::array<uint8_t, k_tried_stack_levels> tried_stack{};
-    std::vector<uint8_t> tried_heap;
-    uint8_t* tried = nullptr;
-    if (level_count <= k_tried_stack_levels) {
-        tried = tried_stack.data();
-        std::fill(tried, tried + level_count, uint8_t{0});
-    }
-    else {
-        tried_heap.assign(level_count, uint8_t{0});
-        tried = tried_heap.data();
-    }
-
-    const auto acquire_frame_snapshot = [&](std::size_t level) {
-        VNM_PLOT_PROFILE_SCOPE(profiler, "process_view.try_snapshot");
-        snapshot_result_t snapshot_result;
-        if (shared_state.cached_snapshot_frame_id == frame_id &&
-            shared_state.cached_snapshot_level == level &&
-            shared_state.cached_snapshot_source == &data_source &&
-            shared_state.cached_snapshot)
-        {
-            snapshot_result.snapshot = shared_state.cached_snapshot;
-            snapshot_result.status = snapshot_result_t::Snapshot_status::READY;
-            return snapshot_result;
-        }
-
-        snapshot_result = data_source.try_snapshot(level);
-        if (snapshot_result) {
-            shared_state.cached_snapshot_frame_id = frame_id;
-            shared_state.cached_snapshot_level = level;
-            shared_state.cached_snapshot_source = &data_source;
-            shared_state.cached_snapshot = snapshot_result.snapshot;
-            shared_state.cached_snapshot_hold = snapshot_result.snapshot.hold;
-        }
-        return snapshot_result;
-    };
-
-    const auto was_tried = [&](std::size_t level) -> bool {
-        return tried && level < level_count && tried[level] != 0;
-    };
-    const auto mark_tried = [&](std::size_t level) {
-        if (tried && level < level_count) {
-            tried[level] = 1;
-        }
-    };
-
-    // Populate the plan from cached stale values when a fresh snapshot is unavailable.
-    const auto load_cached_plan = [&](Series_view_plan& p, std::size_t level) {
-        p.source_first = view_state.last_first > 0
-            ? static_cast<std::size_t>(view_state.last_first)
-            : 0;
-        const std::size_t gpu_count = view_state.last_count > 0
-            ? static_cast<std::size_t>(view_state.last_count)
-            : 0;
-        p.synthetic_hold_count =
-            view_state.last_hold_last_forward && gpu_count > 0 ? 1 : 0;
-        p.source_count = gpu_count - p.synthetic_hold_count;
-        p.gpu_count = gpu_count;
-        p.lod_level = level;
-        p.lod_scale = level < scales.size() ? scales[level] : std::size_t{1};
-        p.pixels_per_sample = view_state.last_applied_pps;
-        p.snapshot.sequence = view_state.last_sequence;
-        p.t_min_ns = t_min_ns;
-        p.t_max_ns = t_max_ns;
-        p.t_origin_ns = t_origin_ns;
-        p.hold_last_forward = view_state.last_hold_last_forward;
-        p.hold_timestamp_ns = view_state.last_hold_last_forward ? t_max_ns : 0;
-        p.width_px = static_cast<float>(width_px);
-        p.interpolation = interpolation;
-    };
-    const auto try_stale_fallback = [&](Series_view_plan& p) -> bool {
-        const void* current_identity = data_source.identity();
-        // The cached VBO holds samples rebased against uploaded_t_origin_ns;
-        // reusing it under a moved origin would draw at the wrong x positions
-        // because set_common_uniforms feeds the new view_origin_ns regardless.
-        const bool identity_ok =
-            (view_state.cached_data_identity != nullptr) &&
-            (view_state.cached_data_identity == current_identity) &&
-            view_state.has_uploaded_vbo &&
-            (view_state.last_count > 0) &&
-            (view_state.last_empty_window_behavior == empty_window_behavior) &&
-            (view_state.last_interpolation == interpolation) &&
-            (view_state.uploaded_t_origin_ns == t_origin_ns);
-        if (!identity_ok) {
-            return false;
-        }
-        load_cached_plan(p, view_state.last_lod_level);
-        return true;
-    };
-
-    const int max_attempts = static_cast<int>(level_count) + 2;
-
-    for (int attempt = 0; attempt < max_attempts; ++attempt) {
-        const std::size_t applied_level = std::min<std::size_t>(target_level, max_level_index);
-        if (was_tried(applied_level)) {
-            break;
-        }
-        mark_tried(applied_level);
-        const std::size_t applied_scale = scales[applied_level];
-        bool hold_last_forward = false;
-
-        const uint64_t current_seq = data_source.current_sequence(applied_level);
-        if (current_seq != 0 &&
-            current_seq == view_state.last_sequence &&
-            applied_level == view_state.last_lod_level &&
-            view_state.has_uploaded_vbo &&
-            view_state.last_count > 0 &&
-            view_state.cached_data_identity == data_source.identity() &&
-            view_state.last_t_min == t_min_ns &&
-            view_state.last_t_max == t_max_ns &&
-            view_state.last_width_px == width_px &&
-            view_state.last_empty_window_behavior == empty_window_behavior &&
-            view_state.last_interpolation == interpolation &&
-            view_state.uploaded_t_origin_ns == t_origin_ns)
-        {
-            if (snapshot_requirement == Snapshot_requirement::Frame_snapshot_required) {
-                snapshot_result_t snapshot_result = acquire_frame_snapshot(applied_level);
-                if (snapshot_result) {
-                    if (snapshot_result.snapshot.sequence == current_seq) {
-                        load_cached_plan(plan, applied_level);
-                        plan.snapshot.snapshot = snapshot_result.snapshot;
-                        plan.snapshot.sequence = snapshot_result.snapshot.sequence;
-                        return plan;
-                    }
-                    // The source advanced between current_sequence() and
-                    // try_snapshot(); fall through to replan against the
-                    // newer frame-scoped snapshot instead of pairing cached
-                    // first/count metadata with a different snapshot.
-                }
-                else {
-                    load_cached_plan(plan, applied_level);
-                    return plan;
-                }
-            }
-            else {
-                load_cached_plan(plan, applied_level);
-                return plan;
-            }
-        }
-
-        snapshot_result_t snapshot_result = acquire_frame_snapshot(applied_level);
-
-        if (!snapshot_result || !snapshot_result.snapshot || snapshot_result.snapshot.count == 0) {
-            if (try_stale_fallback(plan)) {
-                break;
-            }
-            if (applied_level > 0) {
-                target_level = applied_level - 1;
-                continue;
-            }
-            break;
-        }
-
-        const auto& snapshot = snapshot_result.snapshot;
-        bool timestamps_monotonic = true;
-        if (get_timestamp) {
-            const void* current_identity = data_source.identity();
-            const bool need_monotonicity_scan =
-                view_state.last_timestamp_order_sequence != snapshot.sequence ||
-                view_state.last_timestamp_order_identity != current_identity;
-            if (need_monotonicity_scan) {
-                bool is_monotonic = true;
-                const void* first_sample = snapshot.at(0);
-                if (!first_sample) {
-                    is_monotonic = false;
-                }
-                else {
-                    std::int64_t prev_ts = get_timestamp(first_sample);
-                    for (std::size_t i = 1; i < snapshot.count; ++i) {
-                        const void* sample = snapshot.at(i);
-                        if (!sample) {
-                            is_monotonic = false;
-                            break;
-                        }
-                        const std::int64_t ts = get_timestamp(sample);
-                        if (ts < prev_ts) {
-                            is_monotonic = false;
-                            break;
-                        }
-                        prev_ts = ts;
-                    }
-                }
-                view_state.last_timestamp_order_sequence = snapshot.sequence;
-                view_state.last_timestamp_order_identity = current_identity;
-                view_state.last_timestamps_monotonic = is_monotonic;
-            }
-            timestamps_monotonic = view_state.last_timestamps_monotonic;
-        }
-
-        // Find visible range using binary search
-        std::size_t first_idx = 0;
-        std::size_t last_idx = snapshot.count;
-        std::int64_t last_ts = 0;
-        bool have_last_ts = false;
-        if (get_timestamp) {
-            const void* last_sample = snapshot.at(snapshot.count - 1);
-            if (last_sample) {
-                last_ts = get_timestamp(last_sample);
-                have_last_ts = true;
-            }
-            if (!timestamps_monotonic) {
-                // Non-monotonic timestamps invalidate binary-search assumptions.
-                // Fall back to a linear scan for correctness.
-                VNM_PLOT_PROFILE_SCOPE(profiler, "process_view.linear_fallback");
-                std::size_t match_first = snapshot.count;
-                std::size_t match_last = 0;
-                for (std::size_t i = 0; i < snapshot.count; ++i) {
-                    const void* sample = snapshot.at(i);
-                    if (!sample) {
-                        continue;
-                    }
-                    const std::int64_t ts = get_timestamp(sample);
-                    if (ts < t_min_ns || ts > t_max_ns) {
-                        continue;
-                    }
-                    if (match_first == snapshot.count) {
-                        match_first = i;
-                    }
-                    match_last = i + 1;
-                }
-                if (match_first < match_last) {
-                    first_idx = (match_first > 0) ? (match_first - 1) : 0;
-                    last_idx = std::min(match_last + 2, snapshot.count);
-                }
-                else {
-                    first_idx = snapshot.count;
-                    last_idx = snapshot.count;
-                }
-            }
-            else {
-                VNM_PLOT_PROFILE_SCOPE(profiler, "process_view.binary_search");
-                first_idx = lower_bound_timestamp(snapshot, get_timestamp, t_min_ns);
-                if (first_idx > 0) {
-                    --first_idx;
-                }
-                last_idx = upper_bound_timestamp(snapshot, get_timestamp, t_max_ns);
-                last_idx = std::min(last_idx + 2, snapshot.count);
-            }
-        }
-
-        const bool can_hold_last_forward =
-            empty_window_behavior == Empty_window_behavior::HOLD_LAST_FORWARD &&
-            access.clone_with_timestamp &&
-            have_last_ts &&
-            last_ts < t_max_ns;
-
-        if (first_idx >= last_idx) {
-            if (can_hold_last_forward) {
-                first_idx = snapshot.count - 1;
-                last_idx = snapshot.count;
-                hold_last_forward = true;
-            }
-            else
-            if (applied_level > 0 && !was_tried(applied_level - 1)) {
-                target_level = applied_level - 1;
-                continue;
-            }
-            else {
-                break;
-            }
-        }
-        else
-        if (can_hold_last_forward && last_idx == snapshot.count) {
-            hold_last_forward = true;
-        }
-
-        std::int32_t count = static_cast<std::int32_t>(last_idx - first_idx);
-        if (hold_last_forward) {
-            ++count;
-        }
-        const std::size_t base_samples = (count > 0)
-            ? static_cast<std::size_t>(count) * applied_scale : 0;
-        const double base_pps = (base_samples > 0)
-            ? width_px / static_cast<double>(base_samples) : 0.0;
-
-        const std::size_t desired_level = choose_lod_level(scales, base_pps);
-        if (desired_level != applied_level) {
-            if (!was_tried(desired_level)) {
-                target_level = desired_level;
-                continue;
-            }
-        }
-
-        view_state.last_sequence = snapshot.sequence;
-        view_state.cached_data_identity = data_source.identity();
-        view_state.uploaded_t_origin_ns = t_origin_ns;
-        view_state.last_snapshot_elements = snapshot.count;
-        view_state.last_first = static_cast<std::int32_t>(first_idx);
-        view_state.last_count = count;
-
-        view_state.last_lod_level = applied_level;
-        view_state.last_t_min = t_min_ns;
-        view_state.last_t_max = t_max_ns;
-        view_state.last_width_px = width_px;
-        view_state.last_empty_window_behavior = empty_window_behavior;
-        view_state.last_interpolation = interpolation;
-
-        plan.source_first = view_state.last_first > 0
-            ? static_cast<std::size_t>(view_state.last_first)
-            : 0;
-        const std::size_t gpu_count = view_state.last_count > 0
-            ? static_cast<std::size_t>(view_state.last_count)
-            : 0;
-        plan.synthetic_hold_count = hold_last_forward && gpu_count > 0 ? 1 : 0;
-        plan.source_count = gpu_count - plan.synthetic_hold_count;
-        plan.gpu_count = gpu_count;
-        plan.lod_level = applied_level;
-        plan.lod_scale = applied_scale;
-        plan.pixels_per_sample = base_pps * static_cast<double>(applied_scale);
-        view_state.last_applied_pps = plan.pixels_per_sample;
-        view_state.last_hold_last_forward = hold_last_forward;
-        plan.snapshot.snapshot = snapshot;
-        plan.snapshot.sequence = snapshot.sequence;
-        plan.t_min_ns = t_min_ns;
-        plan.t_max_ns = t_max_ns;
-        plan.t_origin_ns = t_origin_ns;
-        plan.hold_last_forward = hold_last_forward;
-        plan.hold_timestamp_ns = hold_last_forward ? t_max_ns : 0;
-        plan.width_px = static_cast<float>(width_px);
-        plan.interpolation = interpolation;
-        break;
-    }
-
-    return plan;
 }
 
 void Series_renderer::prepare(
@@ -1194,18 +828,60 @@ void Series_renderer::prepare(
             }
         }
 
-        const std::size_t prev_lod_level = vbo_state.main_view.last_lod_level;
-        auto main_plan = plan_view(
-            id, Series_view_kind::MAIN,
-            vbo_state.main_view, vbo_state, m_frame_id, *main_source,
-            main_access, main_scales,
-            ctx.t0, ctx.t1, main_origin_ns,
-            layout.usable_width, s->empty_window_behavior, main_style,
+        const auto plan_series_view =
+            [&](Series_view_kind view_kind,
+                vbo_view_state_t& view_state,
+                Data_source& data_source,
+                const Data_access_policy& access,
+                const std::vector<std::size_t>& scales,
+                std::int64_t t_min_ns,
+                std::int64_t t_max_ns,
+                std::int64_t t_origin_ns,
+                double width_px,
+                Display_style style,
+                Series_interpolation interpolation,
+                detail::Snapshot_requirement snapshot_requirement)
+        {
+            detail::series_window_plan_request_t request;
+            request.series_id = id;
+            request.view_kind = view_kind;
+            request.planner_state = view_state.planner.get();
+            request.snapshot_cache = vbo_state.snapshot_cache.get();
+            request.frame_id = m_frame_id;
+            request.data_source = &data_source;
+            request.access = &access;
+            request.scales = &scales;
+            request.t_min_ns = t_min_ns;
+            request.t_max_ns = t_max_ns;
+            request.t_origin_ns = t_origin_ns;
+            request.width_px = width_px;
+            request.empty_window_behavior = s->empty_window_behavior;
+            request.style = style;
+            request.interpolation = interpolation;
+            request.snapshot_requirement = snapshot_requirement;
+            request.has_uploaded_vbo = view_state.has_uploaded_vbo;
+            request.profiler = profiler;
+            return detail::plan_series_window(request);
+        };
+
+        const std::size_t prev_lod_level = vbo_state.main_view.planner
+            ? vbo_state.main_view.planner->last_lod_level
+            : 0;
+        auto main_plan = plan_series_view(
+            Series_view_kind::MAIN,
+            vbo_state.main_view,
+            *main_source,
+            main_access,
+            main_scales,
+            ctx.t0,
+            ctx.t1,
+            main_origin_ns,
+            layout.usable_width,
+            main_style,
             main_interpolation,
             has_main_layer
-                ? Snapshot_requirement::Frame_snapshot_required
-                : Snapshot_requirement::Optional,
-            profiler);
+                ? detail::Snapshot_requirement::Frame_snapshot_required
+                : detail::Snapshot_requirement::Optional);
         main_plan.v_min = ctx.v0;
         main_plan.v_max = ctx.v1;
         main_plan.height_px = static_cast<float>(layout.usable_height);
@@ -1230,17 +906,21 @@ void Series_renderer::prepare(
         preview_plan.style = preview_style;
         preview_plan.interpolation = preview_interpolation;
         if (preview_visible && preview_valid) {
-            preview_plan = plan_view(
-                id, Series_view_kind::PREVIEW,
-                vbo_state.preview_view, vbo_state, m_frame_id, *preview_source,
-                *preview_access, preview_scales,
-                ctx.t_available_min, ctx.t_available_max, preview_origin_ns,
-                ctx.win_w, s->empty_window_behavior, preview_style,
+            preview_plan = plan_series_view(
+                Series_view_kind::PREVIEW,
+                vbo_state.preview_view,
+                *preview_source,
+                *preview_access,
+                preview_scales,
+                ctx.t_available_min,
+                ctx.t_available_max,
+                preview_origin_ns,
+                ctx.win_w,
+                preview_style,
                 preview_interpolation,
                 has_preview_layer
-                    ? Snapshot_requirement::Frame_snapshot_required
-                    : Snapshot_requirement::Optional,
-                profiler);
+                    ? detail::Snapshot_requirement::Frame_snapshot_required
+                    : detail::Snapshot_requirement::Optional);
             const double preview_top =
                 double(ctx.win_h) - ctx.adjusted_preview_height;
             preview_plan.v_min = ctx.preview_v0;
@@ -1709,7 +1389,10 @@ bool Series_renderer::rhi_prepare_series_primitive(
 
     const auto invalidate_uploaded_vbo = [&]() {
         view_state.has_uploaded_vbo = false;
-        view_state.uploaded_t_origin_ns = vbo_view_state_t::SENTINEL_NONE;
+        if (view_state.planner) {
+            view_state.planner->uploaded_t_origin_ns =
+                detail::series_window_planner_state_t::k_no_timestamp;
+        }
         view_state.staging.clear();
     };
 

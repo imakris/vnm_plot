@@ -144,6 +144,7 @@ set(VNM_PLOT_CORE_SOURCES
     src/core/layout_calculator.cpp
     src/core/auto_range_resolver.cpp
     src/core/frame_range_planner.cpp
+    src/core/series_window_planner.cpp
 
     # Core renderers
     src/core/primitive_renderer.cpp

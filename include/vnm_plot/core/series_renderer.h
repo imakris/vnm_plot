@@ -8,7 +8,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <limits>
 #include <map>
 #include <memory>
 #include <unordered_map>
@@ -26,6 +25,11 @@ namespace vnm::plot {
 
 class Asset_loader;
 class Profiler;
+
+namespace detail {
+struct series_window_planner_state_t;
+struct Series_window_snapshot_cache;
+} // namespace detail
 
 // -----------------------------------------------------------------------------
 // Series Renderer
@@ -71,30 +75,8 @@ private:
     struct vbo_view_state_t
     {
         bool has_uploaded_vbo = false;
-        std::size_t last_snapshot_elements = 0;
-        uint64_t last_sequence = 0;
-        const void* cached_data_identity = nullptr;
-        uint64_t last_timestamp_order_sequence = 0;
-        const void* last_timestamp_order_identity = nullptr;
-        bool last_timestamps_monotonic = true;
+        std::unique_ptr<detail::series_window_planner_state_t> planner;
 
-        std::int32_t last_first = 0;
-        std::int32_t last_count = 0;
-        std::size_t last_lod_level = 0;
-        // Timestamps are int64_t nanoseconds; sentinel SENTINEL_NONE means "no
-        // valid value yet" so the first frame always invalidates cached state.
-        static constexpr std::int64_t SENTINEL_NONE = std::numeric_limits<std::int64_t>::min();
-        std::int64_t last_t_min = SENTINEL_NONE;
-        std::int64_t last_t_max = SENTINEL_NONE;
-        double last_width_px = std::numeric_limits<double>::quiet_NaN();
-        Empty_window_behavior last_empty_window_behavior = Empty_window_behavior::DRAW_NOTHING;
-        double last_applied_pps = 0.0;
-        bool last_hold_last_forward = false;
-        Series_interpolation last_interpolation = Series_interpolation::LINEAR;
-        // Origin (ns) that produced the bytes currently in the VBO. Used to
-        // invalidate the upload when the view's chosen origin moves to a new
-        // snap bucket. SENTINEL_NONE forces the first frame to upload.
-        std::int64_t uploaded_t_origin_ns = SENTINEL_NONE;
         // Renderer-owned scratch buffer for VBO uploads. Holds gpu_sample_t
         // values rebased against the active origin: the full snapshot followed
         // by an optional hold-last-forward synthetic sample. Reused across
@@ -126,13 +108,14 @@ private:
     {
         vbo_view_state_t main_view;
         vbo_view_state_t preview_view;
-        // Frame-scoped snapshot cache: shared between main_view and preview_view
-        // to avoid redundant try_snapshot() calls within the same frame.
-        uint64_t cached_snapshot_frame_id = 0;
-        std::size_t cached_snapshot_level = SIZE_MAX;
-        const Data_source* cached_snapshot_source = nullptr;
-        data_snapshot_t cached_snapshot;
-        std::shared_ptr<void> cached_snapshot_hold;
+        std::unique_ptr<detail::Series_window_snapshot_cache> snapshot_cache;
+
+        vbo_state_t();
+        ~vbo_state_t();
+        vbo_state_t(const vbo_state_t&) = delete;
+        vbo_state_t& operator=(const vbo_state_t&) = delete;
+        vbo_state_t(vbo_state_t&&) noexcept;
+        vbo_state_t& operator=(vbo_state_t&&) noexcept;
     };
 
     struct view_render_result_t
@@ -152,12 +135,6 @@ private:
         float y_offset_px = 0.0f;
         float window_alpha = 1.0f;
         Series_interpolation interpolation = Series_interpolation::LINEAR;
-    };
-
-    enum class Snapshot_requirement
-    {
-        Optional,
-        Frame_snapshot_required
     };
 
     // Per-(series, view) draw plan computed in prepare() and consumed in
@@ -188,25 +165,6 @@ private:
     uint64_t m_frame_id = 0;  // Monotonic frame counter for snapshot caching
 
     void clear_frame_snapshot_caches();
-
-    Series_view_plan plan_view(
-        int series_id,
-        Series_view_kind view_kind,
-        vbo_view_state_t& view_state,
-        vbo_state_t& shared_state,
-        uint64_t frame_id,
-        Data_source& data_source,
-        const Data_access_policy& access,
-        const std::vector<std::size_t>& scales,
-        std::int64_t t_min_ns,
-        std::int64_t t_max_ns,
-        std::int64_t t_origin_ns,
-        double width_px,
-        Empty_window_behavior empty_window_behavior,
-        Display_style style,
-        Series_interpolation interpolation,
-        Snapshot_requirement snapshot_requirement,
-        vnm::plot::Profiler* profiler);
 
     // rhi_prepare_series_primitive: writes to ctx.rhi_updates only. Builds the
     //   per-primitive UBO(s) and (LINE-only) the per-frame line_window_vbo, and

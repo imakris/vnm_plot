@@ -4,6 +4,7 @@
 
 #include <vnm_plot/core/algo.h>
 #include <vnm_plot/core/asset_loader.h>
+#include "../src/core/series_window_planner.h"
 #define private public
 #include <vnm_plot/core/series_renderer.h>
 #undef private
@@ -36,6 +37,13 @@ using plot::series_data_t;
 using plot::snapshot_result_t;
 
 namespace {
+
+const plot::detail::series_window_planner_state_t& planner_state(
+    const Series_renderer::vbo_view_state_t& view_state)
+{
+    assert(view_state.planner);
+    return *view_state.planner;
+}
 
 struct Test_sample {
     // Timestamps are int64 nanoseconds (API convention).
@@ -444,7 +452,9 @@ bool test_preview_honors_hold_last_forward()
     auto state_it = renderer.m_vbo_states.find(series_id);
     TEST_ASSERT(state_it != renderer.m_vbo_states.end(),
                 "expected vbo state for preview hold-forward test");
-    TEST_ASSERT(state_it->second.preview_view.last_hold_last_forward,
+    TEST_ASSERT(state_it->second.preview_view.planner,
+                "expected preview planner state for preview hold-forward test");
+    TEST_ASSERT(planner_state(state_it->second.preview_view).last_hold_last_forward,
                 "preview should honor HOLD_LAST_FORWARD behavior");
 
     return true;
@@ -613,9 +623,12 @@ bool test_upload_origin_records_per_view_origin()
         plot::detail::positive_span_ns_for_signed_api(ctx.t0, ctx.t1);
     const std::int64_t expected_origin_ns =
         plot::detail::choose_origin_ns(ctx.t0, expected_span_ns);
-    TEST_ASSERT(state_it->second.main_view.uploaded_t_origin_ns == expected_origin_ns,
+    TEST_ASSERT(state_it->second.main_view.planner,
+        "expected main planner state for upload-origin test");
+    TEST_ASSERT(
+        planner_state(state_it->second.main_view).uploaded_t_origin_ns == expected_origin_ns,
         std::string("uploaded_t_origin_ns must match choose_origin_ns; got ") +
-        std::to_string(state_it->second.main_view.uploaded_t_origin_ns) +
+        std::to_string(planner_state(state_it->second.main_view).uploaded_t_origin_ns) +
         ", expected " + std::to_string(expected_origin_ns));
 
     return true;
@@ -685,8 +698,10 @@ bool test_upload_invalidates_when_origin_changes_across_snap_bucket()
     auto state_it = renderer.m_vbo_states.find(series_id);
     TEST_ASSERT(state_it != renderer.m_vbo_states.end(),
         "expected vbo state to exist after first render");
+    TEST_ASSERT(state_it->second.main_view.planner,
+        "expected main planner state for origin invalidation test");
     const std::int64_t origin_after_frame1 =
-        state_it->second.main_view.uploaded_t_origin_ns;
+        planner_state(state_it->second.main_view).uploaded_t_origin_ns;
     TEST_ASSERT(origin_after_frame1 == 0LL,
         std::string("expected origin 0 after first render, got ") +
         std::to_string(origin_after_frame1));
@@ -698,7 +713,7 @@ bool test_upload_invalidates_when_origin_changes_across_snap_bucket()
     // unchanged. The cache fast path should fire (no extra snapshot).
     run_frame(k_one_second_ns / 2, k_one_hour_ns);
     const std::int64_t origin_after_frame2 =
-        state_it->second.main_view.uploaded_t_origin_ns;
+        planner_state(state_it->second.main_view).uploaded_t_origin_ns;
     TEST_ASSERT(origin_after_frame2 == 0LL,
         "expected origin to remain 0 when t_min moves within the same snap bucket");
     // Snapshot the call count after frame 2 so the post-frame-3 assertion
@@ -711,7 +726,7 @@ bool test_upload_invalidates_when_origin_changes_across_snap_bucket()
     // Frame 3: t_min moves into the next 1 s bucket -> origin must change.
     run_frame(k_one_second_ns + k_one_second_ns / 4, k_one_hour_ns);
     const std::int64_t origin_after_frame3 =
-        state_it->second.main_view.uploaded_t_origin_ns;
+        planner_state(state_it->second.main_view).uploaded_t_origin_ns;
     TEST_ASSERT(origin_after_frame3 == k_one_second_ns,
         std::string("expected origin to advance to 1 s bucket after t_min "
                     "crosses snap boundary, got ") +
@@ -792,11 +807,15 @@ bool test_renderer_assigns_distinct_origins_to_main_and_preview()
     auto state_it = renderer.m_vbo_states.find(series_id);
     TEST_ASSERT(state_it != renderer.m_vbo_states.end(),
         "expected vbo state for distinct-origin renderer test");
+    TEST_ASSERT(state_it->second.main_view.planner,
+        "expected main planner state for distinct-origin renderer test");
+    TEST_ASSERT(state_it->second.preview_view.planner,
+        "expected preview planner state for distinct-origin renderer test");
 
     const std::int64_t main_origin =
-        state_it->second.main_view.uploaded_t_origin_ns;
+        planner_state(state_it->second.main_view).uploaded_t_origin_ns;
     const std::int64_t preview_origin =
-        state_it->second.preview_view.uploaded_t_origin_ns;
+        planner_state(state_it->second.preview_view).uploaded_t_origin_ns;
 
     const std::int64_t expected_main_span =
         plot::detail::positive_span_ns_for_signed_api(ctx.t0, ctx.t1);
