@@ -176,6 +176,7 @@ set(VNM_PLOT_DATA_SOURCES
 )
 
 set(VNM_PLOT_DATA_HEADERS
+    include/vnm_plot/core/basic_series_builder.h
     include/vnm_plot/core/access_policy.h
     include/vnm_plot/core/color_palette.h
     include/vnm_plot/core/constants.h
@@ -210,6 +211,7 @@ set(VNM_PLOT_RHI_SOURCES
 if(VNM_PLOT_ENABLE_TEXT)
     list(APPEND VNM_PLOT_RHI_SOURCES
         src/core/font_renderer.cpp
+        src/core/msdf_text_api_guard.cpp
         src/core/text_renderer.cpp
     )
 else()
