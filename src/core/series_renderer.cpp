@@ -62,6 +62,26 @@ bool line_window_sample_count(
     return true;
 }
 
+int builtin_primitive_z_order(Display_style primitive_style)
+{
+    switch (primitive_style) {
+        case Display_style::AREA: return -10;
+        case Display_style::DOTS: return  10;
+        case Display_style::LINE:
+        default:                  return   0;
+    }
+}
+
+bool is_builtin_primitive_drawable(
+    Display_style primitive_style,
+    std::size_t gpu_count)
+{
+    if (gpu_count == 0) {
+        return false;
+    }
+    return primitive_style == Display_style::DOTS || gpu_count >= 2;
+}
+
 } // anonymous namespace
 
 struct Series_renderer::gpu_sample_t
@@ -326,12 +346,23 @@ struct Series_renderer::rhi_state_t
         std::uint64_t last_frame_used = 0;
     };
 
-    struct prepared_layer_record_t
+    struct prepared_draw_command_t
     {
+        enum class kind_t
+        {
+            BUILTIN,
+            CUSTOM
+        };
+
+        kind_t kind = kind_t::CUSTOM;
+        int z_order = 0;
         Qrhi_series_layer_state* state = nullptr;
         const series_data_t* series = nullptr;
         sample_window_t window;
         QRhiBuffer* view_ubo = nullptr;
+        Display_style primitive_style = Display_style::LINE;
+        vbo_view_state_t* view_state = nullptr;
+        view_render_result_t view_result;
     };
 
     std::unordered_map<pipeline_key_t, rhi_pipeline_t, pipeline_key_hash_t> pipelines;
@@ -340,7 +371,7 @@ struct Series_renderer::rhi_state_t
         qrhi_layer_program_key_t,
         qrhi_layer_cache_entry_t,
         qrhi_layer_program_key_hash_t> qrhi_layer_cache;
-    std::vector<prepared_layer_record_t> prepared_layers;
+    std::vector<prepared_draw_command_t> prepared_draws;
     QShader cached_dot_vert;
     QShader cached_dot_frag;
     QShader cached_line_vert;
@@ -452,141 +483,6 @@ static_assert(sizeof(Line_block_std140) <= k_series_ubo_bytes, "ubo bytes fit LI
 static_assert(sizeof(Dot_block_std140)  <= k_series_ubo_bytes, "ubo bytes fit DOTS block");
 static_assert(sizeof(Area_block_std140) == k_series_ubo_bytes, "ubo bytes match AREA block");
 
-class Series_renderer::Builtin_series_layer_state final : public Qrhi_series_layer_state
-{
-public:
-    Builtin_series_layer_state(
-        Series_renderer& renderer,
-        Display_style primitive_style,
-        vbo_view_state_t& view_state)
-    :
-        m_renderer(renderer),
-        m_primitive_style(primitive_style),
-        m_view_state(view_state)
-    {}
-
-    bool prepare(const qrhi_series_prepare_context_t& ctx) override
-    {
-        if (!ctx.frame || !ctx.series) {
-            return false;
-        }
-
-        const float line_width_px = ctx.frame->config
-            ? static_cast<float>(ctx.frame->config->line_width_px) : 1.0f;
-        const float point_diameter_px = ctx.frame->config
-            ? static_cast<float>(ctx.frame->config->point_diameter_px) : 1.0f;
-        const float area_fill_alpha = ctx.frame->config
-            ? static_cast<float>(ctx.frame->config->area_fill_alpha) : 0.3f;
-
-        return m_renderer.rhi_prepare_series_primitive(
-            *ctx.frame,
-            ctx.series,
-            m_primitive_style,
-            m_view_state,
-            view_result_from_window(ctx.window),
-            line_width_px,
-            point_diameter_px,
-            area_fill_alpha);
-    }
-
-    void record(const qrhi_series_record_context_t& ctx) override
-    {
-        if (!ctx.frame) {
-            return;
-        }
-
-        m_renderer.rhi_record_series_primitive(
-            *ctx.frame,
-            m_primitive_style,
-            m_view_state,
-            view_result_from_window(ctx.window));
-    }
-
-private:
-    static view_render_result_t view_result_from_window(const sample_window_t& window)
-    {
-        view_render_result_t result;
-        result.source_first       = window.source_first;
-        result.source_count       = window.source_count;
-        result.synthetic_hold_count = window.synthetic_hold_count;
-        result.gpu_count          = window.gpu_count;
-        result.cached_snapshot    = window.snapshot;
-        result.t_min_ns           = window.t_min_ns;
-        result.t_max_ns           = window.t_max_ns;
-        result.t_origin_ns        = window.t_origin_ns;
-        result.hold_last_forward  = window.hold_last_forward;
-        result.hold_timestamp_ns  = window.hold_timestamp_ns;
-        result.v_min              = window.v_min;
-        result.v_max              = window.v_max;
-        result.width_px           = window.width_px;
-        result.height_px          = window.height_px;
-        result.y_offset_px        = window.y_offset_px;
-        result.window_alpha       = window.window_alpha;
-        result.interpolation      = window.interpolation;
-        return result;
-    }
-
-    Series_renderer& m_renderer;
-    Display_style    m_primitive_style = Display_style::LINE;
-    vbo_view_state_t& m_view_state;
-};
-
-class Series_renderer::Builtin_series_layer final : public Qrhi_series_layer
-{
-public:
-    Builtin_series_layer(
-        Series_renderer& renderer,
-        Display_style primitive_style,
-        vbo_view_state_t& view_state)
-    :
-        m_renderer(renderer),
-        m_primitive_style(primitive_style),
-        m_view_state(view_state)
-    {}
-
-    std::string_view id() const override
-    {
-        switch (m_primitive_style) {
-            case Display_style::AREA: return "vnm_plot.builtin.area";
-            case Display_style::DOTS: return "vnm_plot.builtin.dots";
-            case Display_style::LINE:
-            default:                  return "vnm_plot.builtin.line";
-        }
-    }
-
-    std::uint64_t revision() const override { return 1; }
-
-    int z_order() const override
-    {
-        switch (m_primitive_style) {
-            case Display_style::AREA: return -10;
-            case Display_style::DOTS: return  10;
-            case Display_style::LINE:
-            default:                  return   0;
-        }
-    }
-
-    bool draws_view(Series_view_kind view_kind) const override
-    {
-        (void)view_kind;
-        return true;
-    }
-
-    std::unique_ptr<Qrhi_series_layer_state> create_state(QRhi& rhi) const override
-    {
-        (void)rhi;
-        return std::make_unique<Builtin_series_layer_state>(
-            m_renderer,
-            m_primitive_style,
-            m_view_state);
-    }
-
-private:
-    Series_renderer& m_renderer;
-    Display_style    m_primitive_style = Display_style::LINE;
-    vbo_view_state_t& m_view_state;
-};
-
 Series_renderer::Series_renderer()
 :
     m_rhi_state(std::make_unique<rhi_state_t>())
@@ -617,7 +513,7 @@ void Series_renderer::cleanup_resources()
     }
     m_rhi_state->qrhi_layer_cache.clear();
     m_rhi_state->view_ubos.clear();
-    m_rhi_state->prepared_layers.clear();
+    m_rhi_state->prepared_draws.clear();
     m_rhi_state->shaders_loaded = false;
     m_rhi_state->cached_dot_vert = {};
     m_rhi_state->cached_dot_frag = {};
@@ -628,8 +524,11 @@ void Series_renderer::cleanup_resources()
     m_rhi_state->last_rhi = nullptr;
     m_rhi_state->pending_updates = nullptr;
     m_rhi_state->frame_draw_states.clear();
-    m_rhi_state->prepared_layers.clear();
+    m_rhi_state->prepared_draws.clear();
     m_rhi_state->frame_plan_ready = false;
+    m_last_recorded_draw_z_orders.clear();
+    m_last_recorded_draw_styles.clear();
+    m_last_qrhi_layer_cache_size = 0;
 }
 
 void Series_renderer::clear_frame_snapshot_caches()
@@ -646,8 +545,11 @@ void Series_renderer::prepare(
     const std::map<int, std::shared_ptr<const series_data_t>>& series)
 {
     m_rhi_state->frame_draw_states.clear();
-    m_rhi_state->prepared_layers.clear();
+    m_rhi_state->prepared_draws.clear();
     m_rhi_state->frame_plan_ready = false;
+    m_last_recorded_draw_z_orders.clear();
+    m_last_recorded_draw_styles.clear();
+    m_last_qrhi_layer_cache_size = m_rhi_state->qrhi_layer_cache.size();
 
     const auto clear_retired_series_resources = [&]() {
         clear_frame_snapshot_caches();
@@ -659,7 +561,8 @@ void Series_renderer::prepare(
         }
         m_rhi_state->qrhi_layer_cache.clear();
         m_rhi_state->view_ubos.clear();
-        m_rhi_state->prepared_layers.clear();
+        m_rhi_state->prepared_draws.clear();
+        m_last_qrhi_layer_cache_size = 0;
     };
 
     if (series.empty()) {
@@ -691,7 +594,8 @@ void Series_renderer::prepare(
         }
         m_rhi_state->qrhi_layer_cache.clear();
         m_rhi_state->view_ubos.clear();
-        m_rhi_state->prepared_layers.clear();
+        m_rhi_state->prepared_draws.clear();
+        m_last_qrhi_layer_cache_size = 0;
     }
     m_rhi_state->last_rhi = rhi;
     m_rhi_state->pending_updates = rhi_updates;
@@ -1002,57 +906,52 @@ void Series_renderer::prepare(
             return;
         }
 
-        struct planned_layer_t
+        struct planned_draw_t
         {
             std::shared_ptr<const Qrhi_series_layer> layer;
-            bool needs_view_ubo = true;
-            bool requires_snapshot = true;
             bool is_builtin = false;
+            Display_style primitive_style = Display_style::NONE;
+            int z_order = 0;
         };
 
-        std::vector<planned_layer_t> layers;
+        std::vector<planned_draw_t> planned_draws;
         if (!!(plan.style & Display_style::AREA)) {
-            layers.push_back({
-                std::make_shared<Builtin_series_layer>(
-                    *this,
-                    Display_style::AREA,
-                    view_state),
-                false,
-                false,
-                true});
+            planned_draws.push_back({
+                nullptr,
+                true,
+                Display_style::AREA,
+                builtin_primitive_z_order(Display_style::AREA)});
         }
         if (!!(plan.style & Display_style::LINE)) {
-            layers.push_back({
-                std::make_shared<Builtin_series_layer>(
-                    *this,
-                    Display_style::LINE,
-                    view_state),
-                false,
-                false,
-                true});
+            planned_draws.push_back({
+                nullptr,
+                true,
+                Display_style::LINE,
+                builtin_primitive_z_order(Display_style::LINE)});
         }
         if (!!(plan.style & Display_style::DOTS)) {
-            layers.push_back({
-                std::make_shared<Builtin_series_layer>(
-                    *this,
-                    Display_style::DOTS,
-                    view_state),
-                false,
-                false,
-                true});
+            planned_draws.push_back({
+                nullptr,
+                true,
+                Display_style::DOTS,
+                builtin_primitive_z_order(Display_style::DOTS)});
         }
         for (const auto& layer : draw_state.series->qrhi_layers) {
             if (layer && layer->draws_view(plan.view_kind)) {
-                layers.push_back({layer, true, true, false});
+                planned_draws.push_back({
+                    layer,
+                    false,
+                    Display_style::NONE,
+                    layer->z_order()});
             }
         }
         std::stable_sort(
-            layers.begin(),
-            layers.end(),
+            planned_draws.begin(),
+            planned_draws.end(),
             [](const auto& a, const auto& b) {
-                return a.layer->z_order() < b.layer->z_order();
+                return a.z_order < b.z_order;
             });
-        if (layers.empty()) {
+        if (planned_draws.empty()) {
             return;
         }
 
@@ -1078,24 +977,29 @@ void Series_renderer::prepare(
             result.interpolation      = w.interpolation;
             return result;
         };
-        const bool has_drawable_builtin_layer =
-            !!(plan.style & Display_style::DOTS) ||
-            (plan.gpu_count >= 2 &&
-             (!!(plan.style & Display_style::LINE) ||
-              !!(plan.style & Display_style::AREA)));
+        const view_render_result_t view_result = make_view_result(window);
+        const bool has_drawable_builtin_layer = std::any_of(
+            planned_draws.begin(),
+            planned_draws.end(),
+            [&](const planned_draw_t& draw) {
+                return draw.is_builtin &&
+                    is_builtin_primitive_drawable(
+                        draw.primitive_style,
+                        view_result.gpu_count);
+            });
         bool builtin_samples_ready = true;
         if (has_drawable_builtin_layer) {
             builtin_samples_ready = rhi_prepare_series_view_samples(
                 ctx,
                 window.access,
                 view_state,
-                make_view_result(window));
+                view_result);
         }
         const bool needs_view_ubo = std::any_of(
-            layers.begin(),
-            layers.end(),
-            [](const planned_layer_t& layer) {
-                return layer.needs_view_ubo;
+            planned_draws.begin(),
+            planned_draws.end(),
+            [](const planned_draw_t& draw) {
+                return !draw.is_builtin;
             });
         series_view_uniform_std140_t uniform{};
         const series_view_uniform_std140_t* view_uniform = nullptr;
@@ -1110,14 +1014,52 @@ void Series_renderer::prepare(
                 window);
         }
 
-        for (const auto& planned_layer : layers) {
-            const auto& layer = planned_layer.layer;
+        const float line_width_px = ctx.config
+            ? static_cast<float>(ctx.config->line_width_px) : 1.0f;
+        const float point_diameter_px = ctx.config
+            ? static_cast<float>(ctx.config->point_diameter_px) : 1.0f;
+        const float area_fill_alpha = ctx.config
+            ? static_cast<float>(ctx.config->area_fill_alpha) : 0.3f;
+
+        for (const auto& planned_draw : planned_draws) {
+            if (planned_draw.is_builtin) {
+                if (!builtin_samples_ready ||
+                    !is_builtin_primitive_drawable(
+                        planned_draw.primitive_style,
+                        view_result.gpu_count))
+                {
+                    continue;
+                }
+
+                if (rhi_prepare_series_primitive(
+                        ctx,
+                        draw_state.series.get(),
+                        planned_draw.primitive_style,
+                        view_state,
+                        view_result,
+                        line_width_px,
+                        point_diameter_px,
+                        area_fill_alpha))
+                {
+                    rhi_state_t::prepared_draw_command_t command;
+                    command.kind =
+                        rhi_state_t::prepared_draw_command_t::kind_t::BUILTIN;
+                    command.z_order = planned_draw.z_order;
+                    command.series = draw_state.series.get();
+                    command.window = window;
+                    command.primitive_style = planned_draw.primitive_style;
+                    command.view_state = &view_state;
+                    command.view_result = view_result;
+                    m_rhi_state->prepared_draws.push_back(std::move(command));
+                }
+                continue;
+            }
+
+            const auto& layer = planned_draw.layer;
             if (!layer) {
                 continue;
             }
-            if (planned_layer.is_builtin && !builtin_samples_ready) {
-                continue;
-            }
+
             rhi_state_t::qrhi_layer_program_key_t program_key;
             program_key.series_id = draw_state.id;
             program_key.view_kind = plan.view_kind;
@@ -1127,7 +1069,7 @@ void Series_renderer::prepare(
             program_key.layout_key = plan.access ? plan.access->layout_key : 0;
             program_key.rhi = rhi;
 
-            if (planned_layer.requires_snapshot && !window.snapshot) {
+            if (!window.snapshot) {
                 for (auto& [cached_key, cache_entry] : m_rhi_state->qrhi_layer_cache) {
                     if (cached_key.series_id == program_key.series_id &&
                         cached_key.view_kind == program_key.view_kind &&
@@ -1141,7 +1083,7 @@ void Series_renderer::prepare(
                 }
                 continue;
             }
-            if (planned_layer.needs_view_ubo && !view_ubo) {
+            if (!view_ubo) {
                 continue;
             }
 
@@ -1187,11 +1129,15 @@ void Series_renderer::prepare(
             prepare_ctx.resources_changed = resources_changed;
 
             if (cache_entry.state->prepare(prepare_ctx)) {
-                m_rhi_state->prepared_layers.push_back({
-                    cache_entry.state.get(),
-                    draw_state.series.get(),
-                    window,
-                    view_ubo});
+                rhi_state_t::prepared_draw_command_t command;
+                command.kind =
+                    rhi_state_t::prepared_draw_command_t::kind_t::CUSTOM;
+                command.z_order = planned_draw.z_order;
+                command.state = cache_entry.state.get();
+                command.series = draw_state.series.get();
+                command.window = window;
+                command.view_ubo = view_ubo;
+                m_rhi_state->prepared_draws.push_back(std::move(command));
             }
         }
     };
@@ -1272,6 +1218,7 @@ void Series_renderer::prepare(
         }
         it = m_rhi_state->qrhi_layer_cache.erase(it);
     }
+    m_last_qrhi_layer_cache_size = m_rhi_state->qrhi_layer_cache.size();
 
     for (auto it = m_rhi_state->view_ubos.begin();
          it != m_rhi_state->view_ubos.end(); )
@@ -1294,7 +1241,7 @@ void Series_renderer::render(
         prepare(ctx, series);
         m_rhi_state->pending_updates = nullptr;
         m_rhi_state->frame_draw_states.clear();
-        m_rhi_state->prepared_layers.clear();
+        m_rhi_state->prepared_draws.clear();
         m_rhi_state->frame_plan_ready = false;
         clear_frame_snapshot_caches();
         return;
@@ -1323,24 +1270,44 @@ void Series_renderer::render(
             static_cast<int>(std::max(1.0, ctx.layout.usable_height))));
     };
 
-    for (auto& layer_record : m_rhi_state->prepared_layers) {
-        if (!layer_record.state) {
+    for (auto& command : m_rhi_state->prepared_draws) {
+        apply_band_scissor(command.window);
+        m_last_recorded_draw_z_orders.push_back(command.z_order);
+        m_last_recorded_draw_styles.push_back(
+            command.kind ==
+                    rhi_state_t::prepared_draw_command_t::kind_t::BUILTIN
+                ? command.primitive_style
+                : Display_style::NONE);
+
+        if (command.kind ==
+            rhi_state_t::prepared_draw_command_t::kind_t::BUILTIN)
+        {
+            if (command.view_state) {
+                rhi_record_series_primitive(
+                    ctx,
+                    command.primitive_style,
+                    *command.view_state,
+                    command.view_result);
+            }
             continue;
         }
-        apply_band_scissor(layer_record.window);
+
+        if (!command.state) {
+            continue;
+        }
         qrhi_series_record_context_t record_ctx;
         record_ctx.cb = ctx.cb;
         record_ctx.render_target = ctx.render_target;
         record_ctx.frame = &ctx;
-        record_ctx.series = layer_record.series;
-        record_ctx.window = layer_record.window;
-        record_ctx.view_ubo = layer_record.view_ubo;
-        layer_record.state->record(record_ctx);
+        record_ctx.series = command.series;
+        record_ctx.window = command.window;
+        record_ctx.view_ubo = command.view_ubo;
+        command.state->record(record_ctx);
     }
 
     m_rhi_state->pending_updates = nullptr;
     m_rhi_state->frame_draw_states.clear();
-    m_rhi_state->prepared_layers.clear();
+    m_rhi_state->prepared_draws.clear();
     m_rhi_state->frame_plan_ready = false;
     clear_frame_snapshot_caches();
 }

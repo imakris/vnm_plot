@@ -747,6 +747,161 @@ bool test_combined_builtin_uploads_samples_once_per_view()
     return true;
 }
 
+bool test_builtin_draw_commands_sort_relative_to_custom_layers()
+{
+    constexpr std::int64_t k_second_ns = 1'000'000'000LL;
+
+    std::vector<layer_event_t> events;
+    int under_create_count = 0;
+    int middle_create_count = 0;
+    int top_create_count = 0;
+    auto under_layer = std::make_shared<Recording_layer>(
+        "under", 1, -20, events, under_create_count);
+    auto middle_layer = std::make_shared<Recording_layer>(
+        "middle", 1, 5, events, middle_create_count);
+    auto top_layer = std::make_shared<Recording_layer>(
+        "top", 1, 20, events, top_create_count);
+
+    auto source = std::make_shared<Test_source>();
+    std::vector<test_sample_t> samples;
+    samples.reserve(32);
+    for (std::size_t i = 0; i < 32; ++i) {
+        samples.push_back({
+            static_cast<std::int64_t>(i) * k_second_ns,
+            static_cast<float>(i)
+        });
+    }
+    source->set_samples(std::move(samples));
+
+    auto series = make_builtin_plus_layer_series(
+        source,
+        plot::Display_style::DOTS_LINE_AREA,
+        {top_layer, middle_layer, under_layer});
+    std::map<int, std::shared_ptr<const plot::series_data_t>> series_map;
+    const int series_id = 42;
+    series_map[series_id] = series;
+
+    plot::Asset_loader asset_loader;
+    plot::Series_renderer renderer;
+    renderer.initialize(asset_loader);
+
+    Offscreen_rhi_fixture rhi_fixture;
+    std::string error_message;
+    TEST_ASSERT(rhi_fixture.initialize(error_message), error_message);
+
+    plot::Plot_config config;
+    const plot::frame_layout_result_t layout = make_layout();
+    plot::frame_context_t ctx = make_context(layout, config);
+    ctx.t0 = 10LL * k_second_ns;
+    ctx.t1 = 12LL * k_second_ns;
+    ctx.t_available_min = ctx.t0;
+    ctx.t_available_max = ctx.t1;
+
+    TEST_ASSERT(
+        rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
+        error_message);
+
+    const std::vector<int> expected_z_orders = {-20, -10, 0, 5, 10, 20};
+    const std::vector<plot::Display_style> expected_styles = {
+        plot::Display_style::NONE,
+        plot::Display_style::AREA,
+        plot::Display_style::LINE,
+        plot::Display_style::NONE,
+        plot::Display_style::DOTS,
+        plot::Display_style::NONE
+    };
+    TEST_ASSERT(renderer.m_last_recorded_draw_z_orders == expected_z_orders,
+        "built-ins and custom layers must record in merged z-order");
+    TEST_ASSERT(renderer.m_last_recorded_draw_styles == expected_styles,
+        "built-in command identities must match their static z-order slots");
+    TEST_ASSERT(renderer.m_last_qrhi_layer_cache_size == 3,
+        "custom layer cache should contain only the three custom states");
+    TEST_ASSERT(under_create_count == 1 &&
+            middle_create_count == 1 &&
+            top_create_count == 1,
+        "custom layer states should each be created once");
+
+    const std::size_t under_record =
+        find_event_index(events, "under", "record");
+    const std::size_t middle_record =
+        find_event_index(events, "middle", "record");
+    const std::size_t top_record =
+        find_event_index(events, "top", "record");
+    TEST_ASSERT(under_record < middle_record && middle_record < top_record,
+        "custom layer record events should preserve their relative z-order");
+
+    return true;
+}
+
+bool test_builtins_do_not_use_qrhi_layer_cache()
+{
+    constexpr std::int64_t k_second_ns = 1'000'000'000LL;
+
+    std::vector<layer_event_t> events;
+    auto source = std::make_shared<Test_source>();
+    std::vector<test_sample_t> samples;
+    samples.reserve(32);
+    for (std::size_t i = 0; i < 32; ++i) {
+        samples.push_back({
+            static_cast<std::int64_t>(i) * k_second_ns,
+            static_cast<float>(i)
+        });
+    }
+    source->set_samples(std::move(samples));
+
+    auto series = make_builtin_plus_layer_series(
+        source,
+        plot::Display_style::DOTS_LINE_AREA,
+        {});
+    std::map<int, std::shared_ptr<const plot::series_data_t>> series_map;
+    const int series_id = 43;
+    series_map[series_id] = series;
+
+    plot::Asset_loader asset_loader;
+    plot::Series_renderer renderer;
+    renderer.initialize(asset_loader);
+
+    Offscreen_rhi_fixture rhi_fixture;
+    std::string error_message;
+    TEST_ASSERT(rhi_fixture.initialize(error_message), error_message);
+
+    plot::Plot_config config;
+    const plot::frame_layout_result_t layout = make_layout();
+    plot::frame_context_t ctx = make_context(layout, config);
+    ctx.t0 = 10LL * k_second_ns;
+    ctx.t1 = 12LL * k_second_ns;
+    ctx.t_available_min = ctx.t0;
+    ctx.t_available_max = ctx.t1;
+
+    TEST_ASSERT(
+        rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
+        error_message);
+
+    const std::vector<int> expected_z_orders = {-10, 0, 10};
+    const std::vector<plot::Display_style> expected_styles = {
+        plot::Display_style::AREA,
+        plot::Display_style::LINE,
+        plot::Display_style::DOTS
+    };
+    TEST_ASSERT(renderer.m_last_recorded_draw_z_orders == expected_z_orders,
+        "built-in-only series should record static AREA/LINE/DOTS z-order");
+    TEST_ASSERT(renderer.m_last_recorded_draw_styles == expected_styles,
+        "built-in-only series should expose only built-in draw commands");
+    TEST_ASSERT(renderer.m_last_qrhi_layer_cache_size == 0,
+        "built-in draw commands must not allocate custom layer cache entries");
+
+    auto state_it = renderer.m_vbo_states.find(series_id);
+    TEST_ASSERT(state_it != renderer.m_vbo_states.end(),
+        "expected renderer VBO state for built-in cache test");
+    const auto& view_state = state_it->second.main_view;
+    TEST_ASSERT(view_state.last_primitive_prepare_count == 3,
+        "built-in-only DOTS_LINE_AREA style must prepare three primitives");
+    TEST_ASSERT(view_state.last_sample_upload_count == 1,
+        "built-in-only DOTS_LINE_AREA style must share one sample upload");
+
+    return true;
+}
+
 bool test_builtin_upload_stages_visible_windows_for_dots_and_area()
 {
     constexpr std::int64_t k_second_ns = 1'000'000'000LL;
@@ -1508,6 +1663,8 @@ int main()
     RUN_TEST(test_builtin_upload_stages_visible_window_only);
     RUN_TEST(test_builtin_upload_reuses_vbo_capacity_headroom);
     RUN_TEST(test_combined_builtin_uploads_samples_once_per_view);
+    RUN_TEST(test_builtin_draw_commands_sort_relative_to_custom_layers);
+    RUN_TEST(test_builtins_do_not_use_qrhi_layer_cache);
     RUN_TEST(test_builtin_upload_stages_visible_windows_for_dots_and_area);
     RUN_TEST(test_builtin_upload_stages_single_synthetic_hold_sample);
     RUN_TEST(test_builtin_upload_stages_hold_windows_for_dots_and_area);

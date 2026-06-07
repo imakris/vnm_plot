@@ -69,8 +69,6 @@ public:
 
 private:
     struct gpu_sample_t;
-    class Builtin_series_layer;
-    class Builtin_series_layer_state;
 
     struct vbo_view_state_t
     {
@@ -164,6 +162,10 @@ private:
     // Consolidated once-per-series error log deduplication.
     // Key encodes (series_id, error_category) as uint64_t.
     std::unordered_set<uint64_t> m_logged_errors;
+    // Private test instrumentation for the QRhi prepare/render split.
+    std::vector<int> m_last_recorded_draw_z_orders;
+    std::vector<Display_style> m_last_recorded_draw_styles;
+    std::size_t m_last_qrhi_layer_cache_size = 0;
 
     // The full implementation sits in series_renderer.cpp where the QRhi
     // types are complete.
