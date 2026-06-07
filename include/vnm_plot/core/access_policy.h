@@ -5,7 +5,6 @@
 
 #include <vnm_plot/core/types.h>
 
-#include <cstring>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -46,9 +45,9 @@ std::size_t member_offset(Member Sample::* member)
 // The vnm_plot API contract for timestamps is int64_t nanoseconds. Sample
 // types store the raw timestamp; if a sample's timestamp member is
 // floating-point, the convention is that the field holds seconds (so it
-// remains intuitive to the user populating it). These two helpers are the
-// single point that crosses the seconds<->nanoseconds boundary; everything
-// else in vnm_plot operates on int64_t nanoseconds.
+// remains intuitive to the user populating it). This helper is the single
+// point that crosses from typed sample storage into the public API;
+// everything else in vnm_plot operates on int64_t nanoseconds.
 template<typename Timestamp>
 constexpr std::int64_t timestamp_member_to_ns(Timestamp value)
 {
@@ -58,32 +57,6 @@ constexpr std::int64_t timestamp_member_to_ns(Timestamp value)
     else {
         return static_cast<std::int64_t>(value);
     }
-}
-
-template<typename Timestamp>
-constexpr Timestamp ns_to_timestamp_member(std::int64_t timestamp_ns)
-{
-    if constexpr (std::is_floating_point_v<Timestamp>) {
-        // The right-hand `1e-9` is a double, so `cast(ns) * 1e-9` promotes
-        // a float-typed cast through double before the surrounding
-        // static_cast narrows on return. That matches the pre-refactor
-        // expression `static_cast<timestamp_t>(timestamp_ns) * 1e-9;`
-        // byte-for-byte, including for float-typed members.
-        return static_cast<Timestamp>(static_cast<Timestamp>(timestamp_ns) * 1e-9);
-    }
-    else {
-        return static_cast<Timestamp>(timestamp_ns);
-    }
-}
-
-template<typename Sample, typename Timestamp_member>
-auto make_clone_with_timestamp(Timestamp_member Sample::* timestamp_member)
-{
-    return [timestamp_member](Sample& dst_sample, const Sample& src_sample, std::int64_t timestamp_ns) {
-        dst_sample = src_sample;
-        using timestamp_t = std::decay_t<decltype(dst_sample.*timestamp_member)>;
-        dst_sample.*timestamp_member = ns_to_timestamp_member<timestamp_t>(timestamp_ns);
-    };
 }
 
 // Produces a stable cache key from the byte-level identity of a Sample type's
@@ -119,8 +92,6 @@ struct Data_access_policy_typed
     std::function<float(const Sample&)> get_value;
     std::function<std::pair<float, float>(const Sample&)> get_range;
 
-    std::function<void(Sample& dst_sample, const Sample& src_sample, std::int64_t timestamp_ns)> clone_with_timestamp;
-
     uint64_t layout_key = 0;
 
     bool is_valid() const
@@ -145,21 +116,6 @@ struct Data_access_policy_typed
         if (get_range) {
             policy.get_range = erase_accessor(get_range);
         }
-        if (clone_with_timestamp) {
-            policy.clone_with_timestamp = [fn = clone_with_timestamp](void* dst_sample, const void* src_sample, std::int64_t timestamp_ns) {
-                if (!dst_sample || !src_sample) {
-                    return;
-                }
-                // Write through a properly aligned local sample, then copy bytes
-                // into caller-provided storage to avoid alignment UB.
-                Sample tmp_sample{};
-                fn(
-                    tmp_sample,
-                    *static_cast<const Sample*>(src_sample),
-                    timestamp_ns);
-                std::memcpy(dst_sample, &tmp_sample, sizeof(Sample));
-            };
-        }
         policy.layout_key = layout_key;
         return policy;
     }
@@ -178,7 +134,6 @@ inline void assign_standard_accessors(
     policy.get_value = [value_member](const Sample& sample) {
         return static_cast<float>(sample.*value_member);
     };
-    policy.clone_with_timestamp = detail::make_clone_with_timestamp(timestamp_member);
 }
 
 template<typename Sample, typename Timestamp_member, typename Value_member,

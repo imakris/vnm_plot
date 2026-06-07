@@ -13,7 +13,6 @@
 
 #include <array>
 #include <cassert>
-#include <cstring>
 #include <cstdint>
 #include <iostream>
 #include <map>
@@ -135,21 +134,6 @@ Data_access_policy make_policy()
     policy.get_range = [](const void* sample) {
         const float value = static_cast<const Test_sample*>(sample)->v;
         return std::make_pair(value, value);
-    };
-    return policy;
-}
-
-Data_access_policy make_policy_with_clone()
-{
-    Data_access_policy policy = make_policy();
-    policy.clone_with_timestamp = [](void* dst_sample, const void* src_sample, std::int64_t timestamp_ns) {
-        if (!dst_sample || !src_sample) {
-            return;
-        }
-        Test_sample tmp_sample{};
-        std::memcpy(&tmp_sample, src_sample, sizeof(Test_sample));
-        tmp_sample.t = timestamp_ns;
-        std::memcpy(dst_sample, &tmp_sample, sizeof(Test_sample));
     };
     return policy;
 }
@@ -427,7 +411,7 @@ bool test_preview_honors_hold_last_forward()
     auto series = std::make_shared<series_data_t>();
     series->style = Display_style::LINE;
     series->data_source = data_source;
-    series->access = make_policy_with_clone();
+    series->access = make_policy();
     series->empty_window_behavior = Empty_window_behavior::HOLD_LAST_FORWARD;
 
     frame_layout_result_t layout;

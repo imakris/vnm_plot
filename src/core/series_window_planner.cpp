@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <limits>
 #include <vector>
 
 namespace vnm::plot::detail {
@@ -15,6 +16,24 @@ namespace {
 void reset_snapshot_cache(Series_window_snapshot_cache& cache)
 {
     cache = Series_window_snapshot_cache{};
+}
+
+bool checked_size_add(std::size_t lhs, std::size_t rhs, std::size_t& out)
+{
+    if (lhs > std::numeric_limits<std::size_t>::max() - rhs) {
+        return false;
+    }
+    out = lhs + rhs;
+    return true;
+}
+
+bool checked_size_product(std::size_t lhs, std::size_t rhs, std::size_t& out)
+{
+    if (rhs != 0 && lhs > std::numeric_limits<std::size_t>::max() / rhs) {
+        return false;
+    }
+    out = lhs * rhs;
+    return true;
 }
 
 } // anonymous namespace
@@ -108,12 +127,8 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
     };
 
     const auto load_cached_plan = [&](Series_view_plan& p, std::size_t level) {
-        p.source_first = state.last_first > 0
-            ? static_cast<std::size_t>(state.last_first)
-            : 0;
-        const std::size_t gpu_count = state.last_count > 0
-            ? static_cast<std::size_t>(state.last_count)
-            : 0;
+        p.source_first = state.last_first;
+        const std::size_t gpu_count = state.last_count;
         p.synthetic_hold_count =
             state.last_hold_last_forward && gpu_count > 0 ? 1 : 0;
         p.source_count = gpu_count - p.synthetic_hold_count;
@@ -144,7 +159,11 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
             (state.last_empty_window_behavior == request.empty_window_behavior) &&
             (state.last_interpolation == request.interpolation) &&
             (state.uploaded_t_origin_ns == request.t_origin_ns);
-        if (!identity_ok) {
+        if (!identity_ok ||
+            (request.empty_window_behavior ==
+                 Empty_window_behavior::HOLD_LAST_FORWARD &&
+             state.last_t_max != request.t_max_ns))
+        {
             return false;
         }
         load_cached_plan(p, state.last_lod_level);
@@ -191,7 +210,7 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
                     // The source advanced between current_sequence() and
                     // try_snapshot(); fall through to replan against the
                     // newer frame-scoped snapshot instead of pairing cached
-                    // first/count metadata with a different snapshot.
+                    // window metadata with a different snapshot.
                 }
                 else {
                     load_cached_plan(plan, applied_level);
@@ -298,7 +317,6 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
         const bool can_hold_last_forward =
             request.empty_window_behavior ==
                 Empty_window_behavior::HOLD_LAST_FORWARD &&
-            access.clone_with_timestamp &&
             have_last_ts &&
             last_ts < request.t_max_ns;
 
@@ -322,12 +340,21 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
             hold_last_forward = true;
         }
 
-        std::int32_t count = static_cast<std::int32_t>(last_idx - first_idx);
-        if (hold_last_forward) {
-            ++count;
+        const std::size_t source_count = last_idx - first_idx;
+        std::size_t count = 0;
+        if (!checked_size_add(
+                source_count,
+                hold_last_forward ? 1u : 0u,
+                count))
+        {
+            break;
         }
-        const std::size_t base_samples = (count > 0)
-            ? static_cast<std::size_t>(count) * applied_scale : 0;
+        std::size_t base_samples = 0;
+        if (count > 0 &&
+            !checked_size_product(count, applied_scale, base_samples))
+        {
+            break;
+        }
         const double base_pps = (base_samples > 0)
             ? request.width_px / static_cast<double>(base_samples) : 0.0;
 
@@ -343,7 +370,7 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
         state.cached_data_identity = data_source.identity();
         state.uploaded_t_origin_ns = request.t_origin_ns;
         state.last_snapshot_elements = snapshot.count;
-        state.last_first = static_cast<std::int32_t>(first_idx);
+        state.last_first = first_idx;
         state.last_count = count;
 
         state.last_lod_level = applied_level;
@@ -353,12 +380,8 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
         state.last_empty_window_behavior = request.empty_window_behavior;
         state.last_interpolation = request.interpolation;
 
-        plan.source_first = state.last_first > 0
-            ? static_cast<std::size_t>(state.last_first)
-            : 0;
-        const std::size_t gpu_count = state.last_count > 0
-            ? static_cast<std::size_t>(state.last_count)
-            : 0;
+        plan.source_first = state.last_first;
+        const std::size_t gpu_count = state.last_count;
         plan.synthetic_hold_count = hold_last_forward && gpu_count > 0 ? 1 : 0;
         plan.source_count = gpu_count - plan.synthetic_hold_count;
         plan.gpu_count = gpu_count;

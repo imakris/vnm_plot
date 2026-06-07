@@ -293,12 +293,6 @@ message(STATUS "vnm_plot: Building QRhi core library")
 target_link_libraries(vnm_plot_core PRIVATE Qt6::GuiPrivate Qt6::Gui)
 
 # -----------------------------------------------------------------------------
-# Qt Resources (only if building Qt wrapper)
-# -----------------------------------------------------------------------------
-
-qt6_add_resources(VNM_PLOT_QRC_SOURCES vnm_plot.qrc)
-
-# -----------------------------------------------------------------------------
 # QSB shader pipeline (Qt RHI)
 #
 # Bake every shader in shaders/qsb/ into a multi-profile .qsb artifact and
@@ -326,6 +320,26 @@ if(VNM_PLOT_ENABLE_TEXT)
         shaders/qsb/msdf_text.frag
     )
 endif()
+
+# Each input shader yields :/vnm_plot/shaders/qsb/<name>.<ext>.qsb.
+# GLSL profile is desktop 410 only; mobile GL ES is out of scope for
+# the RHI shaders. They use storage buffers that are unavailable below
+# ES 3.1, so emitting a 300 ES artifact would compile-fail at runtime
+# on a real ES 3.0 driver.
+qt_add_shaders(vnm_plot_core "vnm_plot_qsb_shaders"
+    PREFIX "/vnm_plot"
+    BASE   "${CMAKE_CURRENT_SOURCE_DIR}"
+    GLSL   "410"
+    HLSL   "50"
+    MSL    "12,21"
+    FILES  ${VNM_PLOT_QSB_SHADERS}
+)
+
+# -----------------------------------------------------------------------------
+# Qt Resources (only if building Qt wrapper)
+# -----------------------------------------------------------------------------
+
+qt6_add_resources(VNM_PLOT_QRC_SOURCES vnm_plot.qrc)
 
 # -----------------------------------------------------------------------------
 # Full Library target (Qt-dependent)
@@ -378,20 +392,6 @@ if(MSVC)
 else()
     target_compile_options(vnm_plot PRIVATE -Wall -Wextra)
 endif()
-
-# Each input shader yields :/vnm_plot/shaders/qsb/<name>.<ext>.qsb.
-# GLSL profile is desktop 410 only; mobile GL ES is out of scope for
-# The RHI shaders use SSBOs that are unavailable below ES 3.1,
-# so emitting a 300 ES artifact would compile-fail at runtime on a real
-# ES 3.0 driver.
-qt_add_shaders(vnm_plot "vnm_plot_qsb_shaders"
-    PREFIX "/vnm_plot"
-    BASE   "${CMAKE_CURRENT_SOURCE_DIR}"
-    GLSL   "410"
-    HLSL   "50"
-    MSL    "12,21"
-    FILES  ${VNM_PLOT_QSB_SHADERS}
-)
 
 message(STATUS "vnm_plot: Building Qt wrapper library")
 

@@ -79,9 +79,6 @@ static_assert(std::is_same_v<
 static_assert(std::is_same_v<
     decltype(plot::Data_access_policy::get_range),
     std::function<std::pair<float, float>(const void*)>>);
-static_assert(std::is_same_v<
-    decltype(plot::Data_access_policy::clone_with_timestamp),
-    std::function<void(void*, const void*, std::int64_t)>>);
 static_assert(std::is_same_v<decltype(plot::Data_access_policy::layout_key), std::uint64_t>);
 
 static_assert(!has_get_signal<plot::Data_access_policy>::value);
@@ -296,8 +293,8 @@ bool test_core_plan_types_are_usable()
     plot::drawable_sample_span_t span;
     span.source_first = 2;
     span.source_count = 5;
-    span.gpu_first = 1;
-    span.gpu_count = 4;
+    span.gpu_first = 0;
+    span.gpu_count = span.source_count;
 
     plot::Series_view_plan view_plan;
     view_plan.series_id = 9;
@@ -308,7 +305,8 @@ bool test_core_plan_types_are_usable()
     view_plan.source_first = span.source_first;
     view_plan.source_count = span.source_count;
     view_plan.synthetic_hold_count = 1;
-    view_plan.gpu_count = span.gpu_count + view_plan.synthetic_hold_count;
+    view_plan.gpu_count =
+        view_plan.source_count + view_plan.synthetic_hold_count;
     view_plan.drawable_spans.push_back(span);
     view_plan.t_min_ns = 1'000;
     view_plan.t_max_ns = 5'000;
@@ -341,11 +339,15 @@ bool test_core_plan_types_are_usable()
         "drawable span source count mismatch");
     TEST_ASSERT(frame_plan.main_views[0].synthetic_hold_count == 1,
         "synthetic hold count mismatch");
-    TEST_ASSERT(frame_plan.main_views[0].gpu_count == 5, "gpu count mismatch");
+    TEST_ASSERT(frame_plan.main_views[0].gpu_count == 6, "gpu count mismatch");
 
     plot::sample_window_t window;
     TEST_ASSERT(window.view_kind == plot::Series_view_kind::MAIN,
         "sample_window_t availability/default mismatch");
+    TEST_ASSERT(window.source_first == 0 && window.source_count == 0,
+        "sample_window_t source metadata defaults mismatch");
+    TEST_ASSERT(window.synthetic_hold_count == 0 && window.gpu_count == 0,
+        "sample_window_t GPU metadata defaults mismatch");
 
     return true;
 }

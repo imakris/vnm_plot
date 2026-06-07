@@ -77,11 +77,15 @@ private:
         bool has_uploaded_vbo = false;
         std::unique_ptr<detail::series_window_planner_state_t> planner;
 
-        // Renderer-owned scratch buffer for VBO uploads. Holds gpu_sample_t
-        // values rebased against the active origin: the full snapshot followed
-        // by an optional hold-last-forward synthetic sample. Reused across
-        // uploads to avoid reallocation.
+        // Renderer-owned scratch buffer for VBO uploads. Holds the planned
+        // visible gpu_sample_t values rebased against the active origin.
+        // Reused across uploads to avoid reallocation.
         std::vector<gpu_sample_t> staging;
+        std::size_t last_staged_sample_count = 0;
+        std::size_t last_sample_upload_bytes = 0;
+        std::size_t last_line_window_sample_count = 0;
+        std::int64_t last_prepared_t_max_ns = 0;
+        std::size_t last_vbo_generation = 0;
 
         // Per-view RHI resources. Defined out-of-line in series_renderer.cpp
         // where QRhiBuffer is complete; the public header only sees the
@@ -120,8 +124,10 @@ private:
 
     struct view_render_result_t
     {
-        std::int32_t first = 0;
-        std::int32_t count = 0;
+        std::size_t source_first = 0;
+        std::size_t source_count = 0;
+        std::size_t synthetic_hold_count = 0;
+        std::size_t gpu_count = 0;
         data_snapshot_t cached_snapshot;
         std::int64_t t_min_ns = 0;
         std::int64_t t_max_ns = 0;

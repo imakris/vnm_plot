@@ -34,8 +34,8 @@ struct series_window_planner_state_t
     const void* last_timestamp_order_identity = nullptr;
     bool last_timestamps_monotonic = true;
 
-    std::int32_t last_first = 0;
-    std::int32_t last_count = 0;
+    std::size_t last_first = 0;
+    std::size_t last_count = 0;
     std::size_t last_lod_level = 0;
     std::int64_t last_t_min = k_no_timestamp;
     std::int64_t last_t_max = k_no_timestamp;

@@ -540,7 +540,7 @@ std::shared_ptr<cached_font_data_t> build_font_cache(
         glyph_codepoints(),
         atlas_options(),
         log_debug);
-    if (!result.ok) {
+    if (result.status == vnm::msdf_text::Build_status::FAILURE) {
         if (log_error) {
             log_error(result.message);
         }

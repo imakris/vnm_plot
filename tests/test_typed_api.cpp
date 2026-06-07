@@ -6,7 +6,6 @@
 #include <vnm_plot/core/series_builder.h>
 #include <vnm_plot/core/types.h>
 
-#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
@@ -106,58 +105,6 @@ bool test_make_access_policy_and_erase()
     const auto erased_range = erased.get_range(&s);
     TEST_ASSERT(erased_range.first == 1.0f && erased_range.second == 6.0f,
         "erased range accessor mismatch");
-    TEST_ASSERT(static_cast<bool>(policy.clone_with_timestamp), "typed clone_with_timestamp should be set");
-    TEST_ASSERT(static_cast<bool>(erased.clone_with_timestamp), "erased clone_with_timestamp should be set");
-
-    return true;
-}
-
-bool test_clone_with_timestamp_for_both_overloads()
-{
-    sample_t src{};
-    // Source timestamp == 100.25 s in nanoseconds.
-    constexpr std::int64_t k_src_ts_ns = 100'250'000'000;
-    src.t = k_src_ts_ns;
-    src.v = 7.0f;
-    src.v_min = 6.5f;
-    src.v_max = 7.5f;
-    src.pad = 17;
-
-    {
-        auto value_only = plot::make_access_policy<sample_t>(&sample_t::t, &sample_t::v);
-        TEST_ASSERT(static_cast<bool>(value_only.clone_with_timestamp),
-            "value-only overload should set clone_with_timestamp");
-
-        sample_t dst{};
-        // 130.5 s in nanoseconds.
-        constexpr std::int64_t k_value_only_ts_ns = 130'500'000'000;
-        value_only.clone_with_timestamp(dst, src, k_value_only_ts_ns);
-        TEST_ASSERT(dst.t == k_value_only_ts_ns, "value-only clone should overwrite timestamp");
-        TEST_ASSERT(dst.v == src.v, "value-only clone should copy value");
-        TEST_ASSERT(dst.pad == src.pad, "value-only clone should copy pad");
-        TEST_ASSERT(dst.v_min == src.v_min && dst.v_max == src.v_max,
-            "value-only clone should copy remaining fields");
-    }
-
-    {
-        auto with_range = plot::make_access_policy<sample_t>(
-            &sample_t::t,
-            &sample_t::v,
-            &sample_t::v_min,
-            &sample_t::v_max);
-        TEST_ASSERT(static_cast<bool>(with_range.clone_with_timestamp),
-            "range overload should set clone_with_timestamp");
-
-        sample_t dst{};
-        // 222.0 s in nanoseconds.
-        constexpr std::int64_t k_range_ts_ns = 222'000'000'000;
-        with_range.clone_with_timestamp(dst, src, k_range_ts_ns);
-        TEST_ASSERT(dst.t == k_range_ts_ns, "range clone should overwrite timestamp");
-        TEST_ASSERT(dst.v == src.v, "range clone should copy value");
-        TEST_ASSERT(dst.pad == src.pad, "range clone should copy pad");
-        TEST_ASSERT(dst.v_min == src.v_min && dst.v_max == src.v_max,
-            "range clone should copy range fields");
-    }
 
     return true;
 }
@@ -193,16 +140,6 @@ bool test_typed_api_floating_point_timestamp_member()
     TEST_ASSERT(policy.get_timestamp(s) == k_expected_ns,
         std::string("expected fp timestamp seconds to convert to ns; got ") +
             std::to_string(policy.get_timestamp(s)));
-
-    // Reverse direction: int64 ns written through clone_with_timestamp
-    // lands back in the floating-point member as seconds.
-    fp_sample_t dst{};
-    constexpr std::int64_t k_clone_ns = -7'250'000'000;
-    policy.clone_with_timestamp(dst, s, k_clone_ns);
-    const double k_expected_seconds = -7.25;
-    TEST_ASSERT(std::abs(dst.t_seconds - k_expected_seconds) < 1e-9,
-        std::string("expected ns -> fp seconds round-trip; got ") +
-            std::to_string(dst.t_seconds));
 
     // Erased policy must propagate the same conversion.
     const plot::Data_access_policy erased = policy.erase();
@@ -279,7 +216,6 @@ int main()
     RUN_TEST(test_member_offset_matches_offsetof);
     RUN_TEST(test_layout_key_distinguishes_sample_types);
     RUN_TEST(test_make_access_policy_and_erase);
-    RUN_TEST(test_clone_with_timestamp_for_both_overloads);
     RUN_TEST(test_typed_api_floating_point_timestamp_member);
     RUN_TEST(test_series_builder_preview_config);
     RUN_TEST(test_series_builder_default_interpolation_is_linear);

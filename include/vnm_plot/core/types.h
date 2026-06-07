@@ -146,10 +146,6 @@ struct Data_access_policy
     std::function<float(const void* sample)>                    get_value;      ///< Extract primary value
     std::function<std::pair<float, float>(const void* sample)>  get_range;      ///< Extract min/max range
 
-    // Optional sample cloning with timestamp rewrite, used for render-only hold-forward paths.
-    // Caller owns dst_sample storage; implementation writes one full sample there.
-    std::function<void(void* dst_sample, const void* src_sample, std::int64_t timestamp_ns)> clone_with_timestamp;
-
     uint64_t layout_key = 0;  ///< Cache key distinguishing user sample types in renderer-internal caches
 
     bool is_valid() const

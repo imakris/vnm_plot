@@ -27,8 +27,20 @@ struct sample_window_t
     data_snapshot_t snapshot;
     const Data_access_policy* access = nullptr;
 
-    std::int32_t first = 0;
-    std::int32_t count = 0;
+    // Source window in `snapshot`, before synthetic draw-only samples.
+    // `source_count == 0` means there are no real source samples to draw.
+    std::size_t source_first = 0;
+    std::size_t source_count = 0;
+
+    // Draw-only hold-forward samples appended after the source window. This is
+    // currently zero or one. A synthetic hold sample copies the last source
+    // sample's value/range and uses `hold_timestamp_ns` as its GPU timestamp.
+    std::size_t synthetic_hold_count = 0;
+
+    // Number of GPU samples staged by built-in rendering. Under the current
+    // contiguous-window contract this equals
+    // `source_count + synthetic_hold_count`.
+    std::size_t gpu_count = 0;
     std::size_t lod_level = 0;
     double pixels_per_sample = 0.0;
     std::uint64_t sample_sequence = 0;
