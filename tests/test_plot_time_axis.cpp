@@ -16,6 +16,34 @@ namespace {
 constexpr std::int64_t k_min = std::numeric_limits<std::int64_t>::min();
 constexpr std::int64_t k_max = std::numeric_limits<std::int64_t>::max();
 
+bool test_uninitialized_qml_properties_return_zero()
+{
+    plot::Plot_time_axis axis;
+
+    TEST_ASSERT(axis.t_min_qml_ms() == 0,
+        "fresh axis should expose zero QML view minimum");
+    TEST_ASSERT(axis.t_max_qml_ms() == 0,
+        "fresh axis should expose zero QML view maximum");
+    TEST_ASSERT(axis.t_available_min_qml_ms() == 0,
+        "fresh axis should expose zero QML available minimum");
+    TEST_ASSERT(axis.t_available_max_qml_ms() == 0,
+        "fresh axis should expose zero QML available maximum");
+
+    axis.set_t_min(k_min);
+    axis.set_t_available_max(k_max);
+
+    TEST_ASSERT(axis.t_min_qml_ms() == 0,
+        "half-seeded view should still expose zero QML minimum");
+    TEST_ASSERT(axis.t_max_qml_ms() == 0,
+        "half-seeded view should still expose zero QML maximum");
+    TEST_ASSERT(axis.t_available_min_qml_ms() == 0,
+        "half-seeded available range should still expose zero QML minimum");
+    TEST_ASSERT(axis.t_available_max_qml_ms() == 0,
+        "half-seeded available range should still expose zero QML maximum");
+
+    return true;
+}
+
 bool test_full_int64_range_initializes()
 {
     plot::Plot_time_axis axis;
@@ -28,6 +56,22 @@ bool test_full_int64_range_initializes()
         "full int64 view range should preserve INT64_MIN");
     TEST_ASSERT(axis.t_max() == k_max,
         "full int64 view range should preserve INT64_MAX");
+
+    return true;
+}
+
+bool test_full_int64_available_range_initializes()
+{
+    plot::Plot_time_axis axis;
+
+    axis.set_available_t_range(k_min, k_max);
+
+    TEST_ASSERT(axis.available_initialized(),
+        "full int64 available range should initialize");
+    TEST_ASSERT(axis.t_available_min() == k_min,
+        "full int64 available range should preserve INT64_MIN");
+    TEST_ASSERT(axis.t_available_max() == k_max,
+        "full int64 available range should preserve INT64_MAX");
 
     return true;
 }
@@ -212,7 +256,9 @@ int main()
     int passed = 0;
     int failed = 0;
 
+    RUN_TEST(test_uninitialized_qml_properties_return_zero);
     RUN_TEST(test_full_int64_range_initializes);
+    RUN_TEST(test_full_int64_available_range_initializes);
     RUN_TEST(test_qml_negative_overflow_seed_is_real_timestamp);
     RUN_TEST(test_half_seeded_available_range_does_not_clamp_target);
     RUN_TEST(test_half_seeded_bounds_are_queryable);
