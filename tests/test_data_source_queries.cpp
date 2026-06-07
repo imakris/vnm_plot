@@ -334,7 +334,7 @@ bool test_query_time_window_hold_forward_includes_held_sample()
     return true;
 }
 
-bool test_query_time_window_rejects_nonfinite_in_window_sample()
+bool test_query_time_window_keeps_break_segment_gaps_in_window()
 {
     const float nan = std::numeric_limits<float>::quiet_NaN();
     Query_source source({
@@ -346,8 +346,30 @@ bool test_query_time_window_rejects_nonfinite_in_window_sample()
 
     const plot::Data_access_policy access = make_value_access();
     const auto result = source.query_time_window(0, make_draw_query(access, 0, 2));
+    TEST_ASSERT(result.status == plot::Data_query_status::READY,
+        "BREAK_SEGMENT time-window query should keep the containing source window");
+    TEST_ASSERT(result.value.first == 0 && result.value.count == 3,
+        "BREAK_SEGMENT time-window query should leave gap splitting to drawable spans");
+
+    return true;
+}
+
+bool test_query_time_window_reject_window_fails_on_nonfinite_in_window_sample()
+{
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    Query_source source({
+        {0, 1.0f},
+        {1, nan},
+        {2, 2.0f},
+    });
+    source.set_time_order(plot::Time_order::ASCENDING);
+
+    const plot::Data_access_policy access = make_value_access();
+    auto query = make_draw_query(access, 0, 2);
+    query.nonfinite_policy = plot::Nonfinite_sample_policy::REJECT_WINDOW;
+    const auto result = source.query_time_window(0, query);
     TEST_ASSERT(result.status == plot::Data_query_status::FAILED,
-        "time-window query should fail when an in-window sample is nonfinite");
+        "REJECT_WINDOW time-window query should fail on a nonfinite in-window sample");
 
     return true;
 }
@@ -365,6 +387,27 @@ bool test_query_time_window_does_not_hold_nonfinite_break_segment_sample()
     const auto result = source.query_time_window(0, make_hold_query(access, 3, 4));
     TEST_ASSERT(result.status == plot::Data_query_status::EMPTY,
         "time-window query should not hold across a nonfinite BREAK_SEGMENT sample");
+
+    return true;
+}
+
+bool test_query_time_window_skip_holds_latest_drawable_sample()
+{
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    Query_source source({
+        {0, 7.0f},
+        {2, nan},
+    });
+    source.set_time_order(plot::Time_order::ASCENDING);
+
+    const plot::Data_access_policy access = make_value_access();
+    auto query = make_hold_query(access, 3, 4);
+    query.nonfinite_policy = plot::Nonfinite_sample_policy::SKIP;
+    const auto result = source.query_time_window(0, query);
+    TEST_ASSERT(result.status == plot::Data_query_status::READY,
+        "SKIP time-window query should hold the latest drawable pre-window sample");
+    TEST_ASSERT(result.value.first == 0 && result.value.count == 1,
+        "SKIP time-window query should omit skipped held candidates");
 
     return true;
 }
@@ -439,6 +482,26 @@ bool test_hold_forward_does_not_use_nonfinite_break_segment_sample()
     return true;
 }
 
+bool test_hold_forward_skip_uses_latest_drawable_pre_window_sample()
+{
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    Query_source source({
+        {0, 7.0f},
+        {2, nan},
+    });
+
+    const plot::Data_access_policy access = make_value_access();
+    auto query = make_hold_query(access, 3, 4);
+    query.nonfinite_policy = plot::Nonfinite_sample_policy::SKIP;
+    const auto result = source.query_v_range(0, query);
+    TEST_ASSERT(result.status == plot::Data_query_status::READY,
+        "SKIP value-range query should hold the latest drawable pre-window sample");
+    TEST_ASSERT(result.value.min == 7.0f && result.value.max == 7.0f,
+        "SKIP held value range should come from the latest drawable sample");
+
+    return true;
+}
+
 bool test_hold_forward_reject_window_fails_on_nonfinite_held_candidate()
 {
     const float nan = std::numeric_limits<float>::quiet_NaN();
@@ -492,12 +555,15 @@ int main()
     RUN_TEST(test_query_time_window_returns_simple_ascending_window);
     RUN_TEST(test_query_time_window_handles_descending_inclusive_bounds);
     RUN_TEST(test_query_time_window_hold_forward_includes_held_sample);
-    RUN_TEST(test_query_time_window_rejects_nonfinite_in_window_sample);
+    RUN_TEST(test_query_time_window_keeps_break_segment_gaps_in_window);
+    RUN_TEST(test_query_time_window_reject_window_fails_on_nonfinite_in_window_sample);
     RUN_TEST(test_query_time_window_does_not_hold_nonfinite_break_segment_sample);
+    RUN_TEST(test_query_time_window_skip_holds_latest_drawable_sample);
     RUN_TEST(test_query_time_window_reject_window_fails_on_nonfinite_held_sample);
     RUN_TEST(test_hold_forward_value_range_includes_pre_window_sample);
     RUN_TEST(test_hold_forward_value_range_ready_from_held_sample_only);
     RUN_TEST(test_hold_forward_does_not_use_nonfinite_break_segment_sample);
+    RUN_TEST(test_hold_forward_skip_uses_latest_drawable_pre_window_sample);
     RUN_TEST(test_hold_forward_reject_window_fails_on_nonfinite_held_candidate);
     RUN_TEST(test_lod_scales_match_compute_lod_scales_and_clamp_minimum);
 

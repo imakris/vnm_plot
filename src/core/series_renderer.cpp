@@ -96,30 +96,79 @@ int view_band_order(Series_view_kind view_kind)
     return 1;
 }
 
-std::pair<float, float> normalize_finite_range(std::pair<float, float> range)
+void hash_combine(std::size_t& seed, std::size_t value) noexcept
 {
-    if (std::isfinite(range.first) &&
-        std::isfinite(range.second) &&
-        range.second < range.first)
-    {
-        std::swap(range.first, range.second);
+    seed ^= value + 0x9e3779b9u + (seed << 6) + (seed >> 2);
+}
+
+std::size_t hash_drawable_spans(
+    const std::vector<drawable_sample_span_t>& spans) noexcept
+{
+    std::size_t seed = spans.size();
+    for (const drawable_sample_span_t& span : spans) {
+        hash_combine(seed, span.source_first);
+        hash_combine(seed, span.source_count);
+        hash_combine(seed, span.gpu_first);
+        hash_combine(seed, span.gpu_count);
     }
-    return range;
+    return seed;
+}
+
+struct builtin_segment_span_t
+{
+    std::size_t gpu_first = 0;
+    std::size_t gpu_count = 0;
+};
+
+std::vector<builtin_segment_span_t> builtin_segment_spans(
+    const sample_window_t& window)
+{
+    std::vector<builtin_segment_span_t> spans;
+    if (window.gpu_count < 2) {
+        return spans;
+    }
+
+    if (window.nonfinite_policy == Nonfinite_sample_policy::SKIP) {
+        spans.push_back({0, window.gpu_count});
+        return spans;
+    }
+
+    spans.reserve(window.drawable_spans.size());
+    for (const drawable_sample_span_t& span : window.drawable_spans) {
+        if (span.gpu_count >= 2) {
+            spans.push_back({span.gpu_first, span.gpu_count});
+        }
+    }
+    return spans;
+}
+
+bool has_builtin_segment_span(const sample_window_t& window)
+{
+    if (window.gpu_count < 2) {
+        return false;
+    }
+    if (window.nonfinite_policy == Nonfinite_sample_policy::SKIP) {
+        return true;
+    }
+    return std::any_of(
+        window.drawable_spans.begin(),
+        window.drawable_spans.end(),
+        [](const drawable_sample_span_t& span) {
+            return span.gpu_count >= 2;
+        });
 }
 
 bool is_builtin_primitive_drawable(
     Display_style primitive_style,
-    std::size_t gpu_count)
+    const sample_window_t& window)
 {
-    if (gpu_count == 0) {
+    if (window.gpu_count == 0) {
         return false;
     }
-    return primitive_style == Display_style::DOTS || gpu_count >= 2;
-}
-
-void hash_combine(std::size_t& seed, std::size_t value) noexcept
-{
-    seed ^= value + 0x9e3779b9u + (seed << 6) + (seed >> 2);
+    if (primitive_style == Display_style::DOTS) {
+        return true;
+    }
+    return has_builtin_segment_span(window);
 }
 
 std::size_t hash_access_policy_cache_key(
@@ -370,6 +419,10 @@ struct Series_renderer::rhi_state_t
         bool hold_last_forward = false;
         std::int64_t hold_timestamp_ns = 0;
         Series_interpolation interpolation = Series_interpolation::LINEAR;
+        Nonfinite_sample_policy nonfinite_policy =
+            Nonfinite_sample_policy::BREAK_SEGMENT;
+        std::size_t drawable_span_count = 0;
+        std::size_t drawable_spans_hash = 0;
         detail::access_policy_cache_key_t access_key;
 
         bool operator==(const qrhi_layer_data_key_t& o) const noexcept
@@ -384,6 +437,9 @@ struct Series_renderer::rhi_state_t
                 && hold_last_forward == o.hold_last_forward
                 && hold_timestamp_ns == o.hold_timestamp_ns
                 && interpolation == o.interpolation
+                && nonfinite_policy == o.nonfinite_policy
+                && drawable_span_count == o.drawable_span_count
+                && drawable_spans_hash == o.drawable_spans_hash
                 && access_key == o.access_key;
         }
     };
@@ -806,6 +862,7 @@ void Series_renderer::prepare(
             request.t_origin_ns = t_origin_ns;
             request.width_px = width_px;
             request.empty_window_behavior = s->empty_window_behavior;
+            request.nonfinite_policy = s->nonfinite_policy;
             request.style = style;
             request.interpolation = interpolation;
             request.snapshot_requirement = snapshot_requirement;
@@ -853,6 +910,7 @@ void Series_renderer::prepare(
         preview_plan.source = preview_source;
         preview_plan.access = preview_access;
         preview_plan.empty_window_behavior = s->empty_window_behavior;
+        preview_plan.nonfinite_policy = s->nonfinite_policy;
         preview_plan.style = preview_style;
         preview_plan.interpolation = preview_interpolation;
         if (preview_visible && preview_valid) {
@@ -891,7 +949,25 @@ void Series_renderer::prepare(
         draw_states.push_back(std::move(draw_state));
     }
 
+    const auto invalidate_view_upload_state = [](vbo_view_state_t& view_state) {
+        view_state.has_uploaded_vbo = false;
+        view_state.last_sample_buffer = nullptr;
+        view_state.last_staged_sample_count = 0;
+        view_state.last_sample_upload_bytes = 0;
+        view_state.line_draw_spans.clear();
+    };
+
     if (!rhi || !rhi_updates || !ctx.render_target) {
+        for (auto& draw_state : draw_states) {
+            if (!draw_state.vbo_state) {
+                continue;
+            }
+            invalidate_view_upload_state(draw_state.vbo_state->main_view);
+            if (draw_state.has_preview) {
+                invalidate_view_upload_state(
+                    draw_state.vbo_state->preview_view);
+            }
+        }
         m_rhi_state->frame_plan_ready = false;
         return;
     }
@@ -905,10 +981,12 @@ void Series_renderer::prepare(
         window.source_count = plan.source_count;
         window.synthetic_hold_count = plan.synthetic_hold_count;
         window.gpu_count = plan.gpu_count;
+        window.drawable_spans = plan.drawable_spans;
         window.lod_level = plan.lod_level;
         window.pixels_per_sample = plan.pixels_per_sample;
         window.sample_sequence = plan.snapshot.sequence;
         window.interpolation = plan.interpolation;
+        window.nonfinite_policy = plan.nonfinite_policy;
         window.t_min_ns = plan.t_min_ns;
         window.t_max_ns = plan.t_max_ns;
         window.t_origin_ns = plan.t_origin_ns;
@@ -998,11 +1076,21 @@ void Series_renderer::prepare(
         view_state.last_sample_upload_count = 0;
         view_state.last_primitive_prepare_count = 0;
         view_state.last_line_window_sample_count = 0;
+        view_state.last_recorded_line_span_count = 0;
+        view_state.last_recorded_line_segment_count = 0;
+        view_state.last_recorded_area_span_count = 0;
+        view_state.last_recorded_area_segment_count = 0;
+        view_state.last_recorded_dot_sample_count = 0;
         view_state.last_sample_access_dispatch_kind =
             detail::access_dispatch_kind_t::NONE;
         view_state.last_sample_buffer = nullptr;
+        view_state.line_draw_spans.clear();
 
-        if (!draw_state.series || plan.gpu_count == 0) {
+        if (!draw_state.series) {
+            return;
+        }
+        if (plan.gpu_count == 0) {
+            invalidate_view_upload_state(view_state);
             return;
         }
 
@@ -1052,6 +1140,7 @@ void Series_renderer::prepare(
                 return a.z_order < b.z_order;
             });
         if (planned_draws.empty()) {
+            invalidate_view_upload_state(view_state);
             return;
         }
 
@@ -1063,7 +1152,7 @@ void Series_renderer::prepare(
                 return draw.is_builtin &&
                     is_builtin_primitive_drawable(
                         draw.primitive_style,
-                        window.gpu_count);
+                        window);
             });
         const bool has_custom_layer = std::any_of(
             planned_draws.begin(),
@@ -1073,13 +1162,15 @@ void Series_renderer::prepare(
             });
         const bool needs_sample_buffer =
             has_drawable_builtin_layer || has_custom_layer;
-        bool samples_ready = true;
-        if (needs_sample_buffer) {
-            samples_ready = rhi_prepare_series_view_samples(
-                ctx,
-                view_state,
-                window);
+        if (!needs_sample_buffer) {
+            invalidate_view_upload_state(view_state);
+            return;
         }
+        bool samples_ready = true;
+        samples_ready = rhi_prepare_series_view_samples(
+            ctx,
+            view_state,
+            window);
         const qrhi_series_sample_buffer_t sample_buffer =
             samples_ready ? make_sample_buffer(view_state, window)
                           : qrhi_series_sample_buffer_t{};
@@ -1109,7 +1200,7 @@ void Series_renderer::prepare(
                 if (!samples_ready ||
                     !is_builtin_primitive_drawable(
                         planned_draw.primitive_style,
-                        window.gpu_count))
+                        window))
                 {
                     continue;
                 }
@@ -1195,6 +1286,10 @@ void Series_renderer::prepare(
             data_key.hold_last_forward = window.hold_last_forward;
             data_key.hold_timestamp_ns = window.hold_timestamp_ns;
             data_key.interpolation = window.interpolation;
+            data_key.nonfinite_policy = window.nonfinite_policy;
+            data_key.drawable_span_count = window.drawable_spans.size();
+            data_key.drawable_spans_hash =
+                hash_drawable_spans(window.drawable_spans);
             data_key.access_key = layer_access_key;
 
             auto& cache_entry = m_rhi_state->qrhi_layer_cache[program_key];
@@ -1489,6 +1584,7 @@ bool Series_renderer::rhi_prepare_series_view_samples(
                 detail::series_window_planner_state_t::k_no_timestamp;
         }
         view_state.staging.clear();
+        view_state.line_draw_spans.clear();
         view_state.last_staged_sample_count = 0;
         view_state.last_sample_upload_bytes = 0;
         view_state.last_line_window_sample_count = 0;
@@ -1509,16 +1605,62 @@ bool Series_renderer::rhi_prepare_series_view_samples(
             return false;
         }
 
-        std::size_t expected_gpu_count = 0;
         if (window.synthetic_hold_count > 1 ||
-            (window.synthetic_hold_count == 1 && window.source_count == 0) ||
-            !detail::checked_size_add(
-                window.source_count,
-                window.synthetic_hold_count,
-                expected_gpu_count) ||
-            expected_gpu_count != window.gpu_count ||
+            window.drawable_spans.empty() ||
             window.source_first > snapshot.count ||
             window.source_count > snapshot.count - window.source_first)
+        {
+            invalidate_uploaded_vbo();
+            return false;
+        }
+
+        std::size_t expected_gpu_count = 0;
+        bool synthetic_hold_seen = false;
+        for (std::size_t span_index = 0;
+             span_index < window.drawable_spans.size();
+             ++span_index)
+        {
+            const drawable_sample_span_t& span =
+                window.drawable_spans[span_index];
+            const bool final_span =
+                span_index + 1u == window.drawable_spans.size();
+            if (span.source_count == 0 ||
+                span.gpu_count < span.source_count ||
+                span.gpu_first != expected_gpu_count ||
+                span.source_first < window.source_first ||
+                span.source_first > snapshot.count ||
+                span.source_count > snapshot.count - span.source_first ||
+                span.source_first + span.source_count >
+                    window.source_first + window.source_count)
+            {
+                invalidate_uploaded_vbo();
+                return false;
+            }
+
+            const bool has_synthetic_hold =
+                final_span &&
+                window.synthetic_hold_count == 1 &&
+                span.gpu_count == span.source_count + 1u;
+            if (has_synthetic_hold) {
+                synthetic_hold_seen = true;
+            }
+            else
+            if (span.gpu_count != span.source_count) {
+                invalidate_uploaded_vbo();
+                return false;
+            }
+
+            if (!detail::checked_size_add(
+                    expected_gpu_count,
+                    span.gpu_count,
+                    expected_gpu_count))
+            {
+                invalidate_uploaded_vbo();
+                return false;
+            }
+        }
+        if (expected_gpu_count != window.gpu_count ||
+            synthetic_hold_seen != (window.synthetic_hold_count == 1))
         {
             invalidate_uploaded_vbo();
             return false;
@@ -1541,38 +1683,50 @@ bool Series_renderer::rhi_prepare_series_view_samples(
 
         const auto stage_one_sample =
             [&](gpu_sample_t& dst, const void* src, std::int64_t ts_ns) {
+                detail::sample_draw_value_t draw_value;
+                const detail::sample_draw_status_t status =
+                    detail::read_sample_draw_value(
+                        access_view,
+                        src,
+                        window.nonfinite_policy,
+                        draw_value);
+                if (status != detail::sample_draw_status_t::DRAWABLE) {
+                    return false;
+                }
                 dst.t_rel = detail::to_view_seconds(ts_ns, window.t_origin_ns);
-                dst.y = access_view.has_value() ? access_view.value(src) : 0.0f;
-                const auto raw_range = access_view.has_range()
-                    ? access_view.range(src)
-                    : std::make_pair(dst.y, dst.y);
-                const auto range = normalize_finite_range(raw_range);
-                dst.y_min = range.first;
-                dst.y_max = range.second;
+                dst.y = draw_value.y;
+                dst.y_min = draw_value.y_min;
+                dst.y_max = draw_value.y_max;
+                return true;
             };
 
-        for (std::size_t i = 0; i < window.source_count; ++i) {
-            const void* src = snapshot.at(window.source_first + i);
-            if (src) {
-                stage_one_sample(staging[i], src, access_view.timestamp(src));
+        for (const drawable_sample_span_t& span : window.drawable_spans) {
+            for (std::size_t i = 0; i < span.source_count; ++i) {
+                const std::size_t source_index = span.source_first + i;
+                const void* src = snapshot.at(source_index);
+                if (!src ||
+                    !stage_one_sample(
+                        staging[span.gpu_first + i],
+                        src,
+                        access_view.timestamp(src)))
+                {
+                    invalidate_uploaded_vbo();
+                    return false;
+                }
             }
-            else {
-                staging[i] = gpu_sample_t{};
-            }
-        }
-
-        if (window.synthetic_hold_count == 1 && !staging.empty()) {
-            const std::size_t source_index =
-                window.source_first + window.source_count - 1u;
-            const void* source_sample = snapshot.at(source_index);
-            if (source_sample) {
-                stage_one_sample(
-                    staging.back(),
-                    source_sample,
-                    window.hold_timestamp_ns);
-            }
-            else {
-                staging.back() = gpu_sample_t{};
+            if (span.gpu_count == span.source_count + 1u) {
+                const std::size_t source_index =
+                    span.source_first + span.source_count - 1u;
+                const void* source_sample = snapshot.at(source_index);
+                if (!source_sample ||
+                    !stage_one_sample(
+                        staging[span.gpu_first + span.gpu_count - 1u],
+                        source_sample,
+                        window.hold_timestamp_ns))
+                {
+                    invalidate_uploaded_vbo();
+                    return false;
+                }
             }
         }
 
@@ -1645,7 +1799,11 @@ bool Series_renderer::rhi_prepare_series_primitive(
     if (count == 0) {
         return false;
     }
-    if (!is_dots && count < 2) {
+    const std::vector<builtin_segment_span_t> segment_spans =
+        is_dots ? std::vector<builtin_segment_span_t>{}
+                : builtin_segment_spans(window);
+    const bool has_segment_span = !segment_spans.empty();
+    if (!is_dots && !has_segment_span) {
         return false;
     }
 
@@ -1717,18 +1875,43 @@ bool Series_renderer::rhi_prepare_series_primitive(
     // accept zero UAVs; QRhi requires HLSL 5.0 bytecode for D3D11, so any
     // storage-buffer access in the vertex stage fails to compile.
     if (!is_dots && !is_area) {
-        std::size_t window_count = 0;
-        if (!line_window_sample_count(
-                count, window.interpolation, window_count))
-        {
+        view_state.line_draw_spans.clear();
+        std::size_t total_window_count = 0;
+        std::size_t total_padded_count = 0;
+        for (const builtin_segment_span_t& span : segment_spans) {
+            std::size_t span_window_count = 0;
+            if (!line_window_sample_count(
+                    span.gpu_count,
+                    window.interpolation,
+                    span_window_count))
+            {
+                return false;
+            }
+            std::size_t span_padded_count = 0;
+            if (!detail::checked_size_add(
+                    span_window_count,
+                    2u,
+                    span_padded_count) ||
+                !detail::checked_size_add(
+                    total_window_count,
+                    span_window_count,
+                    total_window_count) ||
+                !detail::checked_size_add(
+                    total_padded_count,
+                    span_padded_count,
+                    total_padded_count))
+            {
+                return false;
+            }
+        }
+        if (total_window_count < 2 || total_padded_count == 0) {
             return false;
         }
-        std::size_t padded_count = 0;
+
         std::size_t needed_bytes = 0;
         quint32 upload_bytes = 0;
-        if (!detail::checked_size_add(window_count, 2u, padded_count) ||
-            !detail::qrhi_byte_size(
-                padded_count, sizeof(gpu_sample_t),
+        if (!detail::qrhi_byte_size(
+                total_padded_count, sizeof(gpu_sample_t),
                 needed_bytes, upload_bytes))
         {
             return false;
@@ -1762,38 +1945,78 @@ bool Series_renderer::rhi_prepare_series_primitive(
                 return false;
             }
             auto& padded = view_state.line_window_staging;
-            padded.resize(padded_count);
-            const std::size_t last_idx = count - 1u;
-            std::size_t write_idx = 1;
+            padded.resize(total_padded_count);
+            std::size_t write_idx = 0;
+            for (const builtin_segment_span_t& span : segment_spans) {
+                if (span.gpu_first > view_state.staging.size() ||
+                    span.gpu_count >
+                        view_state.staging.size() - span.gpu_first)
+                {
+                    return false;
+                }
 
-            padded[0] = view_state.staging[0];
-            if (window.interpolation == Series_interpolation::STEP_AFTER) {
-                padded[write_idx++] = view_state.staging[0];
-                for (std::size_t i = 1; i < count; ++i) {
-                    const gpu_sample_t previous =
-                        view_state.staging[i - 1u];
-                    const gpu_sample_t current =
-                        view_state.staging[i];
-                    gpu_sample_t held = current;
-                    held.y = previous.y;
-                    held.y_min = previous.y_min;
-                    held.y_max = previous.y_max;
-                    padded[write_idx++] = held;
-                    padded[write_idx++] = current;
+                std::size_t span_window_count = 0;
+                if (!line_window_sample_count(
+                        span.gpu_count,
+                        window.interpolation,
+                        span_window_count))
+                {
+                    return false;
                 }
-            }
-            else {
-                for (std::size_t i = 0; i < count; ++i) {
-                    padded[write_idx++] = view_state.staging[i];
+                std::size_t span_padded_count = 0;
+                if (!detail::checked_size_add(
+                        span_window_count,
+                        2u,
+                        span_padded_count) ||
+                    span_padded_count > total_padded_count - write_idx)
+                {
+                    return false;
                 }
+
+                vbo_view_state_t::line_draw_span_t line_span;
+                line_span.gpu_first = span.gpu_first;
+                line_span.gpu_count = span.gpu_count;
+                line_span.line_first = write_idx;
+                line_span.line_count = span_window_count;
+                view_state.line_draw_spans.push_back(line_span);
+
+                const std::size_t span_base = write_idx;
+                const std::size_t span_last =
+                    span.gpu_first + span.gpu_count - 1u;
+                std::size_t span_write = span_base + 1u;
+                padded[span_base] = view_state.staging[span.gpu_first];
+                if (window.interpolation == Series_interpolation::STEP_AFTER) {
+                    padded[span_write++] =
+                        view_state.staging[span.gpu_first];
+                    for (std::size_t i = 1; i < span.gpu_count; ++i) {
+                        const gpu_sample_t previous =
+                            view_state.staging[span.gpu_first + i - 1u];
+                        const gpu_sample_t current =
+                            view_state.staging[span.gpu_first + i];
+                        gpu_sample_t held = current;
+                        held.y = previous.y;
+                        held.y_min = previous.y_min;
+                        held.y_max = previous.y_max;
+                        padded[span_write++] = held;
+                        padded[span_write++] = current;
+                    }
+                }
+                else {
+                    for (std::size_t i = 0; i < span.gpu_count; ++i) {
+                        padded[span_write++] =
+                            view_state.staging[span.gpu_first + i];
+                    }
+                }
+                padded[span_base + span_padded_count - 1u] =
+                    view_state.staging[span_last];
+                write_idx += span_padded_count;
             }
-            padded[padded_count - 1] = view_state.staging[last_idx];
             updates->uploadStaticBuffer(
                 view_state.rhi->line_window_vbo.get(),
                 0,
                 upload_bytes,
                 padded.data());
-            view_state.last_line_window_sample_count = window_count;
+            view_state.last_line_window_sample_count = total_window_count;
         }
     }
 
@@ -2017,7 +2240,11 @@ void Series_renderer::rhi_record_series_primitive(
     if (count == 0) {
         return;
     }
-    if (!is_dots && count < 2) {
+    const std::vector<builtin_segment_span_t> segment_spans =
+        is_dots ? std::vector<builtin_segment_span_t>{}
+                : builtin_segment_spans(window);
+    const bool has_segment_span = !segment_spans.empty();
+    if (!is_dots && !has_segment_span) {
         return;
     }
     if (!view_state.rhi) {
@@ -2056,26 +2283,44 @@ void Series_renderer::rhi_record_series_primitive(
             return;
         }
         cb->draw(4, instance_count);
+        view_state.last_recorded_dot_sample_count += count;
     }
     else
     if (is_area) {
-        quint32 instance_count = 0;
-        if (!detail::to_qrhi_count(count - 1u, instance_count))
-        {
+        if (!view_state.rhi->vbo) {
             return;
         }
-        if (instance_count > 0 && view_state.rhi->vbo) {
-            const quint32 next_vbo_offset =
-                static_cast<quint32>(sizeof(gpu_sample_t));
-            QRhiBuffer* const vbo = view_state.rhi->vbo.get();
+        QRhiBuffer* const vbo = view_state.rhi->vbo.get();
+        for (const builtin_segment_span_t& span : segment_spans) {
+            if (span.gpu_first > count ||
+                span.gpu_count > count - span.gpu_first)
+            {
+                return;
+            }
+            quint32 instance_count = 0;
+            quint32 first_offset = 0;
+            quint32 next_offset = 0;
+            if (!detail::to_qrhi_count(span.gpu_count - 1u, instance_count) ||
+                !detail::qrhi_buffer_offset(
+                    span.gpu_first,
+                    sizeof(gpu_sample_t),
+                    first_offset) ||
+                !detail::qrhi_buffer_offset(
+                    span.gpu_first + 1u,
+                    sizeof(gpu_sample_t),
+                    next_offset))
+            {
+                return;
+            }
             const QRhiCommandBuffer::VertexInput inputs[2] = {
-                { vbo, 0u },
-                { vbo, next_vbo_offset }
+                { vbo, first_offset },
+                { vbo, next_offset }
             };
             cb->setVertexInput(0, 2, inputs);
-
             cb->setShaderResources(srb_entry.srb.get());
             cb->draw(6, instance_count);
+            ++view_state.last_recorded_area_span_count;
+            view_state.last_recorded_area_segment_count += span.gpu_count - 1u;
         }
     }
     else {
@@ -2084,30 +2329,68 @@ void Series_renderer::rhi_record_series_primitive(
         // The four vertex inputs all reference the line_window_vbo at
         // increasing element offsets so each instance reads a sliding
         // (prev, p0, p1, next) window across the padded sample array.
-        std::size_t window_count = 0;
-        if (!line_window_sample_count(
-                count, window.interpolation, window_count))
-        {
+        if (!view_state.rhi->line_window_vbo) {
             return;
         }
-        quint32 instance_count = 0;
-        if (window_count > 1 &&
-            !detail::to_qrhi_count(window_count - 1u, instance_count))
-        {
-            return;
-        }
-        if (instance_count > 0 && view_state.rhi->line_window_vbo) {
-            const quint32 stride =
-                static_cast<quint32>(sizeof(gpu_sample_t));
-            QRhiBuffer* const win = view_state.rhi->line_window_vbo.get();
+        QRhiBuffer* const win = view_state.rhi->line_window_vbo.get();
+        for (const auto& line_span : view_state.line_draw_spans) {
+            if (line_span.line_count < 2) {
+                continue;
+            }
+            const std::size_t offset0 = line_span.line_first;
+            std::size_t offset1 = 0;
+            std::size_t offset2 = 0;
+            std::size_t offset3 = 0;
+            quint32 qrhi_offset0 = 0;
+            quint32 qrhi_offset1 = 0;
+            quint32 qrhi_offset2 = 0;
+            quint32 qrhi_offset3 = 0;
+            quint32 instance_count = 0;
+            if (!detail::checked_size_add(
+                    line_span.line_first,
+                    1u,
+                    offset1) ||
+                !detail::checked_size_add(
+                    line_span.line_first,
+                    2u,
+                    offset2) ||
+                !detail::checked_size_add(
+                    line_span.line_first,
+                    3u,
+                    offset3) ||
+                !detail::qrhi_buffer_offset(
+                    offset0,
+                    sizeof(gpu_sample_t),
+                    qrhi_offset0) ||
+                !detail::qrhi_buffer_offset(
+                    offset1,
+                    sizeof(gpu_sample_t),
+                    qrhi_offset1) ||
+                !detail::qrhi_buffer_offset(
+                    offset2,
+                    sizeof(gpu_sample_t),
+                    qrhi_offset2) ||
+                !detail::qrhi_buffer_offset(
+                    offset3,
+                    sizeof(gpu_sample_t),
+                    qrhi_offset3) ||
+                !detail::to_qrhi_count(
+                    line_span.line_count - 1u,
+                    instance_count))
+            {
+                return;
+            }
             const QRhiCommandBuffer::VertexInput inputs[4] = {
-                { win, 0u },
-                { win, 1u * stride },
-                { win, 2u * stride },
-                { win, 3u * stride }
+                { win, qrhi_offset0 },
+                { win, qrhi_offset1 },
+                { win, qrhi_offset2 },
+                { win, qrhi_offset3 }
             };
             cb->setVertexInput(0, 4, inputs);
             cb->draw(4, instance_count);
+            ++view_state.last_recorded_line_span_count;
+            view_state.last_recorded_line_segment_count +=
+                line_span.line_count - 1u;
         }
     }
 }

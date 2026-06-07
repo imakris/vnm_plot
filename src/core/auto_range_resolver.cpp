@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
-#include <tuple>
 #include <utility>
 
 namespace vnm::plot::detail {
@@ -18,44 +17,31 @@ constexpr time_range_t all_time_window()
     };
 }
 
-bool include_sample_range(
+sample_draw_status_t include_sample_range(
     const Data_access_policy& access,
     const void* sample,
+    Nonfinite_sample_policy nonfinite_policy,
     float& out_min,
     float& out_max,
     bool& have_any)
 {
-    float low = 0.0f;
-    float high = 0.0f;
-    if (access.get_range) {
-        std::tie(low, high) = access.get_range(sample);
-    }
-    else
-    if (access.get_value) {
-        low = access.get_value(sample);
-        high = low;
-    }
-    else {
-        return false;
+    sample_draw_value_t draw_value;
+    const sample_draw_status_t status =
+        read_sample_draw_value(access, sample, nonfinite_policy, draw_value);
+    if (status != sample_draw_status_t::DRAWABLE) {
+        return status;
     }
 
-    if (!std::isfinite(low) || !std::isfinite(high)) {
-        return false;
-    }
-
-    if (high < low) {
-        std::swap(low, high);
-    }
     if (!have_any) {
-        out_min = low;
-        out_max = high;
+        out_min = draw_value.y_min;
+        out_max = draw_value.y_max;
         have_any = true;
-        return true;
+        return sample_draw_status_t::DRAWABLE;
     }
 
-    out_min = std::min(out_min, low);
-    out_max = std::max(out_max, high);
-    return true;
+    out_min = std::min(out_min, draw_value.y_min);
+    out_max = std::max(out_max, draw_value.y_max);
+    return sample_draw_status_t::DRAWABLE;
 }
 
 bool scan_series_range(
@@ -64,6 +50,7 @@ bool scan_series_range(
     std::size_t level,
     Series_interpolation interpolation,
     Empty_window_behavior empty_window_behavior,
+    Nonfinite_sample_policy nonfinite_policy,
     bool visible_only,
     std::int64_t t_min,
     std::int64_t t_max,
@@ -77,6 +64,9 @@ bool scan_series_range(
 
     bool have_any = false;
     const void* held_sample = nullptr;
+    bool have_held_sample = false;
+    bool have_held_candidate = false;
+    std::int64_t held_timestamp_ns = 0;
     bool have_sample_at_or_after_visible_start = false;
     for (std::size_t i = 0; i < snapshot.count; ++i) {
         const void* sample = snapshot.at(i);
@@ -89,7 +79,32 @@ bool scan_series_range(
             }
             const std::int64_t t = access.get_timestamp(sample);
             if (interpolation == Series_interpolation::STEP_AFTER && t < t_min) {
-                held_sample = sample;
+                sample_draw_value_t ignored;
+                const sample_draw_status_t status = read_sample_draw_value(
+                    access,
+                    sample,
+                    nonfinite_policy,
+                    ignored);
+                if (status == sample_draw_status_t::FAILED) {
+                    return false;
+                }
+                if (status == sample_draw_status_t::DRAWABLE) {
+                    if (!have_held_candidate || t > held_timestamp_ns) {
+                        held_sample = sample;
+                        have_held_sample = true;
+                        have_held_candidate = true;
+                        held_timestamp_ns = t;
+                    }
+                }
+                else
+                if (nonfinite_policy == Nonfinite_sample_policy::BREAK_SEGMENT) {
+                    if (!have_held_candidate || t > held_timestamp_ns) {
+                        held_sample = nullptr;
+                        have_held_sample = false;
+                        have_held_candidate = true;
+                        held_timestamp_ns = t;
+                    }
+                }
                 continue;
             }
             if (interpolation == Series_interpolation::STEP_AFTER && t >= t_min) {
@@ -99,7 +114,16 @@ bool scan_series_range(
                 continue;
             }
         }
-        include_sample_range(access, sample, out_min, out_max, have_any);
+        if (include_sample_range(
+                access,
+                sample,
+                nonfinite_policy,
+                out_min,
+                out_max,
+                have_any) == sample_draw_status_t::FAILED)
+        {
+            return false;
+        }
     }
 
     const bool held_sample_reaches_visible_window =
@@ -107,10 +131,20 @@ bool scan_series_range(
         empty_window_behavior == Empty_window_behavior::HOLD_LAST_FORWARD;
     if (visible_only &&
         interpolation == Series_interpolation::STEP_AFTER &&
+        have_held_sample &&
         held_sample &&
         held_sample_reaches_visible_window)
     {
-        include_sample_range(access, held_sample, out_min, out_max, have_any);
+        if (include_sample_range(
+                access,
+                held_sample,
+                nonfinite_policy,
+                out_min,
+                out_max,
+                have_any) == sample_draw_status_t::FAILED)
+        {
+            return false;
+        }
     }
     return have_any;
 }
@@ -149,7 +183,8 @@ data_query_context_t make_query(
     const Data_access_policy& access,
     time_range_t time_window,
     Series_interpolation interpolation,
-    Empty_window_behavior empty_window_behavior)
+    Empty_window_behavior empty_window_behavior,
+    Nonfinite_sample_policy nonfinite_policy)
 {
     data_query_context_t query;
     query.access = &access;
@@ -157,7 +192,7 @@ data_query_context_t make_query(
     query.time_window = time_window;
     query.interpolation = interpolation;
     query.empty_window_behavior = empty_window_behavior;
-    query.nonfinite_policy = Nonfinite_sample_policy::BREAK_SEGMENT;
+    query.nonfinite_policy = nonfinite_policy;
     return query;
 }
 
@@ -267,6 +302,7 @@ bool query_or_scan_series_range(
     std::size_t level,
     Series_interpolation interpolation,
     Empty_window_behavior empty_window_behavior,
+    Nonfinite_sample_policy nonfinite_policy,
     bool visible_only,
     time_range_t time_window,
     auto_range_cache_t* cache,
@@ -278,7 +314,8 @@ bool query_or_scan_series_range(
         access,
         visible_only ? time_window : all_time_window(),
         interpolation,
-        empty_window_behavior);
+        empty_window_behavior,
+        nonfinite_policy);
     query.profiler = profiler;
 
     std::map<int, auto_range_cache_entry_t>* entries = cache_entries(cache, preview);
@@ -349,6 +386,7 @@ bool query_or_scan_series_range(
             level,
             interpolation,
             empty_window_behavior,
+            nonfinite_policy,
             visible_only,
             time_window.min_ns,
             time_window.max_ns,
@@ -410,6 +448,7 @@ bool resolve_series_collection_range(
             level,
             preview ? item->effective_preview_interpolation() : item->interpolation,
             item->empty_window_behavior,
+            item->nonfinite_policy,
             visible_only,
             visible_window,
             cache,

@@ -221,10 +221,13 @@ bool test_series_builder_qrhi_layers_append_replace_clear()
 
     plot::Rhi_series_builder builder;
     auto series = builder
+        .nonfinite_policy(plot::Nonfinite_sample_policy::SKIP)
         .qrhi_layer(layer_a)
         .qrhi_layer(layer_b)
         .build_value();
 
+    TEST_ASSERT(series.nonfinite_policy == plot::Nonfinite_sample_policy::SKIP,
+        "Rhi_series_builder nonfinite_policy mismatch");
     TEST_ASSERT(series.qrhi_layers.size() == 2, "qrhi_layer() must append");
     TEST_ASSERT(series.qrhi_layers[0] == layer_a, "first appended layer pointer mismatch");
     TEST_ASSERT(series.qrhi_layers[1] == layer_b, "second appended layer pointer mismatch");

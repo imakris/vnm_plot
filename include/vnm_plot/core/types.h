@@ -628,6 +628,36 @@ struct value_range_t
     float max = 0.0f;
 };
 
+namespace detail {
+
+enum class sample_draw_status_t
+{
+    DRAWABLE,
+    SKIPPED,
+    FAILED,
+};
+
+struct sample_draw_value_t
+{
+    float y = 0.0f;
+    float y_min = 0.0f;
+    float y_max = 0.0f;
+};
+
+sample_draw_status_t read_sample_draw_value(
+    const erased_access_policy_t& access,
+    const void* sample,
+    Nonfinite_sample_policy policy,
+    sample_draw_value_t& out);
+
+sample_draw_status_t read_sample_draw_value(
+    const Data_access_policy& access,
+    const void* sample,
+    Nonfinite_sample_policy policy,
+    sample_draw_value_t& out);
+
+} // namespace detail
+
 template<typename T>
 struct data_query_result_t
 {
@@ -901,6 +931,7 @@ struct series_data_t
     Display_style style = Display_style::LINE;
     Series_interpolation interpolation = Series_interpolation::LINEAR;
     Empty_window_behavior empty_window_behavior = Empty_window_behavior::DRAW_NOTHING;
+    Nonfinite_sample_policy nonfinite_policy = Nonfinite_sample_policy::BREAK_SEGMENT;
     glm::vec4 color = glm::vec4(0.16f, 0.45f, 0.64f, 1.0f);
     std::string series_label;
 

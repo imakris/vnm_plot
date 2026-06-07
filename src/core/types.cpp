@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -105,78 +106,23 @@ void include_range(value_range_t& range, bool& has_value, float low, float high)
     include_value(range, has_value, high);
 }
 
-sample_scan_status normalize_value(
-    float& value,
-    Nonfinite_sample_policy policy)
-{
-    if (std::isfinite(value)) {
-        return sample_scan_status::ACCEPTED;
-    }
-    if (policy == Nonfinite_sample_policy::REPLACE_WITH_ZERO) {
-        value = 0.0f;
-        return sample_scan_status::ACCEPTED;
-    }
-    if (policy == Nonfinite_sample_policy::REJECT_WINDOW) {
-        return sample_scan_status::FAILED;
-    }
-
-    return sample_scan_status::SKIPPED;
-}
-
-sample_scan_status normalize_range(
-    float& low,
-    float& high,
-    Nonfinite_sample_policy policy)
-{
-    const bool low_finite = std::isfinite(low);
-    const bool high_finite = std::isfinite(high);
-    if (low_finite && high_finite) {
-        return sample_scan_status::ACCEPTED;
-    }
-    if (policy == Nonfinite_sample_policy::REPLACE_WITH_ZERO) {
-        if (!low_finite) { low = 0.0f; }
-        if (!high_finite) { high = 0.0f; }
-        return sample_scan_status::ACCEPTED;
-    }
-    if (policy == Nonfinite_sample_policy::REJECT_WINDOW) {
-        return sample_scan_status::FAILED;
-    }
-
-    // BREAK_SEGMENT is a rendering distinction; aggregate range queries
-    // skip the nonfinite sample just like SKIP.
-    return sample_scan_status::SKIPPED;
-}
-
 sample_scan_status sample_value_range(
     const Data_access_policy& access,
     const void* sample,
     Nonfinite_sample_policy policy,
     value_range_t& range)
 {
-    if (access.get_range) {
-        auto [low, high] = access.get_range(sample);
-        const sample_scan_status status = normalize_range(low, high, policy);
-        if (status != sample_scan_status::ACCEPTED) {
-            return status;
-        }
-        if (high < low) {
-            std::swap(low, high);
-        }
-        range = {low, high};
+    detail::sample_draw_value_t draw_value;
+    const detail::sample_draw_status_t draw_status =
+        detail::read_sample_draw_value(access, sample, policy, draw_value);
+    if (draw_status == detail::sample_draw_status_t::DRAWABLE) {
+        range = {draw_value.y_min, draw_value.y_max};
         return sample_scan_status::ACCEPTED;
     }
-
-    if (access.get_value) {
-        float value = access.get_value(sample);
-        const sample_scan_status status = normalize_value(value, policy);
-        if (status != sample_scan_status::ACCEPTED) {
-            return status;
-        }
-        range = {value, value};
-        return sample_scan_status::ACCEPTED;
+    if (draw_status == detail::sample_draw_status_t::FAILED) {
+        return sample_scan_status::FAILED;
     }
-
-    return sample_scan_status::ACCEPTED;
+    return sample_scan_status::SKIPPED;
 }
 
 sample_scan_status sample_status_for_staging(
@@ -439,8 +385,8 @@ bool validate_match_range(
         if (!sample) {
             return false;
         }
-        if (sample_status_for_staging(access, sample, query.nonfinite_policy) !=
-            sample_scan_status::ACCEPTED)
+        if (sample_status_for_staging(access, sample, query.nonfinite_policy) ==
+            sample_scan_status::FAILED)
         {
             return false;
         }
@@ -459,6 +405,68 @@ sample_scan_status held_sample_status(
         return sample_scan_status::FAILED;
     }
     return sample_status_for_staging(access, sample, query.nonfinite_policy);
+}
+
+bool select_held_sample_index(
+    const data_snapshot_t& snapshot,
+    const Data_access_policy& access,
+    const data_query_context_t& query,
+    std::size_t candidate_index,
+    std::size_t& out_index,
+    bool& out_failed)
+{
+    out_failed = false;
+    if (candidate_index >= snapshot.count) {
+        out_failed = true;
+        return false;
+    }
+
+    if (query.nonfinite_policy == Nonfinite_sample_policy::SKIP) {
+        bool found = false;
+        std::int64_t held_timestamp_ns = 0;
+        for (std::size_t index = 0; index < snapshot.count; ++index) {
+            std::int64_t timestamp_ns = 0;
+            if (!timestamp_at(snapshot, access, index, timestamp_ns)) {
+                out_failed = true;
+                return false;
+            }
+            if (timestamp_ns >= query.time_window.min_ns) {
+                continue;
+            }
+            const sample_scan_status status = held_sample_status(
+                snapshot,
+                access,
+                query,
+                index);
+            if (status == sample_scan_status::ACCEPTED) {
+                if (!found || timestamp_ns > held_timestamp_ns) {
+                    found = true;
+                    held_timestamp_ns = timestamp_ns;
+                    out_index = index;
+                }
+                continue;
+            }
+            if (status == sample_scan_status::FAILED) {
+                out_failed = true;
+                return false;
+            }
+        }
+        return found;
+    }
+
+    const sample_scan_status status = held_sample_status(
+        snapshot,
+        access,
+        query,
+        candidate_index);
+    if (status == sample_scan_status::ACCEPTED) {
+        out_index = candidate_index;
+        return true;
+    }
+    if (status == sample_scan_status::FAILED) {
+        out_failed = true;
+    }
+    return false;
 }
 
 index_window_t validated_time_window(
@@ -484,16 +492,19 @@ index_window_t validated_time_window(
     }
 
     bool held_accepted = false;
+    std::size_t held_index = candidates.held_index;
     if (candidates.has_held) {
-        const sample_scan_status held_status = held_sample_status(
+        bool held_failed = false;
+        held_accepted = select_held_sample_index(
             snapshot,
             access,
             query,
-            candidates.held_index);
-        if (held_status == sample_scan_status::FAILED) {
+            candidates.held_index,
+            held_index,
+            held_failed);
+        if (held_failed) {
             return {0, 0, false};
         }
-        held_accepted = held_status == sample_scan_status::ACCEPTED;
     }
 
     if (!has_match && !held_accepted) {
@@ -502,8 +513,8 @@ index_window_t validated_time_window(
 
     if (!has_match) {
         return {
-            candidates.held_index,
-            candidates.held_index + 1,
+            held_index,
+            held_index + 1,
             true
         };
     }
@@ -511,13 +522,92 @@ index_window_t validated_time_window(
     std::size_t first = candidates.match_first;
     std::size_t last = candidates.match_last_exclusive;
     if (held_accepted) {
-        first = std::min(first, candidates.held_index);
-        last = std::max(last, candidates.held_index + 1);
+        first = std::min(first, held_index);
+        last = std::max(last, held_index + 1);
     }
     return {first, last, true};
 }
 
 } // namespace
+
+namespace detail {
+
+namespace {
+
+bool normalize_draw_component(
+    float& value,
+    Nonfinite_sample_policy policy)
+{
+    if (std::isfinite(value)) {
+        return true;
+    }
+    if (policy == Nonfinite_sample_policy::REPLACE_WITH_ZERO) {
+        value = 0.0f;
+        return true;
+    }
+    return false;
+}
+
+sample_draw_status_t status_for_nonfinite(
+    Nonfinite_sample_policy policy)
+{
+    return policy == Nonfinite_sample_policy::REJECT_WINDOW
+        ? sample_draw_status_t::FAILED
+        : sample_draw_status_t::SKIPPED;
+}
+
+} // namespace
+
+sample_draw_status_t read_sample_draw_value(
+    const erased_access_policy_t& access,
+    const void* sample,
+    Nonfinite_sample_policy policy,
+    sample_draw_value_t& out)
+{
+    out = sample_draw_value_t{};
+    if (!sample) {
+        return sample_draw_status_t::FAILED;
+    }
+
+    float y = access.has_value() ? access.value(sample) : 0.0f;
+    if (!normalize_draw_component(y, policy)) {
+        return status_for_nonfinite(policy);
+    }
+
+    float low = y;
+    float high = y;
+    if (access.has_range()) {
+        std::tie(low, high) = access.range(sample);
+    }
+    if (!normalize_draw_component(low, policy) ||
+        !normalize_draw_component(high, policy))
+    {
+        return status_for_nonfinite(policy);
+    }
+    if (high < low) {
+        std::swap(low, high);
+    }
+
+    out.y = y;
+    out.y_min = low;
+    out.y_max = high;
+    return sample_draw_status_t::DRAWABLE;
+}
+
+sample_draw_status_t read_sample_draw_value(
+    const Data_access_policy& access,
+    const void* sample,
+    Nonfinite_sample_policy policy,
+    sample_draw_value_t& out)
+{
+    return read_sample_draw_value(
+        make_erased_access_policy_view(access),
+        sample,
+        policy,
+        out);
+}
+
+} // namespace detail
 
 Time_order Data_source::time_order(std::size_t lod) const
 {

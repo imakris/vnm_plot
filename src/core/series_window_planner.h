@@ -59,9 +59,14 @@ struct series_window_planner_state_t
     double last_width_px = std::numeric_limits<double>::quiet_NaN();
     Empty_window_behavior last_empty_window_behavior =
         Empty_window_behavior::DRAW_NOTHING;
+    Nonfinite_sample_policy last_nonfinite_policy =
+        Nonfinite_sample_policy::BREAK_SEGMENT;
     double last_applied_pps = 0.0;
     bool last_hold_last_forward = false;
     Series_interpolation last_interpolation = Series_interpolation::LINEAR;
+    std::size_t last_source_count = 0;
+    std::size_t last_synthetic_hold_count = 0;
+    std::vector<drawable_sample_span_t> last_drawable_spans;
     std::int64_t uploaded_t_origin_ns = k_no_timestamp;
 };
 
@@ -90,6 +95,8 @@ struct series_window_plan_request_t
     double width_px = 0.0;
     Empty_window_behavior empty_window_behavior =
         Empty_window_behavior::DRAW_NOTHING;
+    Nonfinite_sample_policy nonfinite_policy =
+        Nonfinite_sample_policy::BREAK_SEGMENT;
     Display_style style = Display_style::NONE;
     Series_interpolation interpolation = Series_interpolation::LINEAR;
     Snapshot_requirement snapshot_requirement = Snapshot_requirement::Optional;

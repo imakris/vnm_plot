@@ -37,6 +37,12 @@ public:
         return *this;
     }
 
+    Series_builder& nonfinite_policy(Nonfinite_sample_policy policy)
+    {
+        m_series.nonfinite_policy = policy;
+        return *this;
+    }
+
     Series_builder& color(const glm::vec4& c)
     {
         m_series.color = c;

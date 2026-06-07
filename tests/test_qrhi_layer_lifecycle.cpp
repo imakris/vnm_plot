@@ -17,6 +17,7 @@
 
 #include <cstdint>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <memory>
 #include <string>
@@ -48,6 +49,7 @@ struct layer_event_t
     std::size_t source_count = 0;
     std::size_t synthetic_hold_count = 0;
     std::size_t gpu_count = 0;
+    std::vector<plot::drawable_sample_span_t> drawable_spans;
     std::uint64_t sample_sequence = 0;
     std::uint64_t snapshot_sequence = 0;
     std::int64_t t_min_ns = 0;
@@ -55,6 +57,8 @@ struct layer_event_t
     std::int64_t t_origin_ns = 0;
     float v_min = 0.0f;
     float v_max = 0.0f;
+    plot::Nonfinite_sample_policy nonfinite_policy =
+        plot::Nonfinite_sample_policy::BREAK_SEGMENT;
     QRhiBuffer* sample_buffer = nullptr;
     std::size_t sample_buffer_first_sample = 0;
     std::size_t sample_buffer_sample_count = 0;
@@ -256,12 +260,14 @@ public:
         event.source_count = ctx.window.source_count;
         event.synthetic_hold_count = ctx.window.synthetic_hold_count;
         event.gpu_count = ctx.window.gpu_count;
+        event.drawable_spans = ctx.window.drawable_spans;
         event.sample_sequence = ctx.window.sample_sequence;
         event.t_min_ns = ctx.window.t_min_ns;
         event.t_max_ns = ctx.window.t_max_ns;
         event.t_origin_ns = ctx.window.t_origin_ns;
         event.v_min = ctx.window.v_min;
         event.v_max = ctx.window.v_max;
+        event.nonfinite_policy = ctx.window.nonfinite_policy;
         event.sample_buffer = ctx.sample_buffer.buffer;
         event.sample_buffer_first_sample = ctx.sample_buffer.first_sample;
         event.sample_buffer_sample_count = ctx.sample_buffer.sample_count;
@@ -301,10 +307,12 @@ public:
         event.source_count = ctx.window.source_count;
         event.synthetic_hold_count = ctx.window.synthetic_hold_count;
         event.gpu_count = ctx.window.gpu_count;
+        event.drawable_spans = ctx.window.drawable_spans;
         event.sample_sequence = ctx.window.sample_sequence;
         event.t_min_ns = ctx.window.t_min_ns;
         event.t_max_ns = ctx.window.t_max_ns;
         event.t_origin_ns = ctx.window.t_origin_ns;
+        event.nonfinite_policy = ctx.window.nonfinite_policy;
         m_events.push_back(event);
     }
 
@@ -576,6 +584,29 @@ bool assert_compact_upload_state(
             prepare.sample_buffer_range_max_offset == sizeof(float) * 3u,
         std::string(label) + " sample buffer lane offsets mismatch");
 
+    return true;
+}
+
+bool assert_drawable_span(
+    const std::vector<plot::drawable_sample_span_t>& spans,
+    std::size_t index,
+    std::size_t source_first,
+    std::size_t source_count,
+    std::size_t gpu_first,
+    std::size_t gpu_count,
+    std::string_view label)
+{
+    TEST_ASSERT(index < spans.size(),
+        std::string(label) + " expected drawable span index");
+    const auto& span = spans[index];
+    TEST_ASSERT(span.source_first == source_first,
+        std::string(label) + " source_first mismatch");
+    TEST_ASSERT(span.source_count == source_count,
+        std::string(label) + " source_count mismatch");
+    TEST_ASSERT(span.gpu_first == gpu_first,
+        std::string(label) + " gpu_first mismatch");
+    TEST_ASSERT(span.gpu_count == gpu_count,
+        std::string(label) + " gpu_count mismatch");
     return true;
 }
 
@@ -1231,6 +1262,794 @@ bool test_builtin_staging_normalizes_finite_reversed_ranges()
         TEST_ASSERT(view_state.staging[i].y_min <= view_state.staging[i].y_max,
             "staged finite range endpoints should be ordered for GPU upload");
     }
+
+    return true;
+}
+
+bool test_nonfinite_break_and_skip_split_drawable_spans()
+{
+    constexpr std::int64_t k_second_ns = 1'000'000'000LL;
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+
+    struct policy_case_t
+    {
+        plot::Nonfinite_sample_policy policy =
+            plot::Nonfinite_sample_policy::BREAK_SEGMENT;
+        std::string_view layer_id;
+        int series_id = 0;
+    };
+
+    const policy_case_t cases[] = {
+        {plot::Nonfinite_sample_policy::BREAK_SEGMENT, "break-gap", 100},
+        {plot::Nonfinite_sample_policy::SKIP, "skip-gap", 101}
+    };
+
+    for (const auto& test_case : cases) {
+        std::vector<layer_event_t> events;
+        int create_count = 0;
+        auto layer = std::make_shared<Recording_layer>(
+            std::string(test_case.layer_id), 1, 20, events, create_count);
+        auto source = std::make_shared<Test_source>();
+        source->set_samples({
+            {0LL, 1.0f},
+            {1LL * k_second_ns, 2.0f},
+            {2LL * k_second_ns, nan},
+            {3LL * k_second_ns, 4.0f},
+            {4LL * k_second_ns, 5.0f}
+        });
+
+        auto series = make_builtin_plus_layer_series(
+            source,
+            plot::Display_style::DOTS_LINE_AREA,
+            {layer});
+        series->nonfinite_policy = test_case.policy;
+
+        std::map<int, std::shared_ptr<const plot::series_data_t>> series_map;
+        series_map[test_case.series_id] = series;
+
+        plot::Asset_loader asset_loader;
+        plot::Series_renderer renderer;
+        renderer.initialize(asset_loader);
+
+        Offscreen_rhi_fixture rhi_fixture;
+        std::string error_message;
+        TEST_ASSERT(rhi_fixture.initialize(error_message), error_message);
+
+        plot::Plot_config config;
+        const plot::frame_layout_result_t layout = make_layout();
+        plot::frame_context_t ctx = make_context(layout, config);
+        ctx.t0 = 0;
+        ctx.t1 = 4LL * k_second_ns;
+        ctx.t_available_min = ctx.t0;
+        ctx.t_available_max = ctx.t1;
+
+        TEST_ASSERT(
+            rhi_fixture.render_layer_frame(
+                renderer, ctx, series_map, events, error_message),
+            error_message);
+
+        const layer_event_t* prepare =
+            find_prepare_event(events, test_case.layer_id);
+        TEST_ASSERT(prepare, "expected nonfinite gap layer prepare event");
+        TEST_ASSERT(prepare->nonfinite_policy == test_case.policy,
+            "prepare window should expose the series nonfinite policy");
+        TEST_ASSERT(prepare->source_first == 0 && prepare->source_count == 5,
+            "gap window should keep the containing source window");
+        TEST_ASSERT(prepare->synthetic_hold_count == 0,
+            "ordinary nonfinite gap window should not synthesize a hold sample");
+        TEST_ASSERT(prepare->gpu_count == 4,
+            "gap window should compact only drawable samples");
+        TEST_ASSERT(prepare->drawable_spans.size() == 2,
+            "gap window should split drawable samples into two spans");
+        if (!assert_drawable_span(
+                prepare->drawable_spans, 0, 0, 2, 0, 2, test_case.layer_id) ||
+            !assert_drawable_span(
+                prepare->drawable_spans, 1, 3, 2, 2, 2, test_case.layer_id))
+        {
+            return false;
+        }
+
+        auto state_it = renderer.m_vbo_states.find(test_case.series_id);
+        TEST_ASSERT(state_it != renderer.m_vbo_states.end(),
+            "expected renderer VBO state for nonfinite gap test");
+        const auto& view_state = state_it->second.main_view;
+        TEST_ASSERT(view_state.last_staged_sample_count == 4,
+            "gap staging should upload four compact samples");
+        TEST_ASSERT(view_state.staging[0].y == 1.0f &&
+                view_state.staging[1].y == 2.0f &&
+                view_state.staging[2].y == 4.0f &&
+                view_state.staging[3].y == 5.0f,
+            "gap staging should omit the nonfinite sample without reordering valid samples");
+        const std::size_t expected_builtin_span_count =
+            test_case.policy == plot::Nonfinite_sample_policy::SKIP ? 1u : 2u;
+        const std::size_t expected_builtin_segment_count =
+            test_case.policy == plot::Nonfinite_sample_policy::SKIP ? 3u : 2u;
+        TEST_ASSERT(view_state.last_recorded_line_span_count ==
+                    expected_builtin_span_count &&
+                view_state.last_recorded_line_segment_count ==
+                    expected_builtin_segment_count,
+            "LINE rendering should break only for BREAK_SEGMENT and compact SKIP gaps");
+        TEST_ASSERT(view_state.last_recorded_area_span_count ==
+                    expected_builtin_span_count &&
+                view_state.last_recorded_area_segment_count ==
+                    expected_builtin_segment_count,
+            "AREA rendering should break only for BREAK_SEGMENT and compact SKIP gaps");
+        TEST_ASSERT(view_state.last_recorded_dot_sample_count == 4,
+            "DOTS rendering should draw only compact valid samples");
+        TEST_ASSERT(view_state.last_line_window_sample_count == 4,
+            "LINE padded windows should be built per drawable span");
+
+        if (!assert_compact_upload_state(
+                renderer,
+                test_case.series_id,
+                *prepare,
+                4,
+                test_case.layer_id))
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool test_nonfinite_replace_with_zero_keeps_contiguous_span()
+{
+    constexpr std::int64_t k_second_ns = 1'000'000'000LL;
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+
+    std::vector<layer_event_t> events;
+    int create_count = 0;
+    auto layer = std::make_shared<Recording_layer>(
+        "replace-zero", 1, 20, events, create_count);
+    auto source = std::make_shared<Test_source>();
+    source->set_samples({
+        {0LL, 1.0f},
+        {1LL * k_second_ns, 2.0f},
+        {2LL * k_second_ns, nan},
+        {3LL * k_second_ns, 4.0f},
+        {4LL * k_second_ns, 5.0f}
+    });
+
+    auto series = make_builtin_plus_layer_series(
+        source,
+        plot::Display_style::DOTS_LINE_AREA,
+        {layer});
+    series->nonfinite_policy =
+        plot::Nonfinite_sample_policy::REPLACE_WITH_ZERO;
+
+    std::map<int, std::shared_ptr<const plot::series_data_t>> series_map;
+    const int series_id = 102;
+    series_map[series_id] = series;
+
+    plot::Asset_loader asset_loader;
+    plot::Series_renderer renderer;
+    renderer.initialize(asset_loader);
+
+    Offscreen_rhi_fixture rhi_fixture;
+    std::string error_message;
+    TEST_ASSERT(rhi_fixture.initialize(error_message), error_message);
+
+    plot::Plot_config config;
+    const plot::frame_layout_result_t layout = make_layout();
+    plot::frame_context_t ctx = make_context(layout, config);
+    ctx.t0 = 0;
+    ctx.t1 = 4LL * k_second_ns;
+    ctx.t_available_min = ctx.t0;
+    ctx.t_available_max = ctx.t1;
+
+    TEST_ASSERT(
+        rhi_fixture.render_layer_frame(
+            renderer, ctx, series_map, events, error_message),
+        error_message);
+
+    const layer_event_t* prepare = find_prepare_event(events, "replace-zero");
+    TEST_ASSERT(prepare, "expected replace-zero layer prepare event");
+    TEST_ASSERT(prepare->source_count == 5 && prepare->gpu_count == 5,
+        "REPLACE_WITH_ZERO should keep all source samples drawable");
+    TEST_ASSERT(prepare->drawable_spans.size() == 1,
+        "REPLACE_WITH_ZERO should keep a contiguous drawable span");
+    if (!assert_drawable_span(
+            prepare->drawable_spans, 0, 0, 5, 0, 5, "replace-zero"))
+    {
+        return false;
+    }
+
+    auto state_it = renderer.m_vbo_states.find(series_id);
+    TEST_ASSERT(state_it != renderer.m_vbo_states.end(),
+        "expected renderer VBO state for replace-zero test");
+    const auto& view_state = state_it->second.main_view;
+    TEST_ASSERT(view_state.last_staged_sample_count == 5,
+        "REPLACE_WITH_ZERO should stage all five samples");
+    TEST_ASSERT(view_state.staging[2].y == 0.0f &&
+            view_state.staging[2].y_min == 0.0f &&
+            view_state.staging[2].y_max == 0.0f,
+        "REPLACE_WITH_ZERO should stage zero for nonfinite value/range lanes");
+    TEST_ASSERT(view_state.last_recorded_line_span_count == 1 &&
+            view_state.last_recorded_line_segment_count == 4,
+        "REPLACE_WITH_ZERO line rendering should remain contiguous");
+    TEST_ASSERT(view_state.last_recorded_area_span_count == 1 &&
+            view_state.last_recorded_area_segment_count == 4,
+        "REPLACE_WITH_ZERO area rendering should remain contiguous");
+    TEST_ASSERT(view_state.last_recorded_dot_sample_count == 5,
+        "REPLACE_WITH_ZERO dots should draw every compact sample");
+
+    return true;
+}
+
+bool test_nonfinite_reject_window_suppresses_drawable_upload()
+{
+    constexpr std::int64_t k_second_ns = 1'000'000'000LL;
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+
+    std::vector<layer_event_t> events;
+    int create_count = 0;
+    auto layer = std::make_shared<Recording_layer>(
+        "reject-window", 1, 20, events, create_count);
+    auto source = std::make_shared<Test_source>();
+    source->set_samples({
+        {0LL, 1.0f},
+        {1LL * k_second_ns, 2.0f},
+        {2LL * k_second_ns, nan},
+        {3LL * k_second_ns, 4.0f}
+    });
+
+    auto series = make_builtin_plus_layer_series(
+        source,
+        plot::Display_style::DOTS_LINE_AREA,
+        {layer});
+    series->nonfinite_policy = plot::Nonfinite_sample_policy::REJECT_WINDOW;
+
+    std::map<int, std::shared_ptr<const plot::series_data_t>> series_map;
+    const int series_id = 103;
+    series_map[series_id] = series;
+
+    plot::Asset_loader asset_loader;
+    plot::Series_renderer renderer;
+    renderer.initialize(asset_loader);
+
+    Offscreen_rhi_fixture rhi_fixture;
+    std::string error_message;
+    TEST_ASSERT(rhi_fixture.initialize(error_message), error_message);
+
+    plot::Plot_config config;
+    const plot::frame_layout_result_t layout = make_layout();
+    plot::frame_context_t ctx = make_context(layout, config);
+    ctx.t0 = 0;
+    ctx.t1 = 3LL * k_second_ns;
+    ctx.t_available_min = ctx.t0;
+    ctx.t_available_max = ctx.t1;
+
+    TEST_ASSERT(
+        rhi_fixture.render_layer_frame(
+            renderer, ctx, series_map, events, error_message),
+        error_message);
+
+    TEST_ASSERT(!find_prepare_event(events, "reject-window"),
+        "REJECT_WINDOW should not prepare custom layers for a failed drawable window");
+    TEST_ASSERT(renderer.m_last_recorded_draw_z_orders.empty(),
+        "REJECT_WINDOW should not record built-in draw commands for a failed window");
+    auto state_it = renderer.m_vbo_states.find(series_id);
+    TEST_ASSERT(state_it != renderer.m_vbo_states.end(),
+        "expected renderer VBO state for reject-window test");
+    const auto& view_state = state_it->second.main_view;
+    TEST_ASSERT(view_state.last_sample_upload_count == 0 &&
+            view_state.last_staged_sample_count == 0,
+        "REJECT_WINDOW should not upload compact sample data");
+
+    return true;
+}
+
+bool test_nonfinite_reject_window_invalidates_prior_upload_before_busy()
+{
+    constexpr std::int64_t k_second_ns = 1'000'000'000LL;
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+
+    auto source = std::make_shared<Test_source>();
+    source->set_samples({
+        {0LL, 1.0f},
+        {1LL * k_second_ns, 2.0f},
+        {2LL * k_second_ns, 3.0f}
+    });
+
+    auto series = std::make_shared<plot::series_data_t>();
+    series->style = plot::Display_style::DOTS;
+    series->nonfinite_policy = plot::Nonfinite_sample_policy::REJECT_WINDOW;
+    series->data_source = source;
+    series->access = make_access_policy();
+
+    std::map<int, std::shared_ptr<const plot::series_data_t>> series_map;
+    const int series_id = 104;
+    series_map[series_id] = series;
+
+    plot::Asset_loader asset_loader;
+    plot::Series_renderer renderer;
+    renderer.initialize(asset_loader);
+
+    Offscreen_rhi_fixture rhi_fixture;
+    std::string error_message;
+    TEST_ASSERT(rhi_fixture.initialize(error_message), error_message);
+
+    std::vector<layer_event_t> events;
+    plot::Plot_config config;
+    const plot::frame_layout_result_t layout = make_layout();
+    plot::frame_context_t ctx = make_context(layout, config);
+    ctx.t0 = 0;
+    ctx.t1 = 2LL * k_second_ns;
+    ctx.t_available_min = ctx.t0;
+    ctx.t_available_max = ctx.t1;
+
+    TEST_ASSERT(
+        rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
+        error_message);
+    auto state_it = renderer.m_vbo_states.find(series_id);
+    TEST_ASSERT(state_it != renderer.m_vbo_states.end(),
+        "expected renderer VBO state for reject stale fallback test");
+    TEST_ASSERT(state_it->second.main_view.has_uploaded_vbo,
+        "initial finite REJECT_WINDOW frame should upload samples");
+    TEST_ASSERT(!renderer.m_last_recorded_draw_z_orders.empty(),
+        "initial finite REJECT_WINDOW frame should draw");
+
+    source->set_samples({
+        {0LL, 1.0f},
+        {1LL * k_second_ns, nan},
+        {2LL * k_second_ns, 3.0f}
+    });
+    events.clear();
+    TEST_ASSERT(
+        rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
+        error_message);
+    TEST_ASSERT(!state_it->second.main_view.has_uploaded_vbo,
+        "REJECT_WINDOW failure must invalidate the previous uploaded VBO");
+    TEST_ASSERT(renderer.m_last_recorded_draw_z_orders.empty(),
+        "REJECT_WINDOW failure should not draw stale finite samples");
+
+    source->return_busy_once();
+    events.clear();
+    TEST_ASSERT(
+        rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
+        error_message);
+    TEST_ASSERT(!state_it->second.main_view.has_uploaded_vbo,
+        "BUSY after REJECT_WINDOW failure must not resurrect stale VBO fallback");
+    TEST_ASSERT(renderer.m_last_recorded_draw_z_orders.empty(),
+        "BUSY after REJECT_WINDOW failure should not draw stale samples");
+
+    return true;
+}
+
+bool test_non_drawable_window_invalidates_prior_upload_before_fast_path()
+{
+    constexpr std::int64_t k_second_ns = 1'000'000'000LL;
+
+    auto source = std::make_shared<Test_source>();
+    source->set_samples({
+        {0LL, 1.0f},
+        {1LL * k_second_ns, 2.0f},
+        {10LL * k_second_ns, 10.0f}
+    });
+
+    auto series = std::make_shared<plot::series_data_t>();
+    series->style = plot::Display_style::DOTS;
+    series->data_source = source;
+    series->access = make_access_policy();
+
+    std::map<int, std::shared_ptr<const plot::series_data_t>> series_map;
+    const int series_id = 105;
+    series_map[series_id] = series;
+
+    plot::Asset_loader asset_loader;
+    plot::Series_renderer renderer;
+    renderer.initialize(asset_loader);
+
+    Offscreen_rhi_fixture rhi_fixture;
+    std::string error_message;
+    TEST_ASSERT(rhi_fixture.initialize(error_message), error_message);
+
+    std::vector<layer_event_t> events;
+    plot::Plot_config config;
+    const plot::frame_layout_result_t layout = make_layout();
+    plot::frame_context_t ctx = make_context(layout, config);
+    ctx.t0 = 0;
+    ctx.t1 = 1LL * k_second_ns;
+    ctx.t_available_min = ctx.t0;
+    ctx.t_available_max = ctx.t1;
+
+    TEST_ASSERT(
+        rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
+        error_message);
+    auto state_it = renderer.m_vbo_states.find(series_id);
+    TEST_ASSERT(state_it != renderer.m_vbo_states.end(),
+        "expected renderer VBO state for non-drawable fast-path test");
+    TEST_ASSERT(state_it->second.main_view.has_uploaded_vbo &&
+            state_it->second.main_view.last_staged_sample_count > 1,
+        "initial DOTS frame should upload multiple samples");
+
+    source->set_samples({
+        {10LL * k_second_ns, 10.0f}
+    });
+    series->style = plot::Display_style::LINE;
+    ctx.t0 = 10LL * k_second_ns;
+    ctx.t1 = 11LL * k_second_ns;
+    ctx.t_available_min = ctx.t0;
+    ctx.t_available_max = ctx.t1;
+    events.clear();
+    TEST_ASSERT(
+        rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
+        error_message);
+    TEST_ASSERT(!state_it->second.main_view.has_uploaded_vbo,
+        "non-drawable singleton LINE frame must invalidate the previous upload");
+    TEST_ASSERT(renderer.m_last_recorded_draw_z_orders.empty(),
+        "non-drawable singleton LINE frame should not record draw commands");
+
+    series->style = plot::Display_style::DOTS;
+    events.clear();
+    TEST_ASSERT(
+        rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
+        error_message);
+    TEST_ASSERT(state_it->second.main_view.has_uploaded_vbo,
+        "DOTS frame after non-drawable singleton should upload its own VBO");
+    TEST_ASSERT(state_it->second.main_view.last_sample_upload_count == 1 &&
+            state_it->second.main_view.last_staged_sample_count == 1,
+        "DOTS frame after non-drawable singleton must not reuse the old two-sample upload");
+    TEST_ASSERT(state_it->second.main_view.staging[0].y == 10.0f,
+        "DOTS frame after non-drawable singleton should stage the singleton sample");
+
+    return true;
+}
+
+bool test_non_rhi_prepare_invalidates_prior_upload_before_fast_path()
+{
+    constexpr std::int64_t k_second_ns = 1'000'000'000LL;
+
+    auto source = std::make_shared<Test_source>();
+    source->set_samples({
+        {0LL, 1.0f},
+        {1LL * k_second_ns, 2.0f},
+        {10LL * k_second_ns, 10.0f}
+    });
+
+    auto series = std::make_shared<plot::series_data_t>();
+    series->style = plot::Display_style::DOTS;
+    series->data_source = source;
+    series->access = make_access_policy();
+
+    std::map<int, std::shared_ptr<const plot::series_data_t>> series_map;
+    const int series_id = 110;
+    series_map[series_id] = series;
+
+    plot::Asset_loader asset_loader;
+    plot::Series_renderer renderer;
+    renderer.initialize(asset_loader);
+
+    Offscreen_rhi_fixture rhi_fixture;
+    std::string error_message;
+    TEST_ASSERT(rhi_fixture.initialize(error_message), error_message);
+
+    std::vector<layer_event_t> events;
+    plot::Plot_config config;
+    const plot::frame_layout_result_t layout = make_layout();
+    plot::frame_context_t ctx = make_context(layout, config);
+    ctx.t0 = 0;
+    ctx.t1 = 1LL * k_second_ns;
+    ctx.t_available_min = ctx.t0;
+    ctx.t_available_max = ctx.t1;
+
+    TEST_ASSERT(
+        rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
+        error_message);
+    auto state_it = renderer.m_vbo_states.find(series_id);
+    TEST_ASSERT(state_it != renderer.m_vbo_states.end(),
+        "expected renderer VBO state for non-RHI prepare test");
+    TEST_ASSERT(state_it->second.main_view.has_uploaded_vbo &&
+            state_it->second.main_view.last_staged_sample_count > 1,
+        "initial QRhi frame should upload multiple samples");
+
+    plot::frame_context_t non_rhi_ctx = make_context(layout, config);
+    non_rhi_ctx.t0 = 10LL * k_second_ns;
+    non_rhi_ctx.t1 = 11LL * k_second_ns;
+    non_rhi_ctx.t_available_min = non_rhi_ctx.t0;
+    non_rhi_ctx.t_available_max = non_rhi_ctx.t1;
+    renderer.prepare(non_rhi_ctx, series_map);
+    TEST_ASSERT(!state_it->second.main_view.has_uploaded_vbo,
+        "non-RHI prepare must invalidate the previous upload for its planned window");
+
+    events.clear();
+    TEST_ASSERT(
+        rhi_fixture.render_layer_frame(
+            renderer, non_rhi_ctx, series_map, events, error_message),
+        error_message);
+    TEST_ASSERT(state_it->second.main_view.has_uploaded_vbo,
+        "QRhi frame after non-RHI prepare should upload its own VBO");
+    TEST_ASSERT(state_it->second.main_view.last_sample_upload_count == 1,
+        "QRhi frame after non-RHI prepare must not reuse the old upload");
+    TEST_ASSERT(state_it->second.main_view.last_staged_sample_count == 2,
+        "QRhi frame after non-RHI prepare should stage the new expanded window");
+    TEST_ASSERT(state_it->second.main_view.staging[0].y == 2.0f &&
+            state_it->second.main_view.staging[1].y == 10.0f,
+        "QRhi frame after non-RHI prepare should stage samples from the new window");
+
+    return true;
+}
+
+bool test_nonfinite_hold_forward_policy_controls_held_sample()
+{
+    constexpr std::int64_t k_second_ns = 1'000'000'000LL;
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+
+    struct hold_case_t
+    {
+        plot::Nonfinite_sample_policy policy =
+            plot::Nonfinite_sample_policy::BREAK_SEGMENT;
+        std::string_view layer_id;
+        int series_id = 0;
+        bool expect_prepare = false;
+        std::size_t expected_source_first = 0;
+        float expected_value = 0.0f;
+    };
+
+    const hold_case_t cases[] = {
+        {plot::Nonfinite_sample_policy::BREAK_SEGMENT, "hold-break", 106, false, 0, 0.0f},
+        {plot::Nonfinite_sample_policy::SKIP, "hold-skip", 107, true, 0, 1.0f},
+        {plot::Nonfinite_sample_policy::REJECT_WINDOW, "hold-reject", 108, false, 0, 0.0f},
+        {plot::Nonfinite_sample_policy::REPLACE_WITH_ZERO, "hold-zero", 109, true, 1, 0.0f}
+    };
+
+    for (const auto& test_case : cases) {
+        std::vector<layer_event_t> events;
+        int create_count = 0;
+        auto layer = std::make_shared<Recording_layer>(
+            std::string(test_case.layer_id), 1, 20, events, create_count);
+        auto source = std::make_shared<Test_source>();
+        source->set_samples({
+            {0LL, 1.0f},
+            {2LL * k_second_ns, nan}
+        });
+
+        auto series = make_builtin_plus_layer_series(
+            source,
+            plot::Display_style::LINE,
+            {layer});
+        series->interpolation = plot::Series_interpolation::STEP_AFTER;
+        series->empty_window_behavior =
+            plot::Empty_window_behavior::HOLD_LAST_FORWARD;
+        series->nonfinite_policy = test_case.policy;
+
+        std::map<int, std::shared_ptr<const plot::series_data_t>> series_map;
+        series_map[test_case.series_id] = series;
+
+        plot::Asset_loader asset_loader;
+        plot::Series_renderer renderer;
+        renderer.initialize(asset_loader);
+
+        Offscreen_rhi_fixture rhi_fixture;
+        std::string error_message;
+        TEST_ASSERT(rhi_fixture.initialize(error_message), error_message);
+
+        plot::Plot_config config;
+        const plot::frame_layout_result_t layout = make_layout();
+        plot::frame_context_t ctx = make_context(layout, config);
+        ctx.t0 = 3LL * k_second_ns;
+        ctx.t1 = 4LL * k_second_ns;
+        ctx.t_available_min = ctx.t0;
+        ctx.t_available_max = ctx.t1;
+
+        TEST_ASSERT(
+            rhi_fixture.render_layer_frame(
+                renderer, ctx, series_map, events, error_message),
+            error_message);
+
+        const layer_event_t* prepare =
+            find_prepare_event(events, test_case.layer_id);
+        if (!test_case.expect_prepare) {
+            TEST_ASSERT(!prepare,
+                "non-drawable held sample should suppress layer prepare");
+            TEST_ASSERT(renderer.m_last_recorded_draw_z_orders.empty(),
+                "non-drawable held sample should suppress built-in draws");
+            continue;
+        }
+
+        TEST_ASSERT(prepare, "REPLACE_WITH_ZERO held sample should prepare");
+        TEST_ASSERT(prepare->source_first == test_case.expected_source_first &&
+                prepare->source_count == 1,
+            "drawable held sample should use the expected source sample");
+        TEST_ASSERT(prepare->synthetic_hold_count == 1 &&
+                prepare->gpu_count == 2,
+            "drawable hold should stage source plus synthetic hold samples");
+        TEST_ASSERT(prepare->drawable_spans.size() == 1,
+            "drawable held sample should have one drawable span");
+        if (!assert_drawable_span(
+                prepare->drawable_spans,
+                0,
+                test_case.expected_source_first,
+                1,
+                0,
+                2,
+                test_case.layer_id))
+        {
+            return false;
+        }
+
+        auto state_it = renderer.m_vbo_states.find(test_case.series_id);
+        TEST_ASSERT(state_it != renderer.m_vbo_states.end(),
+            "expected renderer VBO state for replace-zero held sample");
+        const auto& view_state = state_it->second.main_view;
+        TEST_ASSERT(view_state.last_staged_sample_count == 2,
+            "drawable held sample should stage two GPU samples");
+        TEST_ASSERT(view_state.staging[0].y == test_case.expected_value &&
+                view_state.staging[1].y == test_case.expected_value,
+            "held source and synthetic samples should stage the expected value");
+    }
+
+    return true;
+}
+
+bool test_nonfinite_skip_hold_forward_preserves_earlier_held_sample_with_visible_data()
+{
+    constexpr std::int64_t k_second_ns = 1'000'000'000LL;
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+
+    std::vector<layer_event_t> events;
+    int create_count = 0;
+    auto layer = std::make_shared<Recording_layer>(
+        "hold-skip-visible", 1, 20, events, create_count);
+    auto source = std::make_shared<Test_source>();
+    source->set_samples({
+        {0LL, 7.0f},
+        {2LL * k_second_ns, nan},
+        {5LL * k_second_ns, 9.0f}
+    });
+
+    auto series = make_builtin_plus_layer_series(
+        source,
+        plot::Display_style::DOTS_LINE_AREA,
+        {layer});
+    series->interpolation = plot::Series_interpolation::STEP_AFTER;
+    series->empty_window_behavior =
+        plot::Empty_window_behavior::HOLD_LAST_FORWARD;
+    series->nonfinite_policy = plot::Nonfinite_sample_policy::SKIP;
+
+    std::map<int, std::shared_ptr<const plot::series_data_t>> series_map;
+    const int series_id = 111;
+    series_map[series_id] = series;
+
+    plot::Asset_loader asset_loader;
+    plot::Series_renderer renderer;
+    renderer.initialize(asset_loader);
+
+    Offscreen_rhi_fixture rhi_fixture;
+    std::string error_message;
+    TEST_ASSERT(rhi_fixture.initialize(error_message), error_message);
+
+    plot::Plot_config config;
+    const plot::frame_layout_result_t layout = make_layout();
+    plot::frame_context_t ctx = make_context(layout, config);
+    ctx.t0 = 3LL * k_second_ns;
+    ctx.t1 = 6LL * k_second_ns;
+    ctx.t_available_min = ctx.t0;
+    ctx.t_available_max = ctx.t1;
+
+    TEST_ASSERT(
+        rhi_fixture.render_layer_frame(
+            renderer, ctx, series_map, events, error_message),
+        error_message);
+
+    const layer_event_t* prepare =
+        find_prepare_event(events, "hold-skip-visible");
+    TEST_ASSERT(prepare,
+        "SKIP held sample with later visible data should prepare a window");
+    TEST_ASSERT(prepare->source_first == 0 && prepare->source_count == 3,
+        "SKIP held sample should widen the containing source window backward");
+    TEST_ASSERT(prepare->synthetic_hold_count == 1 &&
+            prepare->gpu_count == 3,
+        "SKIP held window should stage held, visible, and synthetic hold samples");
+    TEST_ASSERT(prepare->drawable_spans.size() == 2,
+        "SKIP held window should keep the skipped sample as a drawable gap");
+    if (!assert_drawable_span(
+            prepare->drawable_spans, 0, 0, 1, 0, 1, "hold-skip-visible") ||
+        !assert_drawable_span(
+            prepare->drawable_spans, 1, 2, 1, 1, 2, "hold-skip-visible"))
+    {
+        return false;
+    }
+
+    const auto state_it = renderer.m_vbo_states.find(series_id);
+    TEST_ASSERT(state_it != renderer.m_vbo_states.end(),
+        "expected renderer VBO state for SKIP held visible test");
+    const auto& view_state = state_it->second.main_view;
+    TEST_ASSERT(view_state.last_staged_sample_count == 3,
+        "SKIP held visible window should stage three compact GPU samples");
+    TEST_ASSERT(view_state.staging[0].y == 7.0f &&
+            view_state.staging[1].y == 9.0f &&
+            view_state.staging[2].y == 9.0f,
+        "SKIP held visible staging should preserve held, visible, and hold values");
+    TEST_ASSERT(view_state.last_recorded_line_span_count == 1 &&
+            view_state.last_recorded_line_segment_count == 4,
+        "SKIP held visible LINE rendering should connect the compact held and visible samples");
+    TEST_ASSERT(view_state.last_recorded_area_span_count == 1 &&
+            view_state.last_recorded_area_segment_count == 2,
+        "SKIP held visible AREA rendering should connect the compact held and visible samples");
+    TEST_ASSERT(view_state.last_recorded_dot_sample_count == 3,
+        "DOTS should draw the compact held and visible samples");
+
+    return true;
+}
+
+bool test_nonfinite_skip_hold_forward_ignores_future_padding_without_visible_data()
+{
+    constexpr std::int64_t k_second_ns = 1'000'000'000LL;
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+
+    std::vector<layer_event_t> events;
+    int create_count = 0;
+    auto layer = std::make_shared<Recording_layer>(
+        "hold-skip-padding", 1, 20, events, create_count);
+    auto source = std::make_shared<Test_source>();
+    source->set_samples({
+        {0LL, 7.0f},
+        {2LL * k_second_ns, nan},
+        {5LL * k_second_ns, 9.0f}
+    });
+
+    auto series = make_builtin_plus_layer_series(
+        source,
+        plot::Display_style::DOTS_LINE_AREA,
+        {layer});
+    series->interpolation = plot::Series_interpolation::STEP_AFTER;
+    series->empty_window_behavior =
+        plot::Empty_window_behavior::HOLD_LAST_FORWARD;
+    series->nonfinite_policy = plot::Nonfinite_sample_policy::SKIP;
+
+    std::map<int, std::shared_ptr<const plot::series_data_t>> series_map;
+    const int series_id = 112;
+    series_map[series_id] = series;
+
+    plot::Asset_loader asset_loader;
+    plot::Series_renderer renderer;
+    renderer.initialize(asset_loader);
+
+    Offscreen_rhi_fixture rhi_fixture;
+    std::string error_message;
+    TEST_ASSERT(rhi_fixture.initialize(error_message), error_message);
+
+    plot::Plot_config config;
+    const plot::frame_layout_result_t layout = make_layout();
+    plot::frame_context_t ctx = make_context(layout, config);
+    ctx.t0 = 3LL * k_second_ns;
+    ctx.t1 = 4LL * k_second_ns;
+    ctx.t_available_min = ctx.t0;
+    ctx.t_available_max = ctx.t1;
+
+    TEST_ASSERT(
+        rhi_fixture.render_layer_frame(
+            renderer, ctx, series_map, events, error_message),
+        error_message);
+
+    const layer_event_t* prepare =
+        find_prepare_event(events, "hold-skip-padding");
+    TEST_ASSERT(prepare,
+        "SKIP held sample should prepare even when only future padding exists");
+    TEST_ASSERT(prepare->source_first == 0 && prepare->source_count == 1,
+        "SKIP held-only window should collapse to the earlier drawable held sample");
+    TEST_ASSERT(prepare->synthetic_hold_count == 1 &&
+            prepare->gpu_count == 2,
+        "SKIP held-only window should stage source plus synthetic hold samples");
+    TEST_ASSERT(prepare->drawable_spans.size() == 1,
+        "SKIP held-only window should have one drawable span");
+    if (!assert_drawable_span(
+            prepare->drawable_spans, 0, 0, 1, 0, 2, "hold-skip-padding"))
+    {
+        return false;
+    }
+
+    const auto state_it = renderer.m_vbo_states.find(series_id);
+    TEST_ASSERT(state_it != renderer.m_vbo_states.end(),
+        "expected renderer VBO state for SKIP held padding test");
+    const auto& view_state = state_it->second.main_view;
+    TEST_ASSERT(view_state.last_staged_sample_count == 2,
+        "SKIP held-only window should stage two compact GPU samples");
+    TEST_ASSERT(view_state.staging[0].y == 7.0f &&
+            view_state.staging[1].y == 7.0f,
+        "SKIP held-only staging should ignore skipped pre-window and future padding samples");
 
     return true;
 }
@@ -2426,6 +3245,15 @@ int main()
     RUN_TEST(test_direct_member_policy_uses_member_dispatch_in_renderer_staging);
     RUN_TEST(test_access_policy_change_reuploads_builtin_samples);
     RUN_TEST(test_builtin_staging_normalizes_finite_reversed_ranges);
+    RUN_TEST(test_nonfinite_break_and_skip_split_drawable_spans);
+    RUN_TEST(test_nonfinite_replace_with_zero_keeps_contiguous_span);
+    RUN_TEST(test_nonfinite_reject_window_suppresses_drawable_upload);
+    RUN_TEST(test_nonfinite_reject_window_invalidates_prior_upload_before_busy);
+    RUN_TEST(test_non_drawable_window_invalidates_prior_upload_before_fast_path);
+    RUN_TEST(test_non_rhi_prepare_invalidates_prior_upload_before_fast_path);
+    RUN_TEST(test_nonfinite_hold_forward_policy_controls_held_sample);
+    RUN_TEST(test_nonfinite_skip_hold_forward_preserves_earlier_held_sample_with_visible_data);
+    RUN_TEST(test_nonfinite_skip_hold_forward_ignores_future_padding_without_visible_data);
     RUN_TEST(test_global_draw_order_sorts_builtins_across_series_and_custom_layers);
     RUN_TEST(test_builtin_draw_commands_sort_relative_to_custom_layers);
     RUN_TEST(test_builtins_do_not_use_qrhi_layer_cache);

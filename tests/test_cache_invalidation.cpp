@@ -11,6 +11,7 @@
 
 #include <cstdint>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <memory>
 #include <string>
@@ -534,6 +535,42 @@ bool test_visible_step_after_hold_forward_contributes_held_sample()
                 "visible STEP_AFTER auto-range should try query_v_range before fallback");
     TEST_ASSERT(source->snapshot_calls == 1,
                 "unsupported STEP_AFTER query should fall back to one snapshot scan");
+
+    return true;
+}
+
+bool test_visible_step_after_skip_fallback_keeps_earlier_drawable_held_sample()
+{
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+
+    auto source = std::make_shared<Query_range_source>();
+    source->query_status = Data_query_status::UNSUPPORTED;
+    source->samples = {
+        {5, -4.0f},
+        {9, nan},
+        {15, 6.0f},
+    };
+
+    auto series = make_series(source);
+    series->interpolation = Series_interpolation::STEP_AFTER;
+    series->empty_window_behavior = Empty_window_behavior::HOLD_LAST_FORWARD;
+    series->nonfinite_policy = plot::Nonfinite_sample_policy::SKIP;
+
+    Plot_config config;
+    config.auto_v_range_mode = Auto_v_range_mode::VISIBLE;
+
+    const auto range = plot::detail::resolve_main_v_range(
+        make_series_map(series),
+        make_data_config(),
+        config,
+        true);
+
+    TEST_ASSERT(range.first == -4.0f && range.second == 6.0f,
+                "SKIP fallback auto-range should keep the earlier drawable held sample");
+    TEST_ASSERT(source->query_calls == 1,
+                "SKIP fallback auto-range should try query_v_range before fallback");
+    TEST_ASSERT(source->snapshot_calls == 1,
+                "SKIP fallback auto-range should take one snapshot scan");
 
     return true;
 }
@@ -1085,6 +1122,7 @@ int main()
     RUN_TEST(test_negative_auto_range_excludes_zero_by_default);
     RUN_TEST(test_nonnegative_auto_range_floor_policy_includes_zero);
     RUN_TEST(test_visible_step_after_hold_forward_contributes_held_sample);
+    RUN_TEST(test_visible_step_after_skip_fallback_keeps_earlier_drawable_held_sample);
     RUN_TEST(test_global_value_only_access_falls_back_to_snapshot_scan);
     RUN_TEST(test_failed_query_does_not_fall_back_to_stale_scan);
     RUN_TEST(test_ready_query_result_is_cached_by_current_sequence);

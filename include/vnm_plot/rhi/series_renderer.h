@@ -78,6 +78,14 @@ private:
 
     struct vbo_view_state_t
     {
+        struct line_draw_span_t
+        {
+            std::size_t gpu_first = 0;
+            std::size_t gpu_count = 0;
+            std::size_t line_first = 0;
+            std::size_t line_count = 0;
+        };
+
         bool has_uploaded_vbo = false;
         std::unique_ptr<detail::series_window_planner_state_t> planner;
 
@@ -90,6 +98,11 @@ private:
         std::size_t last_sample_upload_count = 0;
         std::size_t last_primitive_prepare_count = 0;
         std::size_t last_line_window_sample_count = 0;
+        std::size_t last_recorded_line_span_count = 0;
+        std::size_t last_recorded_line_segment_count = 0;
+        std::size_t last_recorded_area_span_count = 0;
+        std::size_t last_recorded_area_segment_count = 0;
+        std::size_t last_recorded_dot_sample_count = 0;
         std::int64_t last_prepared_t_min_ns = 0;
         std::int64_t last_prepared_t_max_ns = 0;
         double last_prepared_width_px = 0.0;
@@ -98,6 +111,7 @@ private:
         detail::access_dispatch_kind_t last_sample_access_dispatch_kind =
             detail::access_dispatch_kind_t::NONE;
         std::vector<gpu_sample_t> line_window_staging;
+        std::vector<line_draw_span_t> line_draw_spans;
 
         // Per-view RHI resources. Defined out-of-line in series_renderer.cpp
         // where QRhiBuffer is complete; the public header only sees the

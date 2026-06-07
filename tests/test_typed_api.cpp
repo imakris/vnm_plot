@@ -497,6 +497,7 @@ bool test_series_builder_preview_config()
         .style(plot::Display_style::LINE)
         .interpolation(plot::Series_interpolation::STEP_AFTER)
         .empty_window_behavior(plot::Empty_window_behavior::HOLD_LAST_FORWARD)
+        .nonfinite_policy(plot::Nonfinite_sample_policy::REPLACE_WITH_ZERO)
         .data_source(main_source)
         .access(policy)
         .preview(preview_cfg)
@@ -519,6 +520,8 @@ bool test_series_builder_preview_config()
         "preview should not match main when interpolation/style/source differ");
     TEST_ASSERT(series.empty_window_behavior == plot::Empty_window_behavior::HOLD_LAST_FORWARD,
         "empty_window_behavior mismatch");
+    TEST_ASSERT(series.nonfinite_policy == plot::Nonfinite_sample_policy::REPLACE_WITH_ZERO,
+        "nonfinite_policy mismatch");
 
     return true;
 }

@@ -67,6 +67,144 @@ std::size_t choose_lod_level_with_hysteresis(
         : last_lod_level;
 }
 
+struct drawable_window_result_t
+{
+    std::size_t source_first = 0;
+    std::size_t source_count = 0;
+    std::size_t synthetic_hold_count = 0;
+    std::size_t gpu_count = 0;
+    std::vector<drawable_sample_span_t> spans;
+    bool valid = true;
+};
+
+drawable_window_result_t build_drawable_window(
+    const data_snapshot_t& snapshot,
+    const erased_access_policy_t& access,
+    Nonfinite_sample_policy nonfinite_policy,
+    std::size_t source_first,
+    std::size_t source_last_exclusive,
+    bool hold_last_forward)
+{
+    drawable_window_result_t result;
+    result.source_first = source_first;
+    result.source_count = source_last_exclusive > source_first
+        ? source_last_exclusive - source_first
+        : 0;
+
+    if (source_first >= source_last_exclusive) {
+        return result;
+    }
+
+    const auto append_drawable_source = [&](std::size_t source_index) -> bool {
+        const void* sample = snapshot.at(source_index);
+        sample_draw_value_t ignored;
+        const sample_draw_status_t status = read_sample_draw_value(
+            access,
+            sample,
+            nonfinite_policy,
+            ignored);
+        if (status == sample_draw_status_t::FAILED) {
+            return false;
+        }
+        if (status == sample_draw_status_t::SKIPPED) {
+            return true;
+        }
+
+        if (result.spans.empty() ||
+            result.spans.back().source_first +
+                result.spans.back().source_count != source_index)
+        {
+            drawable_sample_span_t span;
+            span.source_first = source_index;
+            span.gpu_first = result.gpu_count;
+            result.spans.push_back(span);
+        }
+
+        drawable_sample_span_t& span = result.spans.back();
+        ++span.source_count;
+        ++span.gpu_count;
+        ++result.gpu_count;
+        return true;
+    };
+
+    for (std::size_t i = source_first; i < source_last_exclusive; ++i) {
+        if (!append_drawable_source(i)) {
+            result.valid = false;
+            return result;
+        }
+    }
+
+    if (hold_last_forward) {
+        const bool final_source_sample_drawable =
+            !result.spans.empty() &&
+            result.spans.back().source_first +
+                result.spans.back().source_count == source_last_exclusive;
+        const bool can_hold_skipping_trailing_invalid =
+            nonfinite_policy == Nonfinite_sample_policy::SKIP &&
+            !result.spans.empty();
+        if (final_source_sample_drawable ||
+            can_hold_skipping_trailing_invalid)
+        {
+            ++result.spans.back().gpu_count;
+            ++result.gpu_count;
+            result.synthetic_hold_count = 1;
+        }
+    }
+
+    return result;
+}
+
+bool select_hold_source_index(
+    const data_snapshot_t& snapshot,
+    const erased_access_policy_t& access,
+    Nonfinite_sample_policy nonfinite_policy,
+    std::size_t candidate_index,
+    std::size_t& out_index,
+    bool& out_failed)
+{
+    out_failed = false;
+    if (candidate_index >= snapshot.count) {
+        out_failed = true;
+        return false;
+    }
+
+    const auto status_at = [&](std::size_t index) {
+        const void* sample = snapshot.at(index);
+        sample_draw_value_t ignored;
+        return read_sample_draw_value(
+            access,
+            sample,
+            nonfinite_policy,
+            ignored);
+    };
+
+    if (nonfinite_policy == Nonfinite_sample_policy::SKIP) {
+        for (std::size_t offset = candidate_index + 1u; offset > 0; --offset) {
+            const std::size_t index = offset - 1u;
+            const sample_draw_status_t status = status_at(index);
+            if (status == sample_draw_status_t::DRAWABLE) {
+                out_index = index;
+                return true;
+            }
+            if (status == sample_draw_status_t::FAILED) {
+                out_failed = true;
+                return false;
+            }
+        }
+        return false;
+    }
+
+    const sample_draw_status_t status = status_at(candidate_index);
+    if (status == sample_draw_status_t::DRAWABLE) {
+        out_index = candidate_index;
+        return true;
+    }
+    if (status == sample_draw_status_t::FAILED) {
+        out_failed = true;
+    }
+    return false;
+}
+
 } // anonymous namespace
 
 Series_view_plan plan_series_window(const series_window_plan_request_t& request)
@@ -79,6 +217,7 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
     plan.lod_scale = 1;
     plan.interpolation = request.interpolation;
     plan.empty_window_behavior = request.empty_window_behavior;
+    plan.nonfinite_policy = request.nonfinite_policy;
     plan.style = request.style;
 
     if (!request.planner_state ||
@@ -170,11 +309,10 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
 
     const auto load_cached_plan = [&](Series_view_plan& p, std::size_t level) {
         p.source_first = state.last_first;
-        const std::size_t gpu_count = state.last_count;
-        p.synthetic_hold_count =
-            state.last_hold_last_forward && gpu_count > 0 ? 1 : 0;
-        p.source_count = gpu_count - p.synthetic_hold_count;
-        p.gpu_count = gpu_count;
+        p.source_count = state.last_source_count;
+        p.synthetic_hold_count = state.last_synthetic_hold_count;
+        p.gpu_count = state.last_count;
+        p.drawable_spans = state.last_drawable_spans;
         p.lod_level = level;
         p.lod_scale = level < scales.size() ? scales[level] : std::size_t{1};
         p.pixels_per_sample = state.last_applied_pps;
@@ -186,6 +324,7 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
         p.hold_timestamp_ns = state.last_hold_last_forward ? request.t_max_ns : 0;
         p.width_px = static_cast<float>(request.width_px);
         p.interpolation = request.interpolation;
+        p.nonfinite_policy = request.nonfinite_policy;
     };
 
     const auto try_stale_fallback =
@@ -206,6 +345,7 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
             (state.last_t_max == request.t_max_ns) &&
             (state.last_width_px == request.width_px) &&
             (state.last_empty_window_behavior == request.empty_window_behavior) &&
+            (state.last_nonfinite_policy == request.nonfinite_policy) &&
             (state.last_interpolation == request.interpolation) &&
             (state.uploaded_t_origin_ns == request.t_origin_ns);
         if (!identity_ok) {
@@ -239,6 +379,7 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
             state.last_t_max == request.t_max_ns &&
             state.last_width_px == request.width_px &&
             state.last_empty_window_behavior == request.empty_window_behavior &&
+            state.last_nonfinite_policy == request.nonfinite_policy &&
             state.last_interpolation == request.interpolation &&
             state.uploaded_t_origin_ns == request.t_origin_ns)
         {
@@ -405,9 +546,32 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
 
         if (first_idx >= last_idx) {
             if (can_hold_last_forward) {
-                first_idx = snapshot.count - 1;
-                last_idx = snapshot.count;
-                hold_last_forward = true;
+                std::size_t hold_source_index = 0;
+                bool hold_failed = false;
+                if (select_hold_source_index(
+                        snapshot,
+                        access_view,
+                        request.nonfinite_policy,
+                        snapshot.count - 1u,
+                        hold_source_index,
+                        hold_failed))
+                {
+                    first_idx = hold_source_index;
+                    last_idx = hold_source_index + 1u;
+                    hold_last_forward = true;
+                }
+                else
+                if (hold_failed) {
+                    break;
+                }
+                else
+                if (applied_level > 0 && !was_tried(applied_level - 1)) {
+                    target_level = applied_level - 1;
+                    continue;
+                }
+                else {
+                    break;
+                }
             }
             else
             if (applied_level > 0 && !was_tried(applied_level - 1)) {
@@ -423,18 +587,132 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
             hold_last_forward = true;
         }
 
+        if (request.interpolation == Series_interpolation::STEP_AFTER &&
+            request.empty_window_behavior ==
+                Empty_window_behavior::HOLD_LAST_FORWARD &&
+            request.nonfinite_policy == Nonfinite_sample_policy::SKIP &&
+            timestamps_monotonic &&
+            first_idx < last_idx)
+        {
+            bool has_drawable_sample_in_requested_window = false;
+            bool failed_sample_in_requested_window = false;
+            for (std::size_t index = first_idx; index < last_idx; ++index) {
+                const void* sample = snapshot.at(index);
+                if (!sample) {
+                    failed_sample_in_requested_window = true;
+                    break;
+                }
+                const std::int64_t ts_ns = get_timestamp(sample);
+                if (ts_ns >= request.t_min_ns && ts_ns <= request.t_max_ns) {
+                    sample_draw_value_t ignored;
+                    const sample_draw_status_t status =
+                        read_sample_draw_value(
+                            access_view,
+                            sample,
+                            request.nonfinite_policy,
+                            ignored);
+                    if (status == sample_draw_status_t::FAILED) {
+                        failed_sample_in_requested_window = true;
+                        break;
+                    }
+                    if (status == sample_draw_status_t::DRAWABLE) {
+                        has_drawable_sample_in_requested_window = true;
+                        break;
+                    }
+                }
+            }
+            if (failed_sample_in_requested_window) {
+                break;
+            }
+            const void* first_sample = snapshot.at(first_idx);
+            if (first_sample &&
+                get_timestamp(first_sample) < request.t_min_ns)
+            {
+                std::size_t hold_source_index = 0;
+                bool hold_failed = false;
+                if (select_hold_source_index(
+                        snapshot,
+                        access_view,
+                        request.nonfinite_policy,
+                        first_idx,
+                        hold_source_index,
+                        hold_failed))
+                {
+                    if (has_drawable_sample_in_requested_window) {
+                        first_idx = std::min(first_idx, hold_source_index);
+                    }
+                    else {
+                        first_idx = hold_source_index;
+                        last_idx = hold_source_index + 1u;
+                        hold_last_forward = true;
+                    }
+                }
+                else
+                if (hold_failed) {
+                    break;
+                }
+                else
+                if (!has_drawable_sample_in_requested_window) {
+                    break;
+                }
+            }
+        }
+
+        drawable_window_result_t drawable_window =
+            build_drawable_window(
+                snapshot,
+                access_view,
+                request.nonfinite_policy,
+                first_idx,
+                last_idx,
+                hold_last_forward);
+        if (drawable_window.valid &&
+            drawable_window.gpu_count == 0 &&
+            hold_last_forward &&
+            request.nonfinite_policy == Nonfinite_sample_policy::SKIP &&
+            last_idx > 0)
+        {
+            std::size_t hold_source_index = 0;
+            bool hold_failed = false;
+            if (select_hold_source_index(
+                    snapshot,
+                    access_view,
+                    request.nonfinite_policy,
+                    last_idx - 1u,
+                    hold_source_index,
+                    hold_failed))
+            {
+                first_idx = hold_source_index;
+                last_idx = hold_source_index + 1u;
+                drawable_window = build_drawable_window(
+                    snapshot,
+                    access_view,
+                    request.nonfinite_policy,
+                    first_idx,
+                    last_idx,
+                    hold_last_forward);
+            }
+            else
+            if (hold_failed) {
+                drawable_window.valid = false;
+            }
+        }
+        if (!drawable_window.valid || drawable_window.gpu_count == 0) {
+            break;
+        }
+
         const std::size_t source_count = last_idx - first_idx;
-        std::size_t count = 0;
+        std::size_t count_for_lod = 0;
         if (!checked_size_add(
                 source_count,
                 hold_last_forward ? 1u : 0u,
-                count))
+                count_for_lod))
         {
             break;
         }
         std::size_t base_samples = 0;
-        if (count > 0 &&
-            !checked_size_product(count, applied_scale, base_samples))
+        if (count_for_lod > 0 &&
+            !checked_size_product(count_for_lod, applied_scale, base_samples))
         {
             break;
         }
@@ -464,7 +742,7 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
         state.uploaded_t_origin_ns = request.t_origin_ns;
         state.last_snapshot_elements = snapshot.count;
         state.last_first = first_idx;
-        state.last_count = count;
+        state.last_count = drawable_window.gpu_count;
 
         state.last_lod_level = applied_level;
         state.has_last_lod_level = true;
@@ -472,31 +750,41 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
         state.last_t_max = request.t_max_ns;
         state.last_width_px = request.width_px;
         state.last_empty_window_behavior = request.empty_window_behavior;
+        state.last_nonfinite_policy = request.nonfinite_policy;
         state.last_interpolation = request.interpolation;
         if (lod_switched && request.profiler) {
             request.profiler->record_counter(
                 "renderer.series_window.lod_switch_count");
         }
 
+        const bool effective_hold_last_forward =
+            drawable_window.synthetic_hold_count > 0;
+
         plan.source_first = state.last_first;
-        const std::size_t gpu_count = state.last_count;
-        plan.synthetic_hold_count = hold_last_forward && gpu_count > 0 ? 1 : 0;
-        plan.source_count = gpu_count - plan.synthetic_hold_count;
-        plan.gpu_count = gpu_count;
+        plan.source_count = drawable_window.source_count;
+        plan.synthetic_hold_count = drawable_window.synthetic_hold_count;
+        plan.gpu_count = drawable_window.gpu_count;
+        plan.drawable_spans = drawable_window.spans;
         plan.lod_level = applied_level;
         plan.lod_scale = applied_scale;
         plan.pixels_per_sample = base_pps * static_cast<double>(applied_scale);
         state.last_applied_pps = plan.pixels_per_sample;
-        state.last_hold_last_forward = hold_last_forward;
+        state.last_hold_last_forward = effective_hold_last_forward;
         plan.snapshot.snapshot = snapshot;
         plan.snapshot.sequence = snapshot.sequence;
         plan.t_min_ns = request.t_min_ns;
         plan.t_max_ns = request.t_max_ns;
         plan.t_origin_ns = request.t_origin_ns;
-        plan.hold_last_forward = hold_last_forward;
-        plan.hold_timestamp_ns = hold_last_forward ? request.t_max_ns : 0;
+        plan.hold_last_forward = effective_hold_last_forward;
+        plan.hold_timestamp_ns = effective_hold_last_forward
+            ? request.t_max_ns
+            : 0;
         plan.width_px = static_cast<float>(request.width_px);
         plan.interpolation = request.interpolation;
+
+        state.last_source_count = plan.source_count;
+        state.last_synthetic_hold_count = plan.synthetic_hold_count;
+        state.last_drawable_spans = plan.drawable_spans;
         break;
     }
 
