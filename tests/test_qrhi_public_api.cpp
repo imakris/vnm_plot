@@ -116,6 +116,16 @@ static_assert(offsetof(plot::series_view_uniform_std140_t, win_h)    == 108);
 static_assert(offsetof(plot::series_view_uniform_std140_t, framebuffer_y_up) == 112);
 static_assert(sizeof(plot::series_view_uniform_std140_t) == 128);
 
+static_assert(std::is_default_constructible_v<plot::sample_window_t>);
+static_assert(std::is_default_constructible_v<plot::value_range_plan_t>);
+static_assert(std::is_default_constructible_v<plot::Planned_snapshot>);
+static_assert(std::is_default_constructible_v<plot::drawable_sample_span_t>);
+static_assert(std::is_default_constructible_v<plot::Series_view_plan>);
+static_assert(std::is_default_constructible_v<plot::Frame_plan>);
+static_assert(std::is_same_v<
+    decltype(std::declval<plot::Series_view_plan&>().drawable_spans),
+    std::vector<plot::drawable_sample_span_t>>);
+
 class Test_layer_state final : public plot::Qrhi_series_layer_state
 {
 public:
@@ -271,6 +281,75 @@ bool test_qrhi_layer_api_surface_can_be_implemented()
     return true;
 }
 
+bool test_core_plan_types_are_usable()
+{
+    plot::value_range_plan_t range;
+    TEST_ASSERT(!range.valid, "value_range_plan_t should default to invalid");
+    range.min = -4.0f;
+    range.max = 11.0f;
+    range.valid = true;
+
+    plot::Planned_snapshot planned_snapshot;
+    planned_snapshot.sequence = 17;
+    planned_snapshot.snapshot.sequence = planned_snapshot.sequence;
+
+    plot::drawable_sample_span_t span;
+    span.source_first = 2;
+    span.source_count = 5;
+    span.gpu_first = 1;
+    span.gpu_count = 4;
+
+    plot::Series_view_plan view_plan;
+    view_plan.series_id = 9;
+    view_plan.view_kind = plot::Series_view_kind::PREVIEW;
+    view_plan.lod_level = 2;
+    view_plan.lod_scale = 4;
+    view_plan.snapshot = planned_snapshot;
+    view_plan.source_first = span.source_first;
+    view_plan.source_count = span.source_count;
+    view_plan.synthetic_hold_count = 1;
+    view_plan.gpu_count = span.gpu_count + view_plan.synthetic_hold_count;
+    view_plan.drawable_spans.push_back(span);
+    view_plan.t_min_ns = 1'000;
+    view_plan.t_max_ns = 5'000;
+    view_plan.t_origin_ns = 1'000;
+    view_plan.hold_last_forward = true;
+    view_plan.hold_timestamp_ns = view_plan.t_max_ns;
+    view_plan.interpolation = plot::Series_interpolation::STEP_AFTER;
+    view_plan.empty_window_behavior = plot::Empty_window_behavior::HOLD_LAST_FORWARD;
+    view_plan.style = plot::Display_style::LINE;
+    view_plan.v_min = range.min;
+    view_plan.v_max = range.max;
+    view_plan.width_px = 320.0f;
+    view_plan.height_px = 64.0f;
+    view_plan.y_offset_px = 12.0f;
+    view_plan.window_alpha = 0.75f;
+    view_plan.pixels_per_sample = 2.5;
+
+    plot::Frame_plan frame_plan;
+    frame_plan.main_v_range = range;
+    frame_plan.preview_v_range = range;
+    frame_plan.main_views.push_back(view_plan);
+    frame_plan.preview_views.push_back(view_plan);
+
+    TEST_ASSERT(frame_plan.main_v_range.valid, "main range validity mismatch");
+    TEST_ASSERT(frame_plan.main_views.size() == 1, "main view plan count mismatch");
+    TEST_ASSERT(frame_plan.preview_views.size() == 1, "preview view plan count mismatch");
+    TEST_ASSERT(frame_plan.main_views[0].snapshot.sequence == 17,
+        "planned snapshot sequence mismatch");
+    TEST_ASSERT(frame_plan.main_views[0].drawable_spans[0].source_count == 5,
+        "drawable span source count mismatch");
+    TEST_ASSERT(frame_plan.main_views[0].synthetic_hold_count == 1,
+        "synthetic hold count mismatch");
+    TEST_ASSERT(frame_plan.main_views[0].gpu_count == 5, "gpu count mismatch");
+
+    plot::sample_window_t window;
+    TEST_ASSERT(window.view_kind == plot::Series_view_kind::MAIN,
+        "sample_window_t availability/default mismatch");
+
+    return true;
+}
+
 bool test_make_series_view_uniform_values()
 {
     plot::frame_layout_result_t layout;
@@ -336,6 +415,7 @@ int main()
     RUN_TEST(test_series_builder_qrhi_layers_append_replace_clear);
     RUN_TEST(test_series_data_copy_preserves_layer_shared_pointers);
     RUN_TEST(test_qrhi_layer_api_surface_can_be_implemented);
+    RUN_TEST(test_core_plan_types_are_usable);
     RUN_TEST(test_make_series_view_uniform_values);
 
     std::cout << "Results: " << passed << " passed, " << failed << " failed" << std::endl;
