@@ -9,6 +9,7 @@ set(_vnm_plot_core_tests
     test_core_algo
     test_asset_loader
     test_concurrent_series
+    test_data_source_queries
     test_gpu_sample_origin
     test_layout_calculator
     test_rhi_helpers
@@ -68,6 +69,7 @@ vnm_plot_add_test(FunctionSampleSource test_function_sample_source)
 vnm_plot_add_test(CoreAlgo test_core_algo)
 vnm_plot_add_test(AssetLoader test_asset_loader)
 vnm_plot_add_test(ConcurrentSeries test_concurrent_series)
+vnm_plot_add_test(DataSourceQueries test_data_source_queries)
 vnm_plot_add_test(GpuSampleOrigin test_gpu_sample_origin)
 vnm_plot_add_test(LayoutCalculator test_layout_calculator)
 vnm_plot_add_test(RhiHelpers test_rhi_helpers)

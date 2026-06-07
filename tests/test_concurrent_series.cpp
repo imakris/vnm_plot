@@ -146,22 +146,6 @@ bool test_ring_source_snapshots_are_consistent_under_concurrent_writes()
     return true;
 }
 
-bool test_data_source_default_query_v_range_returns_false()
-{
-    Ring_source source;
-    float v_min = 123.f;
-    float v_max = 456.f;
-    std::uint64_t seq = 999;
-    // Query in int64 nanoseconds (API convention).
-    const bool handled = source.query_v_range_for_t_window(
-        std::int64_t{0}, std::int64_t{1}, v_min, v_max, &seq);
-    TEST_ASSERT(!handled, "default Data_source should report v-range query as unsupported");
-    TEST_ASSERT(v_min == 123.f && v_max == 456.f,
-        "default query_v_range_for_t_window must not touch its outputs");
-    TEST_ASSERT(seq == 999, "default query_v_range_for_t_window must not touch out_sequence");
-    return true;
-}
-
 } // namespace
 
 int main()
@@ -174,7 +158,6 @@ int main()
     RUN_TEST(test_vector_source_set_data_bumps_sequence);
     RUN_TEST(test_vector_source_empty_snapshot_reports_empty_status);
     RUN_TEST(test_ring_source_snapshots_are_consistent_under_concurrent_writes);
-    RUN_TEST(test_data_source_default_query_v_range_returns_false);
 
     std::cout << "Results: " << passed << " passed, " << failed << " failed" << std::endl;
     return failed > 0 ? 1 : 0;

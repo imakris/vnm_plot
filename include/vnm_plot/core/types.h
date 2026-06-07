@@ -1,6 +1,8 @@
 #pragma once
 // VNM Plot Library - Core Types
 // Qt-free types used by the core renderer and data interface.
+#include <vnm_plot/core/time_units.h>
+
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -128,6 +130,108 @@ struct snapshot_result_t
 };
 
 // -----------------------------------------------------------------------------
+// Data_access_policy: How to extract values from samples
+// -----------------------------------------------------------------------------
+// Defines how the renderer extracts meaningful values from opaque sample data.
+// This enables rendering of arbitrary sample types without template explosion.
+struct Data_access_policy
+{
+    // --- Sample value extraction ---
+    // Values narrow to float before upload. For large-biased signals, subtract
+    // the bias inside the accessor so the remaining dynamic range survives.
+    // Timestamps are int64_t nanoseconds (by API convention; the unit is the
+    // accessor's contract with vnm_plot).
+    std::function<std::int64_t(const void* sample)>             get_timestamp;  ///< Extract timestamp (ns)
+    std::function<float(const void* sample)>                    get_value;      ///< Extract primary value
+    std::function<std::pair<float, float>(const void* sample)>  get_range;      ///< Extract min/max range
+
+    // Optional sample cloning with timestamp rewrite, used for render-only hold-forward paths.
+    // Caller owns dst_sample storage; implementation writes one full sample there.
+    std::function<void(void* dst_sample, const void* src_sample, std::int64_t timestamp_ns)> clone_with_timestamp;
+
+    uint64_t layout_key = 0;  ///< Cache key distinguishing user sample types in renderer-internal caches
+
+    bool is_valid() const
+    {
+        return get_timestamp && (get_value || get_range);
+    }
+};
+
+enum class Series_interpolation
+{
+    LINEAR,
+    STEP_AFTER
+};
+
+enum class Empty_window_behavior
+{
+    DRAW_NOTHING,
+    HOLD_LAST_FORWARD
+};
+
+enum class Time_order
+{
+    UNKNOWN,
+    ASCENDING,
+    DESCENDING,
+    UNORDERED,
+};
+
+enum class Nonfinite_sample_policy
+{
+    BREAK_SEGMENT,
+    SKIP,
+    REPLACE_WITH_ZERO,
+    REJECT_WINDOW,
+};
+
+enum class Data_query_status
+{
+    READY,
+    EMPTY,
+    BUSY,
+    UNSUPPORTED,
+    FAILED,
+};
+
+struct sample_index_window_t
+{
+    std::size_t first = 0;
+    std::size_t count = 0;
+};
+
+struct value_range_t
+{
+    float min = 0.0f;
+    float max = 0.0f;
+};
+
+struct sample_semantics_key_t
+{
+    std::uint64_t value = 0;
+    std::uint64_t revision = 0;
+    bool          conservative = true;
+};
+
+template<typename T>
+struct data_query_result_t
+{
+    Data_query_status status = Data_query_status::UNSUPPORTED;
+    T                 value{};
+    std::uint64_t     sequence = 0;
+};
+
+struct data_query_context_t
+{
+    const Data_access_policy* access = nullptr;
+    sample_semantics_key_t    semantics_key;
+    time_range_t              time_window{};
+    Series_interpolation      interpolation = Series_interpolation::LINEAR;
+    Empty_window_behavior     empty_window_behavior = Empty_window_behavior::HOLD_LAST_FORWARD;
+    Nonfinite_sample_policy   nonfinite_policy = Nonfinite_sample_policy::BREAK_SEGMENT;
+};
+
+// -----------------------------------------------------------------------------
 // Data_source: Abstract interface for data sources
 // -----------------------------------------------------------------------------
 class Data_source
@@ -155,29 +259,20 @@ public:
     /// Returns 0 if not supported or unknown.
     virtual uint64_t current_sequence(size_t lod_level = 0) const { (void)lod_level; return 0; }
 
+    virtual Time_order time_order(std::size_t lod) const;
+    virtual data_query_result_t<time_range_t> time_range(std::size_t lod) const;
+    virtual std::vector<std::size_t> lod_scales() const;
+    virtual data_query_result_t<sample_index_window_t> query_time_window(
+        std::size_t lod,
+        const data_query_context_t& query);
+    virtual data_query_result_t<value_range_t> query_v_range(
+        std::size_t lod,
+        const data_query_context_t& query);
+
     // Optional value range interface for O(1) range queries.
     virtual bool has_value_range() const { return false; }
     virtual std::pair<float, float> value_range() const { return {0.0f, 0.0f}; }
     virtual bool value_range_needs_rescan() const { return false; }
-    /// Query v-range for samples within [t_min_ns, t_max_ns]. Timestamps
-    /// are int64_t nanoseconds (by API convention).
-    /// Returns false if unsupported, no samples are in range, or a consistent snapshot
-    /// cannot be obtained without blocking.
-    /// Thread-safe; called from the render thread.
-    virtual bool query_v_range_for_t_window(
-        std::int64_t t_min_ns,
-        std::int64_t t_max_ns,
-        float& v_min_out,
-        float& v_max_out,
-        uint64_t* out_sequence = nullptr) const
-    {
-        (void)t_min_ns;
-        (void)t_max_ns;
-        (void)v_min_out;
-        (void)v_max_out;
-        (void)out_sequence;
-        return false;
-    }
 
 };
 
@@ -280,34 +375,6 @@ private:
 };
 
 // -----------------------------------------------------------------------------
-// Data_access_policy: How to extract values from samples
-// -----------------------------------------------------------------------------
-// Defines how the renderer extracts meaningful values from opaque sample data.
-// This enables rendering of arbitrary sample types without template explosion.
-struct Data_access_policy
-{
-    // --- Sample value extraction ---
-    // Values narrow to float before upload. For large-biased signals, subtract
-    // the bias inside the accessor so the remaining dynamic range survives.
-    // Timestamps are int64_t nanoseconds (by API convention; the unit is the
-    // accessor's contract with vnm_plot).
-    std::function<std::int64_t(const void* sample)>             get_timestamp;  ///< Extract timestamp (ns)
-    std::function<float(const void* sample)>                    get_value;      ///< Extract primary value
-    std::function<std::pair<float, float>(const void* sample)>  get_range;      ///< Extract min/max range
-
-    // Optional sample cloning with timestamp rewrite, used for render-only hold-forward paths.
-    // Caller owns dst_sample storage; implementation writes one full sample there.
-    std::function<void(void* dst_sample, const void* src_sample, std::int64_t timestamp_ns)> clone_with_timestamp;
-
-    uint64_t layout_key = 0;  ///< Cache key distinguishing user sample types in renderer-internal caches
-
-    bool is_valid() const
-    {
-        return get_timestamp && (get_value || get_range);
-    }
-};
-
-// -----------------------------------------------------------------------------
 // Display Styles (bit flags for combination)
 // -----------------------------------------------------------------------------
 enum class Display_style : int
@@ -320,12 +387,6 @@ enum class Display_style : int
     DOTS_AREA      = DOTS | AREA,
     LINE_AREA      = LINE | AREA,
     DOTS_LINE_AREA = DOTS | LINE | AREA
-};
-
-enum class Series_interpolation
-{
-    LINEAR,
-    STEP_AFTER
 };
 
 inline Display_style operator|(Display_style a, Display_style b)
@@ -347,12 +408,6 @@ constexpr int k_visible_info_none        = 0x0;
 constexpr int k_visible_info_value_range = 0x1;
 constexpr int k_visible_info_time_range  = 0x2;
 constexpr int k_visible_info_all         = k_visible_info_value_range | k_visible_info_time_range;
-
-enum class Empty_window_behavior
-{
-    DRAW_NOTHING,
-    HOLD_LAST_FORWARD
-};
 
 // -----------------------------------------------------------------------------
 // Preview Configuration
