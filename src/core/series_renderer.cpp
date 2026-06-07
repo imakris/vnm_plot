@@ -1,11 +1,12 @@
-#include <vnm_plot/core/series_renderer.h>
+#include <vnm_plot/rhi/series_renderer.h>
 #include <vnm_plot/core/algo.h>
-#include <vnm_plot/core/asset_loader.h>
+#include <vnm_plot/rhi/asset_loader.h>
 #include <vnm_plot/core/constants.h>
 #include <vnm_plot/core/plot_config.h>
 #include <vnm_plot/core/series_window.h>
 #include <vnm_plot/core/time_units.h>
-#include <vnm_plot/qt/qrhi_series_layer.h>
+#include <vnm_plot/rhi/qrhi_series_layer.h>
+#include <vnm_plot/rhi/series_data.h>
 #include "rhi_helpers.h"
 #include "series_window_planner.h"
 
@@ -693,10 +694,11 @@ void Series_renderer::prepare(
 
         Display_style main_style = s->style;
         Series_interpolation main_interpolation = s->interpolation;
+        const auto& qrhi_layers = qrhi_layers_for(*s);
         const auto has_layer_for_view = [&](Series_view_kind view_kind) {
             return std::any_of(
-                s->qrhi_layers.begin(),
-                s->qrhi_layers.end(),
+                qrhi_layers.begin(),
+                qrhi_layers.end(),
                 [view_kind](const auto& layer) {
                     return layer && layer->draws_view(view_kind);
                 });
@@ -1007,7 +1009,7 @@ void Series_renderer::prepare(
                 Display_style::DOTS,
                 builtin_primitive_z_order(Display_style::DOTS)});
         }
-        for (const auto& layer : draw_state.series->qrhi_layers) {
+        for (const auto& layer : qrhi_layers_for(*draw_state.series)) {
             if (layer && layer->draws_view(plan.view_kind)) {
                 planned_draws.push_back({
                     layer,
@@ -1266,9 +1268,10 @@ void Series_renderer::prepare(
                 return false;
             }
 
+            const auto& qrhi_layers = qrhi_layers_for(series_data);
             return std::any_of(
-                series_data.qrhi_layers.begin(),
-                series_data.qrhi_layers.end(),
+                qrhi_layers.begin(),
+                qrhi_layers.end(),
                 [&](const auto& layer) {
                     return layer &&
                         layer->draws_view(key.view_kind) &&

@@ -139,95 +139,125 @@ if(VNM_PLOT_ENABLE_TEXT)
     unset(_vnm_plot_msdf_text_fetch_deps)
 endif() # VNM_PLOT_ENABLE_TEXT
 
+if(VNM_PLOT_ENABLE_TEXT)
+    if(NOT VNM_MSDF_TEXT_DEFAULT_FONT_FILE)
+        if(DEFINED vnm_msdf_text_SOURCE_DIR AND
+           EXISTS "${vnm_msdf_text_SOURCE_DIR}/fonts/monospace.ttf")
+            set(VNM_MSDF_TEXT_DEFAULT_FONT_FILE
+                "${vnm_msdf_text_SOURCE_DIR}/fonts/monospace.ttf"
+                CACHE FILEPATH "Default font embedded by vnm_plot" FORCE)
+        else()
+            get_filename_component(_vnm_plot_sibling_msdf_text_font
+                "${CMAKE_CURRENT_SOURCE_DIR}/../vnm_msdf_text/fonts/monospace.ttf"
+                ABSOLUTE)
+            if(EXISTS "${_vnm_plot_sibling_msdf_text_font}")
+                set(VNM_MSDF_TEXT_DEFAULT_FONT_FILE
+                    "${_vnm_plot_sibling_msdf_text_font}"
+                    CACHE FILEPATH "Default font embedded by vnm_plot" FORCE)
+            endif()
+            unset(_vnm_plot_sibling_msdf_text_font)
+        endif()
+    endif()
+
+    if(NOT VNM_MSDF_TEXT_DEFAULT_FONT_FILE OR
+       NOT EXISTS "${VNM_MSDF_TEXT_DEFAULT_FONT_FILE}")
+        message(FATAL_ERROR
+            "vnm_plot: VNM_MSDF_TEXT_DEFAULT_FONT_FILE must name an existing "
+            "font file when VNM_PLOT_ENABLE_TEXT=ON.")
+    endif()
+endif()
+
 # -----------------------------------------------------------------------------
-# Source files - Core
+# Source files - data/layout/RHI/Qt Quick
 # -----------------------------------------------------------------------------
 
-set(VNM_PLOT_CORE_SOURCES
-    # Core abstractions
+set(VNM_PLOT_DATA_SOURCES
     src/core/types.cpp
-    src/core/asset_loader.cpp
-    src/core/platform_paths.cpp
+)
+
+set(VNM_PLOT_DATA_HEADERS
+    include/vnm_plot/core/access_policy.h
+    include/vnm_plot/core/color_palette.h
+    include/vnm_plot/core/constants.h
+    include/vnm_plot/core/plot_config.h
+    include/vnm_plot/core/series_builder.h
+    include/vnm_plot/core/time_units.h
+    include/vnm_plot/core/types.h
+)
+
+set(VNM_PLOT_LAYOUT_SOURCES
     src/core/layout_calculator.cpp
     src/core/auto_range_resolver.cpp
     src/core/frame_range_planner.cpp
     src/core/series_window_planner.cpp
+)
 
-    # Core renderers
+set(VNM_PLOT_LAYOUT_HEADERS
+    include/vnm_plot/core.h
+    include/vnm_plot/core/algo.h
+    include/vnm_plot/core/layout_calculator.h
+    include/vnm_plot/core/series_window.h
+)
+
+set(VNM_PLOT_RHI_SOURCES
+    src/core/asset_loader.cpp
+    src/core/platform_paths.cpp
     src/core/primitive_renderer.cpp
     src/core/chrome_renderer.cpp
     src/core/series_renderer.cpp
 )
 
-# Add core font/text renderers when text is enabled
 if(VNM_PLOT_ENABLE_TEXT)
-    list(APPEND VNM_PLOT_CORE_SOURCES
+    list(APPEND VNM_PLOT_RHI_SOURCES
         src/core/font_renderer.cpp
         src/core/text_renderer.cpp
     )
 else()
-    # Stub implementations for text-off builds
-    list(APPEND VNM_PLOT_CORE_SOURCES
+    list(APPEND VNM_PLOT_RHI_SOURCES
         src/core/font_renderer_stub.cpp
         src/core/text_renderer_stub.cpp
     )
 endif()
 
-set(VNM_PLOT_CORE_HEADERS
-    # Core headers
-    include/vnm_plot/core/types.h
-    include/vnm_plot/core/access_policy.h
-    include/vnm_plot/core/series_window.h
-    include/vnm_plot/core/plot_config.h
-    include/vnm_plot/core/time_units.h
-    include/vnm_plot/core/layout_calculator.h
-    include/vnm_plot/core/constants.h
-    include/vnm_plot/core/color_palette.h
-    include/vnm_plot/core/algo.h
-    include/vnm_plot/core/primitive_renderer.h
-    include/vnm_plot/core/chrome_renderer.h
-    include/vnm_plot/core/font_renderer.h
-    include/vnm_plot/core/text_renderer.h
-    include/vnm_plot/core/series_renderer.h
-    include/vnm_plot/core/series_builder.h
-    include/vnm_plot/core/asset_loader.h
+set(VNM_PLOT_RHI_HEADERS
+    include/vnm_plot/rhi.h
+    include/vnm_plot/rhi/asset_loader.h
+    include/vnm_plot/rhi/chrome_renderer.h
+    include/vnm_plot/rhi/frame_context.h
+    include/vnm_plot/rhi/font_renderer.h
+    include/vnm_plot/rhi/primitive_renderer.h
+    include/vnm_plot/rhi/qrhi_series_layer.h
+    include/vnm_plot/rhi/series_builder.h
+    include/vnm_plot/rhi/series_data.h
+    include/vnm_plot/rhi/series_renderer.h
+    include/vnm_plot/rhi/text_renderer.h
 )
 
-# -----------------------------------------------------------------------------
-# Source files - Full library (Qt-dependent)
-# -----------------------------------------------------------------------------
-
-set(VNM_PLOT_SOURCES
-    # Main components
+set(VNM_PLOT_QTQUICK_SOURCES
     src/qt/plot_renderer.cpp
     src/qt/plot_widget.cpp
     src/qt/plot_interaction_item.cpp
     src/qt/plot_time_axis.cpp
 )
 
-set(VNM_PLOT_HEADERS
-    # Public headers
+set(VNM_PLOT_QTQUICK_HEADERS
+    include/vnm_plot/vnm_plot.h
+    include/vnm_plot/qt.h
     include/vnm_plot/qt/plot_widget.h
     include/vnm_plot/qt/plot_interaction_item.h
     include/vnm_plot/qt/plot_time_axis.h
-    include/vnm_plot/qt/qrhi_series_layer.h
-    # Private internal header (lives next to its sources, not installed)
     src/qt/plot_renderer.h
 )
 
 # -----------------------------------------------------------------------------
-# Generate embedded assets (shaders, fonts) for core library
+# Generate embedded assets (shaders, fonts) for the RHI library
 # -----------------------------------------------------------------------------
 
 set(VNM_PLOT_EMBEDDED_ASSETS_OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/generated/embedded_assets.cpp")
+set(VNM_PLOT_RHI_ASSETS)
 
-# Core assets
-set(VNM_PLOT_CORE_ASSETS
-)
-
-# Text rendering assets (only when text is enabled)
 if(VNM_PLOT_ENABLE_TEXT)
-    list(APPEND VNM_PLOT_CORE_ASSETS
+    list(APPEND VNM_PLOT_RHI_ASSETS
         "${VNM_MSDF_TEXT_DEFAULT_FONT_FILE}:fonts/monospace.ttf"
     )
 endif()
@@ -235,69 +265,107 @@ endif()
 embed_assets(
     OUTPUT "${VNM_PLOT_EMBEDDED_ASSETS_OUTPUT}"
     NAMESPACE "vnm::plot"
-    ASSETS ${VNM_PLOT_CORE_ASSETS}
+    ASSETS ${VNM_PLOT_RHI_ASSETS}
 )
 
-# Add generated file to core sources
-list(APPEND VNM_PLOT_CORE_SOURCES "${VNM_PLOT_EMBEDDED_ASSETS_OUTPUT}")
+list(APPEND VNM_PLOT_RHI_SOURCES "${VNM_PLOT_EMBEDDED_ASSETS_OUTPUT}")
+
+function(vnm_plot_configure_library_target target_name)
+    target_include_directories(${target_name}
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:include>
+    )
+    target_compile_features(${target_name} PUBLIC cxx_std_20)
+
+    if(WIN32)
+        target_compile_definitions(${target_name} PRIVATE NOMINMAX)
+    endif()
+
+    if(MSVC)
+        target_compile_options(${target_name} PRIVATE /W4)
+    else()
+        target_compile_options(${target_name} PRIVATE -Wall -Wextra)
+    endif()
+endfunction()
 
 # -----------------------------------------------------------------------------
-# Core Library target
+# Data target
 # -----------------------------------------------------------------------------
 
-add_library(vnm_plot_core STATIC
-    ${VNM_PLOT_CORE_SOURCES}
-    ${VNM_PLOT_CORE_HEADERS}
+add_library(vnm_plot_data STATIC
+    ${VNM_PLOT_DATA_SOURCES}
+    ${VNM_PLOT_DATA_HEADERS}
 )
 
-add_library(vnm_plot::core ALIAS vnm_plot_core)
-set_target_properties(vnm_plot_core PROPERTIES EXPORT_NAME core)
+add_library(vnm_plot::data ALIAS vnm_plot_data)
+set_target_properties(vnm_plot_data PROPERTIES EXPORT_NAME data)
+vnm_plot_configure_library_target(vnm_plot_data)
 
-target_include_directories(vnm_plot_core
-    PUBLIC
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-        $<INSTALL_INTERFACE:include>
-    PRIVATE
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated>
-)
-
-target_compile_features(vnm_plot_core PUBLIC cxx_std_20)
-
-# Link dependencies
-target_link_libraries(vnm_plot_core
+target_link_libraries(vnm_plot_data
     PUBLIC
         glm::glm
 )
 
-# Platform-specific settings for core
-if(WIN32)
-    target_compile_definitions(vnm_plot_core PRIVATE NOMINMAX)
-endif()
+message(STATUS "vnm_plot: Building data library")
 
-# Text rendering compile definition (available to consumers for conditional code)
+# -----------------------------------------------------------------------------
+# Layout target
+# -----------------------------------------------------------------------------
+
+add_library(vnm_plot_layout STATIC
+    ${VNM_PLOT_LAYOUT_SOURCES}
+    ${VNM_PLOT_LAYOUT_HEADERS}
+)
+
+add_library(vnm_plot::layout ALIAS vnm_plot_layout)
+set_target_properties(vnm_plot_layout PROPERTIES EXPORT_NAME layout)
+vnm_plot_configure_library_target(vnm_plot_layout)
+
+target_link_libraries(vnm_plot_layout
+    PUBLIC
+        vnm_plot_data
+)
+
+message(STATUS "vnm_plot: Building layout library")
+
+# -----------------------------------------------------------------------------
+# RHI target
+# -----------------------------------------------------------------------------
+
+add_library(vnm_plot_rhi STATIC
+    ${VNM_PLOT_RHI_SOURCES}
+    ${VNM_PLOT_RHI_HEADERS}
+)
+
+add_library(vnm_plot::rhi ALIAS vnm_plot_rhi)
+set_target_properties(vnm_plot_rhi PROPERTIES EXPORT_NAME rhi)
+vnm_plot_configure_library_target(vnm_plot_rhi)
+
+target_include_directories(vnm_plot_rhi
+    PRIVATE
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated>
+)
+
+target_compile_definitions(vnm_plot_rhi PUBLIC VNM_PLOT_WITH_RHI=1)
+
+target_link_libraries(vnm_plot_rhi
+    PUBLIC
+        vnm_plot_layout
+    PRIVATE
+        Qt6::Gui
+        Qt6::GuiPrivate
+)
+
 if(VNM_PLOT_ENABLE_TEXT)
-    target_compile_definitions(vnm_plot_core PUBLIC VNM_PLOT_ENABLE_TEXT=1)
-
-    # Link MSDF text rendering dependencies
-    target_link_libraries(vnm_plot_core
+    target_compile_definitions(vnm_plot_rhi PUBLIC VNM_PLOT_ENABLE_TEXT=1)
+    target_link_libraries(vnm_plot_rhi
         PRIVATE
             vnm_msdf_text::vnm_msdf_text
     )
 endif()
 
-# Compiler warnings for core
-if(MSVC)
-    target_compile_options(vnm_plot_core PRIVATE /W4)
-else()
-    target_compile_options(vnm_plot_core PRIVATE -Wall -Wextra)
-endif()
-
-message(STATUS "vnm_plot: Building QRhi core library")
-
-# Renderer .cpp files use QRhi, whose public-by-private headers live behind
-# Qt6::GuiPrivate. Keep it PRIVATE so consumers do not inherit Qt private
-# include paths through the public interface.
-target_link_libraries(vnm_plot_core PRIVATE Qt6::GuiPrivate Qt6::Gui)
+message(STATUS "vnm_plot: Building RHI library")
 
 # -----------------------------------------------------------------------------
 # QSB shader pipeline (Qt RHI)
@@ -333,12 +401,22 @@ endif()
 # the RHI shaders. They use storage buffers that are unavailable below
 # ES 3.1, so emitting a 300 ES artifact would compile-fail at runtime
 # on a real ES 3.0 driver.
-qt_add_shaders(vnm_plot_core "vnm_plot_qsb_shaders"
+foreach(_vnm_plot_qsb_shader IN LISTS VNM_PLOT_QSB_SHADERS)
+    get_filename_component(_vnm_plot_qsb_output_dir
+        "${CMAKE_CURRENT_BINARY_DIR}/.qsb/${_vnm_plot_qsb_shader}"
+        DIRECTORY)
+    file(MAKE_DIRECTORY "${_vnm_plot_qsb_output_dir}")
+endforeach()
+unset(_vnm_plot_qsb_output_dir)
+unset(_vnm_plot_qsb_shader)
+
+qt_add_shaders(vnm_plot_rhi "vnm_plot_qsb_shaders"
     PREFIX "/vnm_plot"
     BASE   "${CMAKE_CURRENT_SOURCE_DIR}"
     GLSL   "410"
     HLSL   "50"
     MSL    "12,21"
+    OUTPUT_TARGETS VNM_PLOT_RHI_RESOURCE_TARGETS
     FILES  ${VNM_PLOT_QSB_SHADERS}
 )
 
@@ -349,58 +427,40 @@ qt_add_shaders(vnm_plot_core "vnm_plot_qsb_shaders"
 qt6_add_resources(VNM_PLOT_QRC_SOURCES vnm_plot.qrc)
 
 # -----------------------------------------------------------------------------
-# Full Library target (Qt-dependent)
+# Qt Quick target
 # -----------------------------------------------------------------------------
 
-add_library(vnm_plot STATIC
-    ${VNM_PLOT_SOURCES}
-    ${VNM_PLOT_HEADERS}
+add_library(vnm_plot_qtquick STATIC
+    ${VNM_PLOT_QTQUICK_SOURCES}
+    ${VNM_PLOT_QTQUICK_HEADERS}
     ${VNM_PLOT_QRC_SOURCES}
 )
 
-add_library(vnm_plot::vnm_plot ALIAS vnm_plot)
+add_library(vnm_plot::qtquick ALIAS vnm_plot_qtquick)
 
-set_target_properties(vnm_plot PROPERTIES
+set_target_properties(vnm_plot_qtquick PROPERTIES
     AUTOMOC ON
+    EXPORT_NAME qtquick
 )
 
-target_include_directories(vnm_plot
-    PUBLIC
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-        $<INSTALL_INTERFACE:include>
-)
+vnm_plot_configure_library_target(vnm_plot_qtquick)
 
-target_compile_features(vnm_plot PUBLIC cxx_std_20)
-
-target_compile_definitions(vnm_plot PUBLIC VNM_PLOT_WITH_QT=1)
+target_compile_definitions(vnm_plot_qtquick PUBLIC VNM_PLOT_WITH_QT=1)
 
 # Link dependencies. Qt6::GuiPrivate exposes the rhi/qrhi.h public-by-private
 # header tree that the QQuickRhiItem renderer uses inside plot_renderer.cpp;
 # keep it PRIVATE so consumers do not inherit Qt's private headers.
-target_link_libraries(vnm_plot
+target_link_libraries(vnm_plot_qtquick
     PUBLIC
-        vnm_plot_core
+        vnm_plot_rhi
         Qt6::Core
         Qt6::Gui
         Qt6::Quick
-        glm::glm
     PRIVATE
         Qt6::GuiPrivate
 )
 
-# Platform-specific settings
-if(WIN32)
-    target_compile_definitions(vnm_plot PRIVATE NOMINMAX)
-endif()
-
-# Compiler warnings
-if(MSVC)
-    target_compile_options(vnm_plot PRIVATE /W4)
-else()
-    target_compile_options(vnm_plot PRIVATE -Wall -Wextra)
-endif()
-
-message(STATUS "vnm_plot: Building Qt wrapper library")
+message(STATUS "vnm_plot: Building Qt Quick library")
 
 # -----------------------------------------------------------------------------
 # Examples (require Qt)
@@ -442,7 +502,13 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
     )
 
-    set(_vnm_plot_install_targets vnm_plot_core vnm_plot)
+    set(_vnm_plot_install_targets
+        vnm_plot_data
+        vnm_plot_layout
+        vnm_plot_rhi
+        vnm_plot_qtquick
+        ${VNM_PLOT_RHI_RESOURCE_TARGETS}
+    )
 
     # install(EXPORT) needs every link dependency to be IMPORTED (or in a
     # peer export set). glm and vnm_msdf_text only satisfy that when
@@ -471,6 +537,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
             ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
             RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+            OBJECTS DESTINATION ${CMAKE_INSTALL_LIBDIR}/vnm_plot/objects
             INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
         )
 
@@ -505,6 +572,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
             ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
             RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+            OBJECTS DESTINATION ${CMAKE_INSTALL_LIBDIR}/vnm_plot/objects
             INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
         )
         message(STATUS

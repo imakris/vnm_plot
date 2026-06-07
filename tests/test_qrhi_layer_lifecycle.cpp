@@ -3,12 +3,13 @@
 #include "test_macros.h"
 
 #include <vnm_plot/core/access_policy.h>
-#include <vnm_plot/core/asset_loader.h>
+#include <vnm_plot/rhi/asset_loader.h>
 #include <vnm_plot/core/plot_config.h>
 #define private public
-#include <vnm_plot/core/series_renderer.h>
+#include <vnm_plot/rhi/series_renderer.h>
 #undef private
-#include <vnm_plot/qt/qrhi_series_layer.h>
+#include <vnm_plot/rhi/qrhi_series_layer.h>
+#include <vnm_plot/rhi/series_data.h>
 
 #include <QColor>
 #include <QSize>
@@ -464,7 +465,7 @@ std::shared_ptr<plot::series_data_t> make_layer_only_series(
     std::shared_ptr<Test_source> source,
     std::vector<std::shared_ptr<const plot::Qrhi_series_layer>> layers)
 {
-    auto series = std::make_shared<plot::series_data_t>();
+    auto series = std::make_shared<plot::rhi_series_data_t>();
     series->style = plot::Display_style::NONE;
     series->data_source = source;
     series->access = make_access_policy();
@@ -477,7 +478,7 @@ std::shared_ptr<plot::series_data_t> make_builtin_plus_layer_series(
     plot::Display_style style,
     std::vector<std::shared_ptr<const plot::Qrhi_series_layer>> layers)
 {
-    auto series = std::make_shared<plot::series_data_t>();
+    auto series = std::make_shared<plot::rhi_series_data_t>();
     series->style = style;
     series->data_source = source;
     series->access = make_access_policy();
@@ -661,7 +662,7 @@ bool test_style_none_without_layers_does_not_upload_samples()
 {
     std::vector<layer_event_t> events;
     auto source = std::make_shared<Test_source>();
-    auto series = std::make_shared<plot::series_data_t>();
+    auto series = std::make_shared<plot::rhi_series_data_t>();
     series->style = plot::Display_style::NONE;
     series->data_source = source;
     series->access = make_access_policy();
@@ -1103,7 +1104,7 @@ bool test_access_policy_change_reuploads_builtin_samples()
     }
     source->set_samples(std::move(samples));
 
-    auto series = std::make_shared<plot::series_data_t>();
+    auto series = std::make_shared<plot::rhi_series_data_t>();
     series->style = plot::Display_style::DOTS;
     series->data_source = source;
     series->access = make_direct_member_access_policy();
@@ -1418,7 +1419,7 @@ bool test_builtin_upload_stages_single_synthetic_hold_sample()
         {2LL * k_second_ns, 3.0f}
     });
 
-    auto series = std::make_shared<plot::series_data_t>();
+    auto series = std::make_shared<plot::rhi_series_data_t>();
     series->style = plot::Display_style::LINE;
     series->interpolation = plot::Series_interpolation::STEP_AFTER;
     series->empty_window_behavior = plot::Empty_window_behavior::HOLD_LAST_FORWARD;
@@ -1501,7 +1502,7 @@ bool test_builtin_upload_stages_hold_windows_for_dots_and_area()
             {2LL * k_second_ns, 3.0f}
         });
 
-        auto series = std::make_shared<plot::series_data_t>();
+        auto series = std::make_shared<plot::rhi_series_data_t>();
         series->style = test_case.style;
         series->interpolation = plot::Series_interpolation::STEP_AFTER;
         series->empty_window_behavior =
@@ -1650,7 +1651,7 @@ bool test_resources_changed_tracks_hold_timestamp_changes()
         {2LL * k_second_ns, 3.0f}
     });
 
-    auto series = std::make_shared<plot::series_data_t>();
+    auto series = std::make_shared<plot::rhi_series_data_t>();
     series->style = plot::Display_style::LINE;
     series->interpolation = plot::Series_interpolation::STEP_AFTER;
     series->empty_window_behavior =

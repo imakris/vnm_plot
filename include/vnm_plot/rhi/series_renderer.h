@@ -1,10 +1,10 @@
 #pragma once
 
-// VNM Plot Library - Core Series Renderer
+// VNM Plot Library - RHI Series Renderer
 // QRhi series data rendering with LOD support.
 
-#include "series_window.h"
-#include "types.h"
+#include <vnm_plot/core/series_window.h>
+#include <vnm_plot/rhi/frame_context.h>
 
 #include <cstddef>
 #include <cstdint>

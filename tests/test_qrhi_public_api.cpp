@@ -6,7 +6,9 @@
 #include <vnm_plot/core/series_builder.h>
 #include <vnm_plot/core/series_window.h>
 #include <vnm_plot/core/types.h>
-#include <vnm_plot/qt/qrhi_series_layer.h>
+#include <vnm_plot/rhi/qrhi_series_layer.h>
+#include <vnm_plot/rhi/series_builder.h>
+#include <vnm_plot/rhi/series_data.h>
 
 #include <glm/mat4x4.hpp>
 
@@ -123,6 +125,8 @@ static_assert(!has_colormap_area<plot::series_data_t>::value);
 static_assert(!has_colormap_line<plot::series_data_t>::value);
 static_assert(!has_colormap_area<plot::Series_builder>::value);
 static_assert(!has_colormap_line<plot::Series_builder>::value);
+static_assert(!has_colormap_area<plot::Rhi_series_builder>::value);
+static_assert(!has_colormap_line<plot::Rhi_series_builder>::value);
 
 static_assert(static_cast<int>(plot::Display_style::NONE) == 0x0);
 static_assert(static_cast<int>(plot::Display_style::DOTS) == 0x1);
@@ -215,7 +219,7 @@ bool test_series_builder_qrhi_layers_append_replace_clear()
     auto layer_b = std::make_shared<Test_layer>("main-b", 8,  4);
     auto layer_c = std::make_shared<Test_layer>("main-c", 9, 11);
 
-    plot::Series_builder builder;
+    plot::Rhi_series_builder builder;
     auto series = builder
         .qrhi_layer(layer_a)
         .qrhi_layer(layer_b)
@@ -245,11 +249,11 @@ bool test_series_data_copy_preserves_layer_shared_pointers()
     auto layer_a = std::make_shared<Test_layer>("copy-a", 1, 0);
     auto layer_b = std::make_shared<Test_layer>("copy-b", 2, 1);
 
-    plot::series_data_t original;
+    plot::rhi_series_data_t original;
     original.qrhi_layers.push_back(layer_a);
     original.qrhi_layers.push_back(layer_b);
 
-    const plot::series_data_t copied = original;
+    const plot::rhi_series_data_t copied = original;
     TEST_ASSERT(copied.qrhi_layers.size() == 2, "series_data_t copy must preserve layer count");
     TEST_ASSERT(copied.qrhi_layers[0] == original.qrhi_layers[0],
         "series_data_t copy must preserve first shared layer pointer");
@@ -258,7 +262,7 @@ bool test_series_data_copy_preserves_layer_shared_pointers()
     TEST_ASSERT(layer_a.use_count() == 3, "copied series must retain first layer");
     TEST_ASSERT(layer_b.use_count() == 3, "copied series must retain second layer");
 
-    const auto shared_series = plot::Series_builder()
+    const auto shared_series = plot::Rhi_series_builder()
         .qrhi_layers({layer_a, layer_b})
         .build_shared();
 

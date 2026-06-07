@@ -1,5 +1,5 @@
-#include <vnm_plot/core/chrome_renderer.h>
-#include <vnm_plot/core/primitive_renderer.h>
+#include <vnm_plot/rhi/chrome_renderer.h>
+#include <vnm_plot/rhi/primitive_renderer.h>
 #include <vnm_plot/core/color_palette.h>
 #include <vnm_plot/core/constants.h>
 #include <vnm_plot/core/plot_config.h>

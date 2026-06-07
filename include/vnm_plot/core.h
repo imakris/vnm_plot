@@ -7,10 +7,11 @@
 
 #include <vnm_plot/core/access_policy.h>
 #include <vnm_plot/core/algo.h>
-#include <vnm_plot/core/asset_loader.h>
 #include <vnm_plot/core/color_palette.h>
 #include <vnm_plot/core/constants.h>
+#include <vnm_plot/core/layout_calculator.h>
 #include <vnm_plot/core/plot_config.h>
 #include <vnm_plot/core/series_builder.h>
 #include <vnm_plot/core/series_window.h>
+#include <vnm_plot/core/time_units.h>
 #include <vnm_plot/core/types.h>

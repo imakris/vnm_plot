@@ -1,9 +1,9 @@
 #pragma once
 
-// VNM Plot Library - Core Primitive Renderer
+// VNM Plot Library - RHI Primitive Renderer
 // QRhi renderer for basic primitives: rectangles and grid lines.
 
-#include "types.h"
+#include <vnm_plot/rhi/frame_context.h>
 
 #include <glm/glm.hpp>
 

@@ -4,10 +4,10 @@
 
 #include <vnm_plot/core/access_policy.h>
 #include <vnm_plot/core/algo.h>
-#include <vnm_plot/core/asset_loader.h>
+#include <vnm_plot/rhi/asset_loader.h>
 #include "../src/core/series_window_planner.h"
 #define private public
-#include <vnm_plot/core/series_renderer.h>
+#include <vnm_plot/rhi/series_renderer.h>
 #undef private
 #include <vnm_plot/core/plot_config.h>
 #include <vnm_plot/core/time_units.h>

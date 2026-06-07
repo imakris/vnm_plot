@@ -3,7 +3,7 @@
 // VNM Plot Library - Asset Loader
 // Qt-free asset loading with embedded defaults and optional file overrides.
 
-#include "types.h"
+#include <vnm_plot/core/types.h>
 
 #include <functional>
 #include <optional>

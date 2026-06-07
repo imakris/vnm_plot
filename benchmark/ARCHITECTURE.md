@@ -9,7 +9,7 @@ profiling report format for reproducible comparisons.
 1. A generator thread produces Bar or Trade samples using a Brownian motion
    model and writes into a ring buffer.
 2. The render thread (Qt UI) snapshots the ring buffer through a vnm_plot
-   Data_source and renders the series using vnm_plot core renderers.
+   Data_source and renders the series using vnm_plot RHI renderers.
 3. A custom profiler collects nested vnm_plot scope timings and writes a
    benchmark report at the end of the run.
 

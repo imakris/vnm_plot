@@ -4,7 +4,7 @@
 // Extension point for caller-owned QRhi series rendering.
 
 #include <vnm_plot/core/series_window.h>
-#include <vnm_plot/core/types.h>
+#include <vnm_plot/rhi/frame_context.h>
 
 #include <cstddef>
 #include <cstdint>

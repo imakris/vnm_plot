@@ -2,7 +2,7 @@
 // No-op implementation for builds without MSDF text rendering.
 // Provides stable symbols for core library when VNM_PLOT_ENABLE_TEXT is OFF.
 
-#include <vnm_plot/core/font_renderer.h>
+#include <vnm_plot/rhi/font_renderer.h>
 
 #include <atomic>
 

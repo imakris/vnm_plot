@@ -2,8 +2,8 @@
 // No-op implementation for builds without MSDF text rendering.
 // Maintains stable layout behavior without actual text rendering.
 
-#include <vnm_plot/core/text_renderer.h>
-#include <vnm_plot/core/font_renderer.h>
+#include <vnm_plot/rhi/text_renderer.h>
+#include <vnm_plot/rhi/font_renderer.h>
 
 namespace vnm::plot {
 

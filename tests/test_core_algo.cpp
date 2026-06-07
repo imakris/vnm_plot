@@ -4,7 +4,7 @@
 
 #include <vnm_plot/core/algo.h>
 #include <vnm_plot/core/plot_config.h>
-#include <vnm_plot/core/text_renderer.h>
+#include <vnm_plot/rhi/text_renderer.h>
 #include <vnm_plot/core/time_units.h>
 #include <vnm_plot/core/types.h>
 

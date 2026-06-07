@@ -27,7 +27,7 @@ set(CMAKE_AUTORCC ON)
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick QuickControls2 Multimedia)
 
 # vnm_plot library (from parent repo)
-if(NOT TARGET vnm_plot::vnm_plot)
+if(NOT TARGET vnm_plot::qtquick)
     set(VNM_PLOT_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
     add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../.."
                      "${CMAKE_CURRENT_BINARY_DIR}/vnm_plot")
@@ -82,7 +82,7 @@ target_link_libraries(function_plotter PRIVATE
     Qt6::Quick
     Qt6::QuickControls2
     Qt6::Multimedia
-    vnm_plot::vnm_plot
+    vnm_plot::qtquick
     mexce_lib
 )
 

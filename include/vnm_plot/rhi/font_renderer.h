@@ -1,9 +1,9 @@
 #pragma once
 
-// VNM Plot Library - Core Font Renderer
+// VNM Plot Library - RHI Font Renderer
 // MSDF text rendering with font loading, measurement, and QRhi rendering.
 
-#include "types.h"
+#include <vnm_plot/rhi/frame_context.h>
 
 #include <glm/glm.hpp>
 

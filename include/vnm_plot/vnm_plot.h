@@ -16,6 +16,10 @@
 // Use core.h or qt.h directly when you only need one side.
 #include <vnm_plot/core.h>
 
+#if defined(VNM_PLOT_WITH_RHI)
+#include <vnm_plot/rhi.h>
+#endif
+
 #if defined(VNM_PLOT_WITH_QT)
 #include <vnm_plot/qt.h>
 #endif

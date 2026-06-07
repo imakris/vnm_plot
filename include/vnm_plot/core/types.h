@@ -1,6 +1,6 @@
 #pragma once
 // VNM Plot Library - Core Types
-// Qt-free types used by the core renderer and data interface.
+// Qt-free types used by the data and layout interfaces.
 #include <vnm_plot/core/time_units.h>
 
 #include <cstddef>
@@ -15,25 +15,14 @@
 #include <type_traits>
 #include <utility>
 #include <vector>
-#include <glm/mat4x4.hpp>
 #include <glm/vec2.hpp>
 #include <glm/vec4.hpp>
-
-// Forward declarations for the RHI types frame_context_t carries. These
-// live behind Qt6::GuiPrivate; consumers of this public header see only
-// the names so the core renderer code can route uploads and draws through
-// QRhi without leaking Qt private headers.
-class QRhi;
-class QRhiCommandBuffer;
-class QRhiRenderTarget;
-class QRhiResourceUpdateBatch;
 
 namespace vnm::plot {
 struct Plot_config;
 struct Data_access_policy;
 template<typename Sample>
 struct Data_access_policy_typed;
-class Qrhi_series_layer;
 
 struct sample_semantics_key_t
 {
@@ -903,6 +892,8 @@ struct data_config_t
 // -----------------------------------------------------------------------------
 struct series_data_t
 {
+    virtual ~series_data_t() = default;
+
     bool enabled = true;
     Display_style style = Display_style::LINE;
     Series_interpolation interpolation = Series_interpolation::LINEAR;
@@ -916,7 +907,10 @@ struct series_data_t
     // use a distinct data source, access policy, and style.
     std::optional<preview_config_t> preview_config;
 
-    std::vector<std::shared_ptr<const Qrhi_series_layer>> qrhi_layers;
+    [[nodiscard]] virtual std::shared_ptr<series_data_t> clone() const
+    {
+        return std::make_shared<series_data_t>(*this);
+    }
 
     std::int64_t get_timestamp(const void* sample) const
     {
@@ -1123,53 +1117,6 @@ private:
     bool       m_valid = false;
     key_t      m_key{};
     value_type m_value{};
-};
-
-struct frame_context_t
-{
-    const frame_layout_result_t& layout;
-
-    float v0 = 0.0f;
-    float v1 = 1.0f;
-    float preview_v0 = 0.0f;
-    float preview_v1 = 0.0f;
-
-    // Timestamps are int64_t nanoseconds (API convention).
-    std::int64_t t0 = 0;
-    std::int64_t t1 = 1;
-
-    std::int64_t t_available_min = 0;
-    std::int64_t t_available_max = 1;
-
-    int win_w = 0;
-    int win_h = 0;
-
-    glm::mat4 pmv{1.0f};
-
-    double adjusted_font_px         = 10.0;
-    double base_label_height_px     = 14.0;
-    double adjusted_reserved_height = 0.0;
-    double adjusted_preview_height  = 0.0;
-
-    int visible_info_flags = k_visible_info_none;
-    bool dark_mode = false;
-    glm::vec4 plot_body_background = glm::vec4(0.f, 0.f, 0.f, 1.f);
-
-    const Plot_config* config = nullptr;
-
-    // RHI handles for the active frame. The renderer routes uploads through
-    // the RHI resource-update batch and records draws through `cb`.
-    QRhi*              rhi = nullptr;
-    QRhiCommandBuffer* cb  = nullptr;
-    // Render target the host already opened a pass on. The renderer reads
-    // the render-pass descriptor and sample count off it when building
-    // graphics-pipeline state objects.
-    QRhiRenderTarget*  render_target = nullptr;
-    // Resource-update batch the host hands the renderer to fill. The host
-    // owns its lifetime and submits it via beginPass's 4th argument; the
-    // renderer must NOT call cb->resourceUpdate(batch) itself, because that
-    // call is illegal once the host's render pass is open.
-    QRhiResourceUpdateBatch* rhi_updates = nullptr;
 };
 
 } // namespace vnm::plot

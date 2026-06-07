@@ -1,7 +1,7 @@
 #pragma once
 
 // VNM Plot Library - Core Series Window Planning Types
-// QRhi-independent view/window metadata shared by planning and layer APIs.
+// Renderer-independent view/window metadata shared by planning APIs.
 
 #include <vnm_plot/core/types.h>
 

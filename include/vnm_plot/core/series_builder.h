@@ -1,7 +1,7 @@
 #pragma once
 
 // VNM Plot Library - Series Builder
-// Convenience builder for constructing series_data_t instances.
+// Convenience builder for constructing data/layout series_data_t instances.
 
 #include "access_policy.h"
 #include "types.h"
@@ -77,24 +77,6 @@ public:
     Series_builder& preview(const preview_config_t& config)
     {
         m_series.preview_config = config;
-        return *this;
-    }
-
-    Series_builder& qrhi_layer(std::shared_ptr<const Qrhi_series_layer> layer)
-    {
-        m_series.qrhi_layers.push_back(std::move(layer));
-        return *this;
-    }
-
-    Series_builder& qrhi_layers(std::vector<std::shared_ptr<const Qrhi_series_layer>> layers)
-    {
-        m_series.qrhi_layers = std::move(layers);
-        return *this;
-    }
-
-    Series_builder& clear_qrhi_layers()
-    {
-        m_series.qrhi_layers.clear();
         return *this;
     }
 

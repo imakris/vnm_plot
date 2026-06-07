@@ -1,5 +1,5 @@
-#include <vnm_plot/core/primitive_renderer.h>
-#include <vnm_plot/core/asset_loader.h>
+#include <vnm_plot/rhi/primitive_renderer.h>
+#include <vnm_plot/rhi/asset_loader.h>
 #include <vnm_plot/core/constants.h>
 #include <vnm_plot/core/plot_config.h>
 #include "rhi_helpers.h"

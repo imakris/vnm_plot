@@ -1,15 +1,15 @@
 #include "plot_renderer.h"
 #include <vnm_plot/qt/plot_widget.h>
-#include <vnm_plot/core/asset_loader.h>
-#include <vnm_plot/core/chrome_renderer.h>
 #include <vnm_plot/core/color_palette.h>
 #include <vnm_plot/core/constants.h>
-#include <vnm_plot/core/font_renderer.h>
 #include <vnm_plot/core/layout_calculator.h>
 #include <vnm_plot/core/plot_config.h>
-#include <vnm_plot/core/primitive_renderer.h>
-#include <vnm_plot/core/series_renderer.h>
-#include <vnm_plot/core/text_renderer.h>
+#include <vnm_plot/rhi/asset_loader.h>
+#include <vnm_plot/rhi/chrome_renderer.h>
+#include <vnm_plot/rhi/font_renderer.h>
+#include <vnm_plot/rhi/primitive_renderer.h>
+#include <vnm_plot/rhi/series_renderer.h>
+#include <vnm_plot/rhi/text_renderer.h>
 #include "../core/frame_range_planner.h"
 
 #include <QColor>

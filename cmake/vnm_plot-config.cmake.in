@@ -4,15 +4,49 @@ include(CMakeFindDependencyMacro)
 
 find_dependency(glm)
 
-# vnm_plot_core PRIVATE-links Qt6::GuiPrivate. As a STATIC library that
-# propagates via $<LINK_ONLY:>, so consumers of installed vnm_plot need the
-# private Qt module available. GuiPrivate exposes unstable Qt internals.
-find_dependency(Qt6 REQUIRED COMPONENTS Core Gui GuiPrivate Quick)
+set(_vnm_plot_needs_rhi_dependencies FALSE)
+set(_vnm_plot_needs_qtquick_dependencies FALSE)
+if(vnm_plot_FIND_COMPONENTS)
+    foreach(_vnm_plot_component IN LISTS vnm_plot_FIND_COMPONENTS)
+        if(_vnm_plot_component STREQUAL "rhi" OR
+           _vnm_plot_component STREQUAL "qtquick")
+            set(_vnm_plot_needs_rhi_dependencies TRUE)
+        endif()
+        if(_vnm_plot_component STREQUAL "qtquick")
+            set(_vnm_plot_needs_qtquick_dependencies TRUE)
+        endif()
+    endforeach()
+else()
+    set(_vnm_plot_needs_rhi_dependencies TRUE)
+    set(_vnm_plot_needs_qtquick_dependencies TRUE)
+endif()
 
-if(@VNM_PLOT_CONFIG_ENABLE_TEXT@)
-    find_dependency(vnm_msdf_text @VNM_PLOT_VNM_MSDF_TEXT_VERSION@)
+foreach(_vnm_plot_component IN LISTS vnm_plot_FIND_COMPONENTS)
+    if(NOT _vnm_plot_component STREQUAL "data" AND
+       NOT _vnm_plot_component STREQUAL "layout" AND
+       NOT _vnm_plot_component STREQUAL "rhi" AND
+       NOT _vnm_plot_component STREQUAL "qtquick")
+        set(vnm_plot_${_vnm_plot_component}_FOUND FALSE)
+    endif()
+endforeach()
+
+if(_vnm_plot_needs_qtquick_dependencies)
+    find_dependency(Qt6 REQUIRED COMPONENTS Core Gui GuiPrivate Quick)
+elseif(_vnm_plot_needs_rhi_dependencies)
+    find_dependency(Qt6 REQUIRED COMPONENTS Gui GuiPrivate)
+endif()
+
+if(_vnm_plot_needs_rhi_dependencies)
+    if(@VNM_PLOT_CONFIG_ENABLE_TEXT@)
+        find_dependency(vnm_msdf_text @VNM_PLOT_VNM_MSDF_TEXT_VERSION@)
+    endif()
 endif()
 
 include("${CMAKE_CURRENT_LIST_DIR}/vnm_plotTargets.cmake")
+
+set(vnm_plot_data_FOUND TRUE)
+set(vnm_plot_layout_FOUND TRUE)
+set(vnm_plot_rhi_FOUND TRUE)
+set(vnm_plot_qtquick_FOUND TRUE)
 
 check_required_components(vnm_plot)

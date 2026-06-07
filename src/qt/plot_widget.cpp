@@ -169,7 +169,7 @@ void Plot_widget::apply_series_updates(const std::vector<std::pair<int, std::sha
     copies.reserve(updates.size());
     for (const auto& [id, series] : updates) {
         if (series) {
-            copies.emplace_back(id, std::make_shared<series_data_t>(*series));
+            copies.emplace_back(id, series->clone());
         }
         else {
             copies.emplace_back(id, std::shared_ptr<const series_data_t>{});

@@ -12,28 +12,35 @@ vnm_plot renders time-series data through Qt RHI. It supports Level-of-Detail (L
 The library uses a type-erased data interface (`vnm::plot::Data_source` + `vnm::plot::Data_access_policy`) so it can work with any sample type without templates in the rendering code.
 Data sources decide whether snapshots are copies or direct views; buffering, if needed, lives in the data source.
 
-Public headers: `#include <vnm_plot/vnm_plot.h>` (umbrella), `#include <vnm_plot/core.h>` (core only), and
-`#include <vnm_plot/qt.h>` (Qt wrapper when built with Qt, `VNM_PLOT_WITH_QT`).
+Public headers: `#include <vnm_plot/vnm_plot.h>` (umbrella),
+`#include <vnm_plot/core.h>` (data/layout API), `#include <vnm_plot/rhi.h>`
+(QRhi renderer and custom-layer API), and `#include <vnm_plot/qt.h>` (Qt Quick
+API when built with Qt, `VNM_PLOT_WITH_QT`).
 
 ## Architecture
 
 ```
-vnm_plot_core (static QRhi core implementation)
-  -> Chrome_renderer (grid and axes)
-  -> Series_renderer (data series)
-  -> Text_renderer (labels)
-  -> Font_renderer (MSDF glyphs)
+vnm_plot_data
+  -> Data_source, snapshots, access policies, time units, query APIs
 
-vnm_plot (Qt Quick wrapper)
-  -> Plot_widget (QQuickRhiItem)
-     -> Plot_renderer (RHI render thread)
-        -> vnm_plot_core
+vnm_plot_layout
+  -> Layout_calculator, range/window planning, formatting helpers
+  -> vnm_plot_data
+
+vnm_plot_rhi
+  -> Asset_loader, Chrome_renderer, Series_renderer, Text_renderer, Font_renderer
+  -> custom QRhi series layers
+  -> vnm_plot_layout
+
+vnm_plot_qtquick
+  -> Plot_widget (QQuickRhiItem), Plot_time_axis, interactions, QML resources
+  -> vnm_plot_rhi
 ```
 
-- `vnm_plot_core` owns data/layout logic and the built-in QRhi renderers; it
-  privately links Qt Gui/GuiPrivate because the renderers use QRhi private
-  headers
-- `vnm_plot` is the Qt Quick wrapper (QML-friendly Plot_widget)
+- `vnm_plot_data` and `vnm_plot_layout` are Qt-private-free in their link interfaces
+- `vnm_plot_rhi` owns built-in QRhi renderers, shader resources, font/text
+  rendering, asset loading, and the custom QRhi series-layer API
+- `vnm_plot_qtquick` is the Qt Quick wrapper (QML-friendly Plot_widget)
 - `Plot_renderer` runs on the Qt RHI render thread and coordinates the sub-renderers
 - `Series_renderer` handles lines, dots, and area fills with VBO management
 - `Chrome_renderer` draws the grid and axes
@@ -204,7 +211,7 @@ As a subdirectory:
 
 ```cmake
 add_subdirectory(vnm_plot)
-target_link_libraries(your_app PRIVATE vnm_plot::vnm_plot)
+target_link_libraries(your_app PRIVATE vnm_plot::qtquick)
 ```
 
 Via FetchContent:
@@ -216,7 +223,15 @@ FetchContent_Declare(vnm_plot
     GIT_TAG        master
 )
 FetchContent_MakeAvailable(vnm_plot)
-target_link_libraries(your_app PRIVATE vnm_plot::vnm_plot)
+target_link_libraries(your_app PRIVATE vnm_plot::qtquick)
+```
+
+For non-Qt consumers, link the narrow target needed by the code:
+
+```cmake
+target_link_libraries(data_tool PRIVATE vnm_plot::data)
+target_link_libraries(layout_tool PRIVATE vnm_plot::layout)
+target_link_libraries(rhi_tool PRIVATE vnm_plot::rhi)
 ```
 
 This source tree declares CMake project version `0.1.0`. Use `master` for this
@@ -229,9 +244,13 @@ and provide find_package-able `glm` and, when text rendering is enabled,
 `vnm_msdf_text`. When those dependencies are built locally through
 FetchContent, install still installs headers and libraries, but skips the CMake
 package export because CMake cannot export those local dependency targets from
-this project. Installed `find_package(vnm_plot)` consumers must have Qt Core,
-Gui, GuiPrivate, and Quick available; Qt ShaderTools is required only when
-building vnm_plot from source.
+this project.
+
+Installed package targets are `vnm_plot::data`, `vnm_plot::layout`,
+`vnm_plot::rhi`, and `vnm_plot::qtquick`. Requesting the `data` or `layout`
+components does not require Qt private modules. Requesting `rhi` or `qtquick`
+requires Qt GuiPrivate because those targets use QRhi. Qt ShaderTools is
+required only when building vnm_plot from source.
 
 ## Requirements
 

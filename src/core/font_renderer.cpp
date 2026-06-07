@@ -1,5 +1,5 @@
-#include <vnm_plot/core/font_renderer.h>
-#include <vnm_plot/core/asset_loader.h>
+#include <vnm_plot/rhi/font_renderer.h>
+#include <vnm_plot/rhi/asset_loader.h>
 #include "platform_paths.h"
 #include "sha256.h"
 #include "tls_registry.h"

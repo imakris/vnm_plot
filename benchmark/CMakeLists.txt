@@ -7,13 +7,13 @@
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui GuiPrivate Quick)
 
-# Find vnm_plot_core (should be available from parent)
-if(NOT TARGET vnm_plot::core)
-    message(FATAL_ERROR "vnm_plot_core target not found. Build benchmark from vnm_plot root.")
+# Find vnm_plot targets (should be available from parent)
+if(NOT TARGET vnm_plot::rhi)
+    message(FATAL_ERROR "vnm_plot RHI target not found. Build benchmark from vnm_plot root.")
 endif()
 
-if(NOT TARGET vnm_plot::vnm_plot)
-    message(FATAL_ERROR "vnm_plot Qt target not found. Build benchmark with VNM_PLOT_BUILD_QT=ON.")
+if(NOT TARGET vnm_plot::qtquick)
+    message(FATAL_ERROR "vnm_plot Qt Quick target not found. Build benchmark from vnm_plot root.")
 endif()
 
 # Benchmark should include text rendering by default.
@@ -60,8 +60,8 @@ target_compile_features(vnm_plot_benchmark PRIVATE cxx_std_20)
 # Link dependencies
 target_link_libraries(vnm_plot_benchmark
     PRIVATE
-        vnm_plot::vnm_plot
-        vnm_plot::core
+        vnm_plot::qtquick
+        vnm_plot::rhi
         Qt6::Core
         Qt6::Gui
         Qt6::GuiPrivate
@@ -127,7 +127,7 @@ target_include_directories(test_ring_buffer
 
 target_compile_features(test_ring_buffer PRIVATE cxx_std_20)
 
-target_link_libraries(test_ring_buffer PRIVATE vnm_plot::core)
+target_link_libraries(test_ring_buffer PRIVATE vnm_plot::data)
 
 if(WIN32)
     target_compile_definitions(test_ring_buffer PRIVATE NOMINMAX)
@@ -193,8 +193,7 @@ target_include_directories(test_benchmark_profiler
 
 target_compile_features(test_benchmark_profiler PRIVATE cxx_std_20)
 
-# Link vnm_plot_core for Profiler interface
-target_link_libraries(test_benchmark_profiler PRIVATE vnm_plot::core)
+target_link_libraries(test_benchmark_profiler PRIVATE vnm_plot::data)
 
 if(WIN32)
     target_compile_definitions(test_benchmark_profiler PRIVATE NOMINMAX)
@@ -227,8 +226,7 @@ target_include_directories(test_benchmark_data_source
 
 target_compile_features(test_benchmark_data_source PRIVATE cxx_std_20)
 
-# Link vnm_plot_core for Data_source interface
-target_link_libraries(test_benchmark_data_source PRIVATE vnm_plot::core)
+target_link_libraries(test_benchmark_data_source PRIVATE vnm_plot::data)
 
 if(WIN32)
     target_compile_definitions(test_benchmark_data_source PRIVATE NOMINMAX)

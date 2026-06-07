@@ -15,7 +15,7 @@ set(CMAKE_AUTORCC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick)
 
-if(NOT TARGET vnm_plot::vnm_plot)
+if(NOT TARGET vnm_plot::qtquick)
     set(VNM_PLOT_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
     add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../.."
                      "${CMAKE_CURRENT_BINARY_DIR}/vnm_plot")
@@ -39,7 +39,7 @@ target_link_libraries(vnm_plot_preview_config PRIVATE
     Qt6::Core
     Qt6::Gui
     Qt6::Quick
-    vnm_plot::vnm_plot
+    vnm_plot::qtquick
 )
 
 # Deploy Qt runtime DLLs next to the example so it can be launched by

@@ -1,25 +1,48 @@
 cmake_minimum_required(VERSION 3.16)
 
-# Test executables
-set(_vnm_plot_core_tests
-    test_cache_invalidation
-    test_snapshot_caching
+set(_vnm_plot_data_tests
     test_typed_api
     test_function_sample_source
-    test_core_algo
-    test_asset_loader
     test_concurrent_series
     test_data_source_queries
     test_gpu_sample_origin
+)
+
+set(_vnm_plot_layout_tests
+    test_cache_invalidation
     test_layout_calculator
+)
+
+set(_vnm_plot_rhi_tests
+    test_snapshot_caching
+    test_core_algo
+    test_asset_loader
     test_rhi_helpers
     test_qrhi_layer_lifecycle
     test_qrhi_public_api
 )
 
-foreach(_test IN LISTS _vnm_plot_core_tests)
+foreach(_test IN LISTS _vnm_plot_data_tests)
     add_executable(${_test} ${_test}.cpp)
-    target_link_libraries(${_test} PRIVATE vnm_plot_core)
+    target_link_libraries(${_test} PRIVATE vnm_plot::data)
+    set_target_properties(${_test} PROPERTIES
+        CXX_STANDARD 17
+        CXX_STANDARD_REQUIRED ON
+    )
+endforeach()
+
+foreach(_test IN LISTS _vnm_plot_layout_tests)
+    add_executable(${_test} ${_test}.cpp)
+    target_link_libraries(${_test} PRIVATE vnm_plot::layout)
+    set_target_properties(${_test} PROPERTIES
+        CXX_STANDARD 17
+        CXX_STANDARD_REQUIRED ON
+    )
+endforeach()
+
+foreach(_test IN LISTS _vnm_plot_rhi_tests)
+    add_executable(${_test} ${_test}.cpp)
+    target_link_libraries(${_test} PRIVATE vnm_plot::rhi)
     set_target_properties(${_test} PROPERTIES
         CXX_STANDARD 17
         CXX_STANDARD_REQUIRED ON
@@ -39,15 +62,15 @@ target_link_libraries(test_qrhi_layer_lifecycle PRIVATE Qt6::GuiPrivate Qt6::Gui
 target_link_libraries(test_qrhi_public_api PRIVATE Qt6::GuiPrivate Qt6::Gui)
 target_link_libraries(test_rhi_helpers PRIVATE Qt6::GuiPrivate Qt6::Gui)
 
-if(TARGET vnm_plot)
+if(TARGET vnm_plot_qtquick)
     add_executable(test_plot_interaction_item test_plot_interaction_item.cpp)
-    target_link_libraries(test_plot_interaction_item PRIVATE vnm_plot)
+    target_link_libraries(test_plot_interaction_item PRIVATE vnm_plot::qtquick)
 
     add_executable(test_plot_time_axis test_plot_time_axis.cpp)
-    target_link_libraries(test_plot_time_axis PRIVATE vnm_plot)
+    target_link_libraries(test_plot_time_axis PRIVATE vnm_plot::qtquick)
 endif()
 
-if(TARGET vnm_plot)
+if(TARGET vnm_plot_qtquick)
     set_target_properties(test_plot_interaction_item test_plot_time_axis PROPERTIES
         CXX_STANDARD 17
         CXX_STANDARD_REQUIRED ON
@@ -76,7 +99,7 @@ vnm_plot_add_test(RhiHelpers test_rhi_helpers)
 vnm_plot_add_test(QrhiLayerLifecycle test_qrhi_layer_lifecycle)
 vnm_plot_add_test(QrhiPublicApi test_qrhi_public_api)
 
-if(TARGET vnm_plot)
+if(TARGET vnm_plot_qtquick)
     vnm_plot_add_test(PlotInteractionItem test_plot_interaction_item)
     vnm_plot_add_test(PlotTimeAxis test_plot_time_axis)
 endif()
@@ -114,7 +137,7 @@ if(WIN32)
         endif()
     endforeach()
 
-    set(_vnm_plot_windows_test_targets ${_vnm_plot_core_tests})
+    set(_vnm_plot_windows_test_targets ${_vnm_plot_rhi_tests})
     if(TARGET test_plot_interaction_item)
         list(APPEND _vnm_plot_windows_test_targets test_plot_interaction_item)
     endif()
@@ -187,10 +210,16 @@ endif()
 
 # Print test info
 message(STATUS "Configured tests:")
-foreach(_test IN LISTS _vnm_plot_core_tests)
+foreach(_test IN LISTS _vnm_plot_data_tests)
     message(STATUS "  - ${_test}")
 endforeach()
-if(TARGET vnm_plot)
+foreach(_test IN LISTS _vnm_plot_layout_tests)
+    message(STATUS "  - ${_test}")
+endforeach()
+foreach(_test IN LISTS _vnm_plot_rhi_tests)
+    message(STATUS "  - ${_test}")
+endforeach()
+if(TARGET vnm_plot_qtquick)
     message(STATUS "  - test_plot_interaction_item")
     message(STATUS "  - test_plot_time_axis")
 endif()

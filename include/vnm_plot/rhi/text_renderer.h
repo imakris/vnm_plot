@@ -1,9 +1,9 @@
 #pragma once
 
-// VNM Plot Library - Core Text Renderer
+// VNM Plot Library - RHI Text Renderer
 // Qt-free text rendering for axis labels and info overlay with fade animations.
 
-#include "types.h"
+#include <vnm_plot/rhi/frame_context.h>
 
 #include <chrono>
 #include <cstdint>

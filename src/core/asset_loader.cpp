@@ -1,4 +1,4 @@
-#include <vnm_plot/core/asset_loader.h>
+#include <vnm_plot/rhi/asset_loader.h>
 
 #include <cstdio>
 #include <filesystem>

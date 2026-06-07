@@ -2,7 +2,7 @@
 
 #include "test_macros.h"
 
-#include <vnm_plot/core/asset_loader.h>
+#include <vnm_plot/rhi/asset_loader.h>
 
 #include <filesystem>
 #include <fstream>

@@ -1,9 +1,9 @@
 #pragma once
 
-// VNM Plot Library - Core Chrome Renderer
+// VNM Plot Library - RHI Chrome Renderer
 // Qt-free renderer for grid lines, background panes, and preview overlay.
 
-#include "types.h"
+#include <vnm_plot/rhi/frame_context.h>
 
 namespace vnm::plot {
 
