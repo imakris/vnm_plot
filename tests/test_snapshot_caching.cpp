@@ -19,6 +19,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace plot = vnm::plot;
@@ -55,8 +56,12 @@ class Single_level_source final : public Data_source {
 public:
     std::vector<Test_sample> samples;
     int snapshot_calls = 0;
+    mutable int lod_scales_calls = 0;
+    mutable int lod_scale_calls = 0;
     uint64_t sequence = 1;
     std::weak_ptr<void> last_hold;
+    std::vector<std::size_t> scale_values = {1};
+    plot::Time_order order = plot::Time_order::UNKNOWN;
 
     snapshot_result_t try_snapshot(size_t lod_level) override
     {
@@ -81,10 +86,20 @@ public:
         return {snapshot, snapshot_result_t::Snapshot_status::READY};
     }
 
-    size_t lod_levels() const override { return 1; }
-    size_t lod_scale(size_t /*level*/) const override { return 1; }
+    size_t lod_levels() const override { return scale_values.size(); }
+    size_t lod_scale(size_t level) const override
+    {
+        ++lod_scale_calls;
+        return level < scale_values.size() ? scale_values[level] : 1;
+    }
+    std::vector<std::size_t> lod_scales() const override
+    {
+        ++lod_scales_calls;
+        return scale_values;
+    }
     size_t sample_stride() const override { return sizeof(Test_sample); }
     uint64_t current_sequence(size_t /*lod_level*/) const override { return sequence; }
+    plot::Time_order time_order(std::size_t /*lod*/) const override { return order; }
 };
 
 class Two_level_source final : public Data_source {
@@ -196,6 +211,255 @@ void fill_lod_samples(Two_level_source& source)
         source.lod1[i].t = static_cast<std::int64_t>(src);
         source.lod1[i].v = 1.0f + static_cast<float>(src);
     }
+}
+
+std::shared_ptr<Single_level_source> make_single_level_source(
+    std::vector<std::int64_t> timestamps,
+    plot::Time_order order)
+{
+    auto source = std::make_shared<Single_level_source>();
+    source->order = order;
+    source->samples.resize(timestamps.size());
+    for (std::size_t i = 0; i < timestamps.size(); ++i) {
+        source->samples[i].t = timestamps[i];
+        source->samples[i].v = 1.0f + static_cast<float>(i);
+    }
+    return source;
+}
+
+const plot::detail::series_window_planner_state_t* render_source_and_get_main_state(
+    Series_renderer& renderer,
+    const frame_context_t& ctx,
+    std::shared_ptr<series_data_t> series,
+    int series_id)
+{
+    std::map<int, std::shared_ptr<const series_data_t>> series_map;
+    series_map[series_id] = std::move(series);
+    renderer.render(ctx, series_map);
+
+    const auto state_it = renderer.m_vbo_states.find(series_id);
+    if (state_it == renderer.m_vbo_states.end()) {
+        return nullptr;
+    }
+    return state_it->second.main_view.planner.get();
+}
+
+bool test_ascending_time_order_skips_monotonicity_scan()
+{
+    auto data_source = make_single_level_source(
+        {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
+        plot::Time_order::ASCENDING);
+
+    auto series = std::make_shared<series_data_t>();
+    series->style = Display_style::LINE;
+    series->data_source = data_source;
+    series->access = make_policy();
+
+    frame_layout_result_t layout;
+    layout.usable_width = 200.0;
+    layout.usable_height = 80.0;
+
+    Plot_config config;
+    frame_context_t ctx = make_context(layout, config);
+
+    Series_renderer renderer;
+    Asset_loader asset_loader;
+    renderer.initialize(asset_loader);
+
+    const auto* state = render_source_and_get_main_state(renderer, ctx, series, 64);
+
+    TEST_ASSERT(state, "expected planner state for ASCENDING time-order test");
+    TEST_ASSERT(state->last_timestamp_source_order == plot::Time_order::ASCENDING,
+        "planner should record ASCENDING source time order");
+    TEST_ASSERT(!state->last_timestamp_order_scan_performed,
+        "ASCENDING source should skip the defensive monotonicity scan");
+    TEST_ASSERT(state->last_timestamp_order_scan_samples == 0,
+        "ASCENDING source should not touch samples for monotonicity scanning");
+    TEST_ASSERT(
+        state->last_timestamp_window_search ==
+            plot::detail::Timestamp_window_search::BINARY,
+        "ASCENDING source should use binary timestamp window search");
+
+    return true;
+}
+
+bool run_defensive_time_order_scan_case(
+    plot::Time_order order,
+    std::vector<std::int64_t> timestamps,
+    plot::detail::Timestamp_window_search expected_search,
+    bool expected_monotonic,
+    const std::string& label)
+{
+    auto data_source = make_single_level_source(timestamps, order);
+
+    auto series = std::make_shared<series_data_t>();
+    series->style = Display_style::LINE;
+    series->data_source = data_source;
+    series->access = make_policy();
+
+    frame_layout_result_t layout;
+    layout.usable_width = 200.0;
+    layout.usable_height = 80.0;
+
+    Plot_config config;
+    frame_context_t ctx = make_context(layout, config);
+
+    Series_renderer renderer;
+    Asset_loader asset_loader;
+    renderer.initialize(asset_loader);
+
+    const auto* state = render_source_and_get_main_state(renderer, ctx, series, 65);
+
+    TEST_ASSERT(state, label + " source should produce planner state");
+    TEST_ASSERT(state->last_timestamp_source_order == order,
+        label + " source time order should be recorded");
+    TEST_ASSERT(state->last_timestamp_order_scan_performed,
+        label + " source should run the defensive monotonicity scan");
+    TEST_ASSERT(state->last_timestamp_order_scan_samples > 0,
+        label + " defensive scan should inspect timestamp samples");
+    TEST_ASSERT(state->last_timestamps_monotonic == expected_monotonic,
+        label + " defensive scan should record the observed timestamp order");
+    TEST_ASSERT(state->last_timestamp_window_search == expected_search,
+        label + " source should use the expected timestamp window search");
+
+    return true;
+}
+
+bool test_unknown_and_unordered_time_order_run_defensive_scan()
+{
+    const bool unknown_ok = run_defensive_time_order_scan_case(
+        plot::Time_order::UNKNOWN,
+        {0, 1, 2, 3, 4, 5, 6, 7, 8},
+        plot::detail::Timestamp_window_search::BINARY,
+        true,
+        "UNKNOWN");
+    if (!unknown_ok) {
+        return false;
+    }
+
+    return run_defensive_time_order_scan_case(
+        plot::Time_order::UNORDERED,
+        {0, 5, 2, 7, 3, 8, 4, 9},
+        plot::detail::Timestamp_window_search::LINEAR,
+        false,
+        "UNORDERED");
+}
+
+bool test_descending_time_order_uses_linear_window_search()
+{
+    auto data_source = make_single_level_source(
+        {11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0},
+        plot::Time_order::DESCENDING);
+
+    auto series = std::make_shared<series_data_t>();
+    series->style = Display_style::LINE;
+    series->data_source = data_source;
+    series->access = make_policy();
+
+    frame_layout_result_t layout;
+    layout.usable_width = 200.0;
+    layout.usable_height = 80.0;
+
+    Plot_config config;
+    frame_context_t ctx = make_context(layout, config);
+
+    Series_renderer renderer;
+    Asset_loader asset_loader;
+    renderer.initialize(asset_loader);
+
+    const auto* state = render_source_and_get_main_state(renderer, ctx, series, 66);
+
+    TEST_ASSERT(state, "expected planner state for DESCENDING time-order test");
+    TEST_ASSERT(state->last_timestamp_source_order == plot::Time_order::DESCENDING,
+        "planner should record DESCENDING source time order");
+    TEST_ASSERT(!state->last_timestamp_order_scan_performed,
+        "DESCENDING source should not need an ascending-order scan");
+    TEST_ASSERT(
+        state->last_timestamp_window_search ==
+            plot::detail::Timestamp_window_search::LINEAR,
+        "DESCENDING source should use linear timestamp window search");
+    TEST_ASSERT(state->last_count > 0,
+        "DESCENDING linear timestamp window search should find visible samples");
+
+    return true;
+}
+
+bool test_descending_time_order_does_not_hold_oldest_sample()
+{
+    auto data_source = make_single_level_source(
+        {9, 7, 5, 3, 1},
+        plot::Time_order::DESCENDING);
+
+    auto series = std::make_shared<series_data_t>();
+    series->style = Display_style::LINE;
+    series->data_source = data_source;
+    series->access = make_policy();
+    series->empty_window_behavior = Empty_window_behavior::HOLD_LAST_FORWARD;
+
+    frame_layout_result_t layout;
+    layout.usable_width = 200.0;
+    layout.usable_height = 80.0;
+
+    Plot_config config;
+    frame_context_t ctx = make_context(layout, config);
+    ctx.t0 = 10;
+    ctx.t1 = 12;
+    ctx.t_available_min = ctx.t0;
+    ctx.t_available_max = ctx.t1;
+
+    Series_renderer renderer;
+    Asset_loader asset_loader;
+    renderer.initialize(asset_loader);
+
+    const auto* state = render_source_and_get_main_state(renderer, ctx, series, 68);
+
+    TEST_ASSERT(state, "expected planner state for DESCENDING hold-forward test");
+    TEST_ASSERT(state->last_timestamp_source_order == plot::Time_order::DESCENDING,
+        "planner should record DESCENDING source time order");
+    TEST_ASSERT(!state->last_hold_last_forward,
+        "DESCENDING source should not synthesize hold-forward from the oldest physical sample");
+    TEST_ASSERT(state->last_count == 0,
+        "DESCENDING empty window should not draw the oldest physical sample as held data");
+
+    return true;
+}
+
+bool test_renderer_uses_lod_scales_metadata()
+{
+    auto data_source = make_single_level_source(
+        {0, 1, 2, 3, 4, 5, 6, 7},
+        plot::Time_order::ASCENDING);
+    data_source->scale_values = {0};
+
+    auto series = std::make_shared<series_data_t>();
+    series->style = Display_style::LINE;
+    series->data_source = data_source;
+    series->access = make_policy();
+
+    frame_layout_result_t layout;
+    layout.usable_width = 200.0;
+    layout.usable_height = 80.0;
+
+    Plot_config config;
+    frame_context_t ctx = make_context(layout, config);
+
+    Series_renderer renderer;
+    Asset_loader asset_loader;
+    renderer.initialize(asset_loader);
+
+    const auto* state = render_source_and_get_main_state(renderer, ctx, series, 67);
+
+    TEST_ASSERT(state, "expected planner state for LOD scale metadata test");
+    TEST_ASSERT(data_source->lod_scales_calls > 0,
+        "renderer should request source-provided LOD scale metadata");
+    TEST_ASSERT(data_source->lod_scale_calls == 0,
+        "renderer should not recompute per-level scales when metadata has the advertised LOD count");
+    TEST_ASSERT(state->last_count > 0,
+        "clamped source-provided LOD scale metadata should still produce a visible window");
+    TEST_ASSERT(state->last_applied_pps > 0.0,
+        "clamped source-provided LOD scale metadata should produce positive pixels-per-sample");
+
+    return true;
 }
 
 bool test_direct_member_policy_uses_member_dispatch_in_planner()
@@ -1036,6 +1300,11 @@ int main()
     int passed = 0;
     int failed = 0;
 
+    RUN_TEST(test_ascending_time_order_skips_monotonicity_scan);
+    RUN_TEST(test_unknown_and_unordered_time_order_run_defensive_scan);
+    RUN_TEST(test_descending_time_order_uses_linear_window_search);
+    RUN_TEST(test_descending_time_order_does_not_hold_oldest_sample);
+    RUN_TEST(test_renderer_uses_lod_scales_metadata);
     RUN_TEST(test_direct_member_policy_uses_member_dispatch_in_planner);
     RUN_TEST(test_access_policy_change_invalidates_planner_fast_path_cache);
     RUN_TEST(test_frame_scoped_cache_reuse);

@@ -247,38 +247,64 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
 
         const auto& snapshot = snapshot_result.snapshot;
         bool timestamps_monotonic = true;
+        state.last_timestamp_order_scan_performed = false;
+        state.last_timestamp_order_scan_samples = 0;
+        state.last_timestamp_window_search = Timestamp_window_search::NONE;
         if (access_view.has_timestamp()) {
             const void* current_identity = data_source.identity();
-            const bool need_monotonicity_scan =
-                state.last_timestamp_order_sequence != snapshot.sequence ||
-                state.last_timestamp_order_identity != current_identity ||
-                state.last_timestamp_order_access_key != access_key;
-            if (need_monotonicity_scan) {
-                bool is_monotonic = true;
-                const void* first_sample = snapshot.at(0);
-                if (!first_sample) {
-                    is_monotonic = false;
-                }
-                else {
-                    std::int64_t prev_ts = get_timestamp(first_sample);
-                    for (std::size_t i = 1; i < snapshot.count; ++i) {
-                        const void* sample = snapshot.at(i);
-                        if (!sample) {
-                            is_monotonic = false;
-                            break;
-                        }
-                        const std::int64_t ts = get_timestamp(sample);
-                        if (ts < prev_ts) {
-                            is_monotonic = false;
-                            break;
-                        }
-                        prev_ts = ts;
-                    }
-                }
+            const Time_order source_order = data_source.time_order(applied_level);
+            if (source_order == Time_order::ASCENDING) {
                 state.last_timestamp_order_sequence = snapshot.sequence;
                 state.last_timestamp_order_identity = current_identity;
                 state.last_timestamp_order_access_key = access_key;
-                state.last_timestamps_monotonic = is_monotonic;
+                state.last_timestamp_source_order = source_order;
+                state.last_timestamps_monotonic = true;
+            }
+            else
+            if (source_order == Time_order::DESCENDING) {
+                state.last_timestamp_order_sequence = snapshot.sequence;
+                state.last_timestamp_order_identity = current_identity;
+                state.last_timestamp_order_access_key = access_key;
+                state.last_timestamp_source_order = source_order;
+                state.last_timestamps_monotonic = false;
+            }
+            else {
+                const bool need_monotonicity_scan =
+                    state.last_timestamp_order_sequence != snapshot.sequence ||
+                    state.last_timestamp_order_identity != current_identity ||
+                    state.last_timestamp_order_access_key != access_key ||
+                    state.last_timestamp_source_order != source_order;
+                if (need_monotonicity_scan) {
+                    bool is_monotonic = true;
+                    state.last_timestamp_order_scan_performed = true;
+                    const void* first_sample = snapshot.at(0);
+                    ++state.last_timestamp_order_scan_samples;
+                    if (!first_sample) {
+                        is_monotonic = false;
+                    }
+                    else {
+                        std::int64_t prev_ts = get_timestamp(first_sample);
+                        for (std::size_t i = 1; i < snapshot.count; ++i) {
+                            const void* sample = snapshot.at(i);
+                            ++state.last_timestamp_order_scan_samples;
+                            if (!sample) {
+                                is_monotonic = false;
+                                break;
+                            }
+                            const std::int64_t ts = get_timestamp(sample);
+                            if (ts < prev_ts) {
+                                is_monotonic = false;
+                                break;
+                            }
+                            prev_ts = ts;
+                        }
+                    }
+                    state.last_timestamp_order_sequence = snapshot.sequence;
+                    state.last_timestamp_order_identity = current_identity;
+                    state.last_timestamp_order_access_key = access_key;
+                    state.last_timestamp_source_order = source_order;
+                    state.last_timestamps_monotonic = is_monotonic;
+                }
             }
             timestamps_monotonic = state.last_timestamps_monotonic;
         }
@@ -296,6 +322,8 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
             if (!timestamps_monotonic) {
                 // Non-monotonic timestamps invalidate binary-search assumptions.
                 // Fall back to a linear scan for correctness.
+                state.last_timestamp_window_search =
+                    Timestamp_window_search::LINEAR;
                 VNM_PLOT_PROFILE_SCOPE(
                     request.profiler,
                     "process_view.linear_fallback");
@@ -310,6 +338,8 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
                 last_idx = window.last_exclusive;
             }
             else {
+                state.last_timestamp_window_search =
+                    Timestamp_window_search::BINARY;
                 VNM_PLOT_PROFILE_SCOPE(
                     request.profiler,
                     "process_view.binary_search");
@@ -328,6 +358,7 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
         const bool can_hold_last_forward =
             request.empty_window_behavior ==
                 Empty_window_behavior::HOLD_LAST_FORWARD &&
+            timestamps_monotonic &&
             have_last_ts &&
             last_ts < request.t_max_ns;
 

@@ -34,6 +34,19 @@ constexpr glm::vec4 k_default_series_color(0.16f, 0.45f, 0.64f, 1.0f);
 constexpr glm::vec4 k_default_series_color_dark(0.30f, 0.63f, 0.88f, 1.0f);
 constexpr float k_default_color_epsilon = 0.01f;
 
+std::vector<std::size_t> source_lod_scales(const Data_source& source)
+{
+    const std::size_t level_count = source.lod_levels();
+    std::vector<std::size_t> scales = source.lod_scales();
+    if (scales.size() != level_count) {
+        scales = compute_lod_scales(source);
+    }
+    for (std::size_t& scale : scales) {
+        scale = std::max<std::size_t>(1, scale);
+    }
+    return scales;
+}
+
 bool is_default_series_color(const glm::vec4& color)
 {
     return glm::all(glm::lessThan(
@@ -731,14 +744,14 @@ void Series_renderer::prepare(
 
         auto& vbo_state = m_vbo_states[id];
 
-        std::vector<std::size_t> main_scales = compute_lod_scales(*main_source);
+        std::vector<std::size_t> main_scales = source_lod_scales(*main_source);
         std::vector<std::size_t> preview_scales;
         if (preview_valid) {
             if (preview_matches_main) {
                 preview_scales = main_scales;
             }
             else {
-                preview_scales = compute_lod_scales(*preview_source);
+                preview_scales = source_lod_scales(*preview_source);
             }
         }
 

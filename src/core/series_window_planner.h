@@ -22,6 +22,13 @@ enum class Snapshot_requirement
     Frame_snapshot_required
 };
 
+enum class Timestamp_window_search
+{
+    NONE,
+    BINARY,
+    LINEAR,
+};
+
 struct series_window_planner_state_t
 {
     static constexpr std::int64_t k_no_timestamp =
@@ -33,7 +40,12 @@ struct series_window_planner_state_t
     std::uint64_t last_timestamp_order_sequence = 0;
     const void* last_timestamp_order_identity = nullptr;
     access_policy_cache_key_t last_timestamp_order_access_key;
+    Time_order last_timestamp_source_order = Time_order::UNKNOWN;
+    bool last_timestamp_order_scan_performed = false;
+    std::size_t last_timestamp_order_scan_samples = 0;
     bool last_timestamps_monotonic = true;
+    Timestamp_window_search last_timestamp_window_search =
+        Timestamp_window_search::NONE;
     access_dispatch_kind_t last_access_dispatch_kind =
         access_dispatch_kind_t::NONE;
     access_policy_cache_key_t last_access_key;
