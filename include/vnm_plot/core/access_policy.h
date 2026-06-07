@@ -59,6 +59,49 @@ constexpr std::int64_t timestamp_member_to_ns(Timestamp value)
     }
 }
 
+template<typename Member>
+const std::decay_t<Member>& member_at_offset(
+    const void* sample,
+    std::size_t offset)
+{
+    const auto* bytes = static_cast<const std::uint8_t*>(sample);
+    return *reinterpret_cast<const std::decay_t<Member>*>(bytes + offset);
+}
+
+template<typename Timestamp_member>
+std::int64_t member_timestamp_access(
+    const erased_access_policy_t& access,
+    const void* sample)
+{
+    using timestamp_t = std::decay_t<Timestamp_member>;
+    return timestamp_member_to_ns<timestamp_t>(
+        member_at_offset<timestamp_t>(sample, access.timestamp_offset));
+}
+
+template<typename Value_member>
+float member_value_access(
+    const erased_access_policy_t& access,
+    const void* sample)
+{
+    using value_t = std::decay_t<Value_member>;
+    return static_cast<float>(
+        member_at_offset<value_t>(sample, access.value_offset));
+}
+
+template<typename Range_min_member, typename Range_max_member>
+std::pair<float, float> member_range_access(
+    const erased_access_policy_t& access,
+    const void* sample)
+{
+    using range_min_t = std::decay_t<Range_min_member>;
+    using range_max_t = std::decay_t<Range_max_member>;
+    return std::make_pair(
+        static_cast<float>(
+            member_at_offset<range_min_t>(sample, access.range_min_offset)),
+        static_cast<float>(
+            member_at_offset<range_max_t>(sample, access.range_max_offset)));
+}
+
 // Produces a stable cache key from the byte-level identity of a Sample type's
 // timestamp/value layout. Used by the renderer to key VAO and shader-selection
 // caches; the renderer no longer reads sample bytes directly, but the key still
@@ -87,10 +130,70 @@ inline std::uint64_t compute_sample_layout_key(
 template<typename Sample>
 struct Data_access_policy_typed
 {
+    using timestamp_accessor_t =
+        detail::access_function_slot_t<std::int64_t(const Sample&)>;
+    using value_accessor_t =
+        detail::access_function_slot_t<float(const Sample&)>;
+    using range_accessor_t =
+        detail::access_function_slot_t<std::pair<float, float>(const Sample&)>;
+
+    Data_access_policy_typed()
+    {
+        bind_accessor_slots();
+    }
+
+    Data_access_policy_typed(const Data_access_policy_typed& other)
+    :
+        get_timestamp(other.get_timestamp),
+        get_value(other.get_value),
+        get_range(other.get_range),
+        layout_key(other.layout_key),
+        internal_access(other.internal_access)
+    {
+        bind_accessor_slots();
+    }
+
+    Data_access_policy_typed(Data_access_policy_typed&& other)
+    :
+        get_timestamp(other.get_timestamp),
+        get_value(other.get_value),
+        get_range(other.get_range),
+        layout_key(other.layout_key),
+        internal_access(other.internal_access)
+    {
+        bind_accessor_slots();
+    }
+
+    Data_access_policy_typed& operator=(const Data_access_policy_typed& other)
+    {
+        if (this != &other) {
+            get_timestamp = other.get_timestamp;
+            get_value = other.get_value;
+            get_range = other.get_range;
+            layout_key = other.layout_key;
+            internal_access = other.internal_access;
+            bind_accessor_slots();
+        }
+        return *this;
+    }
+
+    Data_access_policy_typed& operator=(Data_access_policy_typed&& other)
+    {
+        if (this != &other) {
+            get_timestamp = other.get_timestamp;
+            get_value = other.get_value;
+            get_range = other.get_range;
+            layout_key = other.layout_key;
+            internal_access = other.internal_access;
+            bind_accessor_slots();
+        }
+        return *this;
+    }
+
     // Timestamps are int64_t nanoseconds (API convention).
-    std::function<std::int64_t(const Sample&)> get_timestamp;
-    std::function<float(const Sample&)> get_value;
-    std::function<std::pair<float, float>(const Sample&)> get_range;
+    timestamp_accessor_t get_timestamp;
+    value_accessor_t get_value;
+    range_accessor_t get_range;
 
     uint64_t layout_key = 0;
 
@@ -102,7 +205,8 @@ struct Data_access_policy_typed
     Data_access_policy erase() const
     {
         Data_access_policy policy;
-        const auto erase_accessor = [](auto fn) {
+        const auto erase_accessor = [](const auto& accessor) {
+            auto fn = accessor.function();
             return [fn = std::move(fn)](const void* sample) {
                 return fn(*static_cast<const Sample*>(sample));
             };
@@ -117,8 +221,44 @@ struct Data_access_policy_typed
             policy.get_range = erase_accessor(get_range);
         }
         policy.layout_key = layout_key;
+        policy.set_internal_access(internal_access);
         return policy;
     }
+
+private:
+    template<typename S, typename Timestamp_member, typename Value_member>
+    friend void assign_standard_accessors(
+        Data_access_policy_typed<S>& policy,
+        Timestamp_member S::* timestamp_member,
+        Value_member S::* value_member);
+
+    template<typename S, typename Timestamp_member, typename Value_member>
+    friend Data_access_policy_typed<S> make_access_policy(
+        Timestamp_member S::* timestamp_member,
+        Value_member S::* value_member);
+
+    template<typename S, typename Timestamp_member, typename Value_member,
+             typename Range_min_member, typename Range_max_member>
+    friend Data_access_policy_typed<S> make_access_policy(
+        Timestamp_member S::* timestamp_member,
+        Value_member S::* value_member,
+        Range_min_member S::* range_min_member,
+        Range_max_member S::* range_max_member);
+
+    void set_internal_access(detail::erased_access_policy_t access)
+    {
+        internal_access = access;
+        bind_accessor_slots();
+    }
+
+    void bind_accessor_slots() noexcept
+    {
+        get_timestamp.bind_internal_access(&internal_access, nullptr);
+        get_value.bind_internal_access(&internal_access, nullptr);
+        get_range.bind_internal_access(&internal_access, nullptr);
+    }
+
+    detail::erased_access_policy_t internal_access;
 };
 
 template<typename Sample, typename Timestamp_member, typename Value_member>
@@ -134,6 +274,17 @@ inline void assign_standard_accessors(
     policy.get_value = [value_member](const Sample& sample) {
         return static_cast<float>(sample.*value_member);
     };
+    detail::erased_access_policy_t internal_access;
+    internal_access.get_timestamp =
+        &detail::member_timestamp_access<Timestamp_member>;
+    internal_access.get_value =
+        &detail::member_value_access<Value_member>;
+    internal_access.timestamp_offset =
+        detail::member_offset(timestamp_member);
+    internal_access.value_offset = detail::member_offset(value_member);
+    internal_access.dispatch_kind =
+        detail::access_dispatch_kind_t::MEMBER_POINTER;
+    policy.set_internal_access(internal_access);
 }
 
 template<typename Sample, typename Timestamp_member, typename Value_member,
@@ -151,6 +302,23 @@ inline Data_access_policy_typed<Sample> make_access_policy(
         const float high = static_cast<float>(sample.*range_max_member);
         return std::make_pair(low, high);
     };
+    detail::erased_access_policy_t internal_access;
+    internal_access.get_timestamp =
+        &detail::member_timestamp_access<Timestamp_member>;
+    internal_access.get_value =
+        &detail::member_value_access<Value_member>;
+    internal_access.get_range =
+        &detail::member_range_access<Range_min_member, Range_max_member>;
+    internal_access.timestamp_offset =
+        detail::member_offset(timestamp_member);
+    internal_access.value_offset = detail::member_offset(value_member);
+    internal_access.range_min_offset =
+        detail::member_offset(range_min_member);
+    internal_access.range_max_offset =
+        detail::member_offset(range_max_member);
+    internal_access.dispatch_kind =
+        detail::access_dispatch_kind_t::MEMBER_POINTER;
+    policy.set_internal_access(internal_access);
     policy.layout_key = detail::compute_sample_layout_key(
         sizeof(Sample),
         detail::member_offset(timestamp_member),

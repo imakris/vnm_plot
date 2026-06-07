@@ -63,8 +63,15 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
     auto& snapshot_cache = *request.snapshot_cache;
     Data_source& data_source = *request.data_source;
     const Data_access_policy& access = *request.access;
+    const erased_access_policy_t access_view =
+        make_erased_access_policy_view(access);
+    const access_policy_cache_key_t access_key =
+        make_access_policy_cache_key(&access, access_view);
+    state.last_access_dispatch_kind = access_view.dispatch_kind;
     const std::vector<std::size_t>& scales = *request.scales;
-    const auto& get_timestamp = access.get_timestamp;
+    const auto get_timestamp = [&access_view](const void* sample) {
+        return access_view.timestamp(sample);
+    };
 
     if (scales.empty() || request.t_max_ns <= request.t_min_ns || request.width_px <= 0.0) {
         return plan;
@@ -156,6 +163,7 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
             (state.cached_data_identity == current_identity) &&
             request.has_uploaded_vbo &&
             (state.last_count > 0) &&
+            (state.last_access_key == access_key) &&
             (state.last_empty_window_behavior == request.empty_window_behavior) &&
             (state.last_interpolation == request.interpolation) &&
             (state.uploaded_t_origin_ns == request.t_origin_ns);
@@ -189,6 +197,7 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
             request.has_uploaded_vbo &&
             state.last_count > 0 &&
             state.cached_data_identity == data_source.identity() &&
+            state.last_access_key == access_key &&
             state.last_t_min == request.t_min_ns &&
             state.last_t_max == request.t_max_ns &&
             state.last_width_px == request.width_px &&
@@ -238,11 +247,12 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
 
         const auto& snapshot = snapshot_result.snapshot;
         bool timestamps_monotonic = true;
-        if (get_timestamp) {
+        if (access_view.has_timestamp()) {
             const void* current_identity = data_source.identity();
             const bool need_monotonicity_scan =
                 state.last_timestamp_order_sequence != snapshot.sequence ||
-                state.last_timestamp_order_identity != current_identity;
+                state.last_timestamp_order_identity != current_identity ||
+                state.last_timestamp_order_access_key != access_key;
             if (need_monotonicity_scan) {
                 bool is_monotonic = true;
                 const void* first_sample = snapshot.at(0);
@@ -267,6 +277,7 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
                 }
                 state.last_timestamp_order_sequence = snapshot.sequence;
                 state.last_timestamp_order_identity = current_identity;
+                state.last_timestamp_order_access_key = access_key;
                 state.last_timestamps_monotonic = is_monotonic;
             }
             timestamps_monotonic = state.last_timestamps_monotonic;
@@ -276,7 +287,7 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
         std::size_t last_idx = snapshot.count;
         std::int64_t last_ts = 0;
         bool have_last_ts = false;
-        if (get_timestamp) {
+        if (access_view.has_timestamp()) {
             const void* last_sample = snapshot.at(snapshot.count - 1);
             if (last_sample) {
                 last_ts = get_timestamp(last_sample);
@@ -368,6 +379,7 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
 
         state.last_sequence = snapshot.sequence;
         state.cached_data_identity = data_source.identity();
+        state.last_access_key = access_key;
         state.uploaded_t_origin_ns = request.t_origin_ns;
         state.last_snapshot_elements = snapshot.count;
         state.last_first = first_idx;

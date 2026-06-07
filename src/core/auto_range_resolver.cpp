@@ -168,9 +168,14 @@ bool same_cache_shape(
     const data_query_context_t& query,
     std::uint64_t sequence)
 {
+    const erased_access_policy_t access_view =
+        make_erased_access_policy_view(access);
+    const access_policy_cache_key_t access_key =
+        make_access_policy_cache_key(&access, access_view);
     return entry.valid
         && entry.source_identity == source.identity()
         && entry.access_identity == &access
+        && entry.access_key == access_key
         && entry.layout_key == access.layout_key
         && entry.semantics_value == query.semantics_key.value
         && entry.semantics_revision == query.semantics_key.revision
@@ -194,8 +199,11 @@ auto_range_cache_entry_t make_cache_entry(
     value_range_t range)
 {
     auto_range_cache_entry_t entry;
+    const erased_access_policy_t access_view =
+        make_erased_access_policy_view(access);
     entry.source_identity = source.identity();
     entry.access_identity = &access;
+    entry.access_key = make_access_policy_cache_key(&access, access_view);
     entry.layout_key = access.layout_key;
     entry.semantics_value = query.semantics_key.value;
     entry.semantics_revision = query.semantics_key.revision;

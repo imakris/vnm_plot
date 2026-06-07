@@ -14,6 +14,7 @@ struct auto_range_cache_entry_t
 {
     const void*               source_identity = nullptr;
     const Data_access_policy* access_identity = nullptr;
+    access_policy_cache_key_t access_key;
     std::uint64_t             layout_key = 0;
     std::uint64_t             semantics_value = 0;
     std::uint64_t             semantics_revision = 0;

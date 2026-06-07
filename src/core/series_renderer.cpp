@@ -82,6 +82,24 @@ bool is_builtin_primitive_drawable(
     return primitive_style == Display_style::DOTS || gpu_count >= 2;
 }
 
+void hash_combine(std::size_t& seed, std::size_t value) noexcept
+{
+    seed ^= value + 0x9e3779b9u + (seed << 6) + (seed >> 2);
+}
+
+std::size_t hash_access_policy_cache_key(
+    const detail::access_policy_cache_key_t& key) noexcept
+{
+    std::size_t h = std::hash<const Data_access_policy*>{}(key.identity);
+    hash_combine(h, std::hash<std::uint64_t>{}(key.layout_key));
+    hash_combine(h, std::hash<std::uint64_t>{}(key.revision));
+    hash_combine(h, std::hash<int>{}(static_cast<int>(key.dispatch_kind)));
+    hash_combine(h, std::hash<bool>{}(key.has_timestamp));
+    hash_combine(h, std::hash<bool>{}(key.has_value));
+    hash_combine(h, std::hash<bool>{}(key.has_range));
+    return h;
+}
+
 } // anonymous namespace
 
 struct Series_renderer::gpu_sample_t
@@ -281,6 +299,7 @@ struct Series_renderer::rhi_state_t
         std::uint64_t layer_revision = 0;
         const void* data_identity = nullptr;
         std::uint64_t layout_key = 0;
+        detail::access_policy_cache_key_t access_key;
         QRhi* rhi = nullptr;
 
         bool operator==(const qrhi_layer_program_key_t& o) const noexcept
@@ -291,6 +310,7 @@ struct Series_renderer::rhi_state_t
                 && layer_revision == o.layer_revision
                 && data_identity == o.data_identity
                 && layout_key == o.layout_key
+                && access_key == o.access_key
                 && rhi == o.rhi;
         }
     };
@@ -300,12 +320,13 @@ struct Series_renderer::rhi_state_t
         std::size_t operator()(const qrhi_layer_program_key_t& k) const noexcept
         {
             std::size_t h = std::hash<int>{}(k.series_id);
-            h ^= std::hash<int>{}(static_cast<int>(k.view_kind)) + 0x9e3779b9u + (h << 6) + (h >> 2);
-            h ^= std::hash<std::string>{}(k.layer_id) + 0x9e3779b9u + (h << 6) + (h >> 2);
-            h ^= std::hash<std::uint64_t>{}(k.layer_revision) + 0x9e3779b9u + (h << 6) + (h >> 2);
-            h ^= std::hash<const void*>{}(k.data_identity) + 0x9e3779b9u + (h << 6) + (h >> 2);
-            h ^= std::hash<std::uint64_t>{}(k.layout_key) + 0x9e3779b9u + (h << 6) + (h >> 2);
-            h ^= std::hash<QRhi*>{}(k.rhi) + 0x9e3779b9u + (h << 6) + (h >> 2);
+            hash_combine(h, std::hash<int>{}(static_cast<int>(k.view_kind)));
+            hash_combine(h, std::hash<std::string>{}(k.layer_id));
+            hash_combine(h, std::hash<std::uint64_t>{}(k.layer_revision));
+            hash_combine(h, std::hash<const void*>{}(k.data_identity));
+            hash_combine(h, std::hash<std::uint64_t>{}(k.layout_key));
+            hash_combine(h, hash_access_policy_cache_key(k.access_key));
+            hash_combine(h, std::hash<QRhi*>{}(k.rhi));
             return h;
         }
     };
@@ -322,6 +343,7 @@ struct Series_renderer::rhi_state_t
         bool hold_last_forward = false;
         std::int64_t hold_timestamp_ns = 0;
         Series_interpolation interpolation = Series_interpolation::LINEAR;
+        detail::access_policy_cache_key_t access_key;
 
         bool operator==(const qrhi_layer_data_key_t& o) const noexcept
         {
@@ -334,7 +356,8 @@ struct Series_renderer::rhi_state_t
                 && gpu_count == o.gpu_count
                 && hold_last_forward == o.hold_last_forward
                 && hold_timestamp_ns == o.hold_timestamp_ns
-                && interpolation == o.interpolation;
+                && interpolation == o.interpolation
+                && access_key == o.access_key;
         }
     };
 
@@ -901,6 +924,8 @@ void Series_renderer::prepare(
         view_state.last_sample_upload_count = 0;
         view_state.last_primitive_prepare_count = 0;
         view_state.last_line_window_sample_count = 0;
+        view_state.last_sample_access_dispatch_kind =
+            detail::access_dispatch_kind_t::NONE;
 
         if (!draw_state.series || plan.gpu_count == 0) {
             return;
@@ -1060,6 +1085,15 @@ void Series_renderer::prepare(
                 continue;
             }
 
+            const detail::erased_access_policy_t layer_access_view =
+                plan.access
+                    ? detail::make_erased_access_policy_view(*plan.access)
+                    : detail::erased_access_policy_t{};
+            const detail::access_policy_cache_key_t layer_access_key =
+                detail::make_access_policy_cache_key(
+                    plan.access,
+                    layer_access_view);
+
             rhi_state_t::qrhi_layer_program_key_t program_key;
             program_key.series_id = draw_state.id;
             program_key.view_kind = plan.view_kind;
@@ -1067,6 +1101,7 @@ void Series_renderer::prepare(
             program_key.layer_revision = layer->revision();
             program_key.data_identity = plan.source ? plan.source->identity() : nullptr;
             program_key.layout_key = plan.access ? plan.access->layout_key : 0;
+            program_key.access_key = layer_access_key;
             program_key.rhi = rhi;
 
             if (!window.snapshot) {
@@ -1076,6 +1111,7 @@ void Series_renderer::prepare(
                         cached_key.layer_id == program_key.layer_id &&
                         cached_key.layer_revision == program_key.layer_revision &&
                         cached_key.layout_key == program_key.layout_key &&
+                        cached_key.access_key == program_key.access_key &&
                         cached_key.rhi == program_key.rhi)
                     {
                         cache_entry.last_frame_used = m_frame_id;
@@ -1098,6 +1134,7 @@ void Series_renderer::prepare(
             data_key.hold_last_forward = window.hold_last_forward;
             data_key.hold_timestamp_ns = window.hold_timestamp_ns;
             data_key.interpolation = window.interpolation;
+            data_key.access_key = layer_access_key;
 
             auto& cache_entry = m_rhi_state->qrhi_layer_cache[program_key];
             bool resources_changed = false;
@@ -1190,6 +1227,13 @@ void Series_renderer::prepare(
                 key.layout_key != access->layout_key ||
                 key.rhi != rhi)
             {
+                return false;
+            }
+            const detail::erased_access_policy_t access_view =
+                detail::make_erased_access_policy_view(*access);
+            const detail::access_policy_cache_key_t access_key =
+                detail::make_access_policy_cache_key(access, access_view);
+            if (key.access_key != access_key) {
                 return false;
             }
 
@@ -1342,7 +1386,11 @@ bool Series_renderer::rhi_prepare_series_view_samples(
     };
 
     const data_snapshot_t& snapshot = view_result.cached_snapshot;
-    if (snapshot && access && access->get_timestamp && updates) {
+    const detail::erased_access_policy_t access_view = access
+        ? detail::make_erased_access_policy_view(*access)
+        : detail::erased_access_policy_t{};
+    view_state.last_sample_access_dispatch_kind = access_view.dispatch_kind;
+    if (snapshot && access_view.has_timestamp() && updates) {
         std::size_t expected_gpu_count = 0;
         if (view_result.synthetic_hold_count > 1 ||
             (view_result.synthetic_hold_count == 1 && view_result.source_count == 0) ||
@@ -1376,9 +1424,9 @@ bool Series_renderer::rhi_prepare_series_view_samples(
         const auto stage_one_sample =
             [&](gpu_sample_t& dst, const void* src, std::int64_t ts_ns) {
                 dst.t_rel = detail::to_view_seconds(ts_ns, view_result.t_origin_ns);
-                dst.y = access->get_value ? access->get_value(src) : 0.0f;
-                const auto range = access->get_range
-                    ? access->get_range(src)
+                dst.y = access_view.has_value() ? access_view.value(src) : 0.0f;
+                const auto range = access_view.has_range()
+                    ? access_view.range(src)
                     : std::make_pair(dst.y, dst.y);
                 dst.y_min = range.first;
                 dst.y_max = range.second;
@@ -1387,7 +1435,7 @@ bool Series_renderer::rhi_prepare_series_view_samples(
         for (std::size_t i = 0; i < view_result.source_count; ++i) {
             const void* src = snapshot.at(view_result.source_first + i);
             if (src) {
-                stage_one_sample(staging[i], src, access->get_timestamp(src));
+                stage_one_sample(staging[i], src, access_view.timestamp(src));
             }
             else {
                 staging[i] = gpu_sample_t{};

@@ -2,6 +2,7 @@
 
 #include "test_macros.h"
 
+#include <vnm_plot/core/access_policy.h>
 #include <vnm_plot/core/asset_loader.h>
 #include <vnm_plot/core/plot_config.h>
 #define private public
@@ -30,6 +31,8 @@ struct test_sample_t
 {
     std::int64_t timestamp_ns = 0;
     float value = 0.0f;
+    float range_min = 0.0f;
+    float range_max = 0.0f;
 };
 
 struct layer_event_t
@@ -150,6 +153,44 @@ plot::Data_access_policy make_access_policy()
         return std::make_pair(value, value);
     };
     policy.layout_key = 11;
+    return policy;
+}
+
+struct access_call_counts_t
+{
+    int timestamp = 0;
+    int value = 0;
+    int range = 0;
+};
+
+plot::Data_access_policy make_direct_member_access_policy()
+{
+    auto typed = plot::make_access_policy<test_sample_t>(
+        &test_sample_t::timestamp_ns,
+        &test_sample_t::value,
+        &test_sample_t::range_min,
+        &test_sample_t::range_max);
+    return typed.erase();
+}
+
+plot::Data_access_policy make_fallback_access_policy_with_counted_public_accessors(
+    access_call_counts_t& calls)
+{
+    plot::Data_access_policy policy;
+    policy.get_timestamp = [&calls](const void* sample) {
+        ++calls.timestamp;
+        return static_cast<const test_sample_t*>(sample)->timestamp_ns;
+    };
+    policy.get_value = [&calls](const void* sample) {
+        ++calls.value;
+        return static_cast<const test_sample_t*>(sample)->value;
+    };
+    policy.get_range = [&calls](const void* sample) {
+        ++calls.range;
+        const auto* typed_sample = static_cast<const test_sample_t*>(sample);
+        return std::make_pair(typed_sample->range_min, typed_sample->range_max);
+    };
+    policy.layout_key = 22;
     return policy;
 }
 
@@ -747,6 +788,171 @@ bool test_combined_builtin_uploads_samples_once_per_view()
     return true;
 }
 
+bool test_direct_member_policy_uses_member_dispatch_in_renderer_staging()
+{
+    constexpr std::int64_t k_second_ns = 1'000'000'000LL;
+
+    const auto make_source = [=]() {
+        auto source = std::make_shared<Test_source>();
+        std::vector<test_sample_t> samples;
+        samples.reserve(8);
+        for (std::size_t i = 0; i < 8; ++i) {
+            const float value = 1.0f + static_cast<float>(i);
+            samples.push_back({
+                static_cast<std::int64_t>(i) * k_second_ns,
+                value,
+                value - 0.25f,
+                value + 0.25f
+            });
+        }
+        source->set_samples(std::move(samples));
+        return source;
+    };
+
+    auto direct_series = std::make_shared<plot::series_data_t>();
+    direct_series->style = plot::Display_style::DOTS;
+    direct_series->data_source = make_source();
+    direct_series->access = make_direct_member_access_policy();
+
+    access_call_counts_t fallback_calls;
+    auto fallback_series = std::make_shared<plot::series_data_t>();
+    fallback_series->style = plot::Display_style::DOTS;
+    fallback_series->data_source = make_source();
+    fallback_series->access =
+        make_fallback_access_policy_with_counted_public_accessors(fallback_calls);
+
+    std::map<int, std::shared_ptr<const plot::series_data_t>> series_map;
+    const int direct_series_id = 51;
+    const int fallback_series_id = 52;
+    series_map[direct_series_id] = direct_series;
+    series_map[fallback_series_id] = fallback_series;
+
+    plot::Asset_loader asset_loader;
+    plot::Series_renderer renderer;
+    renderer.initialize(asset_loader);
+
+    Offscreen_rhi_fixture rhi_fixture;
+    std::string error_message;
+    TEST_ASSERT(rhi_fixture.initialize(error_message), error_message);
+
+    std::vector<layer_event_t> events;
+    plot::Plot_config config;
+    const plot::frame_layout_result_t layout = make_layout();
+    plot::frame_context_t ctx = make_context(layout, config);
+    ctx.t0 = 0;
+    ctx.t1 = 5LL * k_second_ns;
+    ctx.t_available_min = ctx.t0;
+    ctx.t_available_max = ctx.t1;
+
+    TEST_ASSERT(
+        rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
+        error_message);
+
+    const auto direct_it = renderer.m_vbo_states.find(direct_series_id);
+    TEST_ASSERT(direct_it != renderer.m_vbo_states.end(),
+        "expected direct-policy renderer VBO state");
+    TEST_ASSERT(direct_it->second.main_view.last_sample_upload_count == 1,
+        "direct-policy series should upload one compact sample window");
+    TEST_ASSERT(direct_it->second.main_view.last_staged_sample_count > 0,
+        "direct-policy upload should stage visible samples");
+    TEST_ASSERT(
+        direct_it->second.main_view.last_sample_access_dispatch_kind ==
+            plot::detail::access_dispatch_kind_t::MEMBER_POINTER,
+        "direct member-pointer renderer path should use member-pointer dispatch");
+
+    const auto fallback_it = renderer.m_vbo_states.find(fallback_series_id);
+    TEST_ASSERT(fallback_it != renderer.m_vbo_states.end(),
+        "expected fallback-policy renderer VBO state");
+    TEST_ASSERT(fallback_it->second.main_view.last_sample_upload_count == 1,
+        "fallback-policy series should upload one compact sample window");
+    TEST_ASSERT(
+        fallback_it->second.main_view.last_sample_access_dispatch_kind ==
+            plot::detail::access_dispatch_kind_t::STD_FUNCTION,
+        "capturing renderer fallback should use std::function dispatch");
+    TEST_ASSERT(fallback_calls.timestamp > 0 &&
+            fallback_calls.value > 0 &&
+            fallback_calls.range > 0,
+        "capturing renderer fallback should call public std::function accessors");
+
+    return true;
+}
+
+bool test_access_policy_change_reuploads_builtin_samples()
+{
+    constexpr std::int64_t k_second_ns = 1'000'000'000LL;
+
+    auto source = std::make_shared<Test_source>();
+    std::vector<test_sample_t> samples;
+    samples.reserve(8);
+    for (std::size_t i = 0; i < 8; ++i) {
+        const float value = 1.0f + static_cast<float>(i);
+        samples.push_back({
+            static_cast<std::int64_t>(i) * k_second_ns,
+            value,
+            value - 0.25f,
+            value + 0.25f
+        });
+    }
+    source->set_samples(std::move(samples));
+
+    auto series = std::make_shared<plot::series_data_t>();
+    series->style = plot::Display_style::DOTS;
+    series->data_source = source;
+    series->access = make_direct_member_access_policy();
+
+    std::map<int, std::shared_ptr<const plot::series_data_t>> series_map;
+    const int series_id = 53;
+    series_map[series_id] = series;
+
+    plot::Asset_loader asset_loader;
+    plot::Series_renderer renderer;
+    renderer.initialize(asset_loader);
+
+    Offscreen_rhi_fixture rhi_fixture;
+    std::string error_message;
+    TEST_ASSERT(rhi_fixture.initialize(error_message), error_message);
+
+    std::vector<layer_event_t> events;
+    plot::Plot_config config;
+    const plot::frame_layout_result_t layout = make_layout();
+    plot::frame_context_t ctx = make_context(layout, config);
+    ctx.t0 = 0;
+    ctx.t1 = 5LL * k_second_ns;
+    ctx.t_available_min = ctx.t0;
+    ctx.t_available_max = ctx.t1;
+
+    TEST_ASSERT(
+        rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
+        error_message);
+
+    auto state_it = renderer.m_vbo_states.find(series_id);
+    TEST_ASSERT(state_it != renderer.m_vbo_states.end(),
+        "expected renderer VBO state for access-policy reupload test");
+    TEST_ASSERT(state_it->second.main_view.last_sample_upload_count == 1,
+        "initial access policy should upload one compact sample window");
+
+    access_call_counts_t changed_calls;
+    series->access =
+        make_fallback_access_policy_with_counted_public_accessors(changed_calls);
+    events.clear();
+    TEST_ASSERT(
+        rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
+        error_message);
+
+    TEST_ASSERT(state_it->second.main_view.last_sample_upload_count == 1,
+        "access policy change must reupload the compact sample window");
+    TEST_ASSERT(
+        state_it->second.main_view.last_sample_access_dispatch_kind ==
+            plot::detail::access_dispatch_kind_t::STD_FUNCTION,
+        "changed policy should stage with std::function dispatch");
+    TEST_ASSERT(changed_calls.timestamp > 0 &&
+            changed_calls.value > 0 &&
+            changed_calls.range > 0,
+        "changed policy should invoke replacement public accessors");
+
+    return true;
+}
+
 bool test_builtin_draw_commands_sort_relative_to_custom_layers()
 {
     constexpr std::int64_t k_second_ns = 1'000'000'000LL;
@@ -1182,6 +1388,20 @@ bool test_resources_changed_tracks_data_and_window_changes()
     const layer_event_t* stable_prepare = find_prepare_event(events, "tracked");
     TEST_ASSERT(stable_prepare && !stable_prepare->resources_changed,
         "unchanged data and window must not report resources_changed");
+
+    access_call_counts_t changed_access_calls;
+    series->access =
+        make_fallback_access_policy_with_counted_public_accessors(
+            changed_access_calls);
+    events.clear();
+    TEST_ASSERT(
+        rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
+        error_message);
+    const layer_event_t* access_prepare = find_prepare_event(events, "tracked");
+    TEST_ASSERT(access_prepare && access_prepare->resources_changed,
+        "access policy change must report resources_changed");
+    TEST_ASSERT(changed_access_calls.timestamp > 0,
+        "access policy change should replan with the replacement timestamp accessor");
 
     source->notify_changed();
     events.clear();
@@ -1663,6 +1883,8 @@ int main()
     RUN_TEST(test_builtin_upload_stages_visible_window_only);
     RUN_TEST(test_builtin_upload_reuses_vbo_capacity_headroom);
     RUN_TEST(test_combined_builtin_uploads_samples_once_per_view);
+    RUN_TEST(test_direct_member_policy_uses_member_dispatch_in_renderer_staging);
+    RUN_TEST(test_access_policy_change_reuploads_builtin_samples);
     RUN_TEST(test_builtin_draw_commands_sort_relative_to_custom_layers);
     RUN_TEST(test_builtins_do_not_use_qrhi_layer_cache);
     RUN_TEST(test_builtin_upload_stages_visible_windows_for_dots_and_area);

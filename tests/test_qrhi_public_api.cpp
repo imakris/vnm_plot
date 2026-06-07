@@ -70,15 +70,45 @@ struct has_get_colormap : std::false_type {};
 template<typename T>
 struct has_get_colormap<T, std::void_t<decltype(&T::get_colormap)>> : std::true_type {};
 
-static_assert(std::is_same_v<
-    decltype(plot::Data_access_policy::get_timestamp),
+template<typename T, typename = void>
+struct has_bind_internal_access : std::false_type {};
+
+template<typename T>
+struct has_bind_internal_access<
+    T,
+    std::void_t<decltype(&T::bind_internal_access)>> : std::true_type {};
+
+using erased_timestamp_accessor_t =
+    decltype(std::declval<plot::Data_access_policy&>().get_timestamp);
+using erased_value_accessor_t =
+    decltype(std::declval<plot::Data_access_policy&>().get_value);
+using erased_range_accessor_t =
+    decltype(std::declval<plot::Data_access_policy&>().get_range);
+
+static_assert(std::is_assignable_v<
+    erased_timestamp_accessor_t&,
     std::function<std::int64_t(const void*)>>);
-static_assert(std::is_same_v<
-    decltype(plot::Data_access_policy::get_value),
+static_assert(std::is_assignable_v<
+    erased_value_accessor_t&,
     std::function<float(const void*)>>);
-static_assert(std::is_same_v<
-    decltype(plot::Data_access_policy::get_range),
+static_assert(std::is_assignable_v<
+    erased_range_accessor_t&,
     std::function<std::pair<float, float>(const void*)>>);
+static_assert(std::is_same_v<
+    decltype(std::declval<const erased_timestamp_accessor_t&>()(
+        static_cast<const void*>(nullptr))),
+    std::int64_t>);
+static_assert(std::is_same_v<
+    decltype(std::declval<const erased_value_accessor_t&>()(
+        static_cast<const void*>(nullptr))),
+    float>);
+static_assert(std::is_same_v<
+    decltype(std::declval<const erased_range_accessor_t&>()(
+        static_cast<const void*>(nullptr))),
+    std::pair<float, float>>);
+static_assert(!has_bind_internal_access<erased_timestamp_accessor_t>::value);
+static_assert(!has_bind_internal_access<erased_value_accessor_t>::value);
+static_assert(!has_bind_internal_access<erased_range_accessor_t>::value);
 static_assert(std::is_same_v<decltype(plot::Data_access_policy::layout_key), std::uint64_t>);
 
 static_assert(!has_get_signal<plot::Data_access_policy>::value);

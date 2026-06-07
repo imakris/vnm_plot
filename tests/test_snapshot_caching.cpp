@@ -2,6 +2,7 @@
 
 #include "test_macros.h"
 
+#include <vnm_plot/core/access_policy.h>
 #include <vnm_plot/core/algo.h>
 #include <vnm_plot/core/asset_loader.h>
 #include "../src/core/series_window_planner.h"
@@ -138,6 +139,35 @@ Data_access_policy make_policy()
     return policy;
 }
 
+struct Access_call_counts
+{
+    int timestamp = 0;
+    int value = 0;
+};
+
+Data_access_policy make_direct_member_policy()
+{
+    auto typed = plot::make_access_policy<Test_sample>(
+        &Test_sample::t,
+        &Test_sample::v);
+    return typed.erase();
+}
+
+Data_access_policy make_fallback_policy_with_counted_public_accessors(
+    Access_call_counts& calls)
+{
+    Data_access_policy policy;
+    policy.get_timestamp = [&calls](const void* sample) -> std::int64_t {
+        ++calls.timestamp;
+        return static_cast<const Test_sample*>(sample)->t;
+    };
+    policy.get_value = [&calls](const void* sample) {
+        ++calls.value;
+        return static_cast<const Test_sample*>(sample)->v;
+    };
+    return policy;
+}
+
 frame_context_t make_context(const frame_layout_result_t& layout, Plot_config& config)
 {
     frame_context_t ctx{layout};
@@ -166,6 +196,130 @@ void fill_lod_samples(Two_level_source& source)
         source.lod1[i].t = static_cast<std::int64_t>(src);
         source.lod1[i].v = 1.0f + static_cast<float>(src);
     }
+}
+
+bool test_direct_member_policy_uses_member_dispatch_in_planner()
+{
+    const auto make_source = []() {
+        auto source = std::make_shared<Single_level_source>();
+        source->samples.resize(16);
+        for (size_t i = 0; i < source->samples.size(); ++i) {
+            source->samples[i].t = static_cast<std::int64_t>(i);
+            source->samples[i].v = 1.0f + static_cast<float>(i);
+        }
+        return source;
+    };
+
+    frame_layout_result_t layout;
+    layout.usable_width = 200.0;
+    layout.usable_height = 80.0;
+
+    Plot_config config;
+    frame_context_t ctx = make_context(layout, config);
+
+    auto direct_series = std::make_shared<series_data_t>();
+    direct_series->style = Display_style::LINE;
+    direct_series->data_source = make_source();
+    direct_series->access = make_direct_member_policy();
+
+    Series_renderer direct_renderer;
+    Asset_loader direct_asset_loader;
+    direct_renderer.initialize(direct_asset_loader);
+    std::map<int, std::shared_ptr<const series_data_t>> direct_map;
+    direct_map[61] = direct_series;
+    direct_renderer.render(ctx, direct_map);
+
+    const auto direct_state_it = direct_renderer.m_vbo_states.find(61);
+    TEST_ASSERT(direct_state_it != direct_renderer.m_vbo_states.end(),
+        "expected direct-policy planner state");
+    TEST_ASSERT(
+        planner_state(direct_state_it->second.main_view).last_access_dispatch_kind ==
+            plot::detail::access_dispatch_kind_t::MEMBER_POINTER,
+        "direct member-pointer planner path should use member-pointer dispatch");
+
+    Access_call_counts fallback_calls;
+    auto fallback_series = std::make_shared<series_data_t>();
+    fallback_series->style = Display_style::LINE;
+    fallback_series->data_source = make_source();
+    fallback_series->access =
+        make_fallback_policy_with_counted_public_accessors(fallback_calls);
+
+    Series_renderer fallback_renderer;
+    Asset_loader fallback_asset_loader;
+    fallback_renderer.initialize(fallback_asset_loader);
+    std::map<int, std::shared_ptr<const series_data_t>> fallback_map;
+    fallback_map[62] = fallback_series;
+    fallback_renderer.render(ctx, fallback_map);
+
+    const auto fallback_state_it = fallback_renderer.m_vbo_states.find(62);
+    TEST_ASSERT(fallback_state_it != fallback_renderer.m_vbo_states.end(),
+        "expected fallback-policy planner state");
+    TEST_ASSERT(
+        planner_state(fallback_state_it->second.main_view).last_access_dispatch_kind ==
+            plot::detail::access_dispatch_kind_t::STD_FUNCTION,
+        "capturing planner fallback should use std::function dispatch");
+    TEST_ASSERT(fallback_calls.timestamp > 0,
+        "capturing planner fallback should call the public timestamp std::function");
+
+    return true;
+}
+
+bool test_access_policy_change_invalidates_planner_fast_path_cache()
+{
+    auto data_source = std::make_shared<Single_level_source>();
+    data_source->samples.resize(16);
+    for (size_t i = 0; i < data_source->samples.size(); ++i) {
+        data_source->samples[i].t = static_cast<std::int64_t>(i);
+        data_source->samples[i].v = 1.0f + static_cast<float>(i);
+    }
+
+    const int series_id = 63;
+    auto series = std::make_shared<series_data_t>();
+    series->style = Display_style::LINE;
+    series->data_source = data_source;
+    series->access = make_direct_member_policy();
+
+    frame_layout_result_t layout;
+    layout.usable_width = 200.0;
+    layout.usable_height = 80.0;
+
+    Plot_config config;
+    frame_context_t ctx = make_context(layout, config);
+
+    Series_renderer renderer;
+    Asset_loader asset_loader;
+    renderer.initialize(asset_loader);
+    std::map<int, std::shared_ptr<const series_data_t>> series_map;
+    series_map[series_id] = series;
+
+    renderer.render(ctx, series_map);
+    TEST_ASSERT(data_source->snapshot_calls == 1,
+        "expected initial planner render to take one snapshot");
+
+    auto state_it = renderer.m_vbo_states.find(series_id);
+    TEST_ASSERT(state_it != renderer.m_vbo_states.end(),
+        "expected planner state for access-policy cache test");
+    state_it->second.main_view.has_uploaded_vbo = true;
+
+    renderer.render(ctx, series_map);
+    TEST_ASSERT(data_source->snapshot_calls == 1,
+        "unchanged access policy should keep the planner fast path");
+
+    Access_call_counts changed_calls;
+    series->access =
+        make_fallback_policy_with_counted_public_accessors(changed_calls);
+    renderer.render(ctx, series_map);
+
+    TEST_ASSERT(data_source->snapshot_calls == 2,
+        "access policy change must invalidate the planner fast path");
+    TEST_ASSERT(
+        planner_state(state_it->second.main_view).last_access_dispatch_kind ==
+            plot::detail::access_dispatch_kind_t::STD_FUNCTION,
+        "changed policy should replan with std::function dispatch");
+    TEST_ASSERT(changed_calls.timestamp > 0,
+        "changed policy should invoke the replacement timestamp accessor");
+
+    return true;
 }
 
 bool test_frame_scoped_cache_reuse()
@@ -882,6 +1036,8 @@ int main()
     int passed = 0;
     int failed = 0;
 
+    RUN_TEST(test_direct_member_policy_uses_member_dispatch_in_planner);
+    RUN_TEST(test_access_policy_change_invalidates_planner_fast_path_cache);
     RUN_TEST(test_frame_scoped_cache_reuse);
     RUN_TEST(test_preview_uses_distinct_source_snapshot);
     RUN_TEST(test_preview_disabled_skips_preview_snapshot);

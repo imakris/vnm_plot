@@ -12,6 +12,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 #include <vector>
 #include <glm/mat4x4.hpp>
@@ -29,7 +30,217 @@ class QRhiResourceUpdateBatch;
 
 namespace vnm::plot {
 struct Plot_config;
+struct Data_access_policy;
+template<typename Sample>
+struct Data_access_policy_typed;
 class Qrhi_series_layer;
+
+namespace detail {
+
+enum class access_dispatch_kind_t : std::uint8_t
+{
+    NONE,
+    MEMBER_POINTER,
+    STD_FUNCTION,
+    MIXED
+};
+
+struct erased_access_policy_t
+{
+    using timestamp_fn_t =
+        std::int64_t (*)(const erased_access_policy_t&, const void*);
+    using value_fn_t =
+        float (*)(const erased_access_policy_t&, const void*);
+    using range_fn_t =
+        std::pair<float, float> (*)(const erased_access_policy_t&, const void*);
+
+    const void* ctx = nullptr;
+    timestamp_fn_t get_timestamp = nullptr;
+    value_fn_t get_value = nullptr;
+    range_fn_t get_range = nullptr;
+
+    access_dispatch_kind_t dispatch_kind = access_dispatch_kind_t::NONE;
+    std::size_t timestamp_offset = 0;
+    std::size_t value_offset = 0;
+    std::size_t range_min_offset = 0;
+    std::size_t range_max_offset = 0;
+
+    [[nodiscard]] bool has_timestamp() const noexcept
+    {
+        return get_timestamp != nullptr;
+    }
+
+    [[nodiscard]] bool has_value() const noexcept
+    {
+        return get_value != nullptr;
+    }
+
+    [[nodiscard]] bool has_range() const noexcept
+    {
+        return get_range != nullptr;
+    }
+
+    [[nodiscard]] bool is_valid() const noexcept
+    {
+        return has_timestamp() && (has_value() || has_range());
+    }
+
+    std::int64_t timestamp(const void* sample) const
+    {
+        return get_timestamp ? get_timestamp(*this, sample) : std::int64_t{0};
+    }
+
+    float value(const void* sample) const
+    {
+        return get_value ? get_value(*this, sample) : 0.0f;
+    }
+
+    std::pair<float, float> range(const void* sample) const
+    {
+        return get_range ? get_range(*this, sample)
+                         : std::make_pair(0.0f, 0.0f);
+    }
+};
+
+struct access_policy_cache_key_t
+{
+    const Data_access_policy* identity = nullptr;
+    std::uint64_t layout_key = 0;
+    std::uint64_t revision = 0;
+    access_dispatch_kind_t dispatch_kind = access_dispatch_kind_t::NONE;
+    bool has_timestamp = false;
+    bool has_value = false;
+    bool has_range = false;
+
+    [[nodiscard]] bool operator==(
+        const access_policy_cache_key_t& other) const noexcept
+    {
+        return identity == other.identity &&
+            layout_key == other.layout_key &&
+            revision == other.revision &&
+            dispatch_kind == other.dispatch_kind &&
+            has_timestamp == other.has_timestamp &&
+            has_value == other.has_value &&
+            has_range == other.has_range;
+    }
+
+    [[nodiscard]] bool operator!=(
+        const access_policy_cache_key_t& other) const noexcept
+    {
+        return !(*this == other);
+    }
+};
+
+erased_access_policy_t make_erased_access_policy_view(
+    const Data_access_policy& policy);
+access_policy_cache_key_t make_access_policy_cache_key(
+    const Data_access_policy* policy,
+    const erased_access_policy_t& view);
+
+template<typename Signature>
+class access_function_slot_t;
+
+template<typename R, typename... Args>
+class access_function_slot_t<R(Args...)>
+{
+public:
+    using function_t = std::function<R(Args...)>;
+
+    access_function_slot_t() = default;
+    access_function_slot_t(const access_function_slot_t& other)
+    :
+        m_function(other.m_function)
+    {}
+
+    access_function_slot_t(access_function_slot_t&& other)
+    :
+        m_function(std::move(other.m_function))
+    {
+        other.clear_internal_access();
+    }
+
+    access_function_slot_t& operator=(const access_function_slot_t& other)
+    {
+        if (this != &other) {
+            m_function = other.m_function;
+            clear_internal_access();
+        }
+        return *this;
+    }
+
+    access_function_slot_t& operator=(access_function_slot_t&& other)
+    {
+        if (this != &other) {
+            m_function = std::move(other.m_function);
+            clear_internal_access();
+            other.clear_internal_access();
+        }
+        return *this;
+    }
+
+    template<
+        typename Callable,
+        typename = std::enable_if_t<
+            !std::is_same_v<std::decay_t<Callable>, access_function_slot_t>>>
+    access_function_slot_t& operator=(Callable&& callable)
+    {
+        m_function = std::forward<Callable>(callable);
+        clear_internal_access();
+        return *this;
+    }
+
+    access_function_slot_t& operator=(std::nullptr_t)
+    {
+        m_function = nullptr;
+        clear_internal_access();
+        return *this;
+    }
+
+    explicit operator bool() const noexcept
+    {
+        return static_cast<bool>(m_function);
+    }
+
+    R operator()(Args... args) const
+    {
+        return m_function(std::forward<Args>(args)...);
+    }
+
+    [[nodiscard]] const function_t& function() const noexcept
+    {
+        return m_function;
+    }
+
+private:
+    friend struct ::vnm::plot::Data_access_policy;
+    template<typename>
+    friend struct ::vnm::plot::Data_access_policy_typed;
+
+    void bind_internal_access(
+        erased_access_policy_t* access,
+        std::uint64_t* revision) noexcept
+    {
+        m_internal_access = access;
+        m_revision = revision;
+    }
+
+    void clear_internal_access() noexcept
+    {
+        if (m_internal_access) {
+            *m_internal_access = erased_access_policy_t{};
+        }
+        if (m_revision) {
+            ++(*m_revision);
+        }
+    }
+
+    function_t m_function;
+    erased_access_policy_t* m_internal_access = nullptr;
+    std::uint64_t* m_revision = nullptr;
+};
+
+} // namespace detail
+
 // -----------------------------------------------------------------------------
 // Size_2i - Replacement for QSize
 // -----------------------------------------------------------------------------
@@ -137,14 +348,78 @@ struct snapshot_result_t
 // This enables rendering of arbitrary sample types without template explosion.
 struct Data_access_policy
 {
+    using timestamp_accessor_t =
+        detail::access_function_slot_t<std::int64_t(const void*)>;
+    using value_accessor_t =
+        detail::access_function_slot_t<float(const void*)>;
+    using range_accessor_t =
+        detail::access_function_slot_t<std::pair<float, float>(const void*)>;
+
+    Data_access_policy()
+    {
+        bind_accessor_slots();
+    }
+
+    Data_access_policy(const Data_access_policy& other)
+    :
+        get_timestamp(other.get_timestamp),
+        get_value(other.get_value),
+        get_range(other.get_range),
+        layout_key(other.layout_key),
+        internal_access(other.internal_access),
+        access_revision(other.access_revision)
+    {
+        bind_accessor_slots();
+    }
+
+    Data_access_policy(Data_access_policy&& other)
+    :
+        get_timestamp(other.get_timestamp),
+        get_value(other.get_value),
+        get_range(other.get_range),
+        layout_key(other.layout_key),
+        internal_access(other.internal_access),
+        access_revision(other.access_revision)
+    {
+        bind_accessor_slots();
+    }
+
+    Data_access_policy& operator=(const Data_access_policy& other)
+    {
+        if (this != &other) {
+            get_timestamp = other.get_timestamp;
+            get_value = other.get_value;
+            get_range = other.get_range;
+            layout_key = other.layout_key;
+            internal_access = other.internal_access;
+            ++access_revision;
+            bind_accessor_slots();
+        }
+        return *this;
+    }
+
+    Data_access_policy& operator=(Data_access_policy&& other)
+    {
+        if (this != &other) {
+            get_timestamp = other.get_timestamp;
+            get_value = other.get_value;
+            get_range = other.get_range;
+            layout_key = other.layout_key;
+            internal_access = other.internal_access;
+            ++access_revision;
+            bind_accessor_slots();
+        }
+        return *this;
+    }
+
     // --- Sample value extraction ---
     // Values narrow to float before upload. For large-biased signals, subtract
     // the bias inside the accessor so the remaining dynamic range survives.
     // Timestamps are int64_t nanoseconds (by API convention; the unit is the
     // accessor's contract with vnm_plot).
-    std::function<std::int64_t(const void* sample)>             get_timestamp;  ///< Extract timestamp (ns)
-    std::function<float(const void* sample)>                    get_value;      ///< Extract primary value
-    std::function<std::pair<float, float>(const void* sample)>  get_range;      ///< Extract min/max range
+    timestamp_accessor_t get_timestamp;  ///< Extract timestamp (ns)
+    value_accessor_t     get_value;      ///< Extract primary value
+    range_accessor_t     get_range;      ///< Extract min/max range
 
     uint64_t layout_key = 0;  ///< Cache key distinguishing user sample types in renderer-internal caches
 
@@ -152,7 +427,117 @@ struct Data_access_policy
     {
         return get_timestamp && (get_value || get_range);
     }
+
+private:
+    friend detail::erased_access_policy_t detail::make_erased_access_policy_view(
+        const Data_access_policy& policy);
+    friend detail::access_policy_cache_key_t detail::make_access_policy_cache_key(
+        const Data_access_policy* policy,
+        const detail::erased_access_policy_t& view);
+    template<typename>
+    friend struct Data_access_policy_typed;
+
+    void set_internal_access(detail::erased_access_policy_t access)
+    {
+        internal_access = access;
+        ++access_revision;
+        bind_accessor_slots();
+    }
+
+    void bind_accessor_slots() noexcept
+    {
+        get_timestamp.bind_internal_access(
+            &internal_access,
+            &access_revision);
+        get_value.bind_internal_access(
+            &internal_access,
+            &access_revision);
+        get_range.bind_internal_access(
+            &internal_access,
+            &access_revision);
+    }
+
+    detail::erased_access_policy_t internal_access;  ///< Renderer/planner fast-path view
+    std::uint64_t access_revision = 1;
 };
+
+namespace detail {
+
+inline std::int64_t std_function_access_timestamp(
+    const erased_access_policy_t& view,
+    const void* sample)
+{
+    const auto* policy = static_cast<const Data_access_policy*>(view.ctx);
+    return policy && policy->get_timestamp
+        ? policy->get_timestamp(sample)
+        : std::int64_t{0};
+}
+
+inline float std_function_access_value(
+    const erased_access_policy_t& view,
+    const void* sample)
+{
+    const auto* policy = static_cast<const Data_access_policy*>(view.ctx);
+    return policy && policy->get_value ? policy->get_value(sample) : 0.0f;
+}
+
+inline std::pair<float, float> std_function_access_range(
+    const erased_access_policy_t& view,
+    const void* sample)
+{
+    const auto* policy = static_cast<const Data_access_policy*>(view.ctx);
+    return policy && policy->get_range
+        ? policy->get_range(sample)
+        : std::make_pair(0.0f, 0.0f);
+}
+
+inline erased_access_policy_t make_erased_access_policy_view(
+    const Data_access_policy& policy)
+{
+    erased_access_policy_t view = policy.internal_access;
+    bool uses_std_function = false;
+
+    if (!view.get_timestamp && policy.get_timestamp) {
+        view.get_timestamp = &std_function_access_timestamp;
+        uses_std_function = true;
+    }
+    if (!view.get_value && policy.get_value) {
+        view.get_value = &std_function_access_value;
+        uses_std_function = true;
+    }
+    if (!view.get_range && policy.get_range) {
+        view.get_range = &std_function_access_range;
+        uses_std_function = true;
+    }
+
+    if (uses_std_function) {
+        view.ctx = &policy;
+        if (view.dispatch_kind == access_dispatch_kind_t::NONE) {
+            view.dispatch_kind = access_dispatch_kind_t::STD_FUNCTION;
+        }
+        else if (view.dispatch_kind == access_dispatch_kind_t::MEMBER_POINTER) {
+            view.dispatch_kind = access_dispatch_kind_t::MIXED;
+        }
+    }
+    return view;
+}
+
+inline access_policy_cache_key_t make_access_policy_cache_key(
+    const Data_access_policy* policy,
+    const erased_access_policy_t& view)
+{
+    access_policy_cache_key_t key;
+    key.identity = policy;
+    key.layout_key = policy ? policy->layout_key : 0;
+    key.revision = policy ? policy->access_revision : 0;
+    key.dispatch_kind = view.dispatch_kind;
+    key.has_timestamp = view.has_timestamp();
+    key.has_value = view.has_value();
+    key.has_range = view.has_range();
+    return key;
+}
+
+} // namespace detail
 
 enum class Series_interpolation
 {
