@@ -6,6 +6,7 @@
 #include <iostream>
 #include <thread>
 #include <chrono>
+#include <limits>
 #include <vector>
 
 using vnm::benchmark::Bar_sample;
@@ -39,7 +40,21 @@ using vnm::benchmark::make_trade_access_policy;
         } \
     } while(0)
 
-// Test: Empty buffer returns EMPTY status and has_value_range is false
+template<typename Source>
+vnm::plot::data_query_result_t<vnm::plot::value_range_t> query_full_range(
+    Source& source,
+    const vnm::plot::Data_access_policy& access)
+{
+    vnm::plot::data_query_context_t query;
+    query.access = &access;
+    query.time_window = {
+        std::numeric_limits<std::int64_t>::min(),
+        std::numeric_limits<std::int64_t>::max()
+    };
+    return source.query_v_range(0, query);
+}
+
+// Test: Empty buffer returns EMPTY status and empty query result
 bool test_empty_buffer() {
     Ring_buffer<Bar_sample> buffer(100);
     Benchmark_data_source<Bar_sample> source(buffer);
@@ -49,8 +64,10 @@ bool test_empty_buffer() {
     TEST_ASSERT(result.status == vnm::plot::snapshot_result_t::Snapshot_status::EMPTY,
                 "empty buffer should return EMPTY status");
     TEST_ASSERT(result.snapshot.count == 0, "snapshot count should be 0");
-    TEST_ASSERT(!source.has_value_range(), "empty buffer should not have valid range");
-    TEST_ASSERT(source.value_range_needs_rescan(), "empty buffer should need rescan");
+
+    const auto query_result = query_full_range(source, make_bar_access_policy());
+    TEST_ASSERT(query_result.status == vnm::plot::Data_query_status::EMPTY,
+                "empty buffer range query should return EMPTY");
 
     return true;
 }
@@ -127,12 +144,11 @@ bool test_bar_value_range() {
     bar3.high = 110.0f;  // New maximum
     buffer.push(bar3);
 
-    source.try_snapshot();
-
-    auto [min_val, max_val] = source.value_range();
-    TEST_ASSERT(min_val == 85.0f, "min should be 85.0");
-    TEST_ASSERT(max_val == 110.0f, "max should be 110.0");
-    TEST_ASSERT(source.has_value_range(), "should have value range");
+    const auto query_result = query_full_range(source, make_bar_access_policy());
+    TEST_ASSERT(query_result.status == vnm::plot::Data_query_status::READY,
+                "bar range query should be READY");
+    TEST_ASSERT(query_result.value.min == 85.0f, "min should be 85.0");
+    TEST_ASSERT(query_result.value.max == 110.0f, "max should be 110.0");
 
     return true;
 }
@@ -154,11 +170,11 @@ bool test_trade_value_range() {
     t3.price = 110.0f;
     buffer.push(t3);
 
-    source.try_snapshot();
-
-    auto [min_val, max_val] = source.value_range();
-    TEST_ASSERT(min_val == 90.0f, "min should be 90.0");
-    TEST_ASSERT(max_val == 110.0f, "max should be 110.0");
+    const auto query_result = query_full_range(source, make_trade_access_policy());
+    TEST_ASSERT(query_result.status == vnm::plot::Data_query_status::READY,
+                "trade range query should be READY");
+    TEST_ASSERT(query_result.value.min == 90.0f, "min should be 90.0");
+    TEST_ASSERT(query_result.value.max == 110.0f, "max should be 110.0");
 
     return true;
 }
@@ -388,9 +404,13 @@ bool test_brownian_integration() {
     TEST_ASSERT(result.snapshot.count == 100, "should have 100 samples");
 
     // Value range should be valid
-    auto [min_val, max_val] = source.value_range();
-    TEST_ASSERT(min_val < max_val, "min should be less than max");
-    TEST_ASSERT(min_val > 0.0f, "min should be positive (price data)");
+    const auto query_result = query_full_range(source, make_bar_access_policy());
+    TEST_ASSERT(query_result.status == vnm::plot::Data_query_status::READY,
+                "generated bar range query should be READY");
+    TEST_ASSERT(query_result.value.min < query_result.value.max,
+                "min should be less than max");
+    TEST_ASSERT(query_result.value.min > 0.0f,
+                "min should be positive (price data)");
 
     return true;
 }

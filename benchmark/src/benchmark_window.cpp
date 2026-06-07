@@ -20,6 +20,7 @@
 #include <cstdio>
 #include <cstring>
 #include <iostream>
+#include <limits>
 #include <sstream>
 
 namespace vnm::benchmark {
@@ -89,8 +90,23 @@ void update_view_range_from_source(
     t_max = t_last;
     t_min = std::max(t_first, t_last - k_window_ns);
 
-    if (source->has_value_range()) {
-        auto [lo, hi] = source->value_range();
+    vnm::plot::Data_access_policy access = data_type == "Trades"
+        ? make_trade_access_policy()
+        : make_bar_access_policy();
+    vnm::plot::data_query_context_t query;
+    query.access = &access;
+    query.time_window = {
+        std::numeric_limits<std::int64_t>::min(),
+        std::numeric_limits<std::int64_t>::max()
+    };
+    const auto range_result = source->query_v_range(0, query);
+    if (range_result.status == vnm::plot::Data_query_status::READY &&
+        std::isfinite(range_result.value.min) &&
+        std::isfinite(range_result.value.max) &&
+        range_result.value.min <= range_result.value.max)
+    {
+        const float lo = range_result.value.min;
+        const float hi = range_result.value.max;
         float padding = (hi - lo) * 0.1f;
         if (padding < 0.01f) {
             padding = 1.0f;

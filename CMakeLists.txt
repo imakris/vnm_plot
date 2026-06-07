@@ -142,6 +142,7 @@ set(VNM_PLOT_CORE_SOURCES
     src/core/asset_loader.cpp
     src/core/platform_paths.cpp
     src/core/layout_calculator.cpp
+    src/core/auto_range_resolver.cpp
 
     # Core renderers
     src/core/primitive_renderer.cpp
@@ -173,7 +174,6 @@ set(VNM_PLOT_CORE_HEADERS
     include/vnm_plot/core/constants.h
     include/vnm_plot/core/color_palette.h
     include/vnm_plot/core/algo.h
-    include/vnm_plot/core/range_cache.h
     include/vnm_plot/core/primitive_renderer.h
     include/vnm_plot/core/chrome_renderer.h
     include/vnm_plot/core/font_renderer.h

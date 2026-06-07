@@ -269,11 +269,6 @@ public:
         std::size_t lod,
         const data_query_context_t& query);
 
-    // Optional value range interface for O(1) range queries.
-    virtual bool has_value_range() const { return false; }
-    virtual std::pair<float, float> value_range() const { return {0.0f, 0.0f}; }
-    virtual bool value_range_needs_rescan() const { return false; }
-
 };
 
 // -----------------------------------------------------------------------------

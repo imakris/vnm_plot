@@ -9,11 +9,8 @@
 
 #include <vnm_plot/core/types.h>
 
-#include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <limits>
-#include <vector>
 
 namespace vnm::benchmark {
 
@@ -49,7 +46,6 @@ public:
         m_snapshot_sequence = view.sequence;
 
         if (view.count == 0) {
-            m_range_valid = false;
             return {vnm::plot::data_snapshot_t{}, Status::EMPTY};
         }
 
@@ -61,11 +57,6 @@ public:
         snapshot.data2 = view.data2;
         snapshot.count2 = view.count2;
         snapshot.hold = view.lock;
-
-        if (view.sequence != m_last_buffer_sequence) {
-            update_value_range(snapshot);
-            m_last_buffer_sequence = view.sequence;
-        }
 
         return {
             snapshot,
@@ -97,22 +88,6 @@ public:
         return 0;
     }
 
-    /// O(1) value range query (computed during snapshot)
-    /// Returns false if snapshot is empty or no data has been processed
-    bool has_value_range() const override {
-        return m_range_valid;
-    }
-
-    std::pair<float, float> value_range() const override {
-        return {m_value_min, m_value_max};
-    }
-
-    bool value_range_needs_rescan() const override {
-        // Range is updated on each snapshot, so no rescan needed
-        // But return true if range is invalid to signal need for data
-        return !m_range_valid;
-    }
-
     /// Get current sequence for change detection
     uint64_t sequence() const {
         return m_snapshot_sequence;
@@ -121,54 +96,7 @@ public:
 private:
     Ring_buffer<T>& m_buffer;
     uint64_t m_snapshot_sequence = 0;
-    uint64_t m_last_buffer_sequence = 0;
-    float m_value_min = std::numeric_limits<float>::max();
-    float m_value_max = std::numeric_limits<float>::lowest();
-    bool m_range_valid = false;
-
-    /// Update value range from current snapshot data
-    void update_value_range(const vnm::plot::data_snapshot_t& snapshot) {
-        if (!snapshot.is_valid()) {
-            m_value_min = 0.0f;
-            m_value_max = 0.0f;
-            m_range_valid = false;
-            return;
-        }
-
-        m_value_min = std::numeric_limits<float>::max();
-        m_value_max = std::numeric_limits<float>::lowest();
-
-        for (std::size_t i = 0; i < snapshot.count; ++i) {
-            const void* sample_ptr = snapshot.at(i);
-            if (!sample_ptr) {
-                continue;
-            }
-            const auto& sample = *static_cast<const T*>(sample_ptr);
-            auto [lo, hi] = get_sample_range(sample);
-            m_value_min = std::min(m_value_min, lo);
-            m_value_max = std::max(m_value_max, hi);
-        }
-
-        m_range_valid = true;
-    }
-
-    /// Extract value range from a sample (specialized per type)
-    static std::pair<float, float> get_sample_range(const T& sample);
 };
-
-// Specialization for Bar_sample: range is [low, high]
-template<>
-inline std::pair<float, float> Benchmark_data_source<Bar_sample>::get_sample_range(
-    const Bar_sample& sample) {
-    return {sample.low, sample.high};
-}
-
-// Specialization for Trade_sample: range is [price, price]
-template<>
-inline std::pair<float, float> Benchmark_data_source<Trade_sample>::get_sample_range(
-    const Trade_sample& sample) {
-    return {sample.price, sample.price};
-}
 
 /// Create a Data_access_policy for Bar_sample. The renderer owns the GPU-side
 /// sample layout (gpu_sample_t) and rebases timestamps on upload, so the

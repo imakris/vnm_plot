@@ -1,68 +1,71 @@
-// vnm_plot core cache tests
+// vnm_plot production auto-range query tests
 
 #include "test_macros.h"
 
-#include <vnm_plot/core/asset_loader.h>
-#include <vnm_plot/core/series_renderer.h>
+#include "../src/core/auto_range_resolver.h"
+
 #include <vnm_plot/core/plot_config.h>
-#include <vnm_plot/core/range_cache.h>
+#include <vnm_plot/core/types.h>
 
 #include <cstdint>
 #include <iostream>
 #include <map>
 #include <memory>
-#include <string>
-#include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace plot = vnm::plot;
 using plot::Auto_v_range_mode;
 using plot::Data_access_policy;
+using plot::Data_query_status;
 using plot::Data_source;
 using plot::Display_style;
+using plot::Empty_window_behavior;
+using plot::Plot_config;
+using plot::Series_interpolation;
+using plot::data_config_t;
+using plot::data_query_context_t;
+using plot::data_query_result_t;
 using plot::data_snapshot_t;
-using plot::lod_minmax_cache_t;
-using plot::preview_config_t;
 using plot::series_data_t;
-using plot::series_minmax_cache_t;
 using plot::snapshot_result_t;
-using plot::validate_range_cache_sequences;
+using plot::value_range_t;
 
 namespace {
 
 struct Test_sample {
-    // Timestamps are int64 nanoseconds (API convention).
     std::int64_t t = 0;
     float v = 0.0f;
 };
 
-class Range_cache_source final : public Data_source {
+class Query_range_source final : public Data_source {
 public:
     std::vector<Test_sample> samples;
-    size_t levels = 1;
-    uint64_t current_sequence_value = 1;
-    uint64_t snapshot_sequence_value = 1;
-    bool fail_snapshot = false;
+    Data_query_status query_status = Data_query_status::UNSUPPORTED;
+    value_range_t query_range{0.0f, 0.0f};
+    std::uint64_t query_sequence = 1;
+    std::uint64_t current_sequence_value = 1;
+    std::uint64_t snapshot_sequence = 1;
+    std::size_t levels = 1;
+    int query_calls = 0;
     int snapshot_calls = 0;
+    std::size_t last_query_lod = 0;
+    data_query_context_t last_query;
 
-    snapshot_result_t try_snapshot(size_t lod_level) override
+    snapshot_result_t try_snapshot(std::size_t lod_level) override
     {
+        ++snapshot_calls;
         if (lod_level >= levels) {
             return {data_snapshot_t{}, snapshot_result_t::Snapshot_status::FAILED};
         }
-        ++snapshot_calls;
-        if (fail_snapshot) {
-            return {data_snapshot_t{}, snapshot_result_t::Snapshot_status::FAILED};
-        }
-        auto hold = std::make_shared<int>(13);
         data_snapshot_t snapshot{
             samples.data(),
             samples.size(),
             sizeof(Test_sample),
-            snapshot_sequence_value,
+            snapshot_sequence,
             nullptr,
             0,
-            hold
+            std::make_shared<int>(7)
         };
         if (samples.empty()) {
             return {data_snapshot_t{}, snapshot_result_t::Snapshot_status::EMPTY};
@@ -70,10 +73,28 @@ public:
         return {snapshot, snapshot_result_t::Snapshot_status::READY};
     }
 
-    size_t lod_levels() const override { return levels; }
-    size_t lod_scale(size_t level) const override { return level == 0 ? 1 : 4; }
-    size_t sample_stride() const override { return sizeof(Test_sample); }
-    uint64_t current_sequence(size_t /*lod_level*/) const override { return current_sequence_value; }
+    data_query_result_t<value_range_t> query_v_range(
+        std::size_t lod,
+        const data_query_context_t& query) override
+    {
+        ++query_calls;
+        last_query_lod = lod;
+        last_query = query;
+        data_query_result_t<value_range_t> result;
+        result.status = query_status;
+        result.sequence = query_sequence;
+        result.value = query_range;
+        return result;
+    }
+
+    std::size_t lod_levels() const override { return levels; }
+    std::size_t lod_scale(std::size_t level) const override { return level == 0 ? 1 : 4; }
+    std::size_t sample_stride() const override { return sizeof(Test_sample); }
+    std::uint64_t current_sequence(std::size_t /*lod_level*/) const override
+    {
+        return current_sequence_value;
+    }
+
 };
 
 Data_access_policy make_policy()
@@ -89,10 +110,21 @@ Data_access_policy make_policy()
         const float value = static_cast<const Test_sample*>(sample)->v;
         return std::make_pair(value, value);
     };
+    policy.layout_key = 0x54455354;
     return policy;
 }
 
-std::shared_ptr<series_data_t> make_series(const std::shared_ptr<Data_source>& source)
+Data_access_policy make_value_only_policy()
+{
+    Data_access_policy policy;
+    policy.get_value = [](const void* sample) {
+        return static_cast<const Test_sample*>(sample)->v;
+    };
+    policy.layout_key = 0x56414C55;
+    return policy;
+}
+
+std::shared_ptr<series_data_t> make_series(const std::shared_ptr<Query_range_source>& source)
 {
     auto series = std::make_shared<series_data_t>();
     series->style = Display_style::LINE;
@@ -101,249 +133,468 @@ std::shared_ptr<series_data_t> make_series(const std::shared_ptr<Data_source>& s
     return series;
 }
 
-bool test_failed_snapshot_invalidates_range_cache()
-{
-    auto data_source = std::make_shared<Range_cache_source>();
-    data_source->samples.resize(1);
-    data_source->current_sequence_value = 0;
-    data_source->snapshot_sequence_value = 5;
-    data_source->fail_snapshot = true;
-
-    const int series_id = 10;
-    auto series = make_series(data_source);
-
-    std::map<int, std::shared_ptr<const series_data_t>> series_map;
-    series_map[series_id] = series;
-
-    std::unordered_map<int, series_minmax_cache_t> cache_map;
-    auto& cache = cache_map[series_id];
-    cache.identity = data_source->identity();
-    cache.lods.assign(data_source->lod_levels(), lod_minmax_cache_t{});
-    cache.lods[0].valid = true;
-    cache.lods[0].sequence = 5;
-
-    const bool valid = validate_range_cache_sequences(
-        series_map,
-        cache_map,
-        Auto_v_range_mode::GLOBAL);
-
-    TEST_ASSERT(!valid, "expected range cache invalidation on failed snapshot");
-    TEST_ASSERT(data_source->snapshot_calls == 1,
-                "expected snapshot attempt when current_sequence is 0");
-
-    return true;
-}
-
-bool test_sequence_change_invalidates_range_cache()
-{
-    auto data_source = std::make_shared<Range_cache_source>();
-    data_source->samples.resize(1);
-    data_source->current_sequence_value = 7;
-    data_source->snapshot_sequence_value = 7;
-
-    const int series_id = 11;
-    auto series = make_series(data_source);
-
-    std::map<int, std::shared_ptr<const series_data_t>> series_map;
-    series_map[series_id] = series;
-
-    std::unordered_map<int, series_minmax_cache_t> cache_map;
-    auto& cache = cache_map[series_id];
-    cache.identity = data_source->identity();
-    cache.lods.assign(data_source->lod_levels(), lod_minmax_cache_t{});
-    cache.lods[0].valid = true;
-    cache.lods[0].sequence = 7;
-
-    const bool valid = validate_range_cache_sequences(
-        series_map,
-        cache_map,
-        Auto_v_range_mode::GLOBAL);
-    TEST_ASSERT(valid, "expected range cache to stay valid when sequence matches");
-
-    data_source->current_sequence_value = 8;
-    const bool valid_after = validate_range_cache_sequences(
-        series_map,
-        cache_map,
-        Auto_v_range_mode::GLOBAL);
-    TEST_ASSERT(!valid_after, "expected range cache invalidation on sequence change");
-
-    return true;
-}
-
-bool test_validate_range_cache_with_empty_series()
+std::map<int, std::shared_ptr<const series_data_t>> make_series_map(
+    const std::shared_ptr<series_data_t>& series)
 {
     std::map<int, std::shared_ptr<const series_data_t>> series_map;
-    std::unordered_map<int, series_minmax_cache_t> cache_map;
+    series_map[7] = series;
+    return series_map;
+}
 
-    const bool valid = validate_range_cache_sequences(
+data_config_t make_data_config()
+{
+    data_config_t cfg;
+    cfg.t_min = 10;
+    cfg.t_max = 20;
+    cfg.t_available_min = 0;
+    cfg.t_available_max = 100;
+    cfg.v_min = -100.0f;
+    cfg.v_max = 100.0f;
+    cfg.v_manual_min = -10.0f;
+    cfg.v_manual_max = 10.0f;
+    return cfg;
+}
+
+bool test_visible_auto_range_uses_source_query_without_snapshot_fallback()
+{
+    auto source = std::make_shared<Query_range_source>();
+    source->query_status = Data_query_status::READY;
+    source->query_range = {2.0f, 5.0f};
+
+    auto series = make_series(source);
+    series->interpolation = Series_interpolation::STEP_AFTER;
+    series->empty_window_behavior = Empty_window_behavior::HOLD_LAST_FORWARD;
+
+    Plot_config config;
+    config.auto_v_range_mode = Auto_v_range_mode::VISIBLE;
+
+    const auto range = plot::detail::resolve_main_v_range(
+        make_series_map(series),
+        make_data_config(),
+        config,
+        true);
+
+    TEST_ASSERT(range.first == 2.0f && range.second == 5.0f,
+                "visible auto-range should use the source query result");
+    TEST_ASSERT(source->query_calls == 1,
+                "visible auto-range should call query_v_range once");
+    TEST_ASSERT(source->snapshot_calls == 0,
+                "READY query result should avoid snapshot fallback");
+    TEST_ASSERT(source->last_query_lod == 0,
+                "VISIBLE mode should query LOD 0");
+    TEST_ASSERT(source->last_query.time_window.min_ns == 10 &&
+                    source->last_query.time_window.max_ns == 20,
+                "visible query should use the configured time window");
+    TEST_ASSERT(source->last_query.interpolation == Series_interpolation::STEP_AFTER,
+                "query should carry series interpolation");
+    TEST_ASSERT(source->last_query.empty_window_behavior ==
+                    Empty_window_behavior::HOLD_LAST_FORWARD,
+                "query should carry series empty-window behavior");
+    TEST_ASSERT(source->last_query.semantics_key.value == 0,
+                "default access semantics key should not reuse layout identity");
+    TEST_ASSERT(source->last_query.semantics_key.conservative,
+                "default access semantics key should be conservative");
+
+    return true;
+}
+
+bool test_global_lod_auto_range_uses_query_when_no_legacy_range_exists()
+{
+    auto source = std::make_shared<Query_range_source>();
+    source->levels = 2;
+    source->query_status = Data_query_status::READY;
+    source->query_range = {-4.0f, 9.0f};
+
+    Plot_config config;
+    config.auto_v_range_mode = Auto_v_range_mode::GLOBAL_LOD;
+
+    const auto range = plot::detail::resolve_main_v_range(
+        make_series_map(make_series(source)),
+        make_data_config(),
+        config,
+        true);
+
+    TEST_ASSERT(range.first == -4.0f && range.second == 9.0f,
+                "GLOBAL_LOD auto-range should use query_v_range when no legacy O(1) range exists");
+    TEST_ASSERT(source->last_query_lod == 1,
+                "GLOBAL_LOD should query the last LOD level");
+    TEST_ASSERT(source->snapshot_calls == 0,
+                "READY global query result should avoid snapshot fallback");
+
+    return true;
+}
+
+bool test_unsupported_query_falls_back_to_snapshot_scan()
+{
+    auto source = std::make_shared<Query_range_source>();
+    source->query_status = Data_query_status::UNSUPPORTED;
+    source->samples = {
+        {0, 6.0f},
+        {5, 8.0f},
+        {10, 12.0f},
+    };
+
+    Plot_config config;
+    config.auto_v_range_mode = Auto_v_range_mode::GLOBAL;
+
+    const auto range = plot::detail::resolve_main_v_range(
+        make_series_map(make_series(source)),
+        make_data_config(),
+        config,
+        true);
+
+    TEST_ASSERT(range.first == 6.0f && range.second == 12.0f,
+                "unsupported query should fall back to snapshot scan");
+    TEST_ASSERT(source->query_calls == 1,
+                "resolver should try query_v_range before fallback");
+    TEST_ASSERT(source->snapshot_calls == 1,
+                "unsupported query should take one fallback snapshot");
+
+    return true;
+}
+
+bool test_global_value_only_access_falls_back_to_snapshot_scan()
+{
+    auto source = std::make_shared<Query_range_source>();
+    source->query_status = Data_query_status::UNSUPPORTED;
+    source->samples = {
+        {0, -3.0f},
+        {0, 8.0f},
+        {0, 2.0f},
+    };
+
+    auto series = make_series(source);
+    series->access = make_value_only_policy();
+
+    Plot_config config;
+    config.auto_v_range_mode = Auto_v_range_mode::GLOBAL;
+
+    const auto range = plot::detail::resolve_main_v_range(
+        make_series_map(series),
+        make_data_config(),
+        config,
+        true);
+
+    TEST_ASSERT(range.first == -3.0f && range.second == 8.0f,
+                "global value-only access should use snapshot scan fallback");
+    TEST_ASSERT(source->query_calls == 1,
+                "value-only fallback should still try the source query first");
+    TEST_ASSERT(source->snapshot_calls == 1,
+                "value-only fallback should take one snapshot");
+
+    return true;
+}
+
+bool test_failed_query_does_not_fall_back_to_stale_scan()
+{
+    auto source = std::make_shared<Query_range_source>();
+    source->query_status = Data_query_status::FAILED;
+    source->samples = {
+        {0, 1.0f},
+        {5, 2.0f},
+    };
+
+    const data_config_t cfg = make_data_config();
+    Plot_config config;
+    config.auto_v_range_mode = Auto_v_range_mode::VISIBLE;
+
+    const auto range = plot::detail::resolve_main_v_range(
+        make_series_map(make_series(source)),
+        cfg,
+        config,
+        true);
+
+    TEST_ASSERT(range.first == cfg.v_min && range.second == cfg.v_max,
+                "FAILED query should be authoritative and leave configured fallback range");
+    TEST_ASSERT(source->query_calls == 1,
+                "FAILED source should still be queried once");
+    TEST_ASSERT(source->snapshot_calls == 0,
+                "FAILED query must not be silently downgraded to snapshot fallback");
+
+    return true;
+}
+
+bool test_ready_query_result_is_cached_by_current_sequence()
+{
+    auto source = std::make_shared<Query_range_source>();
+    source->query_status = Data_query_status::READY;
+    source->query_range = {1.0f, 4.0f};
+    source->query_sequence = 5;
+    source->current_sequence_value = 5;
+
+    auto series = make_series(source);
+    auto series_map = make_series_map(series);
+    plot::detail::auto_range_cache_t cache;
+    Plot_config config;
+    config.auto_v_range_mode = Auto_v_range_mode::VISIBLE;
+
+    const auto first = plot::detail::resolve_main_v_range(
         series_map,
-        cache_map,
-        Auto_v_range_mode::GLOBAL);
-
-    TEST_ASSERT(valid, "expected empty series map to keep cache valid");
-
-    return true;
-}
-
-bool test_validate_range_cache_skips_null_series()
-{
-    std::map<int, std::shared_ptr<const series_data_t>> series_map;
-    series_map[1] = nullptr;
-
-    std::unordered_map<int, series_minmax_cache_t> cache_map;
-
-    const bool valid = validate_range_cache_sequences(
+        make_data_config(),
+        config,
+        true,
+        &cache);
+    const auto second = plot::detail::resolve_main_v_range(
         series_map,
-        cache_map,
-        Auto_v_range_mode::GLOBAL);
+        make_data_config(),
+        config,
+        true,
+        &cache);
 
-    TEST_ASSERT(valid, "expected null series entries to be ignored");
+    TEST_ASSERT(first.first == 1.0f && first.second == 4.0f,
+                "first range should come from query");
+    TEST_ASSERT(second.first == 1.0f && second.second == 4.0f,
+                "second range should come from cache");
+    TEST_ASSERT(source->query_calls == 1,
+                "matching sequence and query shape should reuse cached range");
 
     return true;
 }
 
-bool test_validate_range_cache_skips_null_data_source()
+bool test_empty_query_result_is_cached_by_current_sequence()
 {
-    const int series_id = 2;
-    auto series = std::make_shared<series_data_t>();
-    series->data_source.reset();
-    series->access = make_policy();
+    auto source = std::make_shared<Query_range_source>();
+    source->query_status = Data_query_status::EMPTY;
+    source->query_sequence = 5;
+    source->current_sequence_value = 5;
 
-    std::map<int, std::shared_ptr<const series_data_t>> series_map;
-    series_map[series_id] = series;
+    auto series = make_series(source);
+    auto series_map = make_series_map(series);
+    plot::detail::auto_range_cache_t cache;
+    Plot_config config;
+    config.auto_v_range_mode = Auto_v_range_mode::VISIBLE;
+    const data_config_t cfg = make_data_config();
 
-    std::unordered_map<int, series_minmax_cache_t> cache_map;
-
-    const bool valid = validate_range_cache_sequences(
+    const auto first = plot::detail::resolve_main_v_range(
         series_map,
-        cache_map,
-        Auto_v_range_mode::GLOBAL);
-
-    TEST_ASSERT(valid, "expected null data sources to be ignored");
-
-    return true;
-}
-
-bool test_validate_range_cache_skips_missing_accessors()
-{
-    auto data_source = std::make_shared<Range_cache_source>();
-    data_source->samples.resize(1);
-
-    const int series_id = 3;
-    auto series = std::make_shared<series_data_t>();
-    series->data_source = data_source;
-    series->access = Data_access_policy{};
-
-    std::map<int, std::shared_ptr<const series_data_t>> series_map;
-    series_map[series_id] = series;
-
-    std::unordered_map<int, series_minmax_cache_t> cache_map;
-
-    const bool valid = validate_range_cache_sequences(
+        cfg,
+        config,
+        true,
+        &cache);
+    const auto second = plot::detail::resolve_main_v_range(
         series_map,
-        cache_map,
-        Auto_v_range_mode::GLOBAL);
+        cfg,
+        config,
+        true,
+        &cache);
 
-    TEST_ASSERT(valid, "expected series without value accessors to be ignored");
+    TEST_ASSERT(first.first == cfg.v_min && first.second == cfg.v_max,
+                "empty query should use configured fallback range");
+    TEST_ASSERT(second.first == cfg.v_min && second.second == cfg.v_max,
+                "cached empty query should keep configured fallback range");
+    TEST_ASSERT(source->query_calls == 1,
+                "matching empty query should be cached by sequence");
 
     return true;
 }
 
-bool test_validate_range_cache_skips_disabled_series()
+bool test_sequence_change_invalidates_auto_range_cache()
 {
-    auto data_source = std::make_shared<Range_cache_source>();
-    data_source->samples.resize(1);
+    auto source = std::make_shared<Query_range_source>();
+    source->query_status = Data_query_status::READY;
+    source->query_range = {1.0f, 4.0f};
+    source->query_sequence = 5;
+    source->current_sequence_value = 5;
 
-    const int series_id = 4;
-    auto series = std::make_shared<series_data_t>();
-    series->enabled = false;
-    series->data_source = data_source;
-    series->access = make_policy();
+    auto series = make_series(source);
+    auto series_map = make_series_map(series);
+    plot::detail::auto_range_cache_t cache;
+    Plot_config config;
+    config.auto_v_range_mode = Auto_v_range_mode::VISIBLE;
 
-    std::map<int, std::shared_ptr<const series_data_t>> series_map;
-    series_map[series_id] = series;
-
-    std::unordered_map<int, series_minmax_cache_t> cache_map;
-
-    const bool valid = validate_range_cache_sequences(
+    (void)plot::detail::resolve_main_v_range(
         series_map,
-        cache_map,
-        Auto_v_range_mode::GLOBAL);
+        make_data_config(),
+        config,
+        true,
+        &cache);
 
-    TEST_ASSERT(valid, "expected disabled series to be ignored");
+    source->query_range = {-3.0f, 9.0f};
+    source->query_sequence = 6;
+    source->current_sequence_value = 6;
+    const auto range = plot::detail::resolve_main_v_range(
+        series_map,
+        make_data_config(),
+        config,
+        true,
+        &cache);
 
-    return true;
-}
-
-bool test_preview_matches_main_helpers()
-{
-    auto data_source = std::make_shared<Range_cache_source>();
-    data_source->samples.resize(1);
-
-    auto series = make_series(data_source);
-    series->preview_config = preview_config_t{};
-    series->preview_config->data_source = data_source;
-    series->preview_config->access = Data_access_policy{};
-
-    TEST_ASSERT(series->preview_matches_main(),
-                "expected preview matches main with same source and style");
-
-    series->preview_config->style = Display_style::AREA;
-    TEST_ASSERT(!series->preview_matches_main(),
-                "expected preview mismatch when preview style differs");
-
-    series->preview_config->style.reset();
-    series->preview_config->access = make_policy();
-    series->preview_config->access.layout_key = 0x9999;
-    TEST_ASSERT(!series->preview_matches_main(),
-                "expected preview mismatch when layout_key differs");
-
-    series->preview_config->data_source.reset();
-    TEST_ASSERT(!series->preview_matches_main(),
-                "expected preview mismatch when preview source is null");
+    TEST_ASSERT(range.first == -3.0f && range.second == 9.0f,
+                "sequence change should force a fresh query result");
+    TEST_ASSERT(source->query_calls == 2,
+                "sequence change should invalidate the cached range");
 
     return true;
 }
 
-bool test_validate_range_cache_sequences()
+bool test_visible_window_change_invalidates_auto_range_cache()
 {
-    auto main_source = std::make_shared<Range_cache_source>();
-    main_source->samples.resize(1);
+    auto source = std::make_shared<Query_range_source>();
+    source->query_status = Data_query_status::READY;
+    source->query_range = {1.0f, 4.0f};
+    source->query_sequence = 5;
+    source->current_sequence_value = 5;
 
-    auto preview_source = std::make_shared<Range_cache_source>();
-    preview_source->samples.resize(1);
-    preview_source->current_sequence_value = 3;
-    preview_source->snapshot_sequence_value = 3;
+    auto series = make_series(source);
+    auto series_map = make_series_map(series);
+    plot::detail::auto_range_cache_t cache;
+    Plot_config config;
+    config.auto_v_range_mode = Auto_v_range_mode::VISIBLE;
+    data_config_t cfg = make_data_config();
 
-    const int series_id = 30;
+    (void)plot::detail::resolve_main_v_range(
+        series_map,
+        cfg,
+        config,
+        true,
+        &cache);
+
+    cfg.t_min = 30;
+    cfg.t_max = 40;
+    source->query_range = {-6.0f, -2.0f};
+    const auto range = plot::detail::resolve_main_v_range(
+        series_map,
+        cfg,
+        config,
+        true,
+        &cache);
+
+    TEST_ASSERT(range.first == -6.0f && range.second == -2.0f,
+                "visible window change should force a fresh query result");
+    TEST_ASSERT(source->query_calls == 2,
+                "visible window should be part of the cache key");
+
+    return true;
+}
+
+bool test_access_policy_change_invalidates_auto_range_cache()
+{
+    auto source = std::make_shared<Query_range_source>();
+    source->query_status = Data_query_status::READY;
+    source->query_range = {1.0f, 4.0f};
+    source->query_sequence = 5;
+    source->current_sequence_value = 5;
+
+    auto series = make_series(source);
+    plot::detail::auto_range_cache_t cache;
+    Plot_config config;
+    config.auto_v_range_mode = Auto_v_range_mode::VISIBLE;
+
+    (void)plot::detail::resolve_main_v_range(
+        make_series_map(series),
+        make_data_config(),
+        config,
+        true,
+        &cache);
+
+    auto changed_series = make_series(source);
+    changed_series->access.layout_key = series->access.layout_key;
+    source->query_range = {10.0f, 12.0f};
+    const auto range = plot::detail::resolve_main_v_range(
+        make_series_map(changed_series),
+        make_data_config(),
+        config,
+        true,
+        &cache);
+
+    TEST_ASSERT(range.first == 10.0f && range.second == 12.0f,
+                "access-policy identity change should not reuse an old range");
+    TEST_ASSERT(source->query_calls == 2,
+                "cache key should include access-policy identity");
+
+    return true;
+}
+
+bool test_removed_series_prunes_auto_range_cache()
+{
+    auto source = std::make_shared<Query_range_source>();
+    source->query_status = Data_query_status::READY;
+    source->query_range = {1.0f, 4.0f};
+    source->query_sequence = 5;
+    source->current_sequence_value = 5;
+
+    auto series = make_series(source);
+    plot::detail::auto_range_cache_t cache;
+    Plot_config config;
+    config.auto_v_range_mode = Auto_v_range_mode::VISIBLE;
+
+    (void)plot::detail::resolve_main_v_range(
+        make_series_map(series),
+        make_data_config(),
+        config,
+        true,
+        &cache);
+    TEST_ASSERT(cache.main_entries.size() == 1,
+                "first query should populate one cache entry");
+
+    std::map<int, std::shared_ptr<const series_data_t>> empty_series;
+    (void)plot::detail::resolve_main_v_range(
+        empty_series,
+        make_data_config(),
+        config,
+        true,
+        &cache);
+    TEST_ASSERT(cache.main_entries.empty(),
+                "removed series should be pruned from auto-range cache");
+
+    return true;
+}
+
+bool test_preview_auto_range_uses_preview_query_source()
+{
+    auto main_source = std::make_shared<Query_range_source>();
+    auto preview_source = std::make_shared<Query_range_source>();
+    preview_source->query_status = Data_query_status::READY;
+    preview_source->query_range = {-2.0f, 11.0f};
+
     auto series = make_series(main_source);
-    preview_config_t preview_cfg;
-    preview_cfg.data_source = preview_source;
-    preview_cfg.access = make_policy();
-    series->preview_config = preview_cfg;
+    plot::preview_config_t preview;
+    preview.data_source = preview_source;
+    preview.access = make_policy();
+    preview.style = Display_style::AREA;
+    series->preview_config = preview;
 
-    std::map<int, std::shared_ptr<const series_data_t>> series_map;
-    series_map[series_id] = series;
+    Plot_config config;
+    config.auto_v_range_mode = Auto_v_range_mode::GLOBAL;
 
-    std::unordered_map<int, series_minmax_cache_t> cache_map;
-    auto& cache = cache_map[series_id];
-    cache.identity = preview_source->identity();
-    cache.lods.assign(preview_source->lod_levels(), lod_minmax_cache_t{});
-    cache.lods[0].valid = true;
-    cache.lods[0].sequence = preview_source->current_sequence(0);
+    const auto range = plot::detail::resolve_preview_v_range(
+        make_series_map(series),
+        make_data_config(),
+        config);
 
-    const bool valid = validate_range_cache_sequences(
-        series_map,
-        cache_map,
-        Auto_v_range_mode::GLOBAL, /*preview=*/true);
-    TEST_ASSERT(valid, "expected preview cache to be valid when sequences match");
+    TEST_ASSERT(range.first == -2.0f && range.second == 11.0f,
+                "preview auto-range should use the preview source query");
+    TEST_ASSERT(main_source->query_calls == 0,
+                "preview resolver should not query the main source when a preview source is set");
+    TEST_ASSERT(preview_source->query_calls == 1,
+                "preview resolver should query preview source");
+    TEST_ASSERT(preview_source->snapshot_calls == 0,
+                "READY preview query should avoid snapshot fallback");
 
-    preview_source->current_sequence_value = cache.lods[0].sequence + 1;
-    const bool valid_after = validate_range_cache_sequences(
-        series_map,
-        cache_map,
-        Auto_v_range_mode::GLOBAL, /*preview=*/true);
-    TEST_ASSERT(!valid_after, "expected preview cache invalidation on sequence change");
+    return true;
+}
+
+bool test_manual_range_skips_queries()
+{
+    auto source = std::make_shared<Query_range_source>();
+    source->query_status = Data_query_status::READY;
+    source->query_range = {-2.0f, 11.0f};
+
+    const data_config_t cfg = make_data_config();
+    Plot_config config;
+
+    const auto range = plot::detail::resolve_main_v_range(
+        make_series_map(make_series(source)),
+        cfg,
+        config,
+        false);
+
+    TEST_ASSERT(range.first == cfg.v_manual_min && range.second == cfg.v_manual_max,
+                "manual v-range should return manual config values");
+    TEST_ASSERT(source->query_calls == 0,
+                "manual v-range should not query sources");
+    TEST_ASSERT(source->snapshot_calls == 0,
+                "manual v-range should not snapshot sources");
 
     return true;
 }
@@ -352,20 +603,24 @@ bool test_validate_range_cache_sequences()
 
 int main()
 {
-    std::cout << "Core cache invalidation tests" << std::endl;
+    std::cout << "Production auto-range query tests" << std::endl;
 
     int passed = 0;
     int failed = 0;
 
-    RUN_TEST(test_failed_snapshot_invalidates_range_cache);
-    RUN_TEST(test_sequence_change_invalidates_range_cache);
-    RUN_TEST(test_validate_range_cache_with_empty_series);
-    RUN_TEST(test_validate_range_cache_skips_null_series);
-    RUN_TEST(test_validate_range_cache_skips_null_data_source);
-    RUN_TEST(test_validate_range_cache_skips_missing_accessors);
-    RUN_TEST(test_validate_range_cache_skips_disabled_series);
-    RUN_TEST(test_preview_matches_main_helpers);
-    RUN_TEST(test_validate_range_cache_sequences);
+    RUN_TEST(test_visible_auto_range_uses_source_query_without_snapshot_fallback);
+    RUN_TEST(test_global_lod_auto_range_uses_query_when_no_legacy_range_exists);
+    RUN_TEST(test_unsupported_query_falls_back_to_snapshot_scan);
+    RUN_TEST(test_global_value_only_access_falls_back_to_snapshot_scan);
+    RUN_TEST(test_failed_query_does_not_fall_back_to_stale_scan);
+    RUN_TEST(test_ready_query_result_is_cached_by_current_sequence);
+    RUN_TEST(test_empty_query_result_is_cached_by_current_sequence);
+    RUN_TEST(test_sequence_change_invalidates_auto_range_cache);
+    RUN_TEST(test_visible_window_change_invalidates_auto_range_cache);
+    RUN_TEST(test_access_policy_change_invalidates_auto_range_cache);
+    RUN_TEST(test_removed_series_prunes_auto_range_cache);
+    RUN_TEST(test_preview_auto_range_uses_preview_query_source);
+    RUN_TEST(test_manual_range_skips_queries);
 
     std::cout << "Results: " << passed << " passed, " << failed << " failed" << std::endl;
 

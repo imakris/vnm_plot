@@ -10,6 +10,7 @@
 #include <vnm_plot/core/primitive_renderer.h>
 #include <vnm_plot/core/series_renderer.h>
 #include <vnm_plot/core/text_renderer.h>
+#include "../core/auto_range_resolver.h"
 
 #include <QColor>
 #include <QMatrix4x4>
@@ -22,12 +23,9 @@
 #include <algorithm>
 #include <cmath>
 #include <chrono>
-#include <limits>
 #include <map>
 #include <memory>
 #include <shared_mutex>
-#include <tuple>
-#include <utility>
 
 namespace vnm::plot {
 
@@ -45,272 +43,6 @@ glm::vec4 qcolor_to_vec4(const QColor& color)
         static_cast<float>(color.greenF()),
         static_cast<float>(color.blueF()),
         static_cast<float>(color.alphaF()));
-}
-
-bool include_sample_range(
-    const Data_access_policy& access,
-    const void* sample,
-    float& out_min,
-    float& out_max)
-{
-    if (!sample) {
-        return false;
-    }
-
-    float low = 0.0f;
-    float high = 0.0f;
-    if (access.get_range) {
-        std::tie(low, high) = access.get_range(sample);
-    }
-    else
-    if (access.get_value) {
-        low = access.get_value(sample);
-        high = low;
-    }
-    else {
-        return false;
-    }
-
-    if (!std::isfinite(low) || !std::isfinite(high)) {
-        return false;
-    }
-
-    out_min = std::min(out_min, std::min(low, high));
-    out_max = std::max(out_max, std::max(low, high));
-    return true;
-}
-
-bool scan_series_range(
-    Data_source& source,
-    const Data_access_policy& access,
-    std::size_t level,
-    Series_interpolation interpolation,
-    Empty_window_behavior empty_window_behavior,
-    bool visible_only,
-    std::int64_t t_min,
-    std::int64_t t_max,
-    float& out_min,
-    float& out_max)
-{
-    data_snapshot_t snapshot = source.snapshot(level);
-    if (!snapshot.is_valid()) {
-        return false;
-    }
-
-    bool have_any = false;
-    const void* held_sample = nullptr;
-    bool have_sample_at_or_after_visible_start = false;
-    for (std::size_t i = 0; i < snapshot.count; ++i) {
-        const void* sample = snapshot.at(i);
-        if (visible_only) {
-            if (!sample || !access.get_timestamp) {
-                continue;
-            }
-            const std::int64_t t = access.get_timestamp(sample);
-            if (interpolation == Series_interpolation::STEP_AFTER && t < t_min) {
-                held_sample = sample;
-                continue;
-            }
-            if (interpolation == Series_interpolation::STEP_AFTER && t >= t_min) {
-                have_sample_at_or_after_visible_start = true;
-            }
-            if (t < t_min || t > t_max) {
-                continue;
-            }
-        }
-        have_any = include_sample_range(access, sample, out_min, out_max) || have_any;
-    }
-    const bool held_sample_reaches_visible_window =
-        have_sample_at_or_after_visible_start ||
-        empty_window_behavior == Empty_window_behavior::HOLD_LAST_FORWARD;
-    if (visible_only && interpolation == Series_interpolation::STEP_AFTER && held_sample &&
-        held_sample_reaches_visible_window)
-    {
-        have_any = include_sample_range(access, held_sample, out_min, out_max) || have_any;
-    }
-    return have_any;
-}
-
-void apply_auto_v_range_padding(
-    const Plot_config& config,
-    bool data_range_nonnegative,
-    float& v_min,
-    float& v_max)
-{
-    if (v_max == v_min) {
-        const float pad = std::max(std::abs(v_min) * 0.01f, 0.5f);
-        v_min -= pad;
-        v_max += pad;
-    }
-
-    if (config.auto_v_range_extra_scale > 0.0) {
-        const double span = double(v_max) - double(v_min);
-        if (span > 0.0) {
-            const double center = 0.5 * (double(v_min) + double(v_max));
-            const double padded_span = span * (1.0 + config.auto_v_range_extra_scale);
-            v_min = static_cast<float>(center - padded_span * 0.5);
-            v_max = static_cast<float>(center + padded_span * 0.5);
-        }
-    }
-
-    if (config.floor_nonnegative_auto_v_range_at_zero && data_range_nonnegative && v_min < 0.0f) {
-        v_min = 0.0f;
-    }
-}
-
-std::pair<float, float> resolve_v_range(
-    const std::map<int, std::shared_ptr<const series_data_t>>& series,
-    const data_config_t& data_cfg,
-    const Plot_config& config,
-    bool v_auto)
-{
-    if (!v_auto) {
-        return {data_cfg.v_manual_min, data_cfg.v_manual_max};
-    }
-
-    float v_min = std::numeric_limits<float>::max();
-    float v_max = std::numeric_limits<float>::lowest();
-    bool have_any = false;
-    const bool visible_only = config.auto_v_range_mode == Auto_v_range_mode::VISIBLE;
-
-    for (const auto& [_, item] : series) {
-        if (!item || !item->enabled) {
-            continue;
-        }
-
-        Data_source* source = item->main_source();
-        if (!source) {
-            continue;
-        }
-
-        float series_min = 0.0f;
-        float series_max = 0.0f;
-        bool got_range = false;
-        if (!visible_only &&
-            source->has_value_range() &&
-            !source->value_range_needs_rescan())
-        {
-            auto [ds_min, ds_max] = source->value_range();
-            if (std::isfinite(ds_min) && std::isfinite(ds_max) && ds_min <= ds_max) {
-                series_min = ds_min;
-                series_max = ds_max;
-                got_range = true;
-            }
-        }
-
-        if (!got_range) {
-            const std::size_t levels = source->lod_levels();
-            if (levels == 0) {
-                continue;
-            }
-            const std::size_t level =
-                config.auto_v_range_mode == Auto_v_range_mode::GLOBAL_LOD
-                    ? levels - 1
-                    : 0;
-            got_range = scan_series_range(
-                *source,
-                item->main_access(),
-                level,
-                item->interpolation,
-                item->empty_window_behavior,
-                visible_only,
-                data_cfg.t_min,
-                data_cfg.t_max,
-                series_min,
-                series_max);
-        }
-
-        if (!got_range) {
-            continue;
-        }
-
-        v_min = std::min(v_min, series_min);
-        v_max = std::max(v_max, series_max);
-        have_any = true;
-    }
-
-    if (!have_any || !std::isfinite(v_min) || !std::isfinite(v_max) || v_max < v_min) {
-        return {data_cfg.v_min, data_cfg.v_max};
-    }
-
-    const bool data_range_nonnegative = v_min >= 0.0f;
-    apply_auto_v_range_padding(config, data_range_nonnegative, v_min, v_max);
-    return {v_min, v_max};
-}
-
-std::pair<float, float> resolve_preview_v_range(
-    const std::map<int, std::shared_ptr<const series_data_t>>& series,
-    const data_config_t& data_cfg,
-    const Plot_config& config)
-{
-    float v_min = std::numeric_limits<float>::max();
-    float v_max = std::numeric_limits<float>::lowest();
-    bool have_any = false;
-
-    for (const auto& [_, item] : series) {
-        if (!item || !item->enabled) {
-            continue;
-        }
-
-        Data_source* source = item->preview_source();
-        if (!source) {
-            continue;
-        }
-        const Data_access_policy& access = item->preview_access();
-        if (!access.get_value && !access.get_range) {
-            continue;
-        }
-
-        float series_min = 0.0f;
-        float series_max = 0.0f;
-        bool got_range = false;
-        if (source->has_value_range() && !source->value_range_needs_rescan()) {
-            auto [ds_min, ds_max] = source->value_range();
-            if (std::isfinite(ds_min) && std::isfinite(ds_max) && ds_min <= ds_max) {
-                series_min = ds_min;
-                series_max = ds_max;
-                got_range = true;
-            }
-        }
-
-        if (!got_range) {
-            const std::size_t levels = source->lod_levels();
-            if (levels == 0) {
-                continue;
-            }
-            const std::size_t level =
-                config.auto_v_range_mode == Auto_v_range_mode::GLOBAL_LOD
-                    ? levels - 1
-                    : 0;
-            got_range = scan_series_range(
-                *source,
-                access,
-                level,
-                item->effective_preview_interpolation(),
-                item->empty_window_behavior,
-                false,
-                data_cfg.t_available_min,
-                data_cfg.t_available_max,
-                series_min,
-                series_max);
-        }
-
-        if (!got_range) {
-            continue;
-        }
-
-        v_min = std::min(v_min, series_min);
-        v_max = std::max(v_max, series_max);
-        have_any = true;
-    }
-
-    if (!have_any || !std::isfinite(v_min) || !std::isfinite(v_max) || v_max < v_min) {
-        return {data_cfg.v_min, data_cfg.v_max};
-    }
-
-    const bool data_range_nonnegative = v_min >= 0.0f;
-    apply_auto_v_range_padding(config, data_range_nonnegative, v_min, v_max);
-    return {v_min, v_max};
 }
 
 Layout_calculator::parameters_t build_layout_params(
@@ -398,6 +130,7 @@ struct Plot_renderer::impl_t
     Chrome_renderer     chrome;
     Layout_calculator   layout_calc;
     Layout_cache        layout_cache;
+    detail::auto_range_cache_t auto_range_cache;
     double              last_vbar_width_pixels = detail::k_vbar_min_width_px_d;
 #if defined(VNM_PLOT_ENABLE_TEXT)
     std::unique_ptr<Font_renderer> fonts;
@@ -516,15 +249,20 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
     m_impl->primitives.set_log_callback(log_error);
 
     const double reserved_h = snapshot.base_label_height_px + snapshot.adjusted_preview_height;
-    const auto [v_min, v_max] = resolve_v_range(
+    const auto [v_min, v_max] = detail::resolve_main_v_range(
         snapshot.series,
         snapshot.data_cfg,
         config,
-        snapshot.v_auto);
+        snapshot.v_auto,
+        &m_impl->auto_range_cache);
     const bool preview_enabled =
         snapshot.adjusted_preview_height > 0.0 && config.preview_visibility > 0.0;
     const auto [preview_v_min, preview_v_max] = preview_enabled
-        ? resolve_preview_v_range(snapshot.series, snapshot.data_cfg, config)
+        ? detail::resolve_preview_v_range(
+            snapshot.series,
+            snapshot.data_cfg,
+            config,
+            &m_impl->auto_range_cache)
         : std::make_pair(v_min, v_max);
 
 #if defined(VNM_PLOT_ENABLE_TEXT)
