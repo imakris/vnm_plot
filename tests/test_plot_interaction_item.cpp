@@ -15,6 +15,8 @@
 #include <cmath>
 #include <iostream>
 #include <limits>
+#include <memory>
+#include <utility>
 #include <vector>
 
 namespace plot = vnm::plot;
@@ -54,17 +56,14 @@ zoom_state_t advance_zoom(double initial_velocity, const std::vector<double>& el
     return state;
 }
 
-void configure_indicator_widget(
-    plot::Plot_widget& widget,
-    plot::Series_interpolation interpolation)
+std::shared_ptr<plot::series_data_t> make_sample_series(
+    std::vector<indicator_sample_t> samples,
+    plot::Series_interpolation interpolation,
+    plot::Empty_window_behavior empty_window_behavior =
+        plot::Empty_window_behavior::DRAW_NOTHING)
 {
-    constexpr std::int64_t k_second_ns = 1'000'000'000LL;
-
     auto source = std::make_shared<plot::Vector_data_source<indicator_sample_t>>(
-        std::vector<indicator_sample_t>{
-            {0, 0.0f},
-            {k_second_ns, 10.0f}
-        });
+        std::move(samples));
 
     plot::Data_access_policy_typed<indicator_sample_t> access;
     access.get_timestamp = [](const indicator_sample_t& sample) {
@@ -77,17 +76,42 @@ void configure_indicator_widget(
     auto series = std::make_shared<plot::series_data_t>();
     series->series_label = "indicator";
     series->interpolation = interpolation;
+    series->empty_window_behavior = empty_window_behavior;
     series->data_source = source;
     series->access = access.erase();
 
+    return series;
+}
+
+void configure_view(
+    plot::Plot_widget& widget,
+    std::int64_t tmin_ns,
+    std::int64_t tmax_ns,
+    float vmin,
+    float vmax)
+{
     plot::Plot_view view;
-    view.t_range = std::pair<qint64, qint64>{0, k_second_ns};
-    view.t_available_range = std::pair<qint64, qint64>{0, k_second_ns};
-    view.v_range = std::pair<float, float>{0.0f, 10.0f};
+    view.t_range = std::pair<qint64, qint64>{tmin_ns, tmax_ns};
+    view.t_available_range = std::pair<qint64, qint64>{tmin_ns, tmax_ns};
+    view.v_range = std::pair<float, float>{vmin, vmax};
     view.v_auto = false;
 
     widget.set_view(view);
-    widget.add_series(1, series);
+}
+
+void configure_indicator_widget(
+    plot::Plot_widget& widget,
+    plot::Series_interpolation interpolation)
+{
+    constexpr std::int64_t k_second_ns = 1'000'000'000LL;
+
+    configure_view(widget, 0, k_second_ns, 0.0f, 10.0f);
+    widget.add_series(1, make_sample_series(
+        {
+            {0, 0.0f},
+            {k_second_ns, 10.0f}
+        },
+        interpolation));
 }
 
 bool test_zoom_math_is_invariant_to_timer_cadence()
@@ -196,6 +220,52 @@ bool test_nearest_samples_choose_closer_sample()
     return true;
 }
 
+bool test_auto_adjust_view_uses_visible_samples_for_value_and_time_range()
+{
+    plot::Plot_widget widget;
+    configure_view(widget, 5, 25, -100.0f, 100.0f);
+    widget.add_series(1, make_sample_series(
+        {
+            {0, 100.0f},
+            {10, 2.0f},
+            {20, 8.0f},
+            {30, -100.0f}
+        },
+        plot::Series_interpolation::LINEAR));
+
+    widget.auto_adjust_view(true, 0.0, false);
+
+    TEST_ASSERT(nearly_equal(widget.v_min(), 2.0),
+        "auto-adjust should use the visible value minimum");
+    TEST_ASSERT(nearly_equal(widget.v_max(), 8.0),
+        "auto-adjust should use the visible value maximum");
+    TEST_ASSERT(widget.t_min() == 10 && widget.t_max() == 20,
+        "auto-adjust should shrink time range to visible samples");
+
+    return true;
+}
+
+bool test_auto_adjust_view_includes_step_after_held_sample()
+{
+    plot::Plot_widget widget;
+    configure_view(widget, 10, 20, -100.0f, 100.0f);
+    widget.add_series(1, make_sample_series(
+        {
+            {0, 2.0f},
+            {15, 8.0f}
+        },
+        plot::Series_interpolation::STEP_AFTER));
+
+    widget.auto_adjust_view(false, 0.0, false);
+
+    TEST_ASSERT(nearly_equal(widget.v_min(), 2.0),
+        "step-after auto-adjust should include the held value before the window");
+    TEST_ASSERT(nearly_equal(widget.v_max(), 8.0),
+        "step-after auto-adjust should include the in-window value");
+
+    return true;
+}
+
 bool test_preview_thumb_press_handles_full_int64_availability()
 {
     constexpr std::int64_t k_min = std::numeric_limits<std::int64_t>::min();
@@ -246,6 +316,8 @@ int main(int argc, char** argv)
     RUN_TEST(test_indicator_samples_linearly_interpolate_between_samples);
     RUN_TEST(test_indicator_samples_step_after_holds_previous_sample);
     RUN_TEST(test_nearest_samples_choose_closer_sample);
+    RUN_TEST(test_auto_adjust_view_uses_visible_samples_for_value_and_time_range);
+    RUN_TEST(test_auto_adjust_view_includes_step_after_held_sample);
     RUN_TEST(test_preview_thumb_press_handles_full_int64_availability);
 
     std::cout << "Results: " << passed << " passed, " << failed << " failed" << std::endl;

@@ -13,7 +13,9 @@
 #include <cstdint>
 #include <iostream>
 #include <limits>
+#include <optional>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 namespace plot = vnm::plot;
@@ -356,6 +358,79 @@ bool test_select_visible_sample_window_non_monotonic_scans()
     return true;
 }
 
+bool test_aggregate_visible_sample_range_includes_step_after_hold()
+{
+    std::vector<sample_t> samples = {
+        {0, 2.0f},
+        {15, 8.0f}
+    };
+
+    plot::data_snapshot_t snap;
+    snap.data = samples.data();
+    snap.count = samples.size();
+    snap.stride = sizeof(sample_t);
+
+    const auto get_ts = [](const void* p) -> std::int64_t {
+        return static_cast<const sample_t*>(p)->t;
+    };
+    const auto get_range = [](const void* p) -> std::optional<std::pair<double, double>> {
+        const double value = static_cast<const sample_t*>(p)->v;
+        return std::make_pair(value, value);
+    };
+
+    const auto aggregate = plot::detail::aggregate_visible_sample_range(
+        snap,
+        get_ts,
+        get_range,
+        std::int64_t{10},
+        std::int64_t{20},
+        plot::Series_interpolation::STEP_AFTER,
+        plot::Empty_window_behavior::DRAW_NOTHING);
+
+    TEST_ASSERT(aggregate.valid, "step-after visible aggregate should be valid");
+    TEST_ASSERT(aggregate.vmin == 2.0 && aggregate.vmax == 8.0,
+        "step-after visible aggregate should include the held and in-window values");
+    TEST_ASSERT(aggregate.tmin_ns == 10 && aggregate.tmax_ns == 15,
+        "held sample should be aggregated at the window start timestamp");
+
+    return true;
+}
+
+bool test_aggregate_visible_sample_range_rejects_nonfinite_range_endpoints()
+{
+    std::vector<sample_t> samples = {
+        {10, 1.0f}
+    };
+
+    plot::data_snapshot_t snap;
+    snap.data = samples.data();
+    snap.count = samples.size();
+    snap.stride = sizeof(sample_t);
+
+    const auto get_ts = [](const void* p) -> std::int64_t {
+        return static_cast<const sample_t*>(p)->t;
+    };
+    const auto get_range = [](const void*) -> std::optional<std::pair<double, double>> {
+        return std::make_pair(
+            2.0,
+            std::numeric_limits<double>::quiet_NaN());
+    };
+
+    const auto aggregate = plot::detail::aggregate_visible_sample_range(
+        snap,
+        get_ts,
+        get_range,
+        std::int64_t{0},
+        std::int64_t{20},
+        plot::Series_interpolation::LINEAR,
+        plot::Empty_window_behavior::DRAW_NOTHING);
+
+    TEST_ASSERT(!aggregate.valid,
+        "visible aggregate must reject nonfinite range endpoints before normalization");
+
+    return true;
+}
+
 bool test_snapshot_truthiness_requires_usable_stride()
 {
     std::vector<sample_t> samples = {{0, 1.0f}};
@@ -612,6 +687,8 @@ int main()
     RUN_TEST(test_bounds_on_segmented_snapshot);
     RUN_TEST(test_select_visible_sample_window_monotonic_extends_bounds);
     RUN_TEST(test_select_visible_sample_window_non_monotonic_scans);
+    RUN_TEST(test_aggregate_visible_sample_range_includes_step_after_hold);
+    RUN_TEST(test_aggregate_visible_sample_range_rejects_nonfinite_range_endpoints);
     RUN_TEST(test_snapshot_truthiness_requires_usable_stride);
     RUN_TEST(test_snapshot_count1_clamps_malformed_count2);
     RUN_TEST(test_layout_cache_key_distinguishes_adjacent_int64_time_windows);

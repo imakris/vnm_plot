@@ -527,6 +527,91 @@ visible_sample_window_t select_visible_sample_window(
     return {first_idx, last_idx, true};
 }
 
+struct visible_sample_aggregate_t
+{
+    double vmin = 0.0;
+    double vmax = 0.0;
+    std::int64_t tmin_ns = 0;
+    std::int64_t tmax_ns = 0;
+    bool valid = false;
+
+    explicit operator bool() const noexcept { return valid; }
+};
+
+template<typename GetTimestampFn, typename GetRangeFn>
+visible_sample_aggregate_t aggregate_visible_sample_range(
+    const data_snapshot_t& snapshot,
+    GetTimestampFn&& get_timestamp,
+    GetRangeFn&& get_range,
+    std::int64_t window_tmin_ns,
+    std::int64_t window_tmax_ns,
+    Series_interpolation interpolation,
+    Empty_window_behavior empty_window_behavior)
+{
+    visible_sample_aggregate_t aggregate;
+    if (!snapshot.is_valid() || window_tmax_ns < window_tmin_ns) {
+        return aggregate;
+    }
+
+    const auto include_sample =
+        [&aggregate](std::int64_t ts_ns, double low, double high) {
+            if (!std::isfinite(low) || !std::isfinite(high)) {
+                return;
+            }
+            const double dlow = std::min(low, high);
+            const double dhigh = std::max(low, high);
+            if (!aggregate.valid) {
+                aggregate = {dlow, dhigh, ts_ns, ts_ns, true};
+                return;
+            }
+            aggregate.vmin = std::min(aggregate.vmin, dlow);
+            aggregate.vmax = std::max(aggregate.vmax, dhigh);
+            aggregate.tmin_ns = std::min(aggregate.tmin_ns, ts_ns);
+            aggregate.tmax_ns = std::max(aggregate.tmax_ns, ts_ns);
+        };
+
+    const void* held_sample = nullptr;
+    bool have_sample_at_or_after_window_start = false;
+    for (std::size_t i = 0; i < snapshot.count; ++i) {
+        const void* sample = snapshot.at(i);
+        if (!sample) {
+            continue;
+        }
+        const std::int64_t ts_ns = get_timestamp(sample);
+        if (interpolation == Series_interpolation::STEP_AFTER &&
+            ts_ns < window_tmin_ns)
+        {
+            held_sample = sample;
+            continue;
+        }
+        if (interpolation == Series_interpolation::STEP_AFTER &&
+            ts_ns >= window_tmin_ns)
+        {
+            have_sample_at_or_after_window_start = true;
+        }
+        if (ts_ns < window_tmin_ns || ts_ns > window_tmax_ns) {
+            continue;
+        }
+
+        const auto range = get_range(sample);
+        if (range) {
+            include_sample(ts_ns, range->first, range->second);
+        }
+    }
+
+    const bool held_sample_reaches_window =
+        have_sample_at_or_after_window_start ||
+        empty_window_behavior == Empty_window_behavior::HOLD_LAST_FORWARD;
+    if (held_sample && held_sample_reaches_window) {
+        const auto range = get_range(held_sample);
+        if (range) {
+            include_sample(window_tmin_ns, range->first, range->second);
+        }
+    }
+
+    return aggregate;
+}
+
 template<typename AddrFn, typename GetTimestampFn>
 timestamp_bracket_t bracket_timestamp_impl(
     std::size_t count,

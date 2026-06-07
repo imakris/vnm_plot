@@ -17,6 +17,7 @@
 #include <cstdint>
 #include <cmath>
 #include <limits>
+#include <optional>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -978,16 +979,24 @@ void Plot_widget::auto_adjust_view(bool adjust_t, double extra_v_scale, bool anc
     bool have_any = false;
     aggregated_range_t agg{};
 
-    const auto include_sample = [&](std::int64_t ts_ns, double low, double high) {
+    const auto include_aggregate = [&](const detail::visible_sample_aggregate_t& series_agg) {
+        if (!series_agg) {
+            return;
+        }
         if (!have_any) {
-            agg = {low, high, ts_ns, ts_ns};
+            agg = {
+                series_agg.vmin,
+                series_agg.vmax,
+                series_agg.tmin_ns,
+                series_agg.tmax_ns
+            };
             have_any = true;
             return;
         }
-        agg.vmin = std::min(agg.vmin, low);
-        agg.vmax = std::max(agg.vmax, high);
-        agg.tmin_ns = std::min(agg.tmin_ns, ts_ns);
-        agg.tmax_ns = std::max(agg.tmax_ns, ts_ns);
+        agg.vmin = std::min(agg.vmin, series_agg.vmin);
+        agg.vmax = std::max(agg.vmax, series_agg.vmax);
+        agg.tmin_ns = std::min(agg.tmin_ns, series_agg.tmin_ns);
+        agg.tmax_ns = std::max(agg.tmax_ns, series_agg.tmax_ns);
     };
 
     std::vector<std::shared_ptr<const series_data_t>> sources;
@@ -1011,76 +1020,37 @@ void Plot_widget::auto_adjust_view(bool adjust_t, double extra_v_scale, bool anc
             continue;
         }
 
-        const void* held_sample = nullptr;
-        bool have_sample_at_or_after_window_start = false;
-        for (std::size_t i = 0; i < snapshot.count; ++i) {
-            const void* sample = snapshot.at(i);
-            if (!sample) {
-                continue;
-            }
-            const std::int64_t ts_ns = series->get_timestamp(sample);
-            if (series->interpolation == Series_interpolation::STEP_AFTER &&
-                ts_ns < window_tmin_ns)
-            {
-                held_sample = sample;
-                continue;
-            }
-            if (series->interpolation == Series_interpolation::STEP_AFTER &&
-                ts_ns >= window_tmin_ns)
-            {
-                have_sample_at_or_after_window_start = true;
-            }
-            if (ts_ns < window_tmin_ns || ts_ns > window_tmax_ns) {
-                continue;
-            }
+        const auto read_range =
+            [series](const void* sample) -> std::optional<std::pair<double, double>> {
+                float low = 0.0f;
+                float high = 0.0f;
+                if (series->access.get_range) {
+                    std::tie(low, high) = series->get_range(sample);
+                }
+                else
+                if (series->access.get_value) {
+                    low = series->get_value(sample);
+                    high = low;
+                }
+                else {
+                    return std::nullopt;
+                }
 
-            float low = 0.0f;
-            float high = 0.0f;
-            if (series->access.get_range) {
-                std::tie(low, high) = series->get_range(sample);
-            }
-            else
-            if (series->access.get_value) {
-                low = series->get_value(sample);
-                high = low;
-            }
-            else {
-                continue;
-            }
+                return std::make_pair(
+                    static_cast<double>(low),
+                    static_cast<double>(high));
+            };
 
-            const double dlow = std::min<double>(low, high);
-            const double dhigh = std::max<double>(low, high);
-            if (!std::isfinite(dlow) || !std::isfinite(dhigh)) {
-                continue;
-            }
-
-            include_sample(ts_ns, dlow, dhigh);
-        }
-
-        const bool held_sample_reaches_window =
-            have_sample_at_or_after_window_start ||
-            series->empty_window_behavior == Empty_window_behavior::HOLD_LAST_FORWARD;
-        if (held_sample && held_sample_reaches_window) {
-            float low = 0.0f;
-            float high = 0.0f;
-            if (series->access.get_range) {
-                std::tie(low, high) = series->get_range(held_sample);
-            }
-            else
-            if (series->access.get_value) {
-                low = series->get_value(held_sample);
-                high = low;
-            }
-            else {
-                continue;
-            }
-
-            const double dlow = std::min<double>(low, high);
-            const double dhigh = std::max<double>(low, high);
-            if (std::isfinite(dlow) && std::isfinite(dhigh)) {
-                include_sample(window_tmin_ns, dlow, dhigh);
-            }
-        }
+        include_aggregate(detail::aggregate_visible_sample_range(
+            snapshot,
+            [series](const void* sample) {
+                return series->get_timestamp(sample);
+            },
+            read_range,
+            window_tmin_ns,
+            window_tmax_ns,
+            series->interpolation,
+            series->empty_window_behavior));
     }
 
     if (!have_any) {
