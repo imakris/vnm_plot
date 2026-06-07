@@ -33,11 +33,13 @@ namespace vnm::plot {
 
 namespace {
 
-constexpr std::uint32_t k_cache_version = 2;
+constexpr std::uint32_t k_cache_version = 3;
 constexpr double k_min_atlas_font_size = 48.0;
 constexpr float k_atlas_px_range = 10.0f;
 constexpr float k_sharpness_bias = 2.5f;
 constexpr int k_atlas_texture_size = 2048;
+constexpr char k_msdf_builder_semantics[] =
+    "vnm_msdf_text_default_font_scaling_mtsdf_px_range";
 
 std::atomic<bool> s_disk_cache_enabled{true};
 
@@ -288,6 +290,7 @@ Sha256::Digest compute_font_digest()
     ctx.update(&k_atlas_px_range, sizeof(k_atlas_px_range));
     ctx.update(&k_sharpness_bias, sizeof(k_sharpness_bias));
     ctx.update(&k_atlas_texture_size, sizeof(k_atlas_texture_size));
+    ctx.update(k_msdf_builder_semantics);
     ctx.update(glyph_seed_string());
     ctx.update(s_font_storage);
     return ctx.finalize();
