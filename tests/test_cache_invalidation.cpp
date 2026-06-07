@@ -3,6 +3,7 @@
 #include "test_macros.h"
 
 #include "../src/core/auto_range_resolver.h"
+#include "../src/core/frame_range_planner.h"
 
 #include <vnm_plot/core/plot_config.h>
 #include <vnm_plot/core/types.h>
@@ -574,6 +575,153 @@ bool test_preview_auto_range_uses_preview_query_source()
     return true;
 }
 
+bool test_frame_range_planner_populates_ranges_and_reuses_cache()
+{
+    auto main_source = std::make_shared<Query_range_source>();
+    main_source->query_status = Data_query_status::READY;
+    main_source->query_range = {2.0f, 5.0f};
+    main_source->query_sequence = 8;
+    main_source->current_sequence_value = 8;
+
+    auto preview_source = std::make_shared<Query_range_source>();
+    preview_source->query_status = Data_query_status::READY;
+    preview_source->query_range = {-2.0f, 11.0f};
+    preview_source->query_sequence = 9;
+    preview_source->current_sequence_value = 9;
+
+    auto series = make_series(main_source);
+    plot::preview_config_t preview;
+    preview.data_source = preview_source;
+    preview.access = make_policy();
+    preview.style = Display_style::AREA;
+    series->preview_config = preview;
+
+    auto series_map = make_series_map(series);
+    plot::detail::Frame_range_planner planner;
+    Plot_config config;
+    config.auto_v_range_mode = Auto_v_range_mode::GLOBAL;
+
+    const auto first = planner.plan(
+        series_map,
+        make_data_config(),
+        config,
+        true,
+        true);
+    const auto second = planner.plan(
+        series_map,
+        make_data_config(),
+        config,
+        true,
+        true);
+
+    TEST_ASSERT(first.main_v_range.valid && first.main_v_range.min == 2.0f &&
+                    first.main_v_range.max == 5.0f,
+                "frame planner should populate the main range plan");
+    TEST_ASSERT(first.preview_v_range.valid && first.preview_v_range.min == -2.0f &&
+                    first.preview_v_range.max == 11.0f,
+                "frame planner should populate the preview range plan");
+    TEST_ASSERT(second.main_v_range.min == 2.0f && second.main_v_range.max == 5.0f,
+                "frame planner should reuse cached main range values");
+    TEST_ASSERT(second.preview_v_range.min == -2.0f && second.preview_v_range.max == 11.0f,
+                "frame planner should reuse cached preview range values");
+    TEST_ASSERT(main_source->query_calls == 1,
+                "frame planner should preserve main range cache reuse");
+    TEST_ASSERT(preview_source->query_calls == 1,
+                "frame planner should preserve preview range cache reuse");
+
+    main_source->query_range = {-4.0f, 12.0f};
+    main_source->query_sequence = 10;
+    main_source->current_sequence_value = 10;
+    const auto after_sequence_change = planner.plan(
+        series_map,
+        make_data_config(),
+        config,
+        true,
+        true);
+
+    TEST_ASSERT(after_sequence_change.main_v_range.min == -4.0f &&
+                    after_sequence_change.main_v_range.max == 12.0f,
+                "frame planner should preserve sequence-based main cache invalidation");
+    TEST_ASSERT(main_source->query_calls == 2,
+                "main sequence change should force a fresh planner query");
+    TEST_ASSERT(preview_source->query_calls == 1,
+                "unchanged preview range should remain cached");
+
+    return true;
+}
+
+bool test_frame_range_planner_skips_preview_when_disabled()
+{
+    auto main_source = std::make_shared<Query_range_source>();
+    main_source->query_status = Data_query_status::READY;
+    main_source->query_range = {1.0f, 4.0f};
+
+    auto preview_source = std::make_shared<Query_range_source>();
+    preview_source->query_status = Data_query_status::READY;
+    preview_source->query_range = {-2.0f, 11.0f};
+
+    auto series = make_series(main_source);
+    plot::preview_config_t preview;
+    preview.data_source = preview_source;
+    preview.access = make_policy();
+    series->preview_config = preview;
+
+    plot::detail::Frame_range_planner planner;
+    Plot_config config;
+    const auto plan = planner.plan(
+        make_series_map(series),
+        make_data_config(),
+        config,
+        true,
+        false);
+
+    TEST_ASSERT(plan.main_v_range.min == 1.0f && plan.main_v_range.max == 4.0f,
+                "disabled-preview planner should still compute the main range");
+    TEST_ASSERT(plan.preview_v_range.min == 1.0f && plan.preview_v_range.max == 4.0f,
+                "disabled-preview planner should mirror the main range");
+    TEST_ASSERT(main_source->query_calls == 1,
+                "disabled-preview planner should query the main source");
+    TEST_ASSERT(preview_source->query_calls == 0,
+                "disabled-preview planner should not query preview sources");
+
+    return true;
+}
+
+bool test_frame_range_planner_preserves_step_after_visible_scan()
+{
+    auto source = std::make_shared<Query_range_source>();
+    source->query_status = Data_query_status::UNSUPPORTED;
+    source->samples = {
+        {5, -3.0f},
+        {15, 8.0f},
+        {25, 100.0f},
+    };
+
+    auto series = make_series(source);
+    series->interpolation = Series_interpolation::STEP_AFTER;
+    series->empty_window_behavior = Empty_window_behavior::HOLD_LAST_FORWARD;
+
+    Plot_config config;
+    config.auto_v_range_mode = Auto_v_range_mode::VISIBLE;
+    plot::detail::Frame_range_planner planner;
+
+    const auto plan = planner.plan(
+        make_series_map(series),
+        make_data_config(),
+        config,
+        true,
+        false);
+
+    TEST_ASSERT(plan.main_v_range.min == -3.0f && plan.main_v_range.max == 8.0f,
+                "frame planner should preserve visible STEP_AFTER held-sample scan behavior");
+    TEST_ASSERT(source->query_calls == 1,
+                "frame planner should try query_v_range before step-after scan fallback");
+    TEST_ASSERT(source->snapshot_calls == 1,
+                "unsupported step-after query should fall back to one snapshot scan");
+
+    return true;
+}
+
 bool test_manual_range_skips_queries()
 {
     auto source = std::make_shared<Query_range_source>();
@@ -620,6 +768,9 @@ int main()
     RUN_TEST(test_access_policy_change_invalidates_auto_range_cache);
     RUN_TEST(test_removed_series_prunes_auto_range_cache);
     RUN_TEST(test_preview_auto_range_uses_preview_query_source);
+    RUN_TEST(test_frame_range_planner_populates_ranges_and_reuses_cache);
+    RUN_TEST(test_frame_range_planner_skips_preview_when_disabled);
+    RUN_TEST(test_frame_range_planner_preserves_step_after_visible_scan);
     RUN_TEST(test_manual_range_skips_queries);
 
     std::cout << "Results: " << passed << " passed, " << failed << " failed" << std::endl;

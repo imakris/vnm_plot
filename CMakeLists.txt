@@ -143,6 +143,7 @@ set(VNM_PLOT_CORE_SOURCES
     src/core/platform_paths.cpp
     src/core/layout_calculator.cpp
     src/core/auto_range_resolver.cpp
+    src/core/frame_range_planner.cpp
 
     # Core renderers
     src/core/primitive_renderer.cpp

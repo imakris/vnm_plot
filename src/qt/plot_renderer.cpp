@@ -10,7 +10,7 @@
 #include <vnm_plot/core/primitive_renderer.h>
 #include <vnm_plot/core/series_renderer.h>
 #include <vnm_plot/core/text_renderer.h>
-#include "../core/auto_range_resolver.h"
+#include "../core/frame_range_planner.h"
 
 #include <QColor>
 #include <QMatrix4x4>
@@ -130,7 +130,7 @@ struct Plot_renderer::impl_t
     Chrome_renderer     chrome;
     Layout_calculator   layout_calc;
     Layout_cache        layout_cache;
-    detail::auto_range_cache_t auto_range_cache;
+    detail::Frame_range_planner frame_range_planner;
     double              last_vbar_width_pixels = detail::k_vbar_min_width_px_d;
 #if defined(VNM_PLOT_ENABLE_TEXT)
     std::unique_ptr<Font_renderer> fonts;
@@ -249,21 +249,18 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
     m_impl->primitives.set_log_callback(log_error);
 
     const double reserved_h = snapshot.base_label_height_px + snapshot.adjusted_preview_height;
-    const auto [v_min, v_max] = detail::resolve_main_v_range(
+    const bool preview_enabled =
+        snapshot.adjusted_preview_height > 0.0 && config.preview_visibility > 0.0;
+    const Frame_plan frame_plan = m_impl->frame_range_planner.plan(
         snapshot.series,
         snapshot.data_cfg,
         config,
         snapshot.v_auto,
-        &m_impl->auto_range_cache);
-    const bool preview_enabled =
-        snapshot.adjusted_preview_height > 0.0 && config.preview_visibility > 0.0;
-    const auto [preview_v_min, preview_v_max] = preview_enabled
-        ? detail::resolve_preview_v_range(
-            snapshot.series,
-            snapshot.data_cfg,
-            config,
-            &m_impl->auto_range_cache)
-        : std::make_pair(v_min, v_max);
+        preview_enabled);
+    const float v_min = frame_plan.main_v_range.min;
+    const float v_max = frame_plan.main_v_range.max;
+    const float preview_v_min = frame_plan.preview_v_range.min;
+    const float preview_v_max = frame_plan.preview_v_range.max;
 
 #if defined(VNM_PLOT_ENABLE_TEXT)
     if (m_impl->fonts) {
