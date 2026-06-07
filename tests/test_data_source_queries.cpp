@@ -74,7 +74,9 @@ private:
     int m_snapshot_calls = 0;
 };
 
-plot::Data_access_policy make_value_access(int* timestamp_calls = nullptr)
+plot::Data_access_policy make_value_access(
+    int* timestamp_calls = nullptr,
+    int* value_calls = nullptr)
 {
     plot::Data_access_policy access;
     access.get_timestamp = [timestamp_calls](const void* sample) -> std::int64_t {
@@ -83,7 +85,10 @@ plot::Data_access_policy make_value_access(int* timestamp_calls = nullptr)
         }
         return static_cast<const sample_t*>(sample)->t;
     };
-    access.get_value = [](const void* sample) {
+    access.get_value = [value_calls](const void* sample) {
+        if (value_calls) {
+            ++*value_calls;
+        }
         return static_cast<const sample_t*>(sample)->v;
     };
     access.layout_key = 17;
@@ -168,6 +173,88 @@ bool test_ready_value_range_scan_populates_sequence()
         "READY value-range query should carry snapshot sequence");
     TEST_ASSERT(result.value.min == -2.0f && result.value.max == 5.0f,
         "value-range query should scan finite matching samples");
+
+    return true;
+}
+
+bool test_ascending_value_range_scans_only_selected_time_window()
+{
+    std::vector<sample_t> samples;
+    samples.reserve(1024);
+    for (std::int64_t i = 0; i < 1024; ++i) {
+        samples.push_back({i, static_cast<float>(i)});
+    }
+
+    Query_source source(std::move(samples));
+    source.set_time_order(plot::Time_order::ASCENDING);
+
+    int timestamp_calls = 0;
+    int value_calls = 0;
+    const plot::Data_access_policy access =
+        make_value_access(&timestamp_calls, &value_calls);
+    const auto result = source.query_v_range(0, make_query(access, 500, 501));
+
+    TEST_ASSERT(result.status == plot::Data_query_status::READY,
+        "ascending visible value-range query should be READY");
+    TEST_ASSERT(result.value.min == 500.0f && result.value.max == 501.0f,
+        "ascending visible value-range query should scan the requested values");
+    TEST_ASSERT(value_calls < 16,
+        "ascending visible value-range query should not scan every sample value");
+    TEST_ASSERT(timestamp_calls < 128,
+        "ascending visible value-range query should use bounded timestamp lookup");
+
+    return true;
+}
+
+bool test_ascending_skip_hold_value_range_scans_bounded_prefix()
+{
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    std::vector<sample_t> samples;
+    samples.reserve(1024);
+    for (std::int64_t i = 0; i < 1024; ++i) {
+        samples.push_back({i, static_cast<float>(i)});
+    }
+    samples[499].v = nan;
+
+    Query_source source(std::move(samples));
+    source.set_time_order(plot::Time_order::ASCENDING);
+
+    int timestamp_calls = 0;
+    int value_calls = 0;
+    const plot::Data_access_policy access =
+        make_value_access(&timestamp_calls, &value_calls);
+    auto query = make_hold_query(access, 500, 501);
+    query.nonfinite_policy = plot::Nonfinite_sample_policy::SKIP;
+    const auto result = source.query_v_range(0, query);
+
+    TEST_ASSERT(result.status == plot::Data_query_status::READY,
+        "ascending SKIP hold value-range query should be READY");
+    TEST_ASSERT(result.value.min == 498.0f && result.value.max == 501.0f,
+        "ascending SKIP hold value-range query should use the latest drawable held sample");
+    TEST_ASSERT(value_calls < 32,
+        "ascending SKIP hold value-range query should not scan the full prefix");
+    TEST_ASSERT(timestamp_calls < 128,
+        "ascending SKIP hold value-range query should use bounded timestamp lookup");
+
+    return true;
+}
+
+bool test_unordered_value_range_aggregates_discontiguous_matches()
+{
+    Query_source source({
+        {0,   1.0f},
+        {100, 100.0f},
+        {5,   2.0f},
+    });
+    source.set_time_order(plot::Time_order::UNORDERED);
+
+    const plot::Data_access_policy access = make_value_access();
+    const auto result = source.query_v_range(0, make_query(access, 0, 10));
+
+    TEST_ASSERT(result.status == plot::Data_query_status::READY,
+        "unordered value-range query should aggregate discontiguous matches");
+    TEST_ASSERT(result.value.min == 1.0f && result.value.max == 2.0f,
+        "unordered value-range query should exclude out-of-window gap samples");
 
     return true;
 }
@@ -438,6 +525,7 @@ bool test_hold_forward_value_range_includes_pre_window_sample()
         {5,  1.0f},
         {6,  2.0f},
     });
+    source.set_time_order(plot::Time_order::ASCENDING);
 
     const plot::Data_access_policy access = make_value_access();
     const auto result = source.query_v_range(0, make_hold_query(access, 5, 6));
@@ -455,6 +543,7 @@ bool test_hold_forward_value_range_ready_from_held_sample_only()
         {0, 7.0f},
         {2, 9.0f},
     });
+    source.set_time_order(plot::Time_order::ASCENDING);
 
     const plot::Data_access_policy access = make_value_access();
     const auto result = source.query_v_range(0, make_hold_query(access, 3, 4));
@@ -473,6 +562,7 @@ bool test_hold_forward_does_not_use_nonfinite_break_segment_sample()
         {0, 7.0f},
         {2, nan},
     });
+    source.set_time_order(plot::Time_order::ASCENDING);
 
     const plot::Data_access_policy access = make_value_access();
     const auto result = source.query_v_range(0, make_hold_query(access, 3, 4));
@@ -489,6 +579,7 @@ bool test_hold_forward_skip_uses_latest_drawable_pre_window_sample()
         {0, 7.0f},
         {2, nan},
     });
+    source.set_time_order(plot::Time_order::ASCENDING);
 
     const plot::Data_access_policy access = make_value_access();
     auto query = make_hold_query(access, 3, 4);
@@ -509,6 +600,7 @@ bool test_hold_forward_reject_window_fails_on_nonfinite_held_candidate()
         {0, 7.0f},
         {2, nan},
     });
+    source.set_time_order(plot::Time_order::ASCENDING);
 
     const plot::Data_access_policy access = make_value_access();
     auto query = make_hold_query(access, 3, 4);
@@ -549,6 +641,9 @@ int main()
 
     RUN_TEST(test_query_v_range_without_access_is_unsupported);
     RUN_TEST(test_ready_value_range_scan_populates_sequence);
+    RUN_TEST(test_ascending_value_range_scans_only_selected_time_window);
+    RUN_TEST(test_ascending_skip_hold_value_range_scans_bounded_prefix);
+    RUN_TEST(test_unordered_value_range_aggregates_discontiguous_matches);
     RUN_TEST(test_empty_status_for_empty_snapshot_and_no_matches);
     RUN_TEST(test_busy_and_failed_snapshot_status_map_through_queries);
     RUN_TEST(test_nonfinite_values_are_skipped_or_zeroed_by_policy);
