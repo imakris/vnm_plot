@@ -5,6 +5,7 @@
 #include "function_sample_source.h"
 
 #include <cmath>
+#include <cstdint>
 #include <iostream>
 #include <limits>
 
@@ -86,6 +87,40 @@ bool test_function_data_source_skips_nonfinite_generated_values()
     return true;
 }
 
+bool test_function_sample_policy_uses_callable_manual_keys()
+{
+    const auto policy = plot_examples::make_function_sample_policy_typed();
+    TEST_ASSERT(policy.is_valid(),
+        "function sample typed policy should be valid");
+    TEST_ASSERT(policy.layout_key != 0,
+        "function sample typed policy should expose an explicit layout key");
+    TEST_ASSERT(!policy.semantics_key.conservative && policy.semantics_key.value != 0,
+        "function sample typed policy should expose explicit stable semantics");
+
+    const plot_examples::function_sample_t sample{1.25, 2.5f, 2.0f, 3.0f};
+    constexpr std::int64_t k_expected_timestamp_ns = 1'250'000'000;
+    TEST_ASSERT(policy.get_timestamp(sample) == k_expected_timestamp_ns,
+        "function sample timestamp should convert seconds to int64 nanoseconds");
+    TEST_ASSERT(policy.get_value(sample) == 2.5f,
+        "function sample value accessor mismatch");
+    const auto range = policy.get_range(sample);
+    TEST_ASSERT(range.first == 2.0f && range.second == 3.0f,
+        "function sample range accessor mismatch");
+
+    const plot::Data_access_policy erased = policy.erase();
+    const plot::sample_semantics_key_t erased_key =
+        plot::detail::make_sample_semantics_key(&erased);
+    TEST_ASSERT(erased.layout_key == policy.layout_key,
+        "erased function sample policy should preserve layout key");
+    TEST_ASSERT(!erased_key.conservative &&
+            erased_key.value == policy.semantics_key.value,
+        "erased function sample policy should preserve explicit semantics key");
+    TEST_ASSERT(erased.get_timestamp(&sample) == k_expected_timestamp_ns,
+        "erased function sample timestamp accessor mismatch");
+
+    return true;
+}
+
 } // namespace
 
 int main()
@@ -98,6 +133,7 @@ int main()
     RUN_TEST(test_make_function_sample_skips_nonfinite_by_default);
     RUN_TEST(test_make_function_sample_can_replace_nonfinite_with_zero);
     RUN_TEST(test_function_data_source_skips_nonfinite_generated_values);
+    RUN_TEST(test_function_sample_policy_uses_callable_manual_keys);
 
     std::cout << "Results: " << passed << " passed, " << failed << " failed" << std::endl;
     return failed > 0 ? 1 : 0;

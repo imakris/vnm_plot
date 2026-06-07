@@ -48,8 +48,8 @@ const plot::detail::series_window_planner_state_t& planner_state(
 
 struct Test_sample {
     // Timestamps are int64 nanoseconds (API convention).
-    std::int64_t t = 0;
-    float v = 0.0f;
+    std::int64_t t;
+    float v;
 };
 
 class Single_level_source final : public Data_source {
@@ -657,8 +657,8 @@ bool test_preview_uses_distinct_source_snapshot()
 {
     auto main_source = std::make_shared<Single_level_source>();
     auto preview_source = std::make_shared<Single_level_source>();
-    main_source->samples.resize(8);
-    preview_source->samples.resize(8);
+    main_source->samples.resize(8, Test_sample{});
+    preview_source->samples.resize(8, Test_sample{});
     for (size_t i = 0; i < main_source->samples.size(); ++i) {
         main_source->samples[i].t = static_cast<std::int64_t>(i);
         main_source->samples[i].v = 1.0f + static_cast<float>(i);
@@ -1364,7 +1364,7 @@ bool test_renderer_assigns_distinct_origins_to_main_and_preview()
 bool test_render_skips_invalid_series()
 {
     auto data_source = std::make_shared<Single_level_source>();
-    data_source->samples.resize(4);
+    data_source->samples.resize(4, Test_sample{});
 
     const int disabled_id = 12;
     auto disabled_series = std::make_shared<series_data_t>();

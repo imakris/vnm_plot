@@ -5,6 +5,7 @@
 
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <utility>
@@ -91,11 +92,42 @@ public:
 
 inline vnm::plot::Data_access_policy_typed<function_sample_t> make_function_sample_policy_typed()
 {
-    return vnm::plot::make_access_policy<function_sample_t>(
-        &function_sample_t::x,
-        &function_sample_t::y,
-        &function_sample_t::y_min,
-        &function_sample_t::y_max);
+    constexpr std::size_t timestamp_offset = offsetof(function_sample_t, x);
+    constexpr std::size_t value_offset     = offsetof(function_sample_t, y);
+    constexpr std::size_t range_min_offset = offsetof(function_sample_t, y_min);
+    constexpr std::size_t range_max_offset = offsetof(function_sample_t, y_max);
+
+    vnm::plot::Data_access_policy_typed<function_sample_t> policy;
+    policy.get_timestamp = [](const function_sample_t& sample) -> std::int64_t {
+        return vnm::plot::detail::timestamp_member_to_ns(sample.x);
+    };
+    policy.get_value = [](const function_sample_t& sample) {
+        return sample.y;
+    };
+    policy.get_range = [](const function_sample_t& sample) {
+        return std::make_pair(sample.y_min, sample.y_max);
+    };
+    policy.layout_key = vnm::plot::detail::compute_sample_layout_key(
+        sizeof(function_sample_t),
+        timestamp_offset,
+        value_offset,
+        true,
+        range_min_offset,
+        range_max_offset);
+    policy.semantics_key.value = vnm::plot::detail::compute_sample_semantics_key(
+        sizeof(function_sample_t),
+        timestamp_offset,
+        vnm::plot::detail::member_semantics_tag<double>(),
+        value_offset,
+        vnm::plot::detail::member_semantics_tag<float>(),
+        true,
+        range_min_offset,
+        vnm::plot::detail::member_semantics_tag<float>(),
+        range_max_offset,
+        vnm::plot::detail::member_semantics_tag<float>());
+    policy.semantics_key.revision = 0;
+    policy.semantics_key.conservative = false;
+    return policy;
 }
 
 } // namespace vnm::plot::examples

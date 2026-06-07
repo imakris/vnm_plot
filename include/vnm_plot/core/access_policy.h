@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <type_traits>
 #include <utility>
 
@@ -19,6 +20,17 @@ struct always_false : std::false_type {};
 
 constexpr std::uint64_t k_fnv_offset_basis = 1469598103934665603ULL;
 constexpr std::uint64_t k_fnv_prime = 1099511628211ULL;
+
+// Member-pointer policies derive offsets from a real object; keep support to
+// sample shapes whose default-initialization cannot execute user code.
+template<typename Sample>
+struct supports_member_pointer_access : std::bool_constant<
+    std::is_standard_layout_v<Sample> &&
+    std::is_trivially_default_constructible_v<Sample>> {};
+
+template<typename Sample>
+inline constexpr bool supports_member_pointer_access_v =
+    supports_member_pointer_access<Sample>::value;
 
 inline std::uint64_t fnv1a_mix(std::uint64_t h, std::uint64_t value)
 {
@@ -32,14 +44,20 @@ inline std::uint64_t fnv1a_mix(std::uint64_t h, std::uint64_t value)
 template<typename Sample, typename Member>
 std::size_t member_offset(Member Sample::* member)
 {
-    static_assert(std::is_standard_layout_v<Sample>,
-        "Sample type must be standard-layout for member offsets.");
-    static_assert(std::is_default_constructible_v<Sample>,
-        "Sample type must be default-constructible for member offsets.");
-    const Sample instance{};
-    const auto base = reinterpret_cast<const char*>(&instance);
-    const auto field = reinterpret_cast<const char*>(&(instance.*member));
-    return static_cast<std::size_t>(field - base);
+    if constexpr (supports_member_pointer_access_v<Sample>) {
+        Sample instance;
+        const auto* base = reinterpret_cast<const char*>(&instance);
+        const auto* field = reinterpret_cast<const char*>(
+            std::addressof(instance.*member));
+        return static_cast<std::size_t>(field - base);
+    }
+    else {
+        static_assert(always_false<Sample>::value,
+            "Member-pointer access policies require standard-layout, trivially "
+            "default-constructible Sample types. Use callable Data_access_policy "
+            "with explicit layout/semantics keys for non-trivial sample types.");
+        return 0;
+    }
 }
 
 // The vnm_plot API contract for timestamps is int64_t nanoseconds. Sample

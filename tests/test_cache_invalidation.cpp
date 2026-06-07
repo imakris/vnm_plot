@@ -36,8 +36,8 @@ using plot::value_range_t;
 namespace {
 
 struct Test_sample {
-    std::int64_t t = 0;
-    float v = 0.0f;
+    std::int64_t t;
+    float v;
 };
 
 constexpr std::uint64_t k_stable_policy_semantics = 0x535441424C45;

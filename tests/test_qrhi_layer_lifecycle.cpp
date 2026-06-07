@@ -29,10 +29,10 @@ namespace {
 
 struct test_sample_t
 {
-    std::int64_t timestamp_ns = 0;
-    float value = 0.0f;
-    float range_min = 0.0f;
-    float range_max = 0.0f;
+    std::int64_t timestamp_ns;
+    float value;
+    float range_min;
+    float range_max;
 };
 
 struct layer_event_t
