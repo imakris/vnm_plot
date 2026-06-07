@@ -513,13 +513,9 @@ private:
     static view_render_result_t view_result_from_window(const sample_window_t& window)
     {
         view_render_result_t result;
-        result.can_draw           = window.count > 0;
         result.first              = window.first;
         result.count              = window.count;
-        result.applied_level      = window.lod_level;
-        result.applied_pps        = window.pixels_per_sample;
         result.cached_snapshot    = window.snapshot;
-        result.sample_sequence    = window.sample_sequence;
         result.t_min_ns           = window.t_min_ns;
         result.t_max_ns           = window.t_max_ns;
         result.t_origin_ns        = window.t_origin_ns;
@@ -652,7 +648,9 @@ void Series_renderer::clear_frame_snapshot_caches()
     }
 }
 
-Series_renderer::view_render_result_t Series_renderer::plan_view(
+Series_view_plan Series_renderer::plan_view(
+    int series_id,
+    Series_view_kind view_kind,
     vbo_view_state_t& view_state,
     vbo_state_t& shared_state,
     uint64_t frame_id,
@@ -664,16 +662,24 @@ Series_renderer::view_render_result_t Series_renderer::plan_view(
     std::int64_t t_origin_ns,
     double width_px,
     Empty_window_behavior empty_window_behavior,
+    Display_style style,
     Series_interpolation interpolation,
     Snapshot_requirement snapshot_requirement,
     vnm::plot::Profiler* profiler)
 {
-    view_render_result_t result;
-    result.interpolation = interpolation;
+    Series_view_plan plan;
+    plan.series_id = series_id;
+    plan.view_kind = view_kind;
+    plan.source = &data_source;
+    plan.access = &access;
+    plan.lod_scale = 1;
+    plan.interpolation = interpolation;
+    plan.empty_window_behavior = empty_window_behavior;
+    plan.style = style;
     const auto& get_timestamp = access.get_timestamp;
 
     if (scales.empty() || t_max_ns <= t_min_ns || width_px <= 0.0) {
-        return result;
+        return plan;
     }
 
     if (shared_state.cached_snapshot_frame_id != frame_id) {
@@ -734,23 +740,31 @@ Series_renderer::view_render_result_t Series_renderer::plan_view(
         }
     };
 
-    // Populate result from cached stale values when a fresh snapshot is unavailable.
-    const auto load_cached_result = [&](view_render_result_t& r, std::size_t level) {
-        r.can_draw = true;
-        r.first = view_state.last_first;
-        r.count = view_state.last_count;
-        r.applied_level = level;
-        r.applied_pps = view_state.last_applied_pps;
-        r.sample_sequence = view_state.last_sequence;
-        r.t_min_ns = t_min_ns;
-        r.t_max_ns = t_max_ns;
-        r.t_origin_ns = t_origin_ns;
-        r.hold_last_forward = view_state.last_hold_last_forward;
-        r.hold_timestamp_ns = view_state.last_hold_last_forward ? t_max_ns : 0;
-        r.width_px = static_cast<float>(width_px);
-        r.interpolation = interpolation;
+    // Populate the plan from cached stale values when a fresh snapshot is unavailable.
+    const auto load_cached_plan = [&](Series_view_plan& p, std::size_t level) {
+        p.source_first = view_state.last_first > 0
+            ? static_cast<std::size_t>(view_state.last_first)
+            : 0;
+        const std::size_t gpu_count = view_state.last_count > 0
+            ? static_cast<std::size_t>(view_state.last_count)
+            : 0;
+        p.synthetic_hold_count =
+            view_state.last_hold_last_forward && gpu_count > 0 ? 1 : 0;
+        p.source_count = gpu_count - p.synthetic_hold_count;
+        p.gpu_count = gpu_count;
+        p.lod_level = level;
+        p.lod_scale = level < scales.size() ? scales[level] : std::size_t{1};
+        p.pixels_per_sample = view_state.last_applied_pps;
+        p.snapshot.sequence = view_state.last_sequence;
+        p.t_min_ns = t_min_ns;
+        p.t_max_ns = t_max_ns;
+        p.t_origin_ns = t_origin_ns;
+        p.hold_last_forward = view_state.last_hold_last_forward;
+        p.hold_timestamp_ns = view_state.last_hold_last_forward ? t_max_ns : 0;
+        p.width_px = static_cast<float>(width_px);
+        p.interpolation = interpolation;
     };
-    const auto try_stale_fallback = [&](view_render_result_t& r) -> bool {
+    const auto try_stale_fallback = [&](Series_view_plan& p) -> bool {
         const void* current_identity = data_source.identity();
         // The cached VBO holds samples rebased against uploaded_t_origin_ns;
         // reusing it under a moved origin would draw at the wrong x positions
@@ -766,7 +780,7 @@ Series_renderer::view_render_result_t Series_renderer::plan_view(
         if (!identity_ok) {
             return false;
         }
-        load_cached_result(r, view_state.last_lod_level);
+        load_cached_plan(p, view_state.last_lod_level);
         return true;
     };
 
@@ -799,10 +813,10 @@ Series_renderer::view_render_result_t Series_renderer::plan_view(
                 snapshot_result_t snapshot_result = acquire_frame_snapshot(applied_level);
                 if (snapshot_result) {
                     if (snapshot_result.snapshot.sequence == current_seq) {
-                        load_cached_result(result, applied_level);
-                        result.cached_snapshot = snapshot_result.snapshot;
-                        result.cached_snapshot_hold = snapshot_result.snapshot.hold;
-                        return result;
+                        load_cached_plan(plan, applied_level);
+                        plan.snapshot.snapshot = snapshot_result.snapshot;
+                        plan.snapshot.sequence = snapshot_result.snapshot.sequence;
+                        return plan;
                     }
                     // The source advanced between current_sequence() and
                     // try_snapshot(); fall through to replan against the
@@ -810,20 +824,20 @@ Series_renderer::view_render_result_t Series_renderer::plan_view(
                     // first/count metadata with a different snapshot.
                 }
                 else {
-                    load_cached_result(result, applied_level);
-                    return result;
+                    load_cached_plan(plan, applied_level);
+                    return plan;
                 }
             }
             else {
-                load_cached_result(result, applied_level);
-                return result;
+                load_cached_plan(plan, applied_level);
+                return plan;
             }
         }
 
         snapshot_result_t snapshot_result = acquire_frame_snapshot(applied_level);
 
         if (!snapshot_result || !snapshot_result.snapshot || snapshot_result.snapshot.count == 0) {
-            if (try_stale_fallback(result)) {
+            if (try_stale_fallback(plan)) {
                 break;
             }
             if (applied_level > 0) {
@@ -977,27 +991,33 @@ Series_renderer::view_render_result_t Series_renderer::plan_view(
         view_state.last_empty_window_behavior = empty_window_behavior;
         view_state.last_interpolation = interpolation;
 
-        result.can_draw = true;
-        result.first = view_state.last_first;
-        result.count = view_state.last_count;
-        result.applied_level = applied_level;
-        result.applied_pps = base_pps * static_cast<double>(applied_scale);
-        view_state.last_applied_pps = result.applied_pps;
+        plan.source_first = view_state.last_first > 0
+            ? static_cast<std::size_t>(view_state.last_first)
+            : 0;
+        const std::size_t gpu_count = view_state.last_count > 0
+            ? static_cast<std::size_t>(view_state.last_count)
+            : 0;
+        plan.synthetic_hold_count = hold_last_forward && gpu_count > 0 ? 1 : 0;
+        plan.source_count = gpu_count - plan.synthetic_hold_count;
+        plan.gpu_count = gpu_count;
+        plan.lod_level = applied_level;
+        plan.lod_scale = applied_scale;
+        plan.pixels_per_sample = base_pps * static_cast<double>(applied_scale);
+        view_state.last_applied_pps = plan.pixels_per_sample;
         view_state.last_hold_last_forward = hold_last_forward;
-        result.cached_snapshot = snapshot;
-        result.cached_snapshot_hold = snapshot.hold;
-        result.sample_sequence = snapshot.sequence;
-        result.t_min_ns = t_min_ns;
-        result.t_max_ns = t_max_ns;
-        result.t_origin_ns = t_origin_ns;
-        result.hold_last_forward = hold_last_forward;
-        result.hold_timestamp_ns = hold_last_forward ? t_max_ns : 0;
-        result.width_px = static_cast<float>(width_px);
-        result.interpolation = interpolation;
+        plan.snapshot.snapshot = snapshot;
+        plan.snapshot.sequence = snapshot.sequence;
+        plan.t_min_ns = t_min_ns;
+        plan.t_max_ns = t_max_ns;
+        plan.t_origin_ns = t_origin_ns;
+        plan.hold_last_forward = hold_last_forward;
+        plan.hold_timestamp_ns = hold_last_forward ? t_max_ns : 0;
+        plan.width_px = static_cast<float>(width_px);
+        plan.interpolation = interpolation;
         break;
     }
 
-    return result;
+    return plan;
 }
 
 void Series_renderer::prepare(
@@ -1097,51 +1117,6 @@ void Series_renderer::prepare(
         }
     };
 
-    const auto make_plan =
-        [](int series_id,
-           Series_view_kind view_kind,
-           Data_source* source,
-           const Data_access_policy* access,
-           Display_style style,
-           Empty_window_behavior empty_window_behavior,
-           std::size_t lod_scale,
-           const view_render_result_t& result) {
-            Series_view_plan plan;
-            plan.series_id = series_id;
-            plan.view_kind = view_kind;
-            plan.source = source;
-            plan.access = access;
-            plan.lod_level = result.applied_level;
-            plan.lod_scale = lod_scale;
-            plan.snapshot.snapshot = result.cached_snapshot;
-            plan.snapshot.sequence = result.sample_sequence;
-            plan.source_first = result.first > 0
-                ? static_cast<std::size_t>(result.first)
-                : 0;
-            const std::size_t gpu_count = result.count > 0
-                ? static_cast<std::size_t>(result.count)
-                : 0;
-            plan.synthetic_hold_count = result.hold_last_forward && gpu_count > 0 ? 1 : 0;
-            plan.source_count = gpu_count - plan.synthetic_hold_count;
-            plan.gpu_count = gpu_count;
-            plan.t_min_ns = result.t_min_ns;
-            plan.t_max_ns = result.t_max_ns;
-            plan.t_origin_ns = result.t_origin_ns;
-            plan.hold_last_forward = result.hold_last_forward;
-            plan.hold_timestamp_ns = result.hold_timestamp_ns;
-            plan.interpolation = result.interpolation;
-            plan.empty_window_behavior = empty_window_behavior;
-            plan.style = style;
-            plan.v_min = result.v_min;
-            plan.v_max = result.v_max;
-            plan.width_px = result.width_px;
-            plan.height_px = result.height_px;
-            plan.y_offset_px = result.y_offset_px;
-            plan.window_alpha = result.window_alpha;
-            plan.pixels_per_sample = result.applied_pps;
-            return plan;
-        };
-
     for (const auto& [id, s] : series) {
         VNM_PLOT_PROFILE_SCOPE(profiler,
             "renderer.frame.execute_passes.render_data_series.series");
@@ -1220,80 +1195,67 @@ void Series_renderer::prepare(
         }
 
         const std::size_t prev_lod_level = vbo_state.main_view.last_lod_level;
-        auto main_result = plan_view(
+        auto main_plan = plan_view(
+            id, Series_view_kind::MAIN,
             vbo_state.main_view, vbo_state, m_frame_id, *main_source,
             main_access, main_scales,
             ctx.t0, ctx.t1, main_origin_ns,
-            layout.usable_width, s->empty_window_behavior, main_interpolation,
+            layout.usable_width, s->empty_window_behavior, main_style,
+            main_interpolation,
             has_main_layer
                 ? Snapshot_requirement::Frame_snapshot_required
                 : Snapshot_requirement::Optional,
             profiler);
-        main_result.v_min = ctx.v0;
-        main_result.v_max = ctx.v1;
-        main_result.height_px = static_cast<float>(layout.usable_height);
-        main_result.y_offset_px = 0.0f;
-        main_result.window_alpha = 1.0f;
+        main_plan.v_min = ctx.v0;
+        main_plan.v_max = ctx.v1;
+        main_plan.height_px = static_cast<float>(layout.usable_height);
+        main_plan.y_offset_px = 0.0f;
+        main_plan.window_alpha = 1.0f;
         if (ctx.config && ctx.config->log_debug &&
-            main_result.can_draw &&
-            main_result.applied_level != prev_lod_level)
+            main_plan.gpu_count > 0 &&
+            main_plan.lod_level != prev_lod_level)
         {
             std::string message = "LOD selection: series=" + std::to_string(id)
-                + " level=" + std::to_string(main_result.applied_level)
-                + " pps=" + std::to_string(main_result.applied_pps);
+                + " level=" + std::to_string(main_plan.lod_level)
+                + " pps=" + std::to_string(main_plan.pixels_per_sample);
             ctx.config->log_debug(message);
         }
 
-        view_render_result_t preview_result;
+        Series_view_plan preview_plan;
+        preview_plan.series_id = id;
+        preview_plan.view_kind = Series_view_kind::PREVIEW;
+        preview_plan.source = preview_source;
+        preview_plan.access = preview_access;
+        preview_plan.empty_window_behavior = s->empty_window_behavior;
+        preview_plan.style = preview_style;
+        preview_plan.interpolation = preview_interpolation;
         if (preview_visible && preview_valid) {
-            preview_result = plan_view(
+            preview_plan = plan_view(
+                id, Series_view_kind::PREVIEW,
                 vbo_state.preview_view, vbo_state, m_frame_id, *preview_source,
                 *preview_access, preview_scales,
                 ctx.t_available_min, ctx.t_available_max, preview_origin_ns,
-                ctx.win_w, s->empty_window_behavior, preview_interpolation,
+                ctx.win_w, s->empty_window_behavior, preview_style,
+                preview_interpolation,
                 has_preview_layer
                     ? Snapshot_requirement::Frame_snapshot_required
                     : Snapshot_requirement::Optional,
                 profiler);
             const double preview_top =
                 double(ctx.win_h) - ctx.adjusted_preview_height;
-            preview_result.v_min = ctx.preview_v0;
-            preview_result.v_max = ctx.preview_v1;
-            preview_result.height_px = static_cast<float>(ctx.adjusted_preview_height);
-            preview_result.y_offset_px = static_cast<float>(preview_top);
-            preview_result.window_alpha = static_cast<float>(preview_visibility);
+            preview_plan.v_min = ctx.preview_v0;
+            preview_plan.v_max = ctx.preview_v1;
+            preview_plan.height_px = static_cast<float>(ctx.adjusted_preview_height);
+            preview_plan.y_offset_px = static_cast<float>(preview_top);
+            preview_plan.window_alpha = static_cast<float>(preview_visibility);
         }
 
         series_draw_state_t draw_state;
         draw_state.id = id;
         draw_state.series = s;
         draw_state.vbo_state = &vbo_state;
-        const std::size_t main_lod_scale =
-            main_result.applied_level < main_scales.size()
-                ? main_scales[main_result.applied_level]
-                : std::size_t{1};
-        const std::size_t preview_lod_scale =
-            preview_result.applied_level < preview_scales.size()
-                ? preview_scales[preview_result.applied_level]
-                : std::size_t{1};
-        draw_state.main_plan = make_plan(
-            id,
-            Series_view_kind::MAIN,
-            main_source,
-            &main_access,
-            main_style,
-            s->empty_window_behavior,
-            main_lod_scale,
-            main_result);
-        draw_state.preview_plan = make_plan(
-            id,
-            Series_view_kind::PREVIEW,
-            preview_source,
-            preview_access,
-            preview_style,
-            s->empty_window_behavior,
-            preview_lod_scale,
-            preview_result);
+        draw_state.main_plan = std::move(main_plan);
+        draw_state.preview_plan = std::move(preview_plan);
         draw_state.has_preview = preview_visible && preview_valid;
         draw_states.push_back(std::move(draw_state));
     }

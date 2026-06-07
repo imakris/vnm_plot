@@ -137,14 +137,9 @@ private:
 
     struct view_render_result_t
     {
-        bool can_draw = false;
         std::int32_t first = 0;
         std::int32_t count = 0;
-        std::size_t applied_level = 0;
-        double applied_pps = 0.0;
         data_snapshot_t cached_snapshot;
-        std::shared_ptr<void> cached_snapshot_hold;   // Keep snapshot alive
-        std::uint64_t sample_sequence = 0;
         std::int64_t t_min_ns = 0;
         std::int64_t t_max_ns = 0;
         std::int64_t t_origin_ns = 0;
@@ -166,11 +161,9 @@ private:
     };
 
     // Per-(series, view) draw plan computed in prepare() and consumed in
-    // render(). Holds the raw policy/source pointers and the LOD-resolved
-    // view results so the record-draws phase can replay decisions without
-    // re-running process_view. Pointer fields stay valid because the host
-    // passes the same series_map snapshot to both prepare() and render(),
-    // and the renderer's own state (vbo_state) is owned by m_vbo_states.
+    // render(). Pointer fields stay valid because the host passes the same
+    // series_map snapshot to both prepare() and render(), and the renderer's
+    // own state (vbo_state) is owned by m_vbo_states.
     struct series_draw_state_t
     {
         int id = 0;
@@ -196,7 +189,9 @@ private:
 
     void clear_frame_snapshot_caches();
 
-    view_render_result_t plan_view(
+    Series_view_plan plan_view(
+        int series_id,
+        Series_view_kind view_kind,
         vbo_view_state_t& view_state,
         vbo_state_t& shared_state,
         uint64_t frame_id,
@@ -208,6 +203,7 @@ private:
         std::int64_t t_origin_ns,
         double width_px,
         Empty_window_behavior empty_window_behavior,
+        Display_style style,
         Series_interpolation interpolation,
         Snapshot_requirement snapshot_requirement,
         vnm::plot::Profiler* profiler);
