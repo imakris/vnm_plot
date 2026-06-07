@@ -898,6 +898,39 @@ void Series_renderer::prepare(
         return window;
     };
 
+    const auto make_sample_buffer =
+        [](const vbo_view_state_t& view_state,
+            const sample_window_t& window) -> qrhi_series_sample_buffer_t
+    {
+        qrhi_series_sample_buffer_t sample_buffer;
+        if (!view_state.has_uploaded_vbo ||
+            !view_state.rhi ||
+            !view_state.rhi->vbo ||
+            window.gpu_count == 0)
+        {
+            return sample_buffer;
+        }
+
+        sample_buffer.buffer = view_state.rhi->vbo.get();
+        sample_buffer.first_sample = 0;
+        sample_buffer.sample_count = window.gpu_count;
+        sample_buffer.source_first = window.source_first;
+        sample_buffer.source_count = window.source_count;
+        sample_buffer.synthetic_hold_count = window.synthetic_hold_count;
+        sample_buffer.t_origin_ns = window.t_origin_ns;
+        sample_buffer.t_min_ns = window.t_min_ns;
+        sample_buffer.t_max_ns = window.t_max_ns;
+        sample_buffer.v_min = window.v_min;
+        sample_buffer.v_max = window.v_max;
+        sample_buffer.layout.stride_bytes = sizeof(gpu_sample_t);
+        sample_buffer.layout.t_rel_seconds_offset =
+            offsetof(gpu_sample_t, t_rel);
+        sample_buffer.layout.value_offset = offsetof(gpu_sample_t, y);
+        sample_buffer.layout.range_min_offset = offsetof(gpu_sample_t, y_min);
+        sample_buffer.layout.range_max_offset = offsetof(gpu_sample_t, y_max);
+        return sample_buffer;
+    };
+
     const auto ensure_view_ubo =
         [&](int series_id,
             Series_view_kind view_kind,
@@ -938,6 +971,7 @@ void Series_renderer::prepare(
         view_state.last_line_window_sample_count = 0;
         view_state.last_sample_access_dispatch_kind =
             detail::access_dispatch_kind_t::NONE;
+        view_state.last_sample_buffer = nullptr;
 
         if (!draw_state.series || plan.gpu_count == 0) {
             return;
@@ -1002,19 +1036,25 @@ void Series_renderer::prepare(
                         draw.primitive_style,
                         window.gpu_count);
             });
-        bool builtin_samples_ready = true;
-        if (has_drawable_builtin_layer) {
-            builtin_samples_ready = rhi_prepare_series_view_samples(
-                ctx,
-                view_state,
-                window);
-        }
-        const bool needs_view_ubo = std::any_of(
+        const bool has_custom_layer = std::any_of(
             planned_draws.begin(),
             planned_draws.end(),
             [](const planned_draw_t& draw) {
                 return !draw.is_builtin;
             });
+        const bool needs_sample_buffer =
+            has_drawable_builtin_layer || has_custom_layer;
+        bool samples_ready = true;
+        if (needs_sample_buffer) {
+            samples_ready = rhi_prepare_series_view_samples(
+                ctx,
+                view_state,
+                window);
+        }
+        const qrhi_series_sample_buffer_t sample_buffer =
+            samples_ready ? make_sample_buffer(view_state, window)
+                          : qrhi_series_sample_buffer_t{};
+        const bool needs_view_ubo = has_custom_layer;
         series_view_uniform_std140_t uniform{};
         const series_view_uniform_std140_t* view_uniform = nullptr;
         QRhiBuffer* view_ubo = nullptr;
@@ -1037,7 +1077,7 @@ void Series_renderer::prepare(
 
         for (const auto& planned_draw : planned_draws) {
             if (planned_draw.is_builtin) {
-                if (!builtin_samples_ready ||
+                if (!samples_ready ||
                     !is_builtin_primitive_drawable(
                         planned_draw.primitive_style,
                         window.gpu_count))
@@ -1151,6 +1191,7 @@ void Series_renderer::prepare(
             prepare_ctx.window = window;
             prepare_ctx.view_uniform = view_uniform;
             prepare_ctx.view_ubo = view_ubo;
+            prepare_ctx.sample_buffer = sample_buffer;
             prepare_ctx.resources_changed = resources_changed;
 
             if (cache_entry.state->prepare(prepare_ctx)) {
@@ -1370,6 +1411,7 @@ bool Series_renderer::rhi_prepare_series_view_samples(
         view_state.last_sample_upload_bytes = 0;
         view_state.last_line_window_sample_count = 0;
         view_state.last_prepared_t_max_ns = 0;
+        view_state.last_sample_buffer = nullptr;
     };
 
     const data_snapshot_t& snapshot = window.snapshot;
@@ -1377,7 +1419,12 @@ bool Series_renderer::rhi_prepare_series_view_samples(
         ? detail::make_erased_access_policy_view(*window.access)
         : detail::erased_access_policy_t{};
     view_state.last_sample_access_dispatch_kind = access_view.dispatch_kind;
-    if (snapshot && access_view.has_timestamp() && updates) {
+    if (snapshot) {
+        if (!access_view.has_timestamp() || !updates) {
+            invalidate_uploaded_vbo();
+            return false;
+        }
+
         std::size_t expected_gpu_count = 0;
         if (window.synthetic_hold_count > 1 ||
             (window.synthetic_hold_count == 1 && window.source_count == 0) ||
@@ -1484,6 +1531,7 @@ bool Series_renderer::rhi_prepare_series_view_samples(
     if (!view_state.rhi->vbo) {
         return false;
     }
+    view_state.last_sample_buffer = view_state.rhi->vbo.get();
     view_state.last_prepared_t_max_ns = window.t_max_ns;
     return true;
 }

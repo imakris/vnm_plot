@@ -52,6 +52,24 @@ struct layer_event_t
     std::int64_t t_min_ns = 0;
     std::int64_t t_max_ns = 0;
     std::int64_t t_origin_ns = 0;
+    float v_min = 0.0f;
+    float v_max = 0.0f;
+    QRhiBuffer* sample_buffer = nullptr;
+    std::size_t sample_buffer_first_sample = 0;
+    std::size_t sample_buffer_sample_count = 0;
+    std::size_t sample_buffer_source_first = 0;
+    std::size_t sample_buffer_source_count = 0;
+    std::size_t sample_buffer_synthetic_hold_count = 0;
+    std::int64_t sample_buffer_t_origin_ns = 0;
+    std::int64_t sample_buffer_t_min_ns = 0;
+    std::int64_t sample_buffer_t_max_ns = 0;
+    float sample_buffer_v_min = 0.0f;
+    float sample_buffer_v_max = 0.0f;
+    std::size_t sample_buffer_stride_bytes = 0;
+    std::size_t sample_buffer_t_rel_seconds_offset = 0;
+    std::size_t sample_buffer_value_offset = 0;
+    std::size_t sample_buffer_range_min_offset = 0;
+    std::size_t sample_buffer_range_max_offset = 0;
 };
 
 class Test_source final : public plot::Data_source
@@ -156,6 +174,20 @@ plot::Data_access_policy make_access_policy()
     return policy;
 }
 
+plot::Data_access_policy make_value_only_access_policy()
+{
+    plot::Data_access_policy policy;
+    policy.get_value = [](const void* sample) {
+        return static_cast<const test_sample_t*>(sample)->value;
+    };
+    policy.get_range = [](const void* sample) {
+        const float value = static_cast<const test_sample_t*>(sample)->value;
+        return std::make_pair(value, value);
+    };
+    policy.layout_key = 12;
+    return policy;
+}
+
 struct access_call_counts_t
 {
     int timestamp = 0;
@@ -227,6 +259,30 @@ public:
         event.t_min_ns = ctx.window.t_min_ns;
         event.t_max_ns = ctx.window.t_max_ns;
         event.t_origin_ns = ctx.window.t_origin_ns;
+        event.v_min = ctx.window.v_min;
+        event.v_max = ctx.window.v_max;
+        event.sample_buffer = ctx.sample_buffer.buffer;
+        event.sample_buffer_first_sample = ctx.sample_buffer.first_sample;
+        event.sample_buffer_sample_count = ctx.sample_buffer.sample_count;
+        event.sample_buffer_source_first = ctx.sample_buffer.source_first;
+        event.sample_buffer_source_count = ctx.sample_buffer.source_count;
+        event.sample_buffer_synthetic_hold_count =
+            ctx.sample_buffer.synthetic_hold_count;
+        event.sample_buffer_t_origin_ns = ctx.sample_buffer.t_origin_ns;
+        event.sample_buffer_t_min_ns = ctx.sample_buffer.t_min_ns;
+        event.sample_buffer_t_max_ns = ctx.sample_buffer.t_max_ns;
+        event.sample_buffer_v_min = ctx.sample_buffer.v_min;
+        event.sample_buffer_v_max = ctx.sample_buffer.v_max;
+        event.sample_buffer_stride_bytes =
+            ctx.sample_buffer.layout.stride_bytes;
+        event.sample_buffer_t_rel_seconds_offset =
+            ctx.sample_buffer.layout.t_rel_seconds_offset;
+        event.sample_buffer_value_offset =
+            ctx.sample_buffer.layout.value_offset;
+        event.sample_buffer_range_min_offset =
+            ctx.sample_buffer.layout.range_min_offset;
+        event.sample_buffer_range_max_offset =
+            ctx.sample_buffer.layout.range_max_offset;
         m_events.push_back(event);
         return true;
     }
@@ -491,6 +547,33 @@ bool assert_compact_upload_state(
         view_state.last_line_window_sample_count ==
             expected_line_window_sample_count,
         std::string(label) + " line-window sample count mismatch");
+    TEST_ASSERT(view_state.last_sample_buffer,
+        std::string(label) + " compact VBO should exist");
+    TEST_ASSERT(prepare.sample_buffer == view_state.last_sample_buffer,
+        std::string(label) + " prepare context sample buffer must expose the compact VBO");
+    TEST_ASSERT(prepare.sample_buffer_first_sample == 0,
+        std::string(label) + " sample buffer first sample mismatch");
+    TEST_ASSERT(prepare.sample_buffer_sample_count == prepare.gpu_count,
+        std::string(label) + " sample buffer count mismatch");
+    TEST_ASSERT(prepare.sample_buffer_source_first == prepare.source_first &&
+            prepare.sample_buffer_source_count == prepare.source_count &&
+            prepare.sample_buffer_synthetic_hold_count ==
+                prepare.synthetic_hold_count,
+        std::string(label) + " sample buffer window metadata mismatch");
+    TEST_ASSERT(prepare.sample_buffer_t_origin_ns == prepare.t_origin_ns &&
+            prepare.sample_buffer_t_min_ns == prepare.t_min_ns &&
+            prepare.sample_buffer_t_max_ns == prepare.t_max_ns,
+        std::string(label) + " sample buffer time metadata mismatch");
+    TEST_ASSERT(prepare.sample_buffer_v_min == prepare.v_min &&
+            prepare.sample_buffer_v_max == prepare.v_max,
+        std::string(label) + " sample buffer value range mismatch");
+    TEST_ASSERT(prepare.sample_buffer_stride_bytes == k_gpu_sample_bytes,
+        std::string(label) + " sample buffer stride mismatch");
+    TEST_ASSERT(prepare.sample_buffer_t_rel_seconds_offset == 0u &&
+            prepare.sample_buffer_value_offset == sizeof(float) &&
+            prepare.sample_buffer_range_min_offset == sizeof(float) * 2u &&
+            prepare.sample_buffer_range_max_offset == sizeof(float) * 3u,
+        std::string(label) + " sample buffer lane offsets mismatch");
 
     return true;
 }
@@ -546,6 +629,131 @@ bool test_layer_only_zero_style_prepare_record_order()
         "layer-only series with zero Display_style must not be skipped");
     TEST_ASSERT(events[low_prepare].snapshot_valid && events[high_prepare].snapshot_valid,
         "layer-only external prepares must receive a valid snapshot");
+
+    auto state_it = renderer.m_vbo_states.find(7);
+    TEST_ASSERT(state_it != renderer.m_vbo_states.end(),
+        "expected renderer VBO state for custom-only layer test");
+    const auto& view_state = state_it->second.main_view;
+    TEST_ASSERT(view_state.last_sample_upload_count == 1,
+        "custom-only drawable layers should upload one compact sample window");
+    TEST_ASSERT(view_state.last_primitive_prepare_count == 0,
+        "custom-only drawable layers must not prepare built-in primitives");
+    if (!assert_compact_upload_state(
+            renderer,
+            7,
+            events[low_prepare],
+            0,
+            "custom-only low layer"))
+    {
+        return false;
+    }
+    TEST_ASSERT(events[high_prepare].sample_buffer == events[low_prepare].sample_buffer,
+        "custom-only layers in one view should share the compact sample buffer");
+    TEST_ASSERT(
+        events[high_prepare].sample_buffer_sample_count ==
+            events[low_prepare].sample_buffer_sample_count,
+        "custom-only layers in one view should share sample buffer metadata");
+
+    return true;
+}
+
+bool test_style_none_without_layers_does_not_upload_samples()
+{
+    std::vector<layer_event_t> events;
+    auto source = std::make_shared<Test_source>();
+    auto series = std::make_shared<plot::series_data_t>();
+    series->style = plot::Display_style::NONE;
+    series->data_source = source;
+    series->access = make_access_policy();
+
+    std::map<int, std::shared_ptr<const plot::series_data_t>> series_map;
+    const int series_id = 8;
+    series_map[series_id] = series;
+
+    plot::Asset_loader asset_loader;
+    plot::Series_renderer renderer;
+    renderer.initialize(asset_loader);
+
+    Offscreen_rhi_fixture rhi_fixture;
+    std::string error_message;
+    TEST_ASSERT(rhi_fixture.initialize(error_message), error_message);
+
+    plot::Plot_config config;
+    const plot::frame_layout_result_t layout = make_layout();
+    plot::frame_context_t ctx = make_context(layout, config);
+    TEST_ASSERT(
+        rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
+        error_message);
+
+    TEST_ASSERT(renderer.m_vbo_states.find(series_id) == renderer.m_vbo_states.end(),
+        "series without built-ins or custom layers must not allocate VBO state");
+    TEST_ASSERT(renderer.m_last_recorded_draw_z_orders.empty(),
+        "series without built-ins or custom layers must not record draws");
+
+    return true;
+}
+
+bool test_custom_sample_buffer_not_reused_when_current_access_cannot_stage()
+{
+    std::vector<layer_event_t> events;
+    int create_count = 0;
+    auto layer = std::make_shared<Recording_layer>(
+        "external", 1, 0, events, create_count);
+
+    auto source = std::make_shared<Test_source>();
+    auto series = make_layer_only_series(source, {layer});
+    std::map<int, std::shared_ptr<const plot::series_data_t>> series_map;
+    const int series_id = 9;
+    series_map[series_id] = series;
+
+    plot::Asset_loader asset_loader;
+    plot::Series_renderer renderer;
+    renderer.initialize(asset_loader);
+
+    Offscreen_rhi_fixture rhi_fixture;
+    std::string error_message;
+    TEST_ASSERT(rhi_fixture.initialize(error_message), error_message);
+
+    plot::Plot_config config;
+    const plot::frame_layout_result_t layout = make_layout();
+    plot::frame_context_t ctx = make_context(layout, config);
+    TEST_ASSERT(
+        rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
+        error_message);
+
+    const layer_event_t* first_prepare = find_prepare_event(events, "external");
+    TEST_ASSERT(first_prepare && first_prepare->sample_buffer,
+        "initial custom-only prepare should expose a compact sample buffer");
+
+    auto value_only_series = make_layer_only_series(source, {layer});
+    value_only_series->access = make_value_only_access_policy();
+    series_map[series_id] = value_only_series;
+    events.clear();
+
+    TEST_ASSERT(
+        rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
+        error_message);
+
+    const layer_event_t* second_prepare = find_prepare_event(events, "external");
+    TEST_ASSERT(second_prepare && second_prepare->snapshot_valid,
+        "timestamp-less access should still produce a custom-layer window");
+    TEST_ASSERT(second_prepare->gpu_count > 0,
+        "timestamp-less access should keep the planned drawable count");
+    TEST_ASSERT(second_prepare->sample_buffer == nullptr,
+        "timestamp-less access must not expose a stale compact sample buffer");
+    TEST_ASSERT(second_prepare->sample_buffer_sample_count == 0,
+        "empty sample buffer descriptor should report zero samples");
+
+    auto state_it = renderer.m_vbo_states.find(series_id);
+    TEST_ASSERT(state_it != renderer.m_vbo_states.end(),
+        "expected renderer VBO state for stale sample-buffer regression");
+    const auto& view_state = state_it->second.main_view;
+    TEST_ASSERT(!view_state.has_uploaded_vbo,
+        "failed current-window staging should invalidate uploaded VBO state");
+    TEST_ASSERT(view_state.last_sample_buffer == nullptr,
+        "failed current-window staging should clear sample-buffer instrumentation");
+    TEST_ASSERT(view_state.last_sample_upload_count == 0,
+        "timestamp-less current window should not upload compact samples");
 
     return true;
 }
@@ -1880,6 +2088,8 @@ int main()
     int failed = 0;
 
     RUN_TEST(test_layer_only_zero_style_prepare_record_order);
+    RUN_TEST(test_style_none_without_layers_does_not_upload_samples);
+    RUN_TEST(test_custom_sample_buffer_not_reused_when_current_access_cannot_stage);
     RUN_TEST(test_builtin_upload_stages_visible_window_only);
     RUN_TEST(test_builtin_upload_reuses_vbo_capacity_headroom);
     RUN_TEST(test_combined_builtin_uploads_samples_once_per_view);

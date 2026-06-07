@@ -6,6 +6,7 @@
 #include <vnm_plot/core/series_window.h>
 #include <vnm_plot/core/types.h>
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string_view>
@@ -36,6 +37,38 @@ struct series_view_uniform_std140_t
     float pad0[3];
 };
 
+struct qrhi_series_sample_buffer_layout_t
+{
+    // Each lane is a 32-bit float. `t_rel_seconds` is relative to
+    // qrhi_series_sample_buffer_t::t_origin_ns.
+    std::size_t stride_bytes = 0;
+    std::size_t t_rel_seconds_offset = 0;
+    std::size_t value_offset = 0;
+    std::size_t range_min_offset = 0;
+    std::size_t range_max_offset = 0;
+};
+
+struct qrhi_series_sample_buffer_t
+{
+    QRhiBuffer* buffer = nullptr;
+
+    std::size_t first_sample = 0;
+    std::size_t sample_count = 0;
+
+    std::size_t source_first = 0;
+    std::size_t source_count = 0;
+    std::size_t synthetic_hold_count = 0;
+
+    std::int64_t t_origin_ns = 0;
+    std::int64_t t_min_ns = 0;
+    std::int64_t t_max_ns = 0;
+
+    float v_min = 0.0f;
+    float v_max = 1.0f;
+
+    qrhi_series_sample_buffer_layout_t layout;
+};
+
 struct qrhi_series_prepare_context_t
 {
     QRhi* rhi = nullptr;
@@ -49,6 +82,11 @@ struct qrhi_series_prepare_context_t
 
     const series_view_uniform_std140_t* view_uniform = nullptr;
     QRhiBuffer* view_ubo = nullptr;
+
+    // Borrowed compact sample VBO for this window. Layers may copy this
+    // descriptor into frame-local state for the matching record() call, but
+    // must not retain the buffer pointer beyond the current frame/view.
+    qrhi_series_sample_buffer_t sample_buffer;
 
     bool resources_changed = false;
 };

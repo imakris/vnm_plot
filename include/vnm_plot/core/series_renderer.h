@@ -86,6 +86,7 @@ private:
         std::size_t last_line_window_sample_count = 0;
         std::int64_t last_prepared_t_max_ns = 0;
         std::size_t last_vbo_generation = 0;
+        QRhiBuffer* last_sample_buffer = nullptr;
         detail::access_dispatch_kind_t last_sample_access_dispatch_kind =
             detail::access_dispatch_kind_t::NONE;
 

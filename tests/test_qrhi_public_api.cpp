@@ -143,6 +143,8 @@ static_assert(offsetof(plot::series_view_uniform_std140_t, win_h)    == 108);
 static_assert(offsetof(plot::series_view_uniform_std140_t, framebuffer_y_up) == 112);
 static_assert(sizeof(plot::series_view_uniform_std140_t) == 128);
 
+static_assert(std::is_default_constructible_v<plot::qrhi_series_sample_buffer_layout_t>);
+static_assert(std::is_default_constructible_v<plot::qrhi_series_sample_buffer_t>);
 static_assert(std::is_default_constructible_v<plot::sample_window_t>);
 static_assert(std::is_default_constructible_v<plot::value_range_plan_t>);
 static_assert(std::is_default_constructible_v<plot::Planned_snapshot>);
@@ -295,6 +297,12 @@ bool test_qrhi_layer_api_surface_can_be_implemented()
     TEST_ASSERT(prepare_context.view_uniform == nullptr,
         "prepare context view uniform default mismatch");
     TEST_ASSERT(prepare_context.view_ubo == nullptr, "prepare context UBO default mismatch");
+    TEST_ASSERT(prepare_context.sample_buffer.buffer == nullptr,
+        "prepare context sample buffer default mismatch");
+    TEST_ASSERT(prepare_context.sample_buffer.sample_count == 0,
+        "prepare context sample count default mismatch");
+    TEST_ASSERT(prepare_context.sample_buffer.layout.stride_bytes == 0,
+        "prepare context sample layout default mismatch");
     TEST_ASSERT(!prepare_context.resources_changed,
         "prepare context resources_changed default mismatch");
 
