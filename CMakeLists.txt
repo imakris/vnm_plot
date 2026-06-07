@@ -95,7 +95,13 @@ endif()
 
 # --- Shared MSDF text atlas builder ---
 if(VNM_PLOT_ENABLE_TEXT)
-    set(VNM_MSDF_TEXT_USE_SYSTEM_LIBS "${VNM_PLOT_USE_SYSTEM_LIBS}" CACHE BOOL "" FORCE)
+    if(VNM_PLOT_USE_SYSTEM_LIBS)
+        set(_vnm_plot_msdf_text_fetch_deps OFF)
+    else()
+        set(_vnm_plot_msdf_text_fetch_deps ON)
+    endif()
+    unset(VNM_MSDF_TEXT_USE_SYSTEM_LIBS CACHE)
+    set(VNM_MSDF_TEXT_FETCH_DEPS "${_vnm_plot_msdf_text_fetch_deps}" CACHE BOOL "" FORCE)
     if(TARGET vnm_msdf_text::vnm_msdf_text)
         message(STATUS "vnm_plot: Using existing vnm_msdf_text target")
     else()
@@ -130,6 +136,7 @@ if(VNM_PLOT_ENABLE_TEXT)
             unset(_vnm_plot_msdf_text_source)
         endif()
     endif()
+    unset(_vnm_plot_msdf_text_fetch_deps)
 endif() # VNM_PLOT_ENABLE_TEXT
 
 # -----------------------------------------------------------------------------

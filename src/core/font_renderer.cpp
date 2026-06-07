@@ -33,7 +33,7 @@ namespace vnm::plot {
 
 namespace {
 
-constexpr std::uint32_t k_cache_version = 1;
+constexpr std::uint32_t k_cache_version = 2;
 constexpr double k_min_atlas_font_size = 48.0;
 constexpr float k_atlas_px_range = 10.0f;
 constexpr float k_sharpness_bias = 2.5f;
@@ -375,23 +375,29 @@ std::shared_ptr<cached_font_data_t> load_cached_font_from_disk(
     font->atlas.atlas_size = static_cast<int>(atlas_size);
 
     if (!read(font->atlas.px_range) ||
-        !read(font->atlas.baseline_offset_px) ||
-        !read(font->atlas.monospace_advance_px))
+        !read(font->atlas.font_metrics.ascender) ||
+        !read(font->atlas.font_metrics.descender) ||
+        !read(font->atlas.font_metrics.line_height) ||
+        !read(font->atlas.font_metrics.em_size) ||
+        !read(font->atlas.zero_advance_px))
     {
         return nullptr;
     }
     if (!std::isfinite(font->atlas.px_range) ||
-        !std::isfinite(font->atlas.baseline_offset_px) ||
-        !std::isfinite(font->atlas.monospace_advance_px))
+        !std::isfinite(font->atlas.font_metrics.ascender) ||
+        !std::isfinite(font->atlas.font_metrics.descender) ||
+        !std::isfinite(font->atlas.font_metrics.line_height) ||
+        !std::isfinite(font->atlas.font_metrics.em_size) ||
+        !std::isfinite(font->atlas.zero_advance_px))
     {
         return nullptr;
     }
-    std::uint8_t mono_reliable = 0;
+    std::uint8_t zero_available = 0;
     std::uint8_t padding[3]{};
-    if (!read(mono_reliable) || !in.read(reinterpret_cast<char*>(padding), sizeof(padding))) {
+    if (!read(zero_available) || !in.read(reinterpret_cast<char*>(padding), sizeof(padding))) {
         return nullptr;
     }
-    font->atlas.monospace_advance_reliable = (mono_reliable != 0);
+    font->atlas.zero_advance_available = (zero_available != 0);
 
     std::uint32_t glyph_count = 0;
     if (!read(glyph_count)) {
@@ -436,7 +442,7 @@ std::shared_ptr<cached_font_data_t> load_cached_font_from_disk(
     for (std::uint32_t i = 0; i < kerning_count; ++i) {
         msdf_kerning_key_t key{};
         float value = 0.f;
-        if (!read(key.left) || !read(key.right) || !read(value)) {
+        if (!read(key) || !read(value)) {
             return nullptr;
         }
         if (!std::isfinite(value)) {
@@ -488,10 +494,13 @@ void save_cached_font_to_disk(
     out.write(reinterpret_cast<const char*>(font.font_digest.data()), font.font_digest.size());
     write(static_cast<std::uint32_t>(font.atlas.atlas_size));
     write(font.atlas.px_range);
-    write(font.atlas.baseline_offset_px);
-    write(font.atlas.monospace_advance_px);
-    std::uint8_t mono_reliable = font.atlas.monospace_advance_reliable ? 1u : 0u;
-    out.write(reinterpret_cast<const char*>(&mono_reliable), sizeof(mono_reliable));
+    write(font.atlas.font_metrics.ascender);
+    write(font.atlas.font_metrics.descender);
+    write(font.atlas.font_metrics.line_height);
+    write(font.atlas.font_metrics.em_size);
+    write(font.atlas.zero_advance_px);
+    std::uint8_t zero_available = font.atlas.zero_advance_available ? 1u : 0u;
+    out.write(reinterpret_cast<const char*>(&zero_available), sizeof(zero_available));
     std::uint8_t padding[3]{0, 0, 0};
     out.write(reinterpret_cast<const char*>(padding), sizeof(padding));
 
@@ -511,8 +520,7 @@ void save_cached_font_to_disk(
 
     write(static_cast<std::uint32_t>(font.atlas.kerning_px.size()));
     for (const auto& [key, value] : font.atlas.kerning_px) {
-        write(key.left);
-        write(key.right);
+        write(key);
         write(value);
     }
 
@@ -793,7 +801,7 @@ float Font_renderer::measure_text_px(const char* text) const
     if (!text || !atlas) {
         return 0.0f;
     }
-    return vnm::msdf_text::measure_text_px(*atlas, text);
+    return vnm::msdf_text::measure_text_advance_px(*atlas, text);
 }
 
 std::uint64_t Font_renderer::text_measure_cache_key() const
@@ -804,13 +812,13 @@ std::uint64_t Font_renderer::text_measure_cache_key() const
 float Font_renderer::monospace_advance_px() const
 {
     const msdf_atlas_t* atlas = m_impl->current_atlas();
-    return atlas ? atlas->monospace_advance_px : 0.f;
+    return atlas ? atlas->zero_advance_px : 0.f;
 }
 
 bool Font_renderer::monospace_advance_is_reliable() const
 {
     const msdf_atlas_t* atlas = m_impl->current_atlas();
-    return atlas ? atlas->monospace_advance_reliable : false;
+    return atlas ? atlas->zero_advance_available : false;
 }
 
 float Font_renderer::compute_numeric_bottom() const
@@ -836,7 +844,7 @@ float Font_renderer::compute_numeric_bottom() const
 float Font_renderer::baseline_offset_px() const
 {
     const msdf_atlas_t* atlas = m_impl->current_atlas();
-    return atlas ? atlas->baseline_offset_px : 0.f;
+    return atlas ? -atlas->font_metrics.descender : 0.f;
 }
 
 void Font_renderer::batch_text(float x, float y, const char* text)
