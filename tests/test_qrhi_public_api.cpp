@@ -4,6 +4,7 @@
 
 #include <vnm_plot/core/access_policy.h>
 #include <vnm_plot/core/series_builder.h>
+#include <vnm_plot/core/series_window.h>
 #include <vnm_plot/core/types.h>
 #include <vnm_plot/qt/qrhi_series_layer.h>
 

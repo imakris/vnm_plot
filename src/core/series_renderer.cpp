@@ -3,6 +3,7 @@
 #include <vnm_plot/core/asset_loader.h>
 #include <vnm_plot/core/constants.h>
 #include <vnm_plot/core/plot_config.h>
+#include <vnm_plot/core/series_window.h>
 #include <vnm_plot/core/time_units.h>
 #include <vnm_plot/qt/qrhi_series_layer.h>
 #include "rhi_helpers.h"

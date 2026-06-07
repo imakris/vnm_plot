@@ -12,4 +12,5 @@
 #include <vnm_plot/core/constants.h>
 #include <vnm_plot/core/plot_config.h>
 #include <vnm_plot/core/series_builder.h>
+#include <vnm_plot/core/series_window.h>
 #include <vnm_plot/core/types.h>

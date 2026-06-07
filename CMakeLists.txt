@@ -168,6 +168,7 @@ set(VNM_PLOT_CORE_HEADERS
     # Core headers
     include/vnm_plot/core/types.h
     include/vnm_plot/core/access_policy.h
+    include/vnm_plot/core/series_window.h
     include/vnm_plot/core/plot_config.h
     include/vnm_plot/core/time_units.h
     include/vnm_plot/core/layout_calculator.h
