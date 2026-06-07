@@ -9,6 +9,7 @@
 #include <limits>
 
 namespace plot_examples = vnm::plot::examples;
+namespace plot = vnm::plot;
 
 namespace {
 
@@ -63,11 +64,23 @@ bool test_function_data_source_skips_nonfinite_generated_values()
         3.0,
         4);
 
-    TEST_ASSERT(source.data().size() == 2,
+    const auto snapshot = source.try_snapshot(0);
+    TEST_ASSERT(snapshot.status == plot::snapshot_result_t::Snapshot_status::READY,
+        "default generated function source should publish a ready snapshot");
+    TEST_ASSERT(snapshot.snapshot.count == 2,
         "default generated function source should skip non-finite samples");
-    TEST_ASSERT(source.data()[0].x == 0.0 && source.data()[0].y == 0.0f,
+    TEST_ASSERT(snapshot.snapshot.hold,
+        "function source snapshot should retain the generated vector payload");
+
+    const auto* first = reinterpret_cast<const plot_examples::function_sample_t*>(
+        snapshot.snapshot.at(0));
+    const auto* second = reinterpret_cast<const plot_examples::function_sample_t*>(
+        snapshot.snapshot.at(1));
+    TEST_ASSERT(first != nullptr && second != nullptr,
+        "generated function samples should be readable from the snapshot");
+    TEST_ASSERT(first->x == 0.0 && first->y == 0.0f,
         "first finite generated sample should be preserved");
-    TEST_ASSERT(source.data()[1].x == 1.0 && source.data()[1].y == 1.0f,
+    TEST_ASSERT(second->x == 1.0 && second->y == 1.0f,
         "second finite generated sample should be preserved");
 
     return true;

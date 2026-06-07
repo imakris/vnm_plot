@@ -8,6 +8,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -325,48 +326,81 @@ template<typename T>
 class Vector_data_source : public Data_source
 {
 public:
-    Vector_data_source() = default;
+    Vector_data_source()
+        : m_payload(std::make_shared<Payload>())
+    {}
 
     explicit Vector_data_source(std::vector<T> data)
-        : m_data(std::move(data))
+        : m_payload(std::make_shared<Payload>(std::move(data), 1))
     {}
 
     snapshot_result_t try_snapshot(size_t /*lod_level*/ = 0) override
     {
+        std::shared_ptr<Payload> payload;
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            payload = m_payload;
+        }
+        if (payload->data.empty()) {
+            data_snapshot_t snapshot;
+            snapshot.stride   = sizeof(T);
+            snapshot.sequence = payload->sequence;
+            snapshot.hold     = payload;
+            return {
+                snapshot,
+                snapshot_result_t::Snapshot_status::EMPTY
+            };
+        }
         return {
             data_snapshot_t{
-                m_data.data(),
-                m_data.size(),
+                payload->data.data(),
+                payload->data.size(),
                 sizeof(T),
-                m_sequence,
+                payload->sequence,
                 nullptr,
                 0,
-                {}
+                payload
             },
-            m_data.empty() ? snapshot_result_t::Snapshot_status::EMPTY : snapshot_result_t::Snapshot_status::READY
+            snapshot_result_t::Snapshot_status::READY
         };
     }
 
-    uint64_t current_sequence(size_t /*lod_level*/ = 0) const override { return m_sequence; }
+    uint64_t current_sequence(size_t /*lod_level*/ = 0) const override
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        return m_payload->sequence;
+    }
 
     size_t sample_stride() const override { return sizeof(T); }
 
     void set_data(std::vector<T> data)
     {
-        m_data = std::move(data);
-        ++m_sequence;
+        auto new_payload = std::make_shared<Payload>(std::move(data), 0);
+        std::shared_ptr<Payload> old_payload;
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            new_payload->sequence = m_payload->sequence + 1;
+            old_payload = std::move(m_payload);
+            m_payload = std::move(new_payload);
+        }
     }
 
-    std::vector<T>&       data()       { return m_data; }
-    const std::vector<T>& data() const { return m_data; }
-
-    /// Call after modifying m_data directly (without set_data) to update sequence.
-    void notify_changed() { ++m_sequence; }
-    uint64_t sequence() const { return m_sequence; }
-
 private:
-    std::vector<T> m_data;
-    uint64_t       m_sequence = 0;
+    struct Payload
+    {
+        Payload() = default;
+
+        Payload(std::vector<T> payload_data, std::uint64_t payload_sequence)
+            : data(std::move(payload_data))
+            , sequence(payload_sequence)
+        {}
+
+        std::vector<T> data;
+        std::uint64_t  sequence = 0;
+    };
+
+    mutable std::mutex       m_mutex;
+    std::shared_ptr<Payload> m_payload;
 };
 
 // -----------------------------------------------------------------------------
