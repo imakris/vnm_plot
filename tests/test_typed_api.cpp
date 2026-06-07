@@ -529,11 +529,16 @@ bool test_series_builder_preview_config()
 bool test_series_builder_default_interpolation_is_linear()
 {
     auto series = plot::Series_builder().build_value();
+    auto shared_series = plot::Series_builder()
+        .series_label("core-builder")
+        .build_shared();
 
     TEST_ASSERT(series.interpolation == plot::Series_interpolation::LINEAR,
         "default series interpolation should be linear");
     TEST_ASSERT(series.effective_preview_interpolation() == plot::Series_interpolation::LINEAR,
         "default preview interpolation should be linear");
+    TEST_ASSERT(shared_series->series_label == "core-builder",
+        "core builder build_shared() should preserve inherited setter values");
 
     return true;
 }

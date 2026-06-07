@@ -127,6 +127,22 @@ static_assert(!has_colormap_area<plot::Series_builder>::value);
 static_assert(!has_colormap_line<plot::Series_builder>::value);
 static_assert(!has_colormap_area<plot::Rhi_series_builder>::value);
 static_assert(!has_colormap_line<plot::Rhi_series_builder>::value);
+static_assert(std::is_same_v<
+    decltype(std::declval<plot::Series_builder&>().enabled(true)),
+    plot::Series_builder&>);
+static_assert(std::is_same_v<
+    decltype(std::declval<plot::Series_builder&>().build_value()),
+    plot::series_data_t>);
+static_assert(std::is_same_v<
+    decltype(std::declval<plot::Rhi_series_builder&>().enabled(true)),
+    plot::Rhi_series_builder&>);
+static_assert(std::is_same_v<
+    decltype(std::declval<plot::Rhi_series_builder&>().nonfinite_policy(
+        plot::Nonfinite_sample_policy::SKIP)),
+    plot::Rhi_series_builder&>);
+static_assert(std::is_same_v<
+    decltype(std::declval<plot::Rhi_series_builder&>().build_value()),
+    plot::rhi_series_data_t>);
 
 static_assert(static_cast<int>(plot::Display_style::NONE) == 0x0);
 static_assert(static_cast<int>(plot::Display_style::DOTS) == 0x1);
@@ -221,11 +237,19 @@ bool test_series_builder_qrhi_layers_append_replace_clear()
 
     plot::Rhi_series_builder builder;
     auto series = builder
+        .enabled(false)
+        .style(plot::Display_style::DOTS_LINE_AREA)
+        .series_label("rhi-builder")
         .nonfinite_policy(plot::Nonfinite_sample_policy::SKIP)
         .qrhi_layer(layer_a)
         .qrhi_layer(layer_b)
         .build_value();
 
+    TEST_ASSERT(!series.enabled, "Rhi_series_builder enabled mismatch");
+    TEST_ASSERT(series.style == plot::Display_style::DOTS_LINE_AREA,
+        "Rhi_series_builder style mismatch");
+    TEST_ASSERT(series.series_label == "rhi-builder",
+        "Rhi_series_builder series_label mismatch");
     TEST_ASSERT(series.nonfinite_policy == plot::Nonfinite_sample_policy::SKIP,
         "Rhi_series_builder nonfinite_policy mismatch");
     TEST_ASSERT(series.qrhi_layers.size() == 2, "qrhi_layer() must append");
