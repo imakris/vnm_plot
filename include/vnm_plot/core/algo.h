@@ -459,6 +459,74 @@ struct timestamp_bracket_t
     explicit operator bool() const noexcept { return valid; }
 };
 
+struct visible_sample_window_t
+{
+    std::size_t first = 0;
+    std::size_t last_exclusive = 0;
+    bool valid = false;
+
+    explicit operator bool() const noexcept { return valid; }
+};
+
+template<typename GetTimestampFn>
+visible_sample_window_t select_visible_sample_window(
+    const data_snapshot_t& snapshot,
+    GetTimestampFn&& get_timestamp,
+    std::int64_t t_min_ns,
+    std::int64_t t_max_ns,
+    bool timestamps_monotonic)
+{
+    if (!snapshot.is_valid()) {
+        return {};
+    }
+
+    if (t_max_ns < t_min_ns) {
+        return {snapshot.count, snapshot.count, true};
+    }
+
+    if (!timestamps_monotonic) {
+        std::size_t match_first = snapshot.count;
+        std::size_t match_last = 0;
+        for (std::size_t i = 0; i < snapshot.count; ++i) {
+            const void* sample = snapshot.at(i);
+            if (!sample) {
+                continue;
+            }
+            const std::int64_t ts = get_timestamp(sample);
+            if (ts < t_min_ns || ts > t_max_ns) {
+                continue;
+            }
+            if (match_first == snapshot.count) {
+                match_first = i;
+            }
+            match_last = i + 1;
+        }
+        if (match_first < match_last) {
+            return {
+                (match_first > 0) ? (match_first - 1) : 0,
+                std::min(match_last + 2, snapshot.count),
+                true
+            };
+        }
+        return {snapshot.count, snapshot.count, true};
+    }
+
+    std::size_t first_idx = lower_bound_timestamp(
+        snapshot,
+        get_timestamp,
+        t_min_ns);
+    if (first_idx > 0) {
+        --first_idx;
+    }
+    std::size_t last_idx = upper_bound_timestamp(
+        snapshot,
+        get_timestamp,
+        t_max_ns);
+    last_idx = std::min(last_idx + 2, snapshot.count);
+
+    return {first_idx, last_idx, true};
+}
+
 template<typename AddrFn, typename GetTimestampFn>
 timestamp_bracket_t bracket_timestamp_impl(
     std::size_t count,

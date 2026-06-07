@@ -269,47 +269,29 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
                 VNM_PLOT_PROFILE_SCOPE(
                     request.profiler,
                     "process_view.linear_fallback");
-                std::size_t match_first = snapshot.count;
-                std::size_t match_last = 0;
-                for (std::size_t i = 0; i < snapshot.count; ++i) {
-                    const void* sample = snapshot.at(i);
-                    if (!sample) {
-                        continue;
-                    }
-                    const std::int64_t ts = get_timestamp(sample);
-                    if (ts < request.t_min_ns || ts > request.t_max_ns) {
-                        continue;
-                    }
-                    if (match_first == snapshot.count) {
-                        match_first = i;
-                    }
-                    match_last = i + 1;
-                }
-                if (match_first < match_last) {
-                    first_idx = (match_first > 0) ? (match_first - 1) : 0;
-                    last_idx = std::min(match_last + 2, snapshot.count);
-                }
-                else {
-                    first_idx = snapshot.count;
-                    last_idx = snapshot.count;
-                }
+                const visible_sample_window_t window =
+                    select_visible_sample_window(
+                        snapshot,
+                        get_timestamp,
+                        request.t_min_ns,
+                        request.t_max_ns,
+                        false);
+                first_idx = window.first;
+                last_idx = window.last_exclusive;
             }
             else {
                 VNM_PLOT_PROFILE_SCOPE(
                     request.profiler,
                     "process_view.binary_search");
-                first_idx = lower_bound_timestamp(
-                    snapshot,
-                    get_timestamp,
-                    request.t_min_ns);
-                if (first_idx > 0) {
-                    --first_idx;
-                }
-                last_idx = upper_bound_timestamp(
-                    snapshot,
-                    get_timestamp,
-                    request.t_max_ns);
-                last_idx = std::min(last_idx + 2, snapshot.count);
+                const visible_sample_window_t window =
+                    select_visible_sample_window(
+                        snapshot,
+                        get_timestamp,
+                        request.t_min_ns,
+                        request.t_max_ns,
+                        true);
+                first_idx = window.first;
+                last_idx = window.last_exclusive;
             }
         }
 

@@ -275,6 +275,87 @@ bool test_bounds_on_segmented_snapshot()
     return true;
 }
 
+bool test_select_visible_sample_window_monotonic_extends_bounds()
+{
+    std::vector<sample_t> samples;
+    for (int i = 0; i < 10; ++i) {
+        samples.push_back({static_cast<std::int64_t>(i), static_cast<float>(i)});
+    }
+
+    plot::data_snapshot_t snap;
+    snap.data = samples.data();
+    snap.count = samples.size();
+    snap.stride = sizeof(sample_t);
+
+    const auto get_ts = [](const void* p) -> std::int64_t {
+        return static_cast<const sample_t*>(p)->t;
+    };
+
+    const auto window = plot::detail::select_visible_sample_window(
+        snap,
+        get_ts,
+        std::int64_t{3},
+        std::int64_t{5},
+        true);
+    TEST_ASSERT(window.valid, "monotonic visible window should be valid");
+    TEST_ASSERT(window.first == 2 && window.last_exclusive == 8,
+        "monotonic visible window should include one preceding and two following samples");
+
+    const auto trailing_window = plot::detail::select_visible_sample_window(
+        snap,
+        get_ts,
+        std::int64_t{100},
+        std::int64_t{110},
+        true);
+    TEST_ASSERT(trailing_window.valid, "trailing monotonic visible window should be valid");
+    TEST_ASSERT(trailing_window.first == 9 && trailing_window.last_exclusive == 10,
+        "trailing monotonic window should preserve the planner's preceding-sample behavior");
+
+    return true;
+}
+
+bool test_select_visible_sample_window_non_monotonic_scans()
+{
+    std::vector<sample_t> samples = {
+        {10, 0.0f},
+        {4, 0.0f},
+        {20, 0.0f},
+        {6, 0.0f},
+        {2, 0.0f}
+    };
+
+    plot::data_snapshot_t snap;
+    snap.data = samples.data();
+    snap.count = samples.size();
+    snap.stride = sizeof(sample_t);
+
+    const auto get_ts = [](const void* p) -> std::int64_t {
+        return static_cast<const sample_t*>(p)->t;
+    };
+
+    const auto window = plot::detail::select_visible_sample_window(
+        snap,
+        get_ts,
+        std::int64_t{4},
+        std::int64_t{6},
+        false);
+    TEST_ASSERT(window.valid, "non-monotonic visible window should be valid");
+    TEST_ASSERT(window.first == 0 && window.last_exclusive == samples.size(),
+        "non-monotonic visible window should linearly include surrounding samples");
+
+    const auto empty_window = plot::detail::select_visible_sample_window(
+        snap,
+        get_ts,
+        std::int64_t{30},
+        std::int64_t{40},
+        false);
+    TEST_ASSERT(empty_window.valid, "empty non-monotonic visible window should be valid");
+    TEST_ASSERT(empty_window.first == samples.size() && empty_window.last_exclusive == samples.size(),
+        "non-monotonic no-match window should stay empty");
+
+    return true;
+}
+
 bool test_snapshot_truthiness_requires_usable_stride()
 {
     std::vector<sample_t> samples = {{0, 1.0f}};
@@ -529,6 +610,8 @@ int main()
     RUN_TEST(test_timestamp_search_rejects_null_samples);
     RUN_TEST(test_raw_timestamp_search_rejects_zero_stride);
     RUN_TEST(test_bounds_on_segmented_snapshot);
+    RUN_TEST(test_select_visible_sample_window_monotonic_extends_bounds);
+    RUN_TEST(test_select_visible_sample_window_non_monotonic_scans);
     RUN_TEST(test_snapshot_truthiness_requires_usable_stride);
     RUN_TEST(test_snapshot_count1_clamps_malformed_count2);
     RUN_TEST(test_layout_cache_key_distinguishes_adjacent_int64_time_windows);
