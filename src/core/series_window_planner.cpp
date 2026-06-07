@@ -77,6 +77,12 @@ struct drawable_window_result_t
     bool valid = true;
 };
 
+struct direct_time_window_query_t
+{
+    data_query_result_t<sample_index_window_t> result;
+    bool attempted = false;
+};
+
 drawable_window_result_t build_drawable_window(
     const data_snapshot_t& snapshot,
     const erased_access_policy_t& access,
@@ -298,6 +304,30 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
         return snapshot_result;
     };
 
+    const auto make_query_context = [&]() {
+        data_query_context_t query;
+        query.access = &access;
+        query.profiler = request.profiler;
+        query.time_window = {request.t_min_ns, request.t_max_ns};
+        query.interpolation = request.interpolation;
+        query.empty_window_behavior = request.empty_window_behavior;
+        query.nonfinite_policy = request.nonfinite_policy;
+        return query;
+    };
+
+    const auto query_direct_time_window = [&](std::size_t level) {
+        direct_time_window_query_t query;
+        if (!data_source.supports_direct_time_window_query(level)) {
+            return query;
+        }
+        VNM_PLOT_PROFILE_SCOPE(
+            request.profiler,
+            "process_view.query_time_window");
+        query.result = data_source.query_time_window(level, make_query_context());
+        query.attempted = true;
+        return query;
+    };
+
     const auto was_tried = [&](std::size_t level) -> bool {
         return tried && level < level_count && tried[level] != 0;
     };
@@ -410,6 +440,9 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
             }
         }
 
+        const direct_time_window_query_t direct_time_window =
+            query_direct_time_window(applied_level);
+
         snapshot_result_t snapshot_result = acquire_frame_snapshot(applied_level);
 
         if (!snapshot_result || !snapshot_result.snapshot || snapshot_result.snapshot.count == 0) {
@@ -424,10 +457,153 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
         }
 
         const auto& snapshot = snapshot_result.snapshot;
+        bool have_direct_time_window = false;
+        bool direct_time_window_empty = false;
+        bool direct_time_window_failed = false;
+        std::size_t direct_first_idx = 0;
+        std::size_t direct_last_idx = 0;
+        bool direct_hold_last_forward = false;
+        if (direct_time_window.attempted &&
+            direct_time_window.result.sequence != 0 &&
+            direct_time_window.result.sequence == snapshot.sequence)
+        {
+            if (direct_time_window.result.status == Data_query_status::EMPTY) {
+                // A semantic query can be empty while renderer interpolation
+                // still needs adjacent source samples to draw a clipped
+                // segment. Fall back to local padded snapshot search.
+            }
+            else
+            if (direct_time_window.result.status == Data_query_status::READY) {
+                const std::size_t first = direct_time_window.result.value.first;
+                const std::size_t count = direct_time_window.result.value.count;
+                std::size_t last_exclusive = first;
+                if (count == 0) {
+                    have_direct_time_window = true;
+                    direct_time_window_empty = true;
+                }
+                else
+                if (first < snapshot.count &&
+                    checked_size_add(first, count, last_exclusive) &&
+                    last_exclusive <= snapshot.count)
+                {
+                    have_direct_time_window = true;
+                    direct_first_idx = first;
+                    direct_last_idx = last_exclusive;
+                    if (access_view.has_timestamp()) {
+                        bool has_match_in_requested_window = false;
+                        bool direct_window_valid = true;
+                        for (std::size_t index = first;
+                             index < last_exclusive;
+                             ++index)
+                        {
+                            const void* sample = snapshot.at(index);
+                            if (!sample) {
+                                direct_window_valid = false;
+                                break;
+                            }
+                            const std::int64_t ts_ns = get_timestamp(sample);
+                            if (ts_ns >= request.t_min_ns &&
+                                ts_ns <= request.t_max_ns)
+                            {
+                                has_match_in_requested_window = true;
+                                break;
+                            }
+                        }
+                        if (!direct_window_valid) {
+                            have_direct_time_window = false;
+                            direct_time_window_failed = true;
+                        }
+                        else
+                        if (has_match_in_requested_window) {
+                            const void* first_sample = snapshot.at(first);
+                            if (!first_sample) {
+                                have_direct_time_window = false;
+                                direct_time_window_failed = true;
+                            }
+                            else {
+                                const std::int64_t first_ts_ns =
+                                    get_timestamp(first_sample);
+                                if (first_ts_ns >= request.t_min_ns &&
+                                    direct_first_idx > 0)
+                                {
+                                    --direct_first_idx;
+                                }
+                                std::size_t padded_last = direct_last_idx;
+                                if (checked_size_add(
+                                        direct_last_idx,
+                                        2u,
+                                        padded_last))
+                                {
+                                    direct_last_idx =
+                                        std::min(padded_last, snapshot.count);
+                                }
+                                else {
+                                    direct_last_idx = snapshot.count;
+                                }
+                                if (request.empty_window_behavior ==
+                                        Empty_window_behavior::HOLD_LAST_FORWARD &&
+                                    direct_last_idx == snapshot.count)
+                                {
+                                    const void* last_window_sample =
+                                        snapshot.at(direct_last_idx - 1u);
+                                    if (!last_window_sample) {
+                                        have_direct_time_window = false;
+                                        direct_time_window_failed = true;
+                                    }
+                                    else
+                                    if (get_timestamp(last_window_sample) <
+                                        request.t_max_ns)
+                                    {
+                                        direct_hold_last_forward = true;
+                                    }
+                                }
+                            }
+                        }
+                        else
+                        if (request.interpolation ==
+                                Series_interpolation::STEP_AFTER &&
+                            request.empty_window_behavior ==
+                                Empty_window_behavior::HOLD_LAST_FORWARD)
+                        {
+                            const void* last_window_sample =
+                                snapshot.at(last_exclusive - 1u);
+                            if (!last_window_sample) {
+                                have_direct_time_window = false;
+                                direct_time_window_failed = true;
+                            }
+                            else
+                            if (get_timestamp(last_window_sample) <
+                                request.t_max_ns)
+                            {
+                                direct_hold_last_forward = true;
+                            }
+                        }
+                    }
+                }
+                else {
+                    direct_time_window_failed = true;
+                }
+            }
+            else
+            if (direct_time_window.result.status == Data_query_status::FAILED) {
+                direct_time_window_failed = true;
+            }
+        }
+
         bool timestamps_monotonic = true;
         state.last_timestamp_order_scan_performed = false;
         state.last_timestamp_order_scan_samples = 0;
         state.last_timestamp_window_search = Timestamp_window_search::NONE;
+        if (direct_time_window_failed) {
+            state.last_timestamp_window_search =
+                Timestamp_window_search::QUERY;
+            break;
+        }
+        if (have_direct_time_window) {
+            state.last_timestamp_window_search =
+                Timestamp_window_search::QUERY;
+        }
+        else
         if (access_view.has_timestamp()) {
             const void* current_identity = data_source.identity();
             const Time_order source_order = data_source.time_order(applied_level);
@@ -495,6 +671,18 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
         std::size_t last_idx = snapshot.count;
         std::int64_t last_ts = 0;
         bool have_last_ts = false;
+        if (have_direct_time_window) {
+            if (direct_time_window_empty) {
+                first_idx = snapshot.count;
+                last_idx = snapshot.count;
+            }
+            else {
+                first_idx = direct_first_idx;
+                last_idx = direct_last_idx;
+                hold_last_forward = direct_hold_last_forward;
+            }
+        }
+        else
         if (access_view.has_timestamp()) {
             const void* last_sample = snapshot.at(snapshot.count - 1);
             if (last_sample) {
@@ -540,6 +728,7 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
         const bool can_hold_last_forward =
             request.empty_window_behavior ==
                 Empty_window_behavior::HOLD_LAST_FORWARD &&
+            !have_direct_time_window &&
             timestamps_monotonic &&
             have_last_ts &&
             last_ts < request.t_max_ns;
@@ -591,6 +780,7 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
             request.empty_window_behavior ==
                 Empty_window_behavior::HOLD_LAST_FORWARD &&
             request.nonfinite_policy == Nonfinite_sample_policy::SKIP &&
+            !have_direct_time_window &&
             timestamps_monotonic &&
             first_idx < last_idx)
         {

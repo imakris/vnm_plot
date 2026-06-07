@@ -25,6 +25,7 @@ enum class Snapshot_requirement
 enum class Timestamp_window_search
 {
     NONE,
+    QUERY,
     BINARY,
     LINEAR,
 };

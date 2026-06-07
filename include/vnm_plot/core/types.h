@@ -709,6 +709,15 @@ public:
     virtual Time_order time_order(std::size_t lod) const;
     virtual data_query_result_t<time_range_t> time_range(std::size_t lod) const;
     virtual std::vector<std::size_t> lod_scales() const;
+    /// Return true when `query_time_window()` can answer directly enough that
+    /// render planning should try it before taking a snapshot. The default
+    /// implementation of `query_time_window()` is snapshot-backed, so it stays
+    /// opt-in to avoid an extra snapshot in the renderer.
+    virtual bool supports_direct_time_window_query(std::size_t lod) const
+    {
+        (void)lod;
+        return false;
+    }
     virtual data_query_result_t<sample_index_window_t> query_time_window(
         std::size_t lod,
         const data_query_context_t& query);
