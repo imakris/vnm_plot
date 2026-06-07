@@ -611,6 +611,22 @@ std::shared_ptr<cached_font_data_t> load_or_build_font_cache(
 
 } // anonymous namespace
 
+#if defined(VNM_PLOT_ENABLE_TEST_HOOKS)
+namespace detail {
+
+bool validate_font_disk_cache_file(
+    const std::filesystem::path& path,
+    const font_disk_cache_digest_t& expected_digest,
+    int pixel_height)
+{
+    Sha256::Digest digest{};
+    std::copy(expected_digest.begin(), expected_digest.end(), digest.begin());
+    return static_cast<bool>(load_cached_font_from_disk(path, digest, pixel_height));
+}
+
+} // namespace detail
+#endif
+
 namespace {
 
 using detail::load_qsb;

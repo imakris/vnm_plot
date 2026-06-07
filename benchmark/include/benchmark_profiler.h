@@ -101,47 +101,47 @@ public:
         }
     }
 
-    void record_observation(const char* name, double value_ms) override
+    void record_observation(const char* name, double value) override
     {
-        if (!name || !std::isfinite(value_ms)) {
+        if (!name || !std::isfinite(value)) {
             return;
         }
 
         std::lock_guard<std::mutex> lock(m_mutex);
-        record_observation_locked(name, 1, value_ms, value_ms, value_ms);
+        record_observation_locked(name, 1, value, value, value);
     }
 
     void record_observation_summary(
         const char* name,
         uint64_t call_count,
-        double total_ms,
-        double min_ms,
-        double max_ms)
+        double total,
+        double min,
+        double max)
     {
         if (!name || call_count == 0 ||
-            !std::isfinite(total_ms) || !std::isfinite(min_ms) || !std::isfinite(max_ms))
+            !std::isfinite(total) || !std::isfinite(min) || !std::isfinite(max))
         {
             return;
         }
 
         std::lock_guard<std::mutex> lock(m_mutex);
-        record_observation_locked(name, call_count, total_ms, min_ms, max_ms);
+        record_observation_locked(name, call_count, total, min, max);
     }
 
 private:
     void record_observation_locked(
         const char* name,
         uint64_t call_count,
-        double total_ms,
-        double min_ms,
-        double max_ms)
+        double total,
+        double min,
+        double max)
     {
         auto& stats = m_observations[name];
         stats.name = name;
         stats.call_count += call_count;
-        stats.total_ms += total_ms;
-        stats.min_ms = std::min(stats.min_ms, min_ms);
-        stats.max_ms = std::max(stats.max_ms, max_ms);
+        stats.total += total;
+        stats.min = std::min(stats.min, min);
+        stats.max = std::max(stats.max, max);
     }
 
 public:
@@ -254,9 +254,9 @@ private:
     struct Observation_stats {
         std::string name;
         uint64_t call_count = 0;
-        double total_ms = 0.0;
-        double min_ms = std::numeric_limits<double>::max();
-        double max_ms = 0.0;
+        double total = 0.0;
+        double min = std::numeric_limits<double>::max();
+        double max = 0.0;
     };
 
     struct Thread_context {
@@ -353,23 +353,23 @@ private:
         os << "Observations:\n";
         os << std::left << std::setw(46) << "Name" << " "
             << std::right << std::setw(5) << "Calls" << " "
-            << std::setw(9) << "Total ms" << " "
-            << std::setw(10) << "Average ms" << " "
-            << std::setw(6) << "Min ms" << " "
-            << std::setw(6) << "Max ms" << "\n";
-        os << std::string(88, '-') << "\n";
+            << std::setw(12) << "Total" << " "
+            << std::setw(12) << "Average" << " "
+            << std::setw(8) << "Min" << " "
+            << std::setw(8) << "Max" << "\n";
+        os << std::string(96, '-') << "\n";
 
         for (const auto& [name, stats] : m_observations) {
-            const double avg_ms = stats.call_count > 0
-                ? stats.total_ms / static_cast<double>(stats.call_count)
+            const double average = stats.call_count > 0
+                ? stats.total / static_cast<double>(stats.call_count)
                 : 0.0;
             os << std::left << std::setw(46) << name << " "
                 << std::right << std::setw(5) << stats.call_count << " "
                 << std::fixed << std::setprecision(3)
-                << std::setw(9) << stats.total_ms << " "
-                << std::setw(10) << avg_ms << " "
-                << std::setw(6) << stats.min_ms << " "
-                << std::setw(6) << stats.max_ms << "\n";
+                << std::setw(12) << stats.total << " "
+                << std::setw(12) << average << " "
+                << std::setw(8) << stats.min << " "
+                << std::setw(8) << stats.max << "\n";
         }
 
         os << "\n";

@@ -278,6 +278,58 @@ bool test_auto_adjust_view_includes_step_after_held_sample()
     return true;
 }
 
+bool test_shared_vbar_explicit_width_publishes_when_sync_enabled()
+{
+    plot::Plot_time_axis shared_axis;
+    plot::Plot_widget widget;
+
+    shared_axis.set_sync_vbar_width(true);
+    widget.set_time_axis(&shared_axis);
+    widget.set_vbar_width(64.0);
+
+    TEST_ASSERT(nearly_equal(shared_axis.shared_vbar_width_px(), widget.vbar_width_pixels()),
+        "explicit vbar width should publish to the shared axis when sync is enabled");
+
+    return true;
+}
+
+bool test_shared_vbar_attach_publishes_existing_current_width()
+{
+    plot::Plot_time_axis shared_axis;
+    plot::Plot_widget widget;
+
+    widget.set_vbar_width(80.0);
+    const double owner_width_px = widget.vbar_width_pixels();
+
+    shared_axis.set_sync_vbar_width(true);
+    widget.set_time_axis(&shared_axis);
+
+    TEST_ASSERT(nearly_equal(shared_axis.shared_vbar_width_px(), owner_width_px),
+        "attaching to a sync-enabled axis should publish the widget's current vbar width");
+
+    return true;
+}
+
+bool test_shared_vbar_enabling_sync_publishes_current_owner_width()
+{
+    plot::Plot_time_axis shared_axis;
+    plot::Plot_widget widget;
+
+    widget.set_time_axis(&shared_axis);
+    widget.set_vbar_width(96.0);
+
+    TEST_ASSERT(nearly_equal(shared_axis.shared_vbar_width_px(), 0.0),
+        "disabled vbar sync should not publish the current owner width");
+
+    const double owner_width_px = widget.vbar_width_pixels();
+    shared_axis.set_sync_vbar_width(true);
+
+    TEST_ASSERT(nearly_equal(shared_axis.shared_vbar_width_px(), owner_width_px),
+        "enabling vbar sync should publish the current owner width");
+
+    return true;
+}
+
 bool test_widget_local_available_clamp_matches_shared_axis()
 {
     plot::Plot_widget local_widget;
@@ -383,6 +435,9 @@ int main(int argc, char** argv)
     RUN_TEST(test_nearest_samples_choose_closer_sample);
     RUN_TEST(test_auto_adjust_view_uses_visible_samples_for_value_and_time_range);
     RUN_TEST(test_auto_adjust_view_includes_step_after_held_sample);
+    RUN_TEST(test_shared_vbar_explicit_width_publishes_when_sync_enabled);
+    RUN_TEST(test_shared_vbar_attach_publishes_existing_current_width);
+    RUN_TEST(test_shared_vbar_enabling_sync_publishes_current_owner_width);
     RUN_TEST(test_widget_local_available_clamp_matches_shared_axis);
     RUN_TEST(test_widget_local_preview_adjustment_matches_shared_axis);
     RUN_TEST(test_preview_thumb_press_handles_full_int64_availability);

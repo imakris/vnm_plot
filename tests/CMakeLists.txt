@@ -22,6 +22,11 @@ set(_vnm_plot_rhi_tests
     test_qrhi_public_api
 )
 
+if(VNM_PLOT_ENABLE_TEXT)
+    list(APPEND _vnm_plot_rhi_tests test_font_disk_cache)
+    target_compile_definitions(vnm_plot_rhi PRIVATE VNM_PLOT_ENABLE_TEST_HOOKS=1)
+endif()
+
 foreach(_test IN LISTS _vnm_plot_data_tests)
     add_executable(${_test} ${_test}.cpp)
     target_link_libraries(${_test} PRIVATE vnm_plot::data)
@@ -62,6 +67,10 @@ target_link_libraries(test_qrhi_layer_lifecycle PRIVATE Qt6::GuiPrivate Qt6::Gui
 target_link_libraries(test_qrhi_public_api PRIVATE Qt6::GuiPrivate Qt6::Gui)
 target_link_libraries(test_rhi_helpers PRIVATE Qt6::GuiPrivate Qt6::Gui)
 
+if(TARGET test_font_disk_cache)
+    target_compile_definitions(test_font_disk_cache PRIVATE VNM_PLOT_ENABLE_TEST_HOOKS=1)
+endif()
+
 if(TARGET vnm_plot_qtquick)
     add_executable(test_plot_interaction_item test_plot_interaction_item.cpp)
     target_link_libraries(test_plot_interaction_item PRIVATE vnm_plot::qtquick)
@@ -98,6 +107,9 @@ vnm_plot_add_test(LayoutCalculator test_layout_calculator)
 vnm_plot_add_test(RhiHelpers test_rhi_helpers)
 vnm_plot_add_test(QrhiLayerLifecycle test_qrhi_layer_lifecycle)
 vnm_plot_add_test(QrhiPublicApi test_qrhi_public_api)
+if(TARGET test_font_disk_cache)
+    vnm_plot_add_test(FontDiskCache test_font_disk_cache)
+endif()
 
 if(TARGET vnm_plot_qtquick)
     vnm_plot_add_test(PlotInteractionItem test_plot_interaction_item)

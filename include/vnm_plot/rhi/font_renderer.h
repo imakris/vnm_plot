@@ -7,6 +7,11 @@
 
 #include <glm/glm.hpp>
 
+#if defined(VNM_PLOT_ENABLE_TEXT) && defined(VNM_PLOT_ENABLE_TEST_HOOKS)
+#include <array>
+#include <filesystem>
+#endif
+
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -42,6 +47,19 @@ void set_font_disk_cache_enabled(bool enabled);
 
 // Returns true if disk caching is enabled.
 [[nodiscard]] bool font_disk_cache_enabled();
+
+#if defined(VNM_PLOT_ENABLE_TEXT) && defined(VNM_PLOT_ENABLE_TEST_HOOKS)
+namespace detail {
+
+using font_disk_cache_digest_t = std::array<std::uint8_t, 32>;
+
+[[nodiscard]] bool validate_font_disk_cache_file(
+    const std::filesystem::path& path,
+    const font_disk_cache_digest_t& expected_digest,
+    int pixel_height);
+
+} // namespace detail
+#endif
 
 // -----------------------------------------------------------------------------
 // Font Renderer

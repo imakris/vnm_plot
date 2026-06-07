@@ -339,6 +339,10 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
                     state.last_timestamp_order_access_key = access_key;
                     state.last_timestamp_source_order = source_order;
                     state.last_timestamps_monotonic = is_monotonic;
+                    if (request.profiler) {
+                        request.profiler->record_counter(
+                            "renderer.series_window.monotonicity_scan_count");
+                    }
                 }
             }
             timestamps_monotonic = state.last_timestamps_monotonic;
@@ -447,6 +451,11 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
             }
         }
 
+        const bool lod_switched =
+            state.has_last_lod_level &&
+            state.cached_data_identity == data_source.identity() &&
+            state.last_lod_level != applied_level;
+
         state.last_sequence = snapshot.sequence;
         state.cached_data_identity = data_source.identity();
         state.last_access_key = access_key;
@@ -462,6 +471,10 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
         state.last_width_px = request.width_px;
         state.last_empty_window_behavior = request.empty_window_behavior;
         state.last_interpolation = request.interpolation;
+        if (lod_switched && request.profiler) {
+            request.profiler->record_counter(
+                "renderer.series_window.lod_switch_count");
+        }
 
         plan.source_first = state.last_first;
         const std::size_t gpu_count = state.last_count;

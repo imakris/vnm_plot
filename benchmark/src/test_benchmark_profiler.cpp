@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cmath>
 #include <iostream>
+#include <sstream>
 #include <thread>
 
 using vnm::benchmark::Benchmark_profiler;
@@ -46,6 +47,120 @@ bool test_basic_scope() {
     TEST_ASSERT(scope.call_count == 1, "call_count should be 1");
     TEST_ASSERT(scope.total_ms >= 9.0, "total_ms should be >= 9");  // Allow some tolerance
     TEST_ASSERT(scope.total_ms < 100.0, "total_ms should be < 100");
+
+    return true;
+}
+
+std::string report_line_containing(const std::string& report, const std::string& needle) {
+    std::istringstream iss(report);
+    std::string line;
+    while (std::getline(iss, line)) {
+        if (line.find(needle) != std::string::npos) {
+            return line;
+        }
+    }
+    return {};
+}
+
+std::string line_after_report_line_containing(
+    const std::string& report,
+    const std::string& needle)
+{
+    std::istringstream iss(report);
+    std::string line;
+    while (std::getline(iss, line)) {
+        if (line.find(needle) != std::string::npos) {
+            std::string next_line;
+            std::getline(iss, next_line);
+            return next_line;
+        }
+    }
+    return {};
+}
+
+// Test: Observation counters aggregate and report without millisecond units
+bool test_observation_counters_are_unit_neutral() {
+    Benchmark_profiler profiler;
+
+    profiler.record_observation("renderer.frame.uploaded_sample_bytes", 1024.0);
+    profiler.record_observation("renderer.frame.uploaded_sample_bytes", 2048.0);
+    profiler.record_observation("renderer.frame.sample_upload_count", 2.0);
+    profiler.record_observation("renderer.series_view.sample_upload_count", 1.0);
+    profiler.record_counter("renderer.series_window.lod_switch_count");
+    profiler.record_counter("renderer.series_window.lod_switch_count");
+    profiler.record_counter("renderer.series_window.monotonicity_scan_count");
+    profiler.record_observation_summary(
+        "renderer.auto_range.query_count",
+        3,
+        3.0,
+        1.0,
+        1.0);
+    profiler.record_counter("renderer.auto_range.range_scan_count");
+
+    Report_metadata meta;
+    meta.started_at = std::chrono::system_clock::now();
+    meta.generated_at = std::chrono::system_clock::now();
+
+    const std::string report = profiler.generate_report(meta);
+
+    TEST_ASSERT(report.find("Observations:") != std::string::npos,
+        "report should include observations section");
+    const std::string header = report_line_containing(report, "Name");
+    TEST_ASSERT(header.find("Total") != std::string::npos,
+        "observation header should include unit-neutral Total column");
+    TEST_ASSERT(header.find("Total ms") == std::string::npos,
+        "observation header should not label counters as milliseconds");
+    const std::string separator =
+        line_after_report_line_containing(report, "Name");
+    TEST_ASSERT(separator.length() == header.length(),
+        "observation header and separator should match length");
+
+    const std::string bytes_line =
+        report_line_containing(report, "renderer.frame.uploaded_sample_bytes");
+    TEST_ASSERT(bytes_line.find("    2") != std::string::npos,
+        "uploaded sample bytes should aggregate two observations");
+    TEST_ASSERT(bytes_line.find("3072.000") != std::string::npos,
+        "uploaded sample bytes total should aggregate values");
+    TEST_ASSERT(bytes_line.find("1536.000") != std::string::npos,
+        "uploaded sample bytes average should aggregate values");
+    TEST_ASSERT(bytes_line.find("1024.000") != std::string::npos,
+        "uploaded sample bytes min should aggregate values");
+    TEST_ASSERT(bytes_line.find("2048.000") != std::string::npos,
+        "uploaded sample bytes max should aggregate values");
+
+    const std::string upload_count_line =
+        report_line_containing(report, "renderer.frame.sample_upload_count");
+    TEST_ASSERT(upload_count_line.find("2.000") != std::string::npos,
+        "frame sample upload count should be reported");
+
+    const std::string series_view_upload_line =
+        report_line_containing(report, "renderer.series_view.sample_upload_count");
+    TEST_ASSERT(series_view_upload_line.find("1.000") != std::string::npos,
+        "series/view sample upload count should be reported");
+
+    const std::string lod_line =
+        report_line_containing(report, "renderer.series_window.lod_switch_count");
+    TEST_ASSERT(lod_line.find("    2") != std::string::npos,
+        "LOD switch counter should aggregate two events");
+    TEST_ASSERT(lod_line.find("2.000") != std::string::npos,
+        "LOD switch counter total should be reported");
+
+    const std::string monotonicity_line =
+        report_line_containing(report, "renderer.series_window.monotonicity_scan_count");
+    TEST_ASSERT(monotonicity_line.find("1.000") != std::string::npos,
+        "monotonicity scan counter should be reported");
+
+    const std::string query_line =
+        report_line_containing(report, "renderer.auto_range.query_count");
+    TEST_ASSERT(query_line.find("    3") != std::string::npos,
+        "range query summary should preserve call count");
+    TEST_ASSERT(query_line.find("3.000") != std::string::npos,
+        "range query summary should preserve total");
+
+    const std::string scan_line =
+        report_line_containing(report, "renderer.auto_range.range_scan_count");
+    TEST_ASSERT(scan_line.find("1.000") != std::string::npos,
+        "range scan counter should be reported");
 
     return true;
 }
@@ -310,6 +425,7 @@ int main() {
     RUN_TEST(test_deep_nesting);
     RUN_TEST(test_multiple_roots);
     RUN_TEST(test_format_compliance);
+    RUN_TEST(test_observation_counters_are_unit_neutral);
 
     std::cout << "\n=============================\n";
     std::cout << "Results: " << passed << " passed, " << failed << " failed\n";

@@ -933,6 +933,9 @@ void Series_renderer::prepare(
         return sample_buffer;
     };
 
+    std::size_t frame_sample_upload_bytes = 0;
+    std::size_t frame_sample_upload_count = 0;
+
     const auto ensure_view_ubo =
         [&](int series_id,
             Series_view_kind view_kind,
@@ -1208,6 +1211,21 @@ void Series_renderer::prepare(
                 m_rhi_state->prepared_draws.push_back(std::move(command));
             }
         }
+
+        if (view_state.last_sample_upload_count > 0) {
+            frame_sample_upload_bytes += view_state.last_sample_upload_bytes;
+            frame_sample_upload_count += view_state.last_sample_upload_count;
+            if (profiler) {
+                profiler->record_observation(
+                    "renderer.series_view.sample_upload_count",
+                    static_cast<double>(view_state.last_sample_upload_count));
+                profiler->record_observation(
+                    plan.view_kind == Series_view_kind::PREVIEW
+                        ? "renderer.series_view.preview.sample_upload_count"
+                        : "renderer.series_view.main.sample_upload_count",
+                    static_cast<double>(view_state.last_sample_upload_count));
+            }
+        }
     };
 
     for (auto& draw_state : draw_states) {
@@ -1230,6 +1248,15 @@ void Series_renderer::prepare(
                 draw_state.preview_plan,
                 draw_state.vbo_state->preview_view);
         }
+    }
+
+    if (profiler) {
+        profiler->record_observation(
+            "renderer.frame.uploaded_sample_bytes",
+            static_cast<double>(frame_sample_upload_bytes));
+        profiler->record_observation(
+            "renderer.frame.sample_upload_count",
+            static_cast<double>(frame_sample_upload_count));
     }
 
     const auto qrhi_layer_still_configured =

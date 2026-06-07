@@ -1,0 +1,266 @@
+// vnm_plot font disk cache validation tests
+
+#include "test_macros.h"
+
+#include <vnm_plot/rhi/font_renderer.h>
+
+#include <algorithm>
+#include <array>
+#include <cstdint>
+#include <filesystem>
+#include <fstream>
+#include <functional>
+#include <iostream>
+#include <limits>
+#include <string>
+#include <system_error>
+
+namespace plot = vnm::plot;
+
+namespace {
+
+constexpr std::uint32_t k_magic = 0x4d534446; // 'MSDF'
+constexpr std::uint32_t k_cache_version = 2;
+constexpr std::uint32_t k_pixel_height = 18;
+constexpr std::uint32_t k_atlas_texture_size = 2048;
+constexpr std::uint32_t k_expected_atlas_bytes =
+    k_atlas_texture_size * k_atlas_texture_size * 4u;
+
+using digest_t = plot::detail::font_disk_cache_digest_t;
+
+struct Scoped_temp_dir
+{
+    std::filesystem::path path;
+
+    Scoped_temp_dir()
+    {
+        path = std::filesystem::temp_directory_path() /
+               ("vnm_plot_font_cache_test_" +
+                std::to_string(std::hash<const void*>{}(this)));
+        std::filesystem::create_directories(path);
+    }
+
+    ~Scoped_temp_dir()
+    {
+        std::error_code ec;
+        std::filesystem::remove_all(path, ec);
+    }
+
+    Scoped_temp_dir(const Scoped_temp_dir&) = delete;
+    Scoped_temp_dir& operator=(const Scoped_temp_dir&) = delete;
+};
+
+struct cache_file_options_t
+{
+    digest_t digest{};
+    std::uint32_t pixel_height = k_pixel_height;
+    std::uint32_t atlas_size = k_atlas_texture_size;
+    std::uint32_t glyph_count = 0;
+    std::uint32_t kerning_count = 0;
+    std::uint32_t atlas_bytes = k_expected_atlas_bytes;
+    bool write_atlas_payload = false;
+};
+
+digest_t make_digest(std::uint8_t seed)
+{
+    digest_t digest{};
+    for (std::size_t i = 0; i < digest.size(); ++i) {
+        digest[i] = static_cast<std::uint8_t>(seed + static_cast<std::uint8_t>(i));
+    }
+    return digest;
+}
+
+template<typename T>
+void write_value(std::ofstream& out, const T& value)
+{
+    out.write(reinterpret_cast<const char*>(&value), sizeof(value));
+}
+
+void write_zero_bytes(std::ofstream& out, std::uint32_t byte_count)
+{
+    std::array<char, 4096> zeros{};
+    std::uint32_t remaining = byte_count;
+    while (remaining > 0u) {
+        const auto chunk = std::min<std::uint32_t>(
+            remaining,
+            static_cast<std::uint32_t>(zeros.size()));
+        out.write(zeros.data(), static_cast<std::streamsize>(chunk));
+        remaining -= chunk;
+    }
+}
+
+void write_valid_glyph(std::ofstream& out)
+{
+    const std::uint32_t codepoint = static_cast<std::uint32_t>('A');
+    const float advance_x = 10.0f;
+    const float plane_left = 0.0f;
+    const float plane_bottom = 0.0f;
+    const float plane_right = 1.0f;
+    const float plane_top = 1.0f;
+    const float uv_left = 0.0f;
+    const float uv_bottom = 1.0f;
+    const float uv_right = 1.0f;
+    const float uv_top = 0.0f;
+
+    write_value(out, codepoint);
+    write_value(out, advance_x);
+    write_value(out, plane_left);
+    write_value(out, plane_bottom);
+    write_value(out, plane_right);
+    write_value(out, plane_top);
+    write_value(out, uv_left);
+    write_value(out, uv_bottom);
+    write_value(out, uv_right);
+    write_value(out, uv_top);
+}
+
+bool write_cache_file(
+    const std::filesystem::path& path,
+    const cache_file_options_t& options)
+{
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    if (!out) {
+        return false;
+    }
+
+    write_value(out, k_magic);
+    write_value(out, k_cache_version);
+    write_value(out, options.pixel_height);
+    out.write(
+        reinterpret_cast<const char*>(options.digest.data()),
+        static_cast<std::streamsize>(options.digest.size()));
+    write_value(out, options.atlas_size);
+
+    const float px_range = 10.0f;
+    const float ascender = 14.0f;
+    const float descender = -4.0f;
+    const float line_height = 20.0f;
+    const float em_size = 18.0f;
+    const float zero_advance_px = 9.0f;
+    write_value(out, px_range);
+    write_value(out, ascender);
+    write_value(out, descender);
+    write_value(out, line_height);
+    write_value(out, em_size);
+    write_value(out, zero_advance_px);
+
+    const std::uint8_t zero_available = 1u;
+    const std::uint8_t padding[3]{0u, 0u, 0u};
+    out.write(reinterpret_cast<const char*>(&zero_available), sizeof(zero_available));
+    out.write(reinterpret_cast<const char*>(padding), sizeof(padding));
+
+    write_value(out, options.glyph_count);
+    if (options.glyph_count == 1u) {
+        write_valid_glyph(out);
+    }
+
+    write_value(out, options.kerning_count);
+    write_value(out, options.atlas_bytes);
+    if (options.write_atlas_payload) {
+        write_zero_bytes(out, options.atlas_bytes);
+    }
+
+    return bool(out);
+}
+
+bool cache_file_is_valid(
+    const std::filesystem::path& path,
+    const digest_t& expected_digest,
+    int pixel_height = static_cast<int>(k_pixel_height))
+{
+    return plot::detail::validate_font_disk_cache_file(path, expected_digest, pixel_height);
+}
+
+bool test_corrupt_glyph_count_is_rejected()
+{
+    Scoped_temp_dir tmp;
+    const auto digest = make_digest(0x20u);
+    cache_file_options_t options;
+    options.digest = digest;
+    options.glyph_count = std::numeric_limits<std::uint32_t>::max();
+
+    const auto path = tmp.path / "corrupt_glyph_count.bin";
+    TEST_ASSERT(write_cache_file(path, options), "corrupt glyph-count cache should be writable");
+    TEST_ASSERT(!cache_file_is_valid(path, digest),
+        "glyph count above the validation limit must be rejected");
+    return true;
+}
+
+bool test_corrupt_kerning_count_is_rejected()
+{
+    Scoped_temp_dir tmp;
+    const auto digest = make_digest(0x30u);
+    cache_file_options_t options;
+    options.digest = digest;
+    options.glyph_count = 1u;
+    options.kerning_count = 2u;
+
+    const auto path = tmp.path / "corrupt_kerning_count.bin";
+    TEST_ASSERT(write_cache_file(path, options), "corrupt kerning-count cache should be writable");
+    TEST_ASSERT(!cache_file_is_valid(path, digest),
+        "kerning count above glyph-count squared must be rejected");
+    return true;
+}
+
+bool test_corrupt_atlas_size_and_bytes_are_rejected()
+{
+    Scoped_temp_dir tmp;
+    const auto digest = make_digest(0x40u);
+
+    cache_file_options_t bad_size;
+    bad_size.digest = digest;
+    bad_size.atlas_size = k_atlas_texture_size / 2u;
+    const auto bad_size_path = tmp.path / "corrupt_atlas_size.bin";
+    TEST_ASSERT(write_cache_file(bad_size_path, bad_size),
+        "corrupt atlas-size cache should be writable");
+    TEST_ASSERT(!cache_file_is_valid(bad_size_path, digest),
+        "atlas size different from the renderer texture size must be rejected");
+
+    cache_file_options_t bad_bytes;
+    bad_bytes.digest = digest;
+    bad_bytes.atlas_bytes = k_expected_atlas_bytes - 4u;
+    const auto bad_bytes_path = tmp.path / "corrupt_atlas_bytes.bin";
+    TEST_ASSERT(write_cache_file(bad_bytes_path, bad_bytes),
+        "corrupt atlas-byte-count cache should be writable");
+    TEST_ASSERT(!cache_file_is_valid(bad_bytes_path, digest),
+        "atlas byte count different from width * height * rgba must be rejected");
+
+    return true;
+}
+
+bool test_same_height_changed_digest_does_not_reuse_old_cache()
+{
+    Scoped_temp_dir tmp;
+    const auto old_digest = make_digest(0x50u);
+    const auto changed_digest = make_digest(0x90u);
+
+    cache_file_options_t options;
+    options.digest = old_digest;
+    options.write_atlas_payload = true;
+
+    const auto path = tmp.path / "old_digest_same_height.bin";
+    TEST_ASSERT(write_cache_file(path, options), "valid old-digest cache should be writable");
+    TEST_ASSERT(cache_file_is_valid(path, old_digest),
+        "test fixture cache should load with the digest it was written with");
+    TEST_ASSERT(!cache_file_is_valid(path, changed_digest),
+        "same-height cache with an old digest must not satisfy a changed font digest");
+    return true;
+}
+
+} // namespace
+
+int main()
+{
+    std::cout << "Font disk cache tests" << std::endl;
+
+    int passed = 0;
+    int failed = 0;
+
+    RUN_TEST(test_corrupt_glyph_count_is_rejected);
+    RUN_TEST(test_corrupt_kerning_count_is_rejected);
+    RUN_TEST(test_corrupt_atlas_size_and_bytes_are_rejected);
+    RUN_TEST(test_same_height_changed_digest_does_not_reuse_old_cache);
+
+    std::cout << "Results: " << passed << " passed, " << failed << " failed" << std::endl;
+    return failed > 0 ? 1 : 0;
+}

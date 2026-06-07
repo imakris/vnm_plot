@@ -1,4 +1,5 @@
 #include <vnm_plot/core/types.h>
+#include <vnm_plot/core/plot_config.h>
 
 #include <algorithm>
 #include <cmath>
@@ -611,6 +612,10 @@ data_query_result_t<value_range_t> Data_source::query_v_range(
     if (query.time_window.min_ns > query.time_window.max_ns) {
         result.status = Data_query_status::EMPTY;
         return result;
+    }
+
+    if (query.profiler) {
+        query.profiler->record_counter("renderer.auto_range.range_scan_count");
     }
 
     value_range_t range;

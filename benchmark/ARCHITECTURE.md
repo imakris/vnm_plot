@@ -75,6 +75,9 @@ Benchmark_profiler produces a stable benchmark report:
 - Sorted metadata keys
 - Fixed-width table and tree glyphs
 - Optional extended metadata behind --extended-metadata
+- Unit-neutral observation counters for non-timing measurements, including
+  uploaded sample bytes per frame, sample upload counts, auto-range query and
+  scan counts, monotonicity scans, and LOD switches.
 
 The report is written at the end of the benchmark run to the configured output
 folder with the inspector_benchmark_YYYYMMDD_HHMMSS_<STREAM>_<DataType>.txt

@@ -270,6 +270,7 @@ bool query_or_scan_series_range(
     bool visible_only,
     time_range_t time_window,
     auto_range_cache_t* cache,
+    Profiler* profiler,
     float& out_min,
     float& out_max)
 {
@@ -278,6 +279,7 @@ bool query_or_scan_series_range(
         visible_only ? time_window : all_time_window(),
         interpolation,
         empty_window_behavior);
+    query.profiler = profiler;
 
     std::map<int, auto_range_cache_entry_t>* entries = cache_entries(cache, preview);
     const std::uint64_t current_sequence = source.current_sequence(level);
@@ -297,6 +299,9 @@ bool query_or_scan_series_range(
         }
     }
 
+    if (profiler) {
+        profiler->record_counter("renderer.auto_range.query_count");
+    }
     auto query_result = source.query_v_range(level, query);
     if (query_result.status == Data_query_status::UNSUPPORTED) {
         query_result = source.Data_source::query_v_range(level, query);
@@ -335,6 +340,9 @@ bool query_or_scan_series_range(
     }
 
     if (query_result.status == Data_query_status::UNSUPPORTED) {
+        if (profiler) {
+            profiler->record_counter("renderer.auto_range.range_scan_count");
+        }
         return scan_series_range(
             source,
             access,
@@ -361,6 +369,7 @@ bool resolve_series_collection_range(
     float& out_max)
 {
     bool have_any = false;
+    Profiler* profiler = config.profiler.get();
     const bool visible_only =
         !preview && config.auto_v_range_mode == Auto_v_range_mode::VISIBLE;
     const time_range_t visible_window{data_cfg.t_min, data_cfg.t_max};
@@ -404,6 +413,7 @@ bool resolve_series_collection_range(
             visible_only,
             visible_window,
             cache,
+            profiler,
             series_min,
             series_max);
         if (!got_range) {

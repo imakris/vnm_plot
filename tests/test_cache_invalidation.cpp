@@ -13,6 +13,7 @@
 #include <iostream>
 #include <map>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -101,6 +102,56 @@ public:
 
 };
 
+class Snapshot_range_source final : public Data_source {
+public:
+    std::vector<Test_sample> samples;
+    std::uint64_t snapshot_sequence = 1;
+    std::uint64_t current_sequence_value = 1;
+    int snapshot_calls = 0;
+
+    snapshot_result_t try_snapshot(std::size_t /*lod_level*/) override
+    {
+        ++snapshot_calls;
+        data_snapshot_t snapshot{
+            samples.data(),
+            samples.size(),
+            sizeof(Test_sample),
+            snapshot_sequence,
+            nullptr,
+            0,
+            std::make_shared<int>(11)
+        };
+        if (samples.empty()) {
+            return {data_snapshot_t{}, snapshot_result_t::Snapshot_status::EMPTY};
+        }
+        return {snapshot, snapshot_result_t::Snapshot_status::READY};
+    }
+
+    std::size_t sample_stride() const override { return sizeof(Test_sample); }
+    std::uint64_t current_sequence(std::size_t /*lod_level*/) const override
+    {
+        return current_sequence_value;
+    }
+};
+
+class Counting_profiler final : public plot::Profiler {
+public:
+    void begin_scope(const char* /*name*/) override {}
+    void end_scope() override {}
+    void record_observation(const char* name, double value) override
+    {
+        observations[name ? name : ""] += value;
+    }
+
+    double total(const std::string& name) const
+    {
+        const auto found = observations.find(name);
+        return found == observations.end() ? 0.0 : found->second;
+    }
+
+    std::map<std::string, double> observations;
+};
+
 Data_access_policy make_policy()
 {
     Data_access_policy policy;
@@ -145,6 +196,15 @@ Data_access_policy make_value_only_policy()
 }
 
 std::shared_ptr<series_data_t> make_series(const std::shared_ptr<Query_range_source>& source)
+{
+    auto series = std::make_shared<series_data_t>();
+    series->style = Display_style::LINE;
+    series->data_source = source;
+    series->access = make_policy();
+    return series;
+}
+
+std::shared_ptr<series_data_t> make_series(const std::shared_ptr<Snapshot_range_source>& source)
 {
     auto series = std::make_shared<series_data_t>();
     series->style = Display_style::LINE;
@@ -311,6 +371,169 @@ bool test_unsupported_query_falls_back_to_snapshot_scan()
                 "resolver should try query_v_range before fallback");
     TEST_ASSERT(source->snapshot_calls == 1,
                 "unsupported query should take one fallback snapshot");
+
+    return true;
+}
+
+bool test_ready_query_profiler_counts_query_without_scan()
+{
+    auto profiler = std::make_shared<Counting_profiler>();
+    auto source = std::make_shared<Query_range_source>();
+    source->query_status = Data_query_status::READY;
+    source->query_range = {2.0f, 5.0f};
+
+    Plot_config config;
+    config.auto_v_range_mode = Auto_v_range_mode::GLOBAL;
+    config.profiler = profiler;
+
+    const auto range = plot::detail::resolve_main_v_range(
+        make_series_map(make_series(source)),
+        make_data_config(),
+        config,
+        true);
+
+    TEST_ASSERT(range.first == 2.0f && range.second == 5.0f,
+                "READY query should resolve the auto-range");
+    TEST_ASSERT(profiler->total("renderer.auto_range.query_count") == 1.0,
+                "READY query should increment the auto-range query counter");
+    TEST_ASSERT(profiler->total("renderer.auto_range.range_scan_count") == 0.0,
+                "READY query should not be counted as a range scan");
+    TEST_ASSERT(source->snapshot_calls == 0,
+                "READY query should avoid snapshot work");
+
+    return true;
+}
+
+bool test_default_query_profiler_counts_snapshot_scan()
+{
+    auto profiler = std::make_shared<Counting_profiler>();
+    auto source = std::make_shared<Snapshot_range_source>();
+    source->samples = {
+        {0, 6.0f},
+        {5, 8.0f},
+        {10, 12.0f},
+    };
+
+    Plot_config config;
+    config.auto_v_range_mode = Auto_v_range_mode::GLOBAL;
+    config.profiler = profiler;
+
+    const auto range = plot::detail::resolve_main_v_range(
+        make_series_map(make_series(source)),
+        make_data_config(),
+        config,
+        true);
+
+    TEST_ASSERT(range.first == 6.0f && range.second == 12.0f,
+                "default query should resolve the auto-range through its snapshot scan");
+    TEST_ASSERT(profiler->total("renderer.auto_range.query_count") == 1.0,
+                "default query should increment the auto-range query counter");
+    TEST_ASSERT(profiler->total("renderer.auto_range.range_scan_count") == 1.0,
+                "default query snapshot scan should increment the range scan counter");
+    TEST_ASSERT(source->snapshot_calls == 1,
+                "default query should take one snapshot");
+
+    return true;
+}
+
+bool test_positive_auto_range_excludes_zero_by_default()
+{
+    auto source = std::make_shared<Query_range_source>();
+    source->query_status = Data_query_status::READY;
+    source->query_range = {2.0f, 8.0f};
+
+    Plot_config config;
+    config.auto_v_range_mode = Auto_v_range_mode::GLOBAL;
+
+    const auto range = plot::detail::resolve_main_v_range(
+        make_series_map(make_series(source)),
+        make_data_config(),
+        config,
+        true);
+
+    TEST_ASSERT(range.first == 2.0f && range.second == 8.0f,
+                "positive-only auto-range should preserve the positive data range by default");
+    TEST_ASSERT(range.first > 0.0f && range.second > 0.0f,
+                "positive-only auto-range should not force zero into the default range");
+
+    return true;
+}
+
+bool test_negative_auto_range_excludes_zero_by_default()
+{
+    auto source = std::make_shared<Query_range_source>();
+    source->query_status = Data_query_status::READY;
+    source->query_range = {-8.0f, -2.0f};
+
+    Plot_config config;
+    config.auto_v_range_mode = Auto_v_range_mode::GLOBAL;
+
+    const auto range = plot::detail::resolve_main_v_range(
+        make_series_map(make_series(source)),
+        make_data_config(),
+        config,
+        true);
+
+    TEST_ASSERT(range.first == -8.0f && range.second == -2.0f,
+                "negative-only auto-range should preserve the negative data range by default");
+    TEST_ASSERT(range.first < 0.0f && range.second < 0.0f,
+                "negative-only auto-range should not force zero into the default range");
+
+    return true;
+}
+
+bool test_nonnegative_auto_range_floor_policy_includes_zero()
+{
+    auto source = std::make_shared<Query_range_source>();
+    source->query_status = Data_query_status::READY;
+    source->query_range = {1.0f, 3.0f};
+
+    Plot_config config;
+    config.auto_v_range_mode = Auto_v_range_mode::GLOBAL;
+    config.auto_v_range_extra_scale = 2.0;
+    config.floor_nonnegative_auto_v_range_at_zero = true;
+
+    const auto range = plot::detail::resolve_main_v_range(
+        make_series_map(make_series(source)),
+        make_data_config(),
+        config,
+        true);
+
+    TEST_ASSERT(range.first == 0.0f && range.second == 5.0f,
+                "nonnegative auto-range floor policy should clamp padded lower bound to zero");
+
+    return true;
+}
+
+bool test_visible_step_after_hold_forward_contributes_held_sample()
+{
+    auto source = std::make_shared<Query_range_source>();
+    source->query_status = Data_query_status::UNSUPPORTED;
+    source->samples = {
+        {5, -4.0f},
+        {15, 6.0f},
+        {25, 100.0f},
+    };
+
+    auto series = make_series(source);
+    series->interpolation = Series_interpolation::STEP_AFTER;
+    series->empty_window_behavior = Empty_window_behavior::HOLD_LAST_FORWARD;
+
+    Plot_config config;
+    config.auto_v_range_mode = Auto_v_range_mode::VISIBLE;
+
+    const auto range = plot::detail::resolve_main_v_range(
+        make_series_map(series),
+        make_data_config(),
+        config,
+        true);
+
+    TEST_ASSERT(range.first == -4.0f && range.second == 6.0f,
+                "visible STEP_AFTER auto-range should include the held sample entering the window");
+    TEST_ASSERT(source->query_calls == 1,
+                "visible STEP_AFTER auto-range should try query_v_range before fallback");
+    TEST_ASSERT(source->snapshot_calls == 1,
+                "unsupported STEP_AFTER query should fall back to one snapshot scan");
 
     return true;
 }
@@ -856,6 +1079,12 @@ int main()
     RUN_TEST(test_member_pointer_query_uses_stable_semantics_key);
     RUN_TEST(test_global_lod_auto_range_uses_query_when_no_legacy_range_exists);
     RUN_TEST(test_unsupported_query_falls_back_to_snapshot_scan);
+    RUN_TEST(test_ready_query_profiler_counts_query_without_scan);
+    RUN_TEST(test_default_query_profiler_counts_snapshot_scan);
+    RUN_TEST(test_positive_auto_range_excludes_zero_by_default);
+    RUN_TEST(test_negative_auto_range_excludes_zero_by_default);
+    RUN_TEST(test_nonnegative_auto_range_floor_policy_includes_zero);
+    RUN_TEST(test_visible_step_after_hold_forward_contributes_held_sample);
     RUN_TEST(test_global_value_only_access_falls_back_to_snapshot_scan);
     RUN_TEST(test_failed_query_does_not_fall_back_to_stale_scan);
     RUN_TEST(test_ready_query_result_is_cached_by_current_sequence);

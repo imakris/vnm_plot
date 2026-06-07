@@ -59,7 +59,8 @@ public:
     virtual ~Profiler() = default;
     virtual void begin_scope(const char* name) = 0;
     virtual void end_scope() = 0;
-    virtual void record_observation(const char* name, double value_ms) { (void) name; (void) value_ms; }
+    virtual void record_observation(const char* name, double value) { (void) name; (void) value; }
+    void record_counter(const char* name, double value = 1.0) { record_observation(name, value); }
 };
 
 // RAII scope guard for profiling

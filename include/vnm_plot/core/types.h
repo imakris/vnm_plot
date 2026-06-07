@@ -20,6 +20,7 @@
 
 namespace vnm::plot {
 struct Plot_config;
+class Profiler;
 struct Data_access_policy;
 template<typename Sample>
 struct Data_access_policy_typed;
@@ -638,6 +639,8 @@ struct data_query_result_t
 struct data_query_context_t
 {
     const Data_access_policy* access = nullptr;
+    // Optional caller-owned profiler for query-internal work such as fallback scans.
+    Profiler*                 profiler = nullptr;
     sample_semantics_key_t    semantics_key;
     time_range_t              time_window{};
     Series_interpolation      interpolation = Series_interpolation::LINEAR;
