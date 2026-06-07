@@ -407,6 +407,7 @@ endif()
 option(VNM_PLOT_BUILD_BENCHMARK "Build benchmark executable" OFF)
 
 if(VNM_PLOT_BUILD_BENCHMARK)
+    enable_testing()
     add_subdirectory(benchmark)
 endif()
 

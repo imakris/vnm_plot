@@ -77,6 +77,26 @@ public:
         return sizeof(T);
     }
 
+    size_t lod_levels() const override {
+        return 1;
+    }
+
+    size_t lod_scale(size_t level) const override {
+        return level == 0 ? 1 : 0;
+    }
+
+    vnm::plot::Time_order time_order(std::size_t lod_level) const override {
+        (void)lod_level;
+        return vnm::plot::Time_order::UNKNOWN;
+    }
+
+    uint64_t current_sequence(size_t lod_level = 0) const override {
+        (void)lod_level;
+        // Ring_buffer::clear() resets its sequence, so it cannot be exposed
+        // as the monotonic skip key required by Data_source::current_sequence.
+        return 0;
+    }
+
     /// O(1) value range query (computed during snapshot)
     /// Returns false if snapshot is empty or no data has been processed
     bool has_value_range() const override {

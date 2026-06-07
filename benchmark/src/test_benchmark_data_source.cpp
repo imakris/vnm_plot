@@ -6,6 +6,7 @@
 #include <iostream>
 #include <thread>
 #include <chrono>
+#include <vector>
 
 using vnm::benchmark::Bar_sample;
 using vnm::benchmark::Benchmark_data_source;
@@ -194,6 +195,97 @@ bool test_sequence_tracking() {
     source.try_snapshot();
 
     TEST_ASSERT(source.sequence() == 3, "sequence should be 3 after three pushes");
+
+    return true;
+}
+
+// Test: Query-model metadata declares one unsupported-order LOD
+bool test_query_metadata_single_lod_unknown_order() {
+    Ring_buffer<Bar_sample> buffer(3);
+    Benchmark_data_source<Bar_sample> source(buffer);
+
+    TEST_ASSERT(source.lod_levels() == 1, "benchmark source should expose one LOD");
+    TEST_ASSERT(source.lod_scale(0) == 1, "LOD 0 scale should be 1");
+    TEST_ASSERT(source.lod_scale(1) == 0, "unsupported LOD should not expose a scale");
+
+    const std::vector<std::size_t> scales = source.lod_scales();
+    TEST_ASSERT(scales.size() == 1, "lod_scales should expose one scale");
+    TEST_ASSERT(scales[0] == 1, "lod_scales should pin scale 1 for LOD 0");
+
+    TEST_ASSERT(source.time_order(0) == vnm::plot::Time_order::UNKNOWN,
+                "benchmark source does not enforce timestamp monotonicity");
+    TEST_ASSERT(source.time_order(1) == vnm::plot::Time_order::UNKNOWN,
+                "unsupported LOD time order should remain unknown");
+
+    Bar_sample first{};
+    first.timestamp = 30;
+    Bar_sample second{};
+    second.timestamp = 10;
+    Bar_sample third{};
+    third.timestamp = 20;
+    Bar_sample fourth{};
+    fourth.timestamp = 5;
+    buffer.push(first);
+    buffer.push(second);
+    buffer.push(third);
+    buffer.push(fourth);
+
+    auto result = source.try_snapshot();
+    TEST_ASSERT(result.status == vnm::plot::snapshot_result_t::Snapshot_status::READY,
+                "wrapped snapshot should be READY");
+    TEST_ASSERT(result.snapshot.is_segmented(), "snapshot should be segmented after wrap");
+    const auto* sample0 = static_cast<const Bar_sample*>(result.snapshot.at(0));
+    const auto* sample2 = static_cast<const Bar_sample*>(result.snapshot.at(2));
+    TEST_ASSERT(sample0 != nullptr && sample2 != nullptr,
+                "wrapped snapshot samples should be available");
+    TEST_ASSERT(sample0->timestamp == 10 && sample2->timestamp == 5,
+                "ring view should preserve insertion order after wrap");
+    TEST_ASSERT(source.time_order(0) == vnm::plot::Time_order::UNKNOWN,
+                "arbitrary pushed timestamps keep benchmark source order unknown");
+
+    return true;
+}
+
+// Test: current_sequence remains unsupported because ring sequence can reset
+bool test_current_sequence_metadata() {
+    Ring_buffer<Trade_sample> buffer(4);
+    Benchmark_data_source<Trade_sample> source(buffer);
+
+    TEST_ASSERT(source.current_sequence(0) == 0,
+                "initial LOD 0 current_sequence should be 0");
+    TEST_ASSERT(source.current_sequence(1) == 0,
+                "unsupported LOD current_sequence should be 0");
+    TEST_ASSERT(source.sequence() == 0,
+                "last snapshot sequence should start at 0");
+
+    Trade_sample trade{};
+    buffer.push(trade);
+    buffer.push(trade);
+
+    TEST_ASSERT(source.current_sequence(0) == 0,
+                "current_sequence should stay unsupported before snapshot");
+    TEST_ASSERT(source.current_sequence(1) == 0,
+                "unsupported LOD current_sequence should stay 0");
+    TEST_ASSERT(source.sequence() == 0,
+                "last snapshot sequence should not update before try_snapshot");
+
+    auto result = source.try_snapshot();
+    TEST_ASSERT(result.status == vnm::plot::snapshot_result_t::Snapshot_status::READY,
+                "snapshot should be READY after pushes");
+    TEST_ASSERT(result.snapshot.sequence == 2,
+                "snapshot sequence should match ring sequence");
+    TEST_ASSERT(source.sequence() == 2,
+                "last snapshot sequence should update after try_snapshot");
+    result = {};
+
+    buffer.clear();
+    TEST_ASSERT(source.current_sequence(0) == 0,
+                "current_sequence should stay unsupported after clear");
+    buffer.push(trade);
+    TEST_ASSERT(source.current_sequence(0) == 0,
+                "current_sequence should not expose reset ring sequence after clear and push");
+    TEST_ASSERT(source.current_sequence(1) == 0,
+                "unsupported LOD current_sequence should stay 0 after reset");
 
     return true;
 }
@@ -414,6 +506,8 @@ int main() {
     RUN_TEST(test_trade_value_range);
     RUN_TEST(test_sample_stride);
     RUN_TEST(test_sequence_tracking);
+    RUN_TEST(test_query_metadata_single_lod_unknown_order);
+    RUN_TEST(test_current_sequence_metadata);
     RUN_TEST(test_bar_access_policy);
     RUN_TEST(test_trade_access_policy);
     RUN_TEST(test_snapshot_live_view);
