@@ -11,6 +11,8 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <type_traits>
+#include <utility>
 
 namespace plot = vnm::plot;
 
@@ -62,6 +64,14 @@ static_assert(!plot::detail::supports_member_pointer_access_v<Non_trivial_sample
     "custom default constructors are unsupported by member-pointer access");
 static_assert(!plot::detail::supports_member_pointer_access_v<Non_standard_layout_sample>,
     "non-standard-layout samples are unsupported by member-pointer access");
+static_assert(std::is_same_v<
+    decltype(std::declval<plot::Data_access_policy&>().set_semantics_key(
+        std::uint64_t{0x43414C4C}, std::uint64_t{2})),
+    plot::Data_access_policy&>);
+static_assert(std::is_same_v<
+    decltype(std::declval<plot::Data_access_policy_typed<sample_t>&>().
+        set_semantics_key(std::uint64_t{0x54595045}, std::uint64_t{3})),
+    plot::Data_access_policy_typed<sample_t>&>);
 
 bool test_member_offset_matches_offsetof()
 {
@@ -215,15 +225,19 @@ bool test_callable_semantics_key_is_conservative_until_explicit()
     TEST_ASSERT(conservative_key.revision != 0,
         "conservative callable semantics should carry accessor revision");
 
-    callable.semantics_key.value = 0x535441424C45;
-    callable.semantics_key.revision = 7;
-    callable.semantics_key.conservative = false;
+    callable.set_semantics_key(0x535441424C45, 7);
     const plot::sample_semantics_key_t explicit_key =
         plot::detail::make_sample_semantics_key(&callable);
     TEST_ASSERT(!explicit_key.conservative,
         "explicit non-zero callable semantics should be accepted");
     TEST_ASSERT(explicit_key.value == 0x535441424C45 && explicit_key.revision == 7,
         "explicit callable semantics should preserve caller-maintained key and revision");
+
+    callable.set_semantics_key(0x535441424C45, 8);
+    const plot::sample_semantics_key_t revised_key =
+        plot::detail::make_sample_semantics_key(&callable);
+    TEST_ASSERT(revised_key.value == explicit_key.value && revised_key.revision == 8,
+        "explicit callable semantics revision should be caller-updatable");
 
     callable.get_value = [](const void*) {
         return 12.0f;
@@ -234,6 +248,48 @@ bool test_callable_semantics_key_is_conservative_until_explicit()
         "mutating a callable accessor should clear explicit semantics until reset");
     TEST_ASSERT(mutated_key.value == 0 && mutated_key.revision > conservative_key.revision,
         "mutated callable semantics should conservatively advance revision");
+
+    return true;
+}
+
+bool test_explicit_semantics_key_helpers()
+{
+    plot::Data_access_policy first;
+    first.set_semantics_key(0x5052494345, 2);
+    const plot::sample_semantics_key_t first_key =
+        plot::detail::make_sample_semantics_key(&first);
+    TEST_ASSERT(!first_key.conservative && first_key.value != 0,
+        "non-zero semantics key should produce explicit stable semantics");
+    TEST_ASSERT(first_key.revision == 2,
+        "explicit semantics key should preserve caller revision");
+
+    plot::Data_access_policy second;
+    second.set_semantics_key(0x5052494345, 2);
+    const plot::sample_semantics_key_t second_key =
+        plot::detail::make_sample_semantics_key(&second);
+    TEST_ASSERT(second_key.value == first_key.value,
+        "identical semantics key values should produce identical semantics");
+
+    first.set_semantics_key(0, 9);
+    const plot::sample_semantics_key_t zero_key =
+        plot::detail::make_sample_semantics_key(&first);
+    TEST_ASSERT(zero_key.conservative && zero_key.value == 0,
+        "zero semantics key should restore conservative semantics");
+
+    auto typed = plot::make_access_policy<sample_t>(&sample_t::t, &sample_t::v);
+    typed.set_semantics_key(0x54595045, 5);
+    const plot::Data_access_policy erased = typed.erase();
+    const plot::sample_semantics_key_t typed_key =
+        plot::detail::make_sample_semantics_key(&erased);
+    TEST_ASSERT(!typed_key.conservative && typed_key.value != 0 &&
+            typed_key.revision == 5,
+        "typed policy explicit semantics should survive erase()");
+
+    typed.get_value = [](const sample_t&) {
+        return 42.0f;
+    };
+    TEST_ASSERT(typed.semantics_key.conservative,
+        "mutating a typed policy should clear explicit semantics");
 
     return true;
 }
@@ -557,6 +613,7 @@ int main()
     RUN_TEST(test_member_pointer_semantics_key_is_distinct_from_layout_key);
     RUN_TEST(test_make_access_policy_and_erase);
     RUN_TEST(test_callable_semantics_key_is_conservative_until_explicit);
+    RUN_TEST(test_explicit_semantics_key_helpers);
     RUN_TEST(test_erased_access_view_uses_direct_member_accessors);
     RUN_TEST(test_typed_api_floating_point_timestamp_member);
     RUN_TEST(test_series_builder_preview_config);

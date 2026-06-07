@@ -173,9 +173,7 @@ Data_access_policy make_policy()
 Data_access_policy make_stable_policy()
 {
     Data_access_policy policy = make_policy();
-    policy.semantics_key.value = k_stable_policy_semantics;
-    policy.semantics_key.revision = 1;
-    policy.semantics_key.conservative = false;
+    policy.set_semantics_key(k_stable_policy_semantics, 1);
     return policy;
 }
 
@@ -862,6 +860,43 @@ bool test_access_policy_change_invalidates_auto_range_cache()
     return true;
 }
 
+bool test_semantics_revision_change_invalidates_auto_range_cache()
+{
+    auto source = std::make_shared<Query_range_source>();
+    source->query_status = Data_query_status::READY;
+    source->query_range = {1.0f, 4.0f};
+    source->query_sequence = 5;
+    source->current_sequence_value = 5;
+
+    auto series = make_stable_series(source);
+    plot::detail::auto_range_cache_t cache;
+    Plot_config config;
+    config.auto_v_range_mode = Auto_v_range_mode::VISIBLE;
+
+    (void)plot::detail::resolve_main_v_range(
+        make_series_map(series),
+        make_data_config(),
+        config,
+        true,
+        &cache);
+
+    series->access.set_semantics_key(k_stable_policy_semantics, 2);
+    source->query_range = {8.0f, 10.0f};
+    const auto range = plot::detail::resolve_main_v_range(
+        make_series_map(series),
+        make_data_config(),
+        config,
+        true,
+        &cache);
+
+    TEST_ASSERT(range.first == 8.0f && range.second == 10.0f,
+                "semantics revision change should force a fresh query result");
+    TEST_ASSERT(source->query_calls == 2,
+                "cache key should include explicit semantics revision");
+
+    return true;
+}
+
 bool test_removed_series_prunes_auto_range_cache()
 {
     auto source = std::make_shared<Query_range_source>();
@@ -1131,6 +1166,7 @@ int main()
     RUN_TEST(test_sequence_change_invalidates_auto_range_cache);
     RUN_TEST(test_visible_window_change_invalidates_auto_range_cache);
     RUN_TEST(test_access_policy_change_invalidates_auto_range_cache);
+    RUN_TEST(test_semantics_revision_change_invalidates_auto_range_cache);
     RUN_TEST(test_removed_series_prunes_auto_range_cache);
     RUN_TEST(test_preview_auto_range_uses_preview_query_source);
     RUN_TEST(test_frame_range_planner_populates_ranges_and_reuses_cache);

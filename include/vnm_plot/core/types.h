@@ -244,6 +244,19 @@ private:
     sample_semantics_key_t* m_semantics_key = nullptr;
 };
 
+inline sample_semantics_key_t make_explicit_sample_semantics_key(
+    std::uint64_t value,
+    std::uint64_t revision) noexcept
+{
+    sample_semantics_key_t key;
+    if (value != 0) {
+        key.value = value;
+        key.revision = revision;
+        key.conservative = false;
+    }
+    return key;
+}
+
 } // namespace detail
 
 // -----------------------------------------------------------------------------
@@ -443,6 +456,15 @@ struct Data_access_policy
     bool is_valid() const
     {
         return get_timestamp && (get_value || get_range);
+    }
+
+    Data_access_policy& set_semantics_key(
+        std::uint64_t value,
+        std::uint64_t revision = 0) noexcept
+    {
+        semantics_key =
+            detail::make_explicit_sample_semantics_key(value, revision);
+        return *this;
     }
 
 private:

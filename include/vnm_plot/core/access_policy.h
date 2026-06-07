@@ -281,6 +281,15 @@ struct Data_access_policy_typed
         return get_timestamp && (get_value || get_range);
     }
 
+    Data_access_policy_typed& set_semantics_key(
+        std::uint64_t value,
+        std::uint64_t revision = 0) noexcept
+    {
+        semantics_key =
+            detail::make_explicit_sample_semantics_key(value, revision);
+        return *this;
+    }
+
     Data_access_policy erase() const
     {
         Data_access_policy policy;
