@@ -68,7 +68,13 @@ public:
                 const std::map<int, std::shared_ptr<const series_data_t>>& series);
 
 private:
-    struct gpu_sample_t;
+    struct gpu_sample_t
+    {
+        float t_rel;
+        float y;
+        float y_min;
+        float y_max;
+    };
 
     struct vbo_view_state_t
     {
@@ -84,11 +90,14 @@ private:
         std::size_t last_sample_upload_count = 0;
         std::size_t last_primitive_prepare_count = 0;
         std::size_t last_line_window_sample_count = 0;
+        std::int64_t last_prepared_t_min_ns = 0;
         std::int64_t last_prepared_t_max_ns = 0;
+        double last_prepared_width_px = 0.0;
         std::size_t last_vbo_generation = 0;
         QRhiBuffer* last_sample_buffer = nullptr;
         detail::access_dispatch_kind_t last_sample_access_dispatch_kind =
             detail::access_dispatch_kind_t::NONE;
+        std::vector<gpu_sample_t> line_window_staging;
 
         // Per-view RHI resources. Defined out-of-line in series_renderer.cpp
         // where QRhiBuffer is complete; the public header only sees the
@@ -132,6 +141,7 @@ private:
     struct series_draw_state_t
     {
         int id = 0;
+        std::size_t series_order = 0;
         std::shared_ptr<const series_data_t> series;
         vbo_state_t* vbo_state = nullptr;
         Series_view_plan main_plan;
@@ -147,6 +157,8 @@ private:
     // Private test instrumentation for the QRhi prepare/render split.
     std::vector<int> m_last_recorded_draw_z_orders;
     std::vector<Display_style> m_last_recorded_draw_styles;
+    std::vector<int> m_last_recorded_draw_series_ids;
+    std::vector<Series_view_kind> m_last_recorded_draw_view_kinds;
     std::size_t m_last_qrhi_layer_cache_size = 0;
 
     // The full implementation sits in series_renderer.cpp where the QRhi

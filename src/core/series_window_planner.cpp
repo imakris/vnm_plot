@@ -188,7 +188,8 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
         p.interpolation = request.interpolation;
     };
 
-    const auto try_stale_fallback = [&](Series_view_plan& p) -> bool {
+    const auto try_stale_fallback =
+        [&](Series_view_plan& p, std::size_t level) -> bool {
         const void* current_identity = data_source.identity();
         // The cached VBO holds samples rebased against uploaded_t_origin_ns;
         // reusing it under a moved origin would draw at the wrong x positions
@@ -198,15 +199,16 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
             (state.cached_data_identity == current_identity) &&
             request.has_uploaded_vbo &&
             (state.last_count > 0) &&
+            state.has_last_lod_level &&
+            (state.last_lod_level == level) &&
             (state.last_access_key == access_key) &&
+            (state.last_t_min == request.t_min_ns) &&
+            (state.last_t_max == request.t_max_ns) &&
+            (state.last_width_px == request.width_px) &&
             (state.last_empty_window_behavior == request.empty_window_behavior) &&
             (state.last_interpolation == request.interpolation) &&
             (state.uploaded_t_origin_ns == request.t_origin_ns);
-        if (!identity_ok ||
-            (request.empty_window_behavior ==
-                 Empty_window_behavior::HOLD_LAST_FORWARD &&
-             state.last_t_max != request.t_max_ns))
-        {
+        if (!identity_ok) {
             return false;
         }
         load_cached_plan(p, state.last_lod_level);
@@ -270,7 +272,7 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
         snapshot_result_t snapshot_result = acquire_frame_snapshot(applied_level);
 
         if (!snapshot_result || !snapshot_result.snapshot || snapshot_result.snapshot.count == 0) {
-            if (try_stale_fallback(plan)) {
+            if (try_stale_fallback(plan, applied_level)) {
                 break;
             }
             if (applied_level > 0) {

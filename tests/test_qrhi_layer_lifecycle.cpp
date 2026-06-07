@@ -978,6 +978,10 @@ bool test_combined_builtin_uploads_samples_once_per_view()
         "combined style upload bytes must match one compact GPU window");
     TEST_ASSERT(view_state.last_line_window_sample_count == prepare->gpu_count,
         "combined style LINE primitive should still prepare its padded window");
+    const auto* const first_line_window_staging_data =
+        view_state.line_window_staging.data();
+    TEST_ASSERT(first_line_window_staging_data,
+        "combined style LINE primitive should allocate reusable line-window scratch");
 
     events.clear();
     TEST_ASSERT(
@@ -993,6 +997,9 @@ bool test_combined_builtin_uploads_samples_once_per_view()
         "combined sample upload count must describe the current frame");
     TEST_ASSERT(view_state.last_staged_sample_count == second_prepare->gpu_count,
         "second combined frame must stage the shared compact GPU window");
+    TEST_ASSERT(
+        view_state.line_window_staging.data() == first_line_window_staging_data,
+        "same-size LINE prepare should reuse the same line-window scratch allocation");
 
     return true;
 }
@@ -1158,6 +1165,170 @@ bool test_access_policy_change_reuploads_builtin_samples()
             changed_calls.value > 0 &&
             changed_calls.range > 0,
         "changed policy should invoke replacement public accessors");
+
+    return true;
+}
+
+bool test_builtin_staging_normalizes_finite_reversed_ranges()
+{
+    constexpr std::int64_t k_second_ns = 1'000'000'000LL;
+
+    auto source = std::make_shared<Test_source>();
+    source->set_samples({
+        {0LL, 1.0f, 3.0f, 1.0f},
+        {1LL * k_second_ns, 2.0f, 4.0f, 2.0f},
+        {2LL * k_second_ns, 3.0f, 5.0f, 3.0f},
+        {3LL * k_second_ns, 4.0f, 6.0f, 4.0f}
+    });
+
+    auto series = std::make_shared<plot::series_data_t>();
+    series->style = plot::Display_style::DOTS;
+    series->data_source = source;
+    series->access = make_direct_member_access_policy();
+
+    std::map<int, std::shared_ptr<const plot::series_data_t>> series_map;
+    const int series_id = 54;
+    series_map[series_id] = series;
+
+    plot::Asset_loader asset_loader;
+    plot::Series_renderer renderer;
+    renderer.initialize(asset_loader);
+
+    Offscreen_rhi_fixture rhi_fixture;
+    std::string error_message;
+    TEST_ASSERT(rhi_fixture.initialize(error_message), error_message);
+
+    std::vector<layer_event_t> events;
+    plot::Plot_config config;
+    const plot::frame_layout_result_t layout = make_layout();
+    plot::frame_context_t ctx = make_context(layout, config);
+    ctx.t0 = 0;
+    ctx.t1 = 3LL * k_second_ns;
+    ctx.t_available_min = ctx.t0;
+    ctx.t_available_max = ctx.t1;
+
+    TEST_ASSERT(
+        rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
+        error_message);
+
+    const auto state_it = renderer.m_vbo_states.find(series_id);
+    TEST_ASSERT(state_it != renderer.m_vbo_states.end(),
+        "expected renderer VBO state for reversed-range staging test");
+    const auto& view_state = state_it->second.main_view;
+    TEST_ASSERT(view_state.last_sample_upload_count == 1,
+        "reversed-range series should upload one compact sample window");
+    TEST_ASSERT(view_state.last_staged_sample_count > 0,
+        "reversed-range series should stage visible samples");
+    TEST_ASSERT(view_state.last_staged_sample_count == 4,
+        "reversed-range series should stage all visible samples");
+    for (std::size_t i = 0; i < view_state.last_staged_sample_count; ++i) {
+        const float expected_low = static_cast<float>(i + 1u);
+        const float expected_high = static_cast<float>(i + 3u);
+        TEST_ASSERT(view_state.staging[i].y_min == expected_low,
+            "staged finite reversed range low endpoint should be normalized exactly");
+        TEST_ASSERT(view_state.staging[i].y_max == expected_high,
+            "staged finite reversed range high endpoint should be normalized exactly");
+        TEST_ASSERT(view_state.staging[i].y_min <= view_state.staging[i].y_max,
+            "staged finite range endpoints should be ordered for GPU upload");
+    }
+
+    return true;
+}
+
+bool test_global_draw_order_sorts_builtins_across_series_and_custom_layers()
+{
+    constexpr std::int64_t k_second_ns = 1'000'000'000LL;
+
+    std::vector<layer_event_t> events;
+    int create_count = 0;
+    auto middle_layer = std::make_shared<Recording_layer>(
+        "global-middle", 1, 5, events, create_count);
+
+    const auto make_source = []() {
+        constexpr std::int64_t k_second_ns = 1'000'000'000LL;
+        auto source = std::make_shared<Test_source>();
+        std::vector<test_sample_t> samples;
+        samples.reserve(32);
+        for (std::size_t i = 0; i < 32; ++i) {
+            samples.push_back({
+                static_cast<std::int64_t>(i) * k_second_ns,
+                static_cast<float>(i)
+            });
+        }
+        source->set_samples(std::move(samples));
+        return source;
+    };
+
+    auto first_series = make_builtin_plus_layer_series(
+        make_source(),
+        plot::Display_style::DOTS_LINE_AREA,
+        {middle_layer});
+    auto second_series = make_builtin_plus_layer_series(
+        make_source(),
+        plot::Display_style::DOTS_LINE_AREA,
+        {});
+
+    std::map<int, std::shared_ptr<const plot::series_data_t>> series_map;
+    const int first_series_id = 70;
+    const int second_series_id = 80;
+    series_map[first_series_id] = first_series;
+    series_map[second_series_id] = second_series;
+
+    plot::Asset_loader asset_loader;
+    plot::Series_renderer renderer;
+    renderer.initialize(asset_loader);
+
+    Offscreen_rhi_fixture rhi_fixture;
+    std::string error_message;
+    TEST_ASSERT(rhi_fixture.initialize(error_message), error_message);
+
+    plot::Plot_config config;
+    const plot::frame_layout_result_t layout = make_layout();
+    plot::frame_context_t ctx = make_context(layout, config);
+    ctx.t0 = 10LL * k_second_ns;
+    ctx.t1 = 12LL * k_second_ns;
+    ctx.t_available_min = ctx.t0;
+    ctx.t_available_max = ctx.t1;
+
+    TEST_ASSERT(
+        rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
+        error_message);
+
+    const std::vector<int> expected_z_orders = {-10, -10, 0, 0, 5, 10, 10};
+    const std::vector<plot::Display_style> expected_styles = {
+        plot::Display_style::AREA,
+        plot::Display_style::AREA,
+        plot::Display_style::LINE,
+        plot::Display_style::LINE,
+        plot::Display_style::NONE,
+        plot::Display_style::DOTS,
+        plot::Display_style::DOTS
+    };
+    const std::vector<int> expected_series_ids = {
+        first_series_id,
+        second_series_id,
+        first_series_id,
+        second_series_id,
+        first_series_id,
+        first_series_id,
+        second_series_id
+    };
+    const std::vector<plot::Series_view_kind> expected_view_kinds(
+        expected_z_orders.size(),
+        plot::Series_view_kind::MAIN);
+
+    TEST_ASSERT(renderer.m_last_recorded_draw_z_orders == expected_z_orders,
+        "global draw sort must group all AREA, LINE, custom, then DOTS z-order slots");
+    TEST_ASSERT(renderer.m_last_recorded_draw_styles == expected_styles,
+        "global draw sort must retain built-in/custom command identities");
+    TEST_ASSERT(renderer.m_last_recorded_draw_series_ids == expected_series_ids,
+        "global draw sort must keep stable ties in series order");
+    TEST_ASSERT(renderer.m_last_recorded_draw_view_kinds == expected_view_kinds,
+        "global draw sort should preserve main-band commands before preview commands");
+    TEST_ASSERT(create_count == 1,
+        "global draw sort custom layer should create one state");
+    TEST_ASSERT(find_event_index(events, "global-middle", "record") < events.size(),
+        "global draw sort custom layer should be recorded");
 
     return true;
 }
@@ -1717,6 +1888,164 @@ bool test_resources_changed_tracks_hold_timestamp_changes()
     return true;
 }
 
+bool test_busy_stale_fallback_rejects_changed_request_shape()
+{
+    constexpr std::int64_t k_second_ns = 1'000'000'000LL;
+
+    struct stale_case_t
+    {
+        std::string label;
+        plot::Empty_window_behavior empty_behavior =
+            plot::Empty_window_behavior::DRAW_NOTHING;
+        plot::Series_interpolation interpolation =
+            plot::Series_interpolation::LINEAR;
+        std::int64_t initial_t0 = 0;
+        std::int64_t initial_t1 = 0;
+        std::int64_t busy_t0 = 0;
+        std::int64_t busy_t1 = 0;
+        double initial_width = 240.0;
+        double busy_width = 240.0;
+    };
+
+    const std::vector<stale_case_t> cases = {
+        {
+            "changed t_min",
+            plot::Empty_window_behavior::DRAW_NOTHING,
+            plot::Series_interpolation::LINEAR,
+            0,
+            3LL * k_second_ns,
+            1LL * k_second_ns,
+            3LL * k_second_ns,
+            240.0,
+            240.0
+        },
+        {
+            "changed t_max",
+            plot::Empty_window_behavior::DRAW_NOTHING,
+            plot::Series_interpolation::LINEAR,
+            0,
+            3LL * k_second_ns,
+            0,
+            4LL * k_second_ns,
+            240.0,
+            240.0
+        },
+        {
+            "changed width",
+            plot::Empty_window_behavior::DRAW_NOTHING,
+            plot::Series_interpolation::LINEAR,
+            0,
+            3LL * k_second_ns,
+            0,
+            3LL * k_second_ns,
+            240.0,
+            180.0
+        },
+        {
+            "hold-forward changed t_min with same t_max",
+            plot::Empty_window_behavior::HOLD_LAST_FORWARD,
+            plot::Series_interpolation::STEP_AFTER,
+            10LL * k_second_ns,
+            12LL * k_second_ns,
+            11LL * k_second_ns,
+            12LL * k_second_ns,
+            240.0,
+            240.0
+        }
+    };
+
+    int series_id = 90;
+    for (const auto& test_case : cases) {
+        std::vector<layer_event_t> events;
+        auto source = std::make_shared<Test_source>();
+        source->set_samples({
+            {0LL, 1.0f},
+            {1LL * k_second_ns, 2.0f},
+            {2LL * k_second_ns, 3.0f},
+            {3LL * k_second_ns, 4.0f},
+            {4LL * k_second_ns, 5.0f},
+            {5LL * k_second_ns, 6.0f},
+            {6LL * k_second_ns, 7.0f},
+            {7LL * k_second_ns, 8.0f}
+        });
+
+        auto series = std::make_shared<plot::series_data_t>();
+        series->style = plot::Display_style::LINE;
+        series->interpolation = test_case.interpolation;
+        series->empty_window_behavior = test_case.empty_behavior;
+        series->data_source = source;
+        series->access = make_access_policy();
+
+        std::map<int, std::shared_ptr<const plot::series_data_t>> series_map;
+        series_map[series_id] = series;
+
+        plot::Asset_loader asset_loader;
+        plot::Series_renderer renderer;
+        renderer.initialize(asset_loader);
+
+        Offscreen_rhi_fixture rhi_fixture;
+        std::string error_message;
+        TEST_ASSERT(rhi_fixture.initialize(error_message), error_message);
+
+        plot::Plot_config config;
+        plot::frame_layout_result_t layout = make_layout();
+        layout.usable_width = test_case.initial_width;
+        plot::frame_context_t ctx = make_context(layout, config);
+        ctx.t0 = test_case.initial_t0;
+        ctx.t1 = test_case.initial_t1;
+        ctx.t_available_min = ctx.t0;
+        ctx.t_available_max = ctx.t1;
+
+        TEST_ASSERT(
+            rhi_fixture.render_layer_frame(
+                renderer, ctx, series_map, events, error_message),
+            error_message);
+        auto state_it = renderer.m_vbo_states.find(series_id);
+        TEST_ASSERT(state_it != renderer.m_vbo_states.end(),
+            test_case.label + ": expected renderer VBO state");
+        const auto& initial_view_state = state_it->second.main_view;
+        TEST_ASSERT(initial_view_state.last_staged_sample_count > 0,
+            test_case.label + ": initial frame should stage samples");
+
+        const std::int64_t prepared_t_min =
+            initial_view_state.last_prepared_t_min_ns;
+        const std::int64_t prepared_t_max =
+            initial_view_state.last_prepared_t_max_ns;
+        const double prepared_width =
+            initial_view_state.last_prepared_width_px;
+        const std::size_t vbo_generation =
+            initial_view_state.last_vbo_generation;
+
+        source->return_busy_once();
+        events.clear();
+        plot::frame_layout_result_t busy_layout = make_layout();
+        busy_layout.usable_width = test_case.busy_width;
+        plot::frame_context_t busy_ctx = make_context(busy_layout, config);
+        busy_ctx.t0 = test_case.busy_t0;
+        busy_ctx.t1 = test_case.busy_t1;
+        busy_ctx.t_available_min = busy_ctx.t0;
+        busy_ctx.t_available_max = busy_ctx.t1;
+        TEST_ASSERT(
+            rhi_fixture.render_layer_frame(
+                renderer, busy_ctx, series_map, events, error_message),
+            error_message);
+
+        const auto& busy_view_state = state_it->second.main_view;
+        TEST_ASSERT(busy_view_state.last_prepared_t_min_ns == prepared_t_min,
+            test_case.label + ": BUSY frame must not reuse stale VBO with changed t_min");
+        TEST_ASSERT(busy_view_state.last_prepared_t_max_ns == prepared_t_max,
+            test_case.label + ": BUSY frame must not reuse stale VBO with changed t_max");
+        TEST_ASSERT(busy_view_state.last_prepared_width_px == prepared_width,
+            test_case.label + ": BUSY frame must not reuse stale VBO with changed width");
+        TEST_ASSERT(busy_view_state.last_vbo_generation == vbo_generation,
+            test_case.label + ": BUSY frame must not reallocate or reupload stale VBO data");
+
+        ++series_id;
+    }
+
+    return true;
+}
+
 bool test_busy_hold_forward_does_not_prepare_stale_tmax()
 {
     constexpr std::int64_t k_second_ns = 1'000'000'000LL;
@@ -2096,6 +2425,8 @@ int main()
     RUN_TEST(test_combined_builtin_uploads_samples_once_per_view);
     RUN_TEST(test_direct_member_policy_uses_member_dispatch_in_renderer_staging);
     RUN_TEST(test_access_policy_change_reuploads_builtin_samples);
+    RUN_TEST(test_builtin_staging_normalizes_finite_reversed_ranges);
+    RUN_TEST(test_global_draw_order_sorts_builtins_across_series_and_custom_layers);
     RUN_TEST(test_builtin_draw_commands_sort_relative_to_custom_layers);
     RUN_TEST(test_builtins_do_not_use_qrhi_layer_cache);
     RUN_TEST(test_builtin_upload_stages_visible_windows_for_dots_and_area);
@@ -2103,6 +2434,7 @@ int main()
     RUN_TEST(test_builtin_upload_stages_hold_windows_for_dots_and_area);
     RUN_TEST(test_resources_changed_tracks_data_and_window_changes);
     RUN_TEST(test_resources_changed_tracks_hold_timestamp_changes);
+    RUN_TEST(test_busy_stale_fallback_rejects_changed_request_shape);
     RUN_TEST(test_busy_hold_forward_does_not_prepare_stale_tmax);
     RUN_TEST(test_busy_hold_forward_does_not_reuse_non_hold_window);
     RUN_TEST(test_external_layer_gets_snapshot_on_builtin_cache_hit);

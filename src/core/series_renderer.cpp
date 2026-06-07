@@ -20,6 +20,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_set>
+#include <utility>
 
 namespace vnm::plot {
 using detail::choose_origin_ns;
@@ -86,6 +87,26 @@ int builtin_primitive_z_order(Display_style primitive_style)
     }
 }
 
+int view_band_order(Series_view_kind view_kind)
+{
+    switch (view_kind) {
+        case Series_view_kind::MAIN: return 0;
+        case Series_view_kind::PREVIEW: return 1;
+    }
+    return 1;
+}
+
+std::pair<float, float> normalize_finite_range(std::pair<float, float> range)
+{
+    if (std::isfinite(range.first) &&
+        std::isfinite(range.second) &&
+        range.second < range.first)
+    {
+        std::swap(range.first, range.second);
+    }
+    return range;
+}
+
 bool is_builtin_primitive_drawable(
     Display_style primitive_style,
     std::size_t gpu_count)
@@ -115,14 +136,6 @@ std::size_t hash_access_policy_cache_key(
 }
 
 } // anonymous namespace
-
-struct Series_renderer::gpu_sample_t
-{
-    float t_rel;
-    float y;
-    float y_min;
-    float y_max;
-};
 
 static_assert(offsetof(series_view_uniform_std140_t, pmv)      ==   0, "Series_view_t std140 pmv offset");
 static_assert(offsetof(series_view_uniform_std140_t, color)    ==  64, "Series_view_t std140 color offset");
@@ -393,6 +406,10 @@ struct Series_renderer::rhi_state_t
 
         kind_t kind = kind_t::CUSTOM;
         int z_order = 0;
+        int series_id = 0;
+        Series_view_kind view_kind = Series_view_kind::MAIN;
+        std::size_t series_order = 0;
+        std::size_t insertion_order = 0;
         Qrhi_series_layer_state* state = nullptr;
         const series_data_t* series = nullptr;
         sample_window_t window;
@@ -564,6 +581,8 @@ void Series_renderer::cleanup_resources()
     m_rhi_state->frame_plan_ready = false;
     m_last_recorded_draw_z_orders.clear();
     m_last_recorded_draw_styles.clear();
+    m_last_recorded_draw_series_ids.clear();
+    m_last_recorded_draw_view_kinds.clear();
     m_last_qrhi_layer_cache_size = 0;
 }
 
@@ -585,6 +604,8 @@ void Series_renderer::prepare(
     m_rhi_state->frame_plan_ready = false;
     m_last_recorded_draw_z_orders.clear();
     m_last_recorded_draw_styles.clear();
+    m_last_recorded_draw_series_ids.clear();
+    m_last_recorded_draw_view_kinds.clear();
     m_last_qrhi_layer_cache_size = m_rhi_state->qrhi_layer_cache.size();
 
     const auto clear_retired_series_resources = [&]() {
@@ -678,6 +699,7 @@ void Series_renderer::prepare(
         }
     };
 
+    std::size_t next_series_order = 0;
     for (const auto& [id, s] : series) {
         VNM_PLOT_PROFILE_SCOPE(profiler,
             "renderer.frame.execute_passes.render_data_series.series");
@@ -860,6 +882,7 @@ void Series_renderer::prepare(
 
         series_draw_state_t draw_state;
         draw_state.id = id;
+        draw_state.series_order = next_series_order++;
         draw_state.series = s;
         draw_state.vbo_state = &vbo_state;
         draw_state.main_plan = std::move(main_plan);
@@ -935,6 +958,7 @@ void Series_renderer::prepare(
 
     std::size_t frame_sample_upload_bytes = 0;
     std::size_t frame_sample_upload_count = 0;
+    std::size_t next_draw_insertion_order = 0;
 
     const auto ensure_view_ubo =
         [&](int series_id,
@@ -1104,6 +1128,10 @@ void Series_renderer::prepare(
                     command.kind =
                         rhi_state_t::prepared_draw_command_t::kind_t::BUILTIN;
                     command.z_order = planned_draw.z_order;
+                    command.series_id = draw_state.id;
+                    command.view_kind = plan.view_kind;
+                    command.series_order = draw_state.series_order;
+                    command.insertion_order = next_draw_insertion_order++;
                     command.series = draw_state.series.get();
                     command.window = window;
                     command.primitive_style = planned_draw.primitive_style;
@@ -1204,6 +1232,10 @@ void Series_renderer::prepare(
                 command.kind =
                     rhi_state_t::prepared_draw_command_t::kind_t::CUSTOM;
                 command.z_order = planned_draw.z_order;
+                command.series_id = draw_state.id;
+                command.view_kind = plan.view_kind;
+                command.series_order = draw_state.series_order;
+                command.insertion_order = next_draw_insertion_order++;
                 command.state = cache_entry.state.get();
                 command.series = draw_state.series.get();
                 command.window = window;
@@ -1249,6 +1281,24 @@ void Series_renderer::prepare(
                 draw_state.vbo_state->preview_view);
         }
     }
+
+    std::stable_sort(
+        m_rhi_state->prepared_draws.begin(),
+        m_rhi_state->prepared_draws.end(),
+        [](const auto& a, const auto& b) {
+            const int a_view = view_band_order(a.view_kind);
+            const int b_view = view_band_order(b.view_kind);
+            if (a_view != b_view) {
+                return a_view < b_view;
+            }
+            if (a.z_order != b.z_order) {
+                return a.z_order < b.z_order;
+            }
+            if (a.series_order != b.series_order) {
+                return a.series_order < b.series_order;
+            }
+            return a.insertion_order < b.insertion_order;
+        });
 
     if (profiler) {
         profiler->record_observation(
@@ -1381,6 +1431,8 @@ void Series_renderer::render(
                     rhi_state_t::prepared_draw_command_t::kind_t::BUILTIN
                 ? command.primitive_style
                 : Display_style::NONE);
+        m_last_recorded_draw_series_ids.push_back(command.series_id);
+        m_last_recorded_draw_view_kinds.push_back(command.view_kind);
 
         if (command.kind ==
             rhi_state_t::prepared_draw_command_t::kind_t::BUILTIN)
@@ -1440,7 +1492,9 @@ bool Series_renderer::rhi_prepare_series_view_samples(
         view_state.last_staged_sample_count = 0;
         view_state.last_sample_upload_bytes = 0;
         view_state.last_line_window_sample_count = 0;
+        view_state.last_prepared_t_min_ns = 0;
         view_state.last_prepared_t_max_ns = 0;
+        view_state.last_prepared_width_px = 0.0;
         view_state.last_sample_buffer = nullptr;
     };
 
@@ -1489,9 +1543,10 @@ bool Series_renderer::rhi_prepare_series_view_samples(
             [&](gpu_sample_t& dst, const void* src, std::int64_t ts_ns) {
                 dst.t_rel = detail::to_view_seconds(ts_ns, window.t_origin_ns);
                 dst.y = access_view.has_value() ? access_view.value(src) : 0.0f;
-                const auto range = access_view.has_range()
+                const auto raw_range = access_view.has_range()
                     ? access_view.range(src)
                     : std::make_pair(dst.y, dst.y);
+                const auto range = normalize_finite_range(raw_range);
                 dst.y_min = range.first;
                 dst.y_max = range.second;
             };
@@ -1562,7 +1617,9 @@ bool Series_renderer::rhi_prepare_series_view_samples(
         return false;
     }
     view_state.last_sample_buffer = view_state.rhi->vbo.get();
+    view_state.last_prepared_t_min_ns = window.t_min_ns;
     view_state.last_prepared_t_max_ns = window.t_max_ns;
+    view_state.last_prepared_width_px = window.width_px;
     return true;
 }
 
@@ -1704,7 +1761,8 @@ bool Series_renderer::rhi_prepare_series_primitive(
             if (view_state.staging.size() < count) {
                 return false;
             }
-            std::vector<gpu_sample_t> padded(padded_count);
+            auto& padded = view_state.line_window_staging;
+            padded.resize(padded_count);
             const std::size_t last_idx = count - 1u;
             std::size_t write_idx = 1;
 
