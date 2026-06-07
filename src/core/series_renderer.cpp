@@ -398,7 +398,6 @@ struct Series_renderer::rhi_state_t
         QRhiBuffer* view_ubo = nullptr;
         Display_style primitive_style = Display_style::LINE;
         vbo_view_state_t* view_state = nullptr;
-        view_render_result_t view_result;
     };
 
     std::unordered_map<pipeline_key_t, rhi_pipeline_t, pipeline_key_hash_t> pipelines;
@@ -994,28 +993,6 @@ void Series_renderer::prepare(
         }
 
         sample_window_t window = make_window(plan);
-        const auto make_view_result = [](const sample_window_t& w) {
-            view_render_result_t result;
-            result.source_first       = w.source_first;
-            result.source_count       = w.source_count;
-            result.synthetic_hold_count = w.synthetic_hold_count;
-            result.gpu_count          = w.gpu_count;
-            result.cached_snapshot    = w.snapshot;
-            result.t_min_ns           = w.t_min_ns;
-            result.t_max_ns           = w.t_max_ns;
-            result.t_origin_ns        = w.t_origin_ns;
-            result.hold_last_forward  = w.hold_last_forward;
-            result.hold_timestamp_ns  = w.hold_timestamp_ns;
-            result.v_min              = w.v_min;
-            result.v_max              = w.v_max;
-            result.width_px           = w.width_px;
-            result.height_px          = w.height_px;
-            result.y_offset_px        = w.y_offset_px;
-            result.window_alpha       = w.window_alpha;
-            result.interpolation      = w.interpolation;
-            return result;
-        };
-        const view_render_result_t view_result = make_view_result(window);
         const bool has_drawable_builtin_layer = std::any_of(
             planned_draws.begin(),
             planned_draws.end(),
@@ -1023,15 +1000,14 @@ void Series_renderer::prepare(
                 return draw.is_builtin &&
                     is_builtin_primitive_drawable(
                         draw.primitive_style,
-                        view_result.gpu_count);
+                        window.gpu_count);
             });
         bool builtin_samples_ready = true;
         if (has_drawable_builtin_layer) {
             builtin_samples_ready = rhi_prepare_series_view_samples(
                 ctx,
-                window.access,
                 view_state,
-                view_result);
+                window);
         }
         const bool needs_view_ubo = std::any_of(
             planned_draws.begin(),
@@ -1064,7 +1040,7 @@ void Series_renderer::prepare(
                 if (!builtin_samples_ready ||
                     !is_builtin_primitive_drawable(
                         planned_draw.primitive_style,
-                        view_result.gpu_count))
+                        window.gpu_count))
                 {
                     continue;
                 }
@@ -1074,7 +1050,7 @@ void Series_renderer::prepare(
                         draw_state.series.get(),
                         planned_draw.primitive_style,
                         view_state,
-                        view_result,
+                        window,
                         line_width_px,
                         point_diameter_px,
                         area_fill_alpha))
@@ -1087,7 +1063,6 @@ void Series_renderer::prepare(
                     command.window = window;
                     command.primitive_style = planned_draw.primitive_style;
                     command.view_state = &view_state;
-                    command.view_result = view_result;
                     m_rhi_state->prepared_draws.push_back(std::move(command));
                 }
                 continue;
@@ -1344,7 +1319,7 @@ void Series_renderer::render(
                     ctx,
                     command.primitive_style,
                     *command.view_state,
-                    command.view_result);
+                    command.window);
             }
             continue;
         }
@@ -1371,13 +1346,12 @@ void Series_renderer::render(
 
 bool Series_renderer::rhi_prepare_series_view_samples(
     const frame_context_t& ctx,
-    const Data_access_policy* access,
     vbo_view_state_t& view_state,
-    const view_render_result_t& view_result)
+    const sample_window_t& window)
 {
     QRhi* rhi = ctx.rhi;
     QRhiResourceUpdateBatch* updates = ctx.rhi_updates;
-    if (!rhi || view_result.gpu_count == 0) {
+    if (!rhi || window.gpu_count == 0) {
         return false;
     }
 
@@ -1398,22 +1372,22 @@ bool Series_renderer::rhi_prepare_series_view_samples(
         view_state.last_prepared_t_max_ns = 0;
     };
 
-    const data_snapshot_t& snapshot = view_result.cached_snapshot;
-    const detail::erased_access_policy_t access_view = access
-        ? detail::make_erased_access_policy_view(*access)
+    const data_snapshot_t& snapshot = window.snapshot;
+    const detail::erased_access_policy_t access_view = window.access
+        ? detail::make_erased_access_policy_view(*window.access)
         : detail::erased_access_policy_t{};
     view_state.last_sample_access_dispatch_kind = access_view.dispatch_kind;
     if (snapshot && access_view.has_timestamp() && updates) {
         std::size_t expected_gpu_count = 0;
-        if (view_result.synthetic_hold_count > 1 ||
-            (view_result.synthetic_hold_count == 1 && view_result.source_count == 0) ||
+        if (window.synthetic_hold_count > 1 ||
+            (window.synthetic_hold_count == 1 && window.source_count == 0) ||
             !detail::checked_size_add(
-                view_result.source_count,
-                view_result.synthetic_hold_count,
+                window.source_count,
+                window.synthetic_hold_count,
                 expected_gpu_count) ||
-            expected_gpu_count != view_result.gpu_count ||
-            view_result.source_first > snapshot.count ||
-            view_result.source_count > snapshot.count - view_result.source_first)
+            expected_gpu_count != window.gpu_count ||
+            window.source_first > snapshot.count ||
+            window.source_count > snapshot.count - window.source_first)
         {
             invalidate_uploaded_vbo();
             return false;
@@ -1422,7 +1396,7 @@ bool Series_renderer::rhi_prepare_series_view_samples(
         std::size_t needed_elements = 0;
         std::size_t needed_bytes = 0;
         quint32 upload_bytes = 0;
-        if (!detail::checked_size_add(view_result.gpu_count, 0u, needed_elements) ||
+        if (!detail::checked_size_add(window.gpu_count, 0u, needed_elements) ||
             !detail::qrhi_byte_size(
                 needed_elements, sizeof(gpu_sample_t),
                 needed_bytes, upload_bytes))
@@ -1436,7 +1410,7 @@ bool Series_renderer::rhi_prepare_series_view_samples(
 
         const auto stage_one_sample =
             [&](gpu_sample_t& dst, const void* src, std::int64_t ts_ns) {
-                dst.t_rel = detail::to_view_seconds(ts_ns, view_result.t_origin_ns);
+                dst.t_rel = detail::to_view_seconds(ts_ns, window.t_origin_ns);
                 dst.y = access_view.has_value() ? access_view.value(src) : 0.0f;
                 const auto range = access_view.has_range()
                     ? access_view.range(src)
@@ -1445,8 +1419,8 @@ bool Series_renderer::rhi_prepare_series_view_samples(
                 dst.y_max = range.second;
             };
 
-        for (std::size_t i = 0; i < view_result.source_count; ++i) {
-            const void* src = snapshot.at(view_result.source_first + i);
+        for (std::size_t i = 0; i < window.source_count; ++i) {
+            const void* src = snapshot.at(window.source_first + i);
             if (src) {
                 stage_one_sample(staging[i], src, access_view.timestamp(src));
             }
@@ -1455,15 +1429,15 @@ bool Series_renderer::rhi_prepare_series_view_samples(
             }
         }
 
-        if (view_result.synthetic_hold_count == 1 && !staging.empty()) {
+        if (window.synthetic_hold_count == 1 && !staging.empty()) {
             const std::size_t source_index =
-                view_result.source_first + view_result.source_count - 1u;
+                window.source_first + window.source_count - 1u;
             const void* source_sample = snapshot.at(source_index);
             if (source_sample) {
                 stage_one_sample(
                     staging.back(),
                     source_sample,
-                    view_result.hold_timestamp_ns);
+                    window.hold_timestamp_ns);
             }
             else {
                 staging.back() = gpu_sample_t{};
@@ -1510,7 +1484,7 @@ bool Series_renderer::rhi_prepare_series_view_samples(
     if (!view_state.rhi->vbo) {
         return false;
     }
-    view_state.last_prepared_t_max_ns = view_result.t_max_ns;
+    view_state.last_prepared_t_max_ns = window.t_max_ns;
     return true;
 }
 
@@ -1519,7 +1493,7 @@ bool Series_renderer::rhi_prepare_series_primitive(
     const series_data_t* series,
     Display_style primitive_style,
     vbo_view_state_t& view_state,
-    const view_render_result_t& view_result,
+    const sample_window_t& window,
     float line_width_px,
     float point_diameter_px,
     float area_fill_alpha)
@@ -1532,7 +1506,7 @@ bool Series_renderer::rhi_prepare_series_primitive(
 
     const bool is_dots = (primitive_style == Display_style::DOTS);
     const bool is_area = (primitive_style == Display_style::AREA);
-    const std::size_t count = view_result.gpu_count;
+    const std::size_t count = window.gpu_count;
     if (count == 0) {
         return false;
     }
@@ -1610,7 +1584,7 @@ bool Series_renderer::rhi_prepare_series_primitive(
     if (!is_dots && !is_area) {
         std::size_t window_count = 0;
         if (!line_window_sample_count(
-                count, view_result.interpolation, window_count))
+                count, window.interpolation, window_count))
         {
             return false;
         }
@@ -1657,7 +1631,7 @@ bool Series_renderer::rhi_prepare_series_primitive(
             std::size_t write_idx = 1;
 
             padded[0] = view_state.staging[0];
-            if (view_result.interpolation == Series_interpolation::STEP_AFTER) {
+            if (window.interpolation == Series_interpolation::STEP_AFTER) {
                 padded[write_idx++] = view_state.staging[0];
                 for (std::size_t i = 1; i < count; ++i) {
                     const gpu_sample_t previous =
@@ -1834,21 +1808,21 @@ bool Series_renderer::rhi_prepare_series_primitive(
             draw_color.w *= area_fill_alpha;
         }
     }
-    draw_color.w *= view_result.window_alpha;
+    draw_color.w *= window.window_alpha;
     view_block.color[0] = draw_color.r;
     view_block.color[1] = draw_color.g;
     view_block.color[2] = draw_color.b;
     view_block.color[3] = draw_color.a;
 
     view_block.t_min = detail::to_view_seconds(
-        view_result.t_min_ns, view_result.t_origin_ns);
+        window.t_min_ns, window.t_origin_ns);
     view_block.t_max = detail::to_view_seconds(
-        view_result.t_max_ns, view_result.t_origin_ns);
-    view_block.v_min = view_result.v_min;
-    view_block.v_max = view_result.v_max;
-    view_block.y_offset = view_result.y_offset_px;
-    view_block.width    = view_result.width_px;
-    view_block.height   = view_result.height_px;
+        window.t_max_ns, window.t_origin_ns);
+    view_block.v_min = window.v_min;
+    view_block.v_max = window.v_max;
+    view_block.y_offset = window.y_offset_px;
+    view_block.width    = window.width_px;
+    view_block.height   = window.height_px;
     view_block.win_h = static_cast<float>(ctx.win_h);
     view_block.framebuffer_y_up =
         (ctx.rhi && ctx.rhi->isYUpInFramebuffer()) ? 1 : 0;
@@ -1867,7 +1841,7 @@ bool Series_renderer::rhi_prepare_series_primitive(
         Area_block_std140 block{};
         block.view = view_block;
         block.interpolation =
-            view_result.interpolation == Series_interpolation::STEP_AFTER ? 1 : 0;
+            window.interpolation == Series_interpolation::STEP_AFTER ? 1 : 0;
 
         if (updates) {
             updates->updateDynamicBuffer(
@@ -1894,7 +1868,7 @@ void Series_renderer::rhi_record_series_primitive(
     const frame_context_t& ctx,
     Display_style primitive_style,
     vbo_view_state_t& view_state,
-    const view_render_result_t& view_result)
+    const sample_window_t& window)
 {
     QRhiCommandBuffer* cb = ctx.cb;
     if (!cb) {
@@ -1903,7 +1877,7 @@ void Series_renderer::rhi_record_series_primitive(
 
     const bool is_dots = (primitive_style == Display_style::DOTS);
     const bool is_area = (primitive_style == Display_style::AREA);
-    const std::size_t count = view_result.gpu_count;
+    const std::size_t count = window.gpu_count;
     if (count == 0) {
         return;
     }
@@ -1976,7 +1950,7 @@ void Series_renderer::rhi_record_series_primitive(
         // (prev, p0, p1, next) window across the padded sample array.
         std::size_t window_count = 0;
         if (!line_window_sample_count(
-                count, view_result.interpolation, window_count))
+                count, window.interpolation, window_count))
         {
             return;
         }

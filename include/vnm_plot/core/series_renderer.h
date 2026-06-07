@@ -124,27 +124,6 @@ private:
         vbo_state_t& operator=(vbo_state_t&&) noexcept;
     };
 
-    struct view_render_result_t
-    {
-        std::size_t source_first = 0;
-        std::size_t source_count = 0;
-        std::size_t synthetic_hold_count = 0;
-        std::size_t gpu_count = 0;
-        data_snapshot_t cached_snapshot;
-        std::int64_t t_min_ns = 0;
-        std::int64_t t_max_ns = 0;
-        std::int64_t t_origin_ns = 0;
-        bool hold_last_forward = false;
-        std::int64_t hold_timestamp_ns = 0;
-        float v_min = 0.0f;
-        float v_max = 1.0f;
-        float width_px = 0.0f;
-        float height_px = 0.0f;
-        float y_offset_px = 0.0f;
-        float window_alpha = 1.0f;
-        Series_interpolation interpolation = Series_interpolation::LINEAR;
-    };
-
     // Per-(series, view) draw plan computed in prepare() and consumed in
     // render(). Pointer fields stay valid because the host passes the same
     // series_map snapshot to both prepare() and render(), and the renderer's
@@ -194,15 +173,14 @@ private:
     //   open render pass.
     bool rhi_prepare_series_view_samples(
         const frame_context_t& ctx,
-        const Data_access_policy* access,
         vbo_view_state_t& view_state,
-        const view_render_result_t& view_result);
+        const sample_window_t& window);
     bool rhi_prepare_series_primitive(
         const frame_context_t& ctx,
         const series_data_t* series,
         Display_style primitive_style,
         vbo_view_state_t& view_state,
-        const view_render_result_t& view_result,
+        const sample_window_t& window,
         float line_width_px,
         float point_diameter_px,
         float area_fill_alpha);
@@ -210,7 +188,7 @@ private:
         const frame_context_t& ctx,
         Display_style primitive_style,
         vbo_view_state_t& view_state,
-        const view_render_result_t& view_result);
+        const sample_window_t& window);
 };
 
 } // namespace vnm::plot
