@@ -148,6 +148,7 @@ public:
     int snapshot_calls = 0;
     int query_calls = 0;
     plot::time_range_t last_query_time_window{};
+    plot::sample_semantics_key_t last_query_semantics_key{};
 
     snapshot_result_t try_snapshot(size_t lod_level) override
     {
@@ -186,6 +187,7 @@ public:
     {
         ++query_calls;
         last_query_time_window = query.time_window;
+        last_query_semantics_key = query.semantics_key;
 
         plot::data_query_result_t<plot::sample_index_window_t> result;
         result.status = query_status;
@@ -388,6 +390,75 @@ bool test_direct_time_window_query_drives_renderer_window()
         "renderer planner should expand direct query with a predecessor sample");
     TEST_ASSERT(state->last_source_count == 6,
         "renderer planner should expand direct query with trailing renderer padding");
+
+    return true;
+}
+
+bool test_direct_time_window_query_receives_access_semantics()
+{
+    auto source = make_direct_window_source();
+    source->query_window = {40, 3};
+    source->query_sequence = source->sequence;
+
+    frame_layout_result_t layout;
+    layout.usable_width = 200.0;
+    layout.usable_height = 80.0;
+
+    Plot_config config;
+    frame_context_t ctx = make_context(layout, config);
+    ctx.t0 = 40;
+    ctx.t1 = 42;
+    ctx.t_available_min = 0;
+    ctx.t_available_max = 127;
+
+    {
+        auto series = make_direct_window_series(source);
+        series->access = make_direct_member_policy();
+        const plot::sample_semantics_key_t expected_key =
+            plot::detail::make_sample_semantics_key(&series->access);
+
+        Series_renderer renderer;
+        Asset_loader asset_loader;
+        renderer.initialize(asset_loader);
+
+        const auto* state = render_source_and_get_main_state(
+            renderer,
+            ctx,
+            series,
+            78);
+
+        TEST_ASSERT(state, "expected planner state for member semantics query test");
+        TEST_ASSERT(!source->last_query_semantics_key.conservative &&
+                source->last_query_semantics_key.value == expected_key.value &&
+                source->last_query_semantics_key.revision == expected_key.revision,
+            "direct time-window query should receive member-pointer semantics");
+    }
+
+    source->query_calls = 0;
+    {
+        auto series = make_direct_window_series(source);
+        series->access.set_semantics_key(0x444952454354, 9);
+        const plot::sample_semantics_key_t expected_key =
+            plot::detail::make_sample_semantics_key(&series->access);
+
+        Series_renderer renderer;
+        Asset_loader asset_loader;
+        renderer.initialize(asset_loader);
+
+        const auto* state = render_source_and_get_main_state(
+            renderer,
+            ctx,
+            series,
+            79);
+
+        TEST_ASSERT(state, "expected planner state for explicit semantics query test");
+        TEST_ASSERT(source->query_calls == 1,
+            "explicit semantics direct-window source should be queried once");
+        TEST_ASSERT(!source->last_query_semantics_key.conservative &&
+                source->last_query_semantics_key.value == expected_key.value &&
+                source->last_query_semantics_key.revision == 9,
+            "direct time-window query should receive explicit semantics revision");
+    }
 
     return true;
 }
@@ -1807,6 +1878,7 @@ int main()
     RUN_TEST(test_descending_time_order_uses_linear_window_search);
     RUN_TEST(test_descending_time_order_does_not_hold_oldest_sample);
     RUN_TEST(test_direct_time_window_query_drives_renderer_window);
+    RUN_TEST(test_direct_time_window_query_receives_access_semantics);
     RUN_TEST(test_direct_time_window_empty_falls_back_to_renderer_padding);
     RUN_TEST(test_direct_time_window_single_match_expands_for_linear_segments);
     RUN_TEST(test_direct_time_window_hold_forward_synthesizes_terminal_sample);

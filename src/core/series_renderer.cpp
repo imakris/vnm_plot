@@ -1569,13 +1569,6 @@ bool Series_renderer::rhi_prepare_series_view_samples(
 {
     QRhi* rhi = ctx.rhi;
     QRhiResourceUpdateBatch* updates = ctx.rhi_updates;
-    if (!rhi || window.gpu_count == 0) {
-        return false;
-    }
-
-    if (!view_state.rhi) {
-        view_state.rhi = std::make_unique<vbo_view_state_t::rhi_buffers_t>();
-    }
 
     const auto invalidate_uploaded_vbo = [&]() {
         view_state.has_uploaded_vbo = false;
@@ -1593,6 +1586,19 @@ bool Series_renderer::rhi_prepare_series_view_samples(
         view_state.last_prepared_width_px = 0.0;
         view_state.last_sample_buffer = nullptr;
     };
+
+    if (window.gpu_count == 0) {
+        invalidate_uploaded_vbo();
+        return false;
+    }
+
+    if (!rhi) {
+        return false;
+    }
+
+    if (!view_state.rhi) {
+        view_state.rhi = std::make_unique<vbo_view_state_t::rhi_buffers_t>();
+    }
 
     const data_snapshot_t& snapshot = window.snapshot;
     const detail::erased_access_policy_t access_view = window.access

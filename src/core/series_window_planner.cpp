@@ -308,6 +308,7 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
         data_query_context_t query;
         query.access = &access;
         query.profiler = request.profiler;
+        query.semantics_key = make_sample_semantics_key(&access);
         query.time_window = {request.t_min_ns, request.t_max_ns};
         query.interpolation = request.interpolation;
         query.empty_window_behavior = request.empty_window_behavior;

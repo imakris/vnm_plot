@@ -1617,6 +1617,97 @@ bool test_nonfinite_reject_window_invalidates_prior_upload_before_busy()
     return true;
 }
 
+bool test_custom_layer_zero_gpu_window_invalidates_prior_upload_before_busy()
+{
+    constexpr std::int64_t k_second_ns = 1'000'000'000LL;
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+
+    auto source = std::make_shared<Test_source>();
+    source->set_samples({
+        {0LL, 1.0f},
+        {1LL * k_second_ns, 2.0f},
+        {2LL * k_second_ns, 3.0f}
+    });
+
+    std::vector<layer_event_t> events;
+    int create_count = 0;
+    auto layer = std::make_shared<Recording_layer>(
+        "reject-layer",
+        1,
+        0,
+        events,
+        create_count);
+
+    auto series = make_builtin_plus_layer_series(
+        source,
+        plot::Display_style::DOTS,
+        {layer});
+    series->nonfinite_policy = plot::Nonfinite_sample_policy::REJECT_WINDOW;
+
+    std::map<int, std::shared_ptr<const plot::series_data_t>> series_map;
+    const int series_id = 106;
+    series_map[series_id] = series;
+
+    plot::Asset_loader asset_loader;
+    plot::Series_renderer renderer;
+    renderer.initialize(asset_loader);
+
+    Offscreen_rhi_fixture rhi_fixture;
+    std::string error_message;
+    TEST_ASSERT(rhi_fixture.initialize(error_message), error_message);
+
+    plot::Plot_config config;
+    const plot::frame_layout_result_t layout = make_layout();
+    plot::frame_context_t ctx = make_context(layout, config);
+    ctx.t0 = 0;
+    ctx.t1 = 2LL * k_second_ns;
+    ctx.t_available_min = ctx.t0;
+    ctx.t_available_max = ctx.t1;
+
+    TEST_ASSERT(
+        rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
+        error_message);
+    auto state_it = renderer.m_vbo_states.find(series_id);
+    TEST_ASSERT(state_it != renderer.m_vbo_states.end(),
+        "expected renderer VBO state for custom-layer zero-gpu stale test");
+    TEST_ASSERT(state_it->second.main_view.has_uploaded_vbo,
+        "initial custom-layer frame should upload finite built-in samples");
+    TEST_ASSERT(find_prepare_event(events, "reject-layer"),
+        "initial custom-layer frame should prepare the layer");
+    TEST_ASSERT(!renderer.m_last_recorded_draw_z_orders.empty(),
+        "initial custom-layer frame should draw built-ins");
+
+    source->set_samples({
+        {0LL, 1.0f},
+        {1LL * k_second_ns, nan},
+        {2LL * k_second_ns, 3.0f}
+    });
+    events.clear();
+    TEST_ASSERT(
+        rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
+        error_message);
+    TEST_ASSERT(!state_it->second.main_view.has_uploaded_vbo,
+        "custom-layer zero-gpu REJECT_WINDOW frame must invalidate the prior VBO");
+    TEST_ASSERT(!find_prepare_event(events, "reject-layer"),
+        "custom-layer zero-gpu REJECT_WINDOW frame should not prepare the layer");
+    TEST_ASSERT(renderer.m_last_recorded_draw_z_orders.empty(),
+        "custom-layer zero-gpu REJECT_WINDOW frame should not draw stale built-ins");
+
+    source->return_busy_once();
+    events.clear();
+    TEST_ASSERT(
+        rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
+        error_message);
+    TEST_ASSERT(!state_it->second.main_view.has_uploaded_vbo,
+        "BUSY after custom-layer zero-gpu failure must not resurrect stale VBO fallback");
+    TEST_ASSERT(!find_prepare_event(events, "reject-layer"),
+        "BUSY after custom-layer zero-gpu failure should not prepare from stale data");
+    TEST_ASSERT(renderer.m_last_recorded_draw_z_orders.empty(),
+        "BUSY after custom-layer zero-gpu failure should not draw stale built-ins");
+
+    return true;
+}
+
 bool test_non_drawable_window_invalidates_prior_upload_before_fast_path()
 {
     constexpr std::int64_t k_second_ns = 1'000'000'000LL;
@@ -3249,6 +3340,7 @@ int main()
     RUN_TEST(test_nonfinite_replace_with_zero_keeps_contiguous_span);
     RUN_TEST(test_nonfinite_reject_window_suppresses_drawable_upload);
     RUN_TEST(test_nonfinite_reject_window_invalidates_prior_upload_before_busy);
+    RUN_TEST(test_custom_layer_zero_gpu_window_invalidates_prior_upload_before_busy);
     RUN_TEST(test_non_drawable_window_invalidates_prior_upload_before_fast_path);
     RUN_TEST(test_non_rhi_prepare_invalidates_prior_upload_before_fast_path);
     RUN_TEST(test_nonfinite_hold_forward_policy_controls_held_sample);
