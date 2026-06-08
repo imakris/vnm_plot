@@ -1396,7 +1396,11 @@ bool test_lod_level_separation()
     return true;
 }
 
-bool test_lod_hysteresis_keeps_previous_level_inside_band()
+// Repo policy discourages hysteresis-based behavior. The planner must select the
+// LOD level deterministically from pixels-per-sample (choose_lod_level), with no
+// temporal stickiness toward the previously applied level. This guards against
+// reintroducing a sticky switch band.
+bool test_lod_selection_has_no_hysteresis()
 {
     Two_level_source source;
     fill_lod_samples(source);
@@ -1407,81 +1411,30 @@ bool test_lod_hysteresis_keeps_previous_level_inside_band()
     plot::detail::Series_window_snapshot_cache cache;
     std::uint64_t frame_id = 1;
 
-    const auto initial_plan = plan_two_level_lod_width(
-        source,
-        access,
-        scales,
-        state,
-        cache,
-        frame_id++,
-        50.0);
-    TEST_ASSERT(initial_plan.lod_level == 0,
-        "initial wide LOD plan should choose the full-resolution level");
+    // Wide view: full-resolution level is closest to one pixel per sample.
+    const auto wide_plan = plan_two_level_lod_width(
+        source, access, scales, state, cache, frame_id++, 50.0);
+    TEST_ASSERT(wide_plan.lod_level == 0,
+        "wide LOD plan should choose the full-resolution level");
 
+    // Narrowing past the raw midpoint must switch coarser immediately, with no
+    // band that holds the previous (finer) level.
     TEST_ASSERT(plot::detail::choose_lod_level(scales, 0.39) == 1,
-        "direct LOD chooser should still switch at the raw midpoint");
-    const auto held_plan = plan_two_level_lod_width(
-        source,
-        access,
-        scales,
-        state,
-        cache,
-        frame_id++,
-        39.0);
-    TEST_ASSERT(held_plan.lod_level == 0,
-        "planner hysteresis should keep the previous level inside the lower switch band");
-    TEST_ASSERT(state.last_lod_level == 0,
-        "state should retain the held LOD level inside the lower switch band");
+        "direct LOD chooser switches coarser at the raw midpoint");
+    const auto narrow_plan = plan_two_level_lod_width(
+        source, access, scales, state, cache, frame_id++, 39.0);
+    TEST_ASSERT(narrow_plan.lod_level == 1,
+        "planner must switch coarser at the raw midpoint (no hysteresis)");
+    TEST_ASSERT(state.last_lod_level == 1,
+        "state should record the switched level, not hold the previous one");
 
-    return true;
-}
-
-bool test_lod_hysteresis_switches_after_band_crossed()
-{
-    Two_level_source source;
-    fill_lod_samples(source);
-
-    const Data_access_policy access = make_policy();
-    const std::vector<std::size_t> scales = {1, 4};
-    plot::detail::series_window_planner_state_t state;
-    plot::detail::Series_window_snapshot_cache cache;
-    std::uint64_t frame_id = 1;
-
-    (void)plan_two_level_lod_width(source, access, scales, state, cache, frame_id++, 50.0);
-    const auto coarser_plan = plan_two_level_lod_width(
-        source,
-        access,
-        scales,
-        state,
-        cache,
-        frame_id++,
-        37.0);
-    TEST_ASSERT(coarser_plan.lod_level == 1,
-        "planner hysteresis should switch coarser after crossing the lower band edge");
-
-    TEST_ASSERT(plot::detail::choose_lod_level(scales, 0.41) == 0,
-        "direct LOD chooser should switch finer at the raw midpoint");
-    const auto held_coarse_plan = plan_two_level_lod_width(
-        source,
-        access,
-        scales,
-        state,
-        cache,
-        frame_id++,
-        41.0);
-    TEST_ASSERT(held_coarse_plan.lod_level == 1,
-        "planner hysteresis should keep the coarser level inside the upper switch band");
-
-    const auto finer_plan = plan_two_level_lod_width(
-        source,
-        access,
-        scales,
-        state,
-        cache,
-        frame_id++,
-        43.0);
-    TEST_ASSERT(finer_plan.lod_level == 0,
-        "planner hysteresis should switch finer after crossing the upper band edge");
+    // Widening back past the raw midpoint must switch finer immediately too.
+    TEST_ASSERT(plot::detail::choose_lod_level(scales, 0.50) == 0,
+        "direct LOD chooser switches finer at the raw midpoint");
+    const auto rewide_plan = plan_two_level_lod_width(
+        source, access, scales, state, cache, frame_id++, 50.0);
+    TEST_ASSERT(rewide_plan.lod_level == 0,
+        "planner must switch finer at the raw midpoint (no hysteresis)");
 
     return true;
 }
@@ -1895,8 +1848,7 @@ int main()
     RUN_TEST(test_empty_window_behavior_invalidates_fast_path_cache);
     RUN_TEST(test_preview_honors_hold_last_forward);
     RUN_TEST(test_lod_level_separation);
-    RUN_TEST(test_lod_hysteresis_keeps_previous_level_inside_band);
-    RUN_TEST(test_lod_hysteresis_switches_after_band_crossed);
+    RUN_TEST(test_lod_selection_has_no_hysteresis);
     RUN_TEST(test_snapshot_released_after_render);
     RUN_TEST(test_render_empty_series_map);
     RUN_TEST(test_upload_origin_records_per_view_origin);
