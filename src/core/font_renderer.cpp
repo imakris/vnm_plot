@@ -224,13 +224,15 @@ bool validate_cached_glyph(const msdf_glyph_t& g)
 }
 
 // draw_scale matching the library's draw_scaling_for(): draw_pixel_height /
-// font-unit ascender. Used to project a font-unit advance to output pixels.
-float draw_scale_for(const msdf_atlas_t& atlas, int draw_pixel_height)
+// font-unit ascender, computed in double like the library so a font-unit advance
+// scaled here matches scaled_glyph().advance_x. Keep in sync with the library if
+// it ever changes how advances scale.
+double draw_scale_for(const msdf_atlas_t& atlas, int draw_pixel_height)
 {
-    const float ascender = atlas.font_metrics_units.ascender;
-    return (ascender > 0.f)
-        ? static_cast<float>(draw_pixel_height) / ascender
-        : 0.f;
+    const double ascender = atlas.font_metrics_units.ascender;
+    return (ascender > 0.0)
+        ? static_cast<double>(draw_pixel_height) / ascender
+        : 0.0;
 }
 
 void add_text_to_vectors(
@@ -883,8 +885,9 @@ float Font_renderer::monospace_advance_px() const
     if (!atlas) {
         return 0.f;
     }
-    return atlas->zero_advance_units *
-        draw_scale_for(*atlas, m_impl->current_draw_pixel_height());
+    return static_cast<float>(
+        atlas->zero_advance_units *
+        draw_scale_for(*atlas, m_impl->current_draw_pixel_height()));
 }
 
 bool Font_renderer::monospace_advance_is_reliable() const

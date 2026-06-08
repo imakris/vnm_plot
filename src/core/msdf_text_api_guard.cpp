@@ -6,6 +6,7 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <unordered_map>
 #include <vector>
 
 // Compile-time canary pinning the vnm_msdf_text API surface that font_renderer
@@ -73,6 +74,19 @@ static_assert(std::is_same_v<decltype(atlas_t::bitmap_scale), double>);
 static_assert(std::is_same_v<decltype(atlas_t::sharpness_bias), float>);
 static_assert(std::is_same_v<decltype(atlas_t::zero_advance_units), float>);
 static_assert(std::is_same_v<decltype(atlas_t::zero_advance_available), bool>);
+
+// Types that define the on-disk cache byte layout font_renderer serializes: the
+// kerning key width, the glyph/kerning map key and value types, and the bitmap
+// element type. An upstream change to any of these silently alters the cache
+// format, so pin them here rather than let only the runtime version bump mask it.
+static_assert(std::is_same_v<vnm::msdf_text::kerning_key_t, std::uint64_t>);
+static_assert(std::is_same_v<
+    decltype(atlas_t::kerning_units),
+    std::unordered_map<vnm::msdf_text::kerning_key_t, float>>);
+static_assert(std::is_same_v<
+    decltype(atlas_t::glyphs),
+    std::unordered_map<char32_t, glyph_t>>);
+static_assert(std::is_same_v<decltype(atlas_t::rgba), std::vector<std::uint8_t>>);
 
 static_assert(std::is_standard_layout_v<text_vertex_t>);
 static_assert(std::is_same_v<decltype(text_vertex_t::x), float>);
