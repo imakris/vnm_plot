@@ -29,6 +29,16 @@ class Profiler;
 namespace detail {
 struct series_window_planner_state_t;
 struct Series_window_snapshot_cache;
+
+// One contiguous run of GPU samples a built-in LINE/AREA primitive draws as a
+// single strip. Derived purely from a sample_window_t; computed once during
+// prepare and carried on the prepared draw command so the record pass does not
+// recompute it.
+struct builtin_segment_span_t
+{
+    std::size_t gpu_first = 0;
+    std::size_t gpu_count = 0;
+};
 } // namespace detail
 
 // -----------------------------------------------------------------------------
@@ -210,12 +220,14 @@ private:
         const sample_window_t& window,
         float line_width_px,
         float point_diameter_px,
-        float area_fill_alpha);
+        float area_fill_alpha,
+        std::vector<detail::builtin_segment_span_t>* out_segment_spans = nullptr);
     void rhi_record_series_primitive(
         const frame_context_t& ctx,
         Display_style primitive_style,
         vbo_view_state_t& view_state,
-        const sample_window_t& window);
+        const sample_window_t& window,
+        const std::vector<detail::builtin_segment_span_t>& segment_spans);
 };
 
 } // namespace vnm::plot

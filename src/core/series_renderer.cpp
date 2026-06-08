@@ -14,6 +14,7 @@
 #include <rhi/qrhi.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -114,11 +115,9 @@ std::size_t hash_drawable_spans(
     return seed;
 }
 
-struct builtin_segment_span_t
-{
-    std::size_t gpu_first = 0;
-    std::size_t gpu_count = 0;
-};
+// Defined in the public header so prepared_draw_command_t can carry it across
+// the prepare/record boundary; aliased here for the existing local references.
+using detail::builtin_segment_span_t;
 
 std::vector<builtin_segment_span_t> builtin_segment_spans(
     const sample_window_t& window)
@@ -472,6 +471,9 @@ struct Series_renderer::rhi_state_t
         QRhiBuffer* view_ubo = nullptr;
         Display_style primitive_style = Display_style::LINE;
         vbo_view_state_t* view_state = nullptr;
+        // Built-in LINE/AREA strips, computed once in prepare and reused by the
+        // record pass instead of recomputing from window. Empty for DOTS.
+        std::vector<detail::builtin_segment_span_t> builtin_segment_spans;
     };
 
     std::unordered_map<pipeline_key_t, rhi_pipeline_t, pipeline_key_hash_t> pipelines;
@@ -1102,22 +1104,42 @@ void Series_renderer::prepare(
             int z_order = 0;
         };
 
+        // Built-in LINE/DOTS/AREA all read the primary value lane. A range-only
+        // access policy (timestamp + range, no value) is valid for auto-range
+        // and custom range-band layers, but feeding it to a value style would
+        // silently render flat at y = 0. Require a value accessor for built-ins;
+        // custom layers below still receive the range lane.
+        const bool wants_builtin_value_style =
+            !!(plan.style & Display_style::AREA) ||
+            !!(plan.style & Display_style::LINE) ||
+            !!(plan.style & Display_style::DOTS);
+        const bool access_has_value = plan.access && plan.access->get_value;
+        if (wants_builtin_value_style && !access_has_value) {
+            static std::atomic<bool> warned_missing_value{false};
+            if (!warned_missing_value.exchange(true)) {
+                qWarning("vnm_plot: built-in LINE/DOTS/AREA styles require a "
+                    "primary value accessor; a range-only access policy renders "
+                    "nothing for these styles. Use a custom range-band layer "
+                    "instead. Skipping built-in primitives for such series.");
+            }
+        }
+
         std::vector<planned_draw_t> planned_draws;
-        if (!!(plan.style & Display_style::AREA)) {
+        if (access_has_value && !!(plan.style & Display_style::AREA)) {
             planned_draws.push_back({
                 nullptr,
                 true,
                 Display_style::AREA,
                 builtin_primitive_z_order(Display_style::AREA)});
         }
-        if (!!(plan.style & Display_style::LINE)) {
+        if (access_has_value && !!(plan.style & Display_style::LINE)) {
             planned_draws.push_back({
                 nullptr,
                 true,
                 Display_style::LINE,
                 builtin_primitive_z_order(Display_style::LINE)});
         }
-        if (!!(plan.style & Display_style::DOTS)) {
+        if (access_has_value && !!(plan.style & Display_style::DOTS)) {
             planned_draws.push_back({
                 nullptr,
                 true,
@@ -1133,6 +1155,11 @@ void Series_renderer::prepare(
                     layer->z_order()});
             }
         }
+        // Sort by z_order before preparing. The global stable_sort of
+        // prepared_draws below independently fixes the final record order, but
+        // this per-view sort is still load-bearing: it determines the order in
+        // which layers are *prepared*, which is a tested contract (a lower
+        // z-order layer must prepare before a higher one). Keep it.
         std::stable_sort(
             planned_draws.begin(),
             planned_draws.end(),
@@ -1205,6 +1232,7 @@ void Series_renderer::prepare(
                     continue;
                 }
 
+                std::vector<builtin_segment_span_t> prepared_segment_spans;
                 if (rhi_prepare_series_primitive(
                         ctx,
                         draw_state.series.get(),
@@ -1213,7 +1241,8 @@ void Series_renderer::prepare(
                         window,
                         line_width_px,
                         point_diameter_px,
-                        area_fill_alpha))
+                        area_fill_alpha,
+                        &prepared_segment_spans))
                 {
                     rhi_state_t::prepared_draw_command_t command;
                     command.kind =
@@ -1227,6 +1256,8 @@ void Series_renderer::prepare(
                     command.window = window;
                     command.primitive_style = planned_draw.primitive_style;
                     command.view_state = &view_state;
+                    command.builtin_segment_spans =
+                        std::move(prepared_segment_spans);
                     m_rhi_state->prepared_draws.push_back(std::move(command));
                 }
                 continue;
@@ -1537,7 +1568,8 @@ void Series_renderer::render(
                     ctx,
                     command.primitive_style,
                     *command.view_state,
-                    command.window);
+                    command.window,
+                    command.builtin_segment_spans);
             }
             continue;
         }
@@ -1791,7 +1823,8 @@ bool Series_renderer::rhi_prepare_series_primitive(
     const sample_window_t& window,
     float line_width_px,
     float point_diameter_px,
-    float area_fill_alpha)
+    float area_fill_alpha,
+    std::vector<detail::builtin_segment_span_t>* out_segment_spans)
 {
     if (!series) {
         return false;
@@ -1811,6 +1844,11 @@ bool Series_renderer::rhi_prepare_series_primitive(
     const bool has_segment_span = !segment_spans.empty();
     if (!is_dots && !has_segment_span) {
         return false;
+    }
+    // Hand the computed spans to the caller so the record pass can reuse them
+    // (empty for DOTS, which draw per-sample instances).
+    if (out_segment_spans) {
+        *out_segment_spans = segment_spans;
     }
 
     QRhiRenderTarget* rt = ctx.render_target;
@@ -2143,22 +2181,32 @@ bool Series_renderer::rhi_prepare_series_primitive(
     // last frame (capacity growth replaces QRhiBuffer outright). The SRB
     // captures concrete handles, so reusing one whose buffers were freed is a
     // use-after-free.
-    auto ensure_srb = [&](vbo_view_state_t::rhi_buffers_t::srb_entry_t& entry) {
+    auto ensure_srb = [&](vbo_view_state_t::rhi_buffers_t::srb_entry_t& entry) -> bool {
         QRhiBuffer* current_ubo = entry.ubo.get();
         const bool srb_handles_match = entry.srb
             && entry.last_ubo == current_ubo;
         if (srb_handles_match) {
-            return;
+            return true;
         }
 
-        detail::rebuild_single_ubo_srb(
-            rhi, entry.srb, current_ubo, k_series_ubo_bytes,
-            QRhiShaderResourceBinding::VertexStage
-                | QRhiShaderResourceBinding::FragmentStage);
+        if (!detail::rebuild_single_ubo_srb(
+                rhi, entry.srb, current_ubo, k_series_ubo_bytes,
+                QRhiShaderResourceBinding::VertexStage
+                    | QRhiShaderResourceBinding::FragmentStage)) {
+            // A failed create() leaves a non-null but unusable SRB; clear it so
+            // the null guard in rhi_record_series_primitive skips this draw and
+            // a later frame retries the rebuild instead of binding a bad object.
+            entry.srb.reset();
+            entry.last_ubo = nullptr;
+            return false;
+        }
         entry.last_ubo = current_ubo;
+        return true;
     };
 
-    ensure_srb(primary_srb_entry);
+    if (!ensure_srb(primary_srb_entry)) {
+        return false;
+    }
 
     series_view_uniform_std140_t view_block{};
     std::memcpy(view_block.pmv, glm::value_ptr(ctx.pmv), sizeof(float) * 16);
@@ -2233,7 +2281,8 @@ void Series_renderer::rhi_record_series_primitive(
     const frame_context_t& ctx,
     Display_style primitive_style,
     vbo_view_state_t& view_state,
-    const sample_window_t& window)
+    const sample_window_t& window,
+    const std::vector<detail::builtin_segment_span_t>& segment_spans)
 {
     QRhiCommandBuffer* cb = ctx.cb;
     if (!cb) {
@@ -2246,9 +2295,8 @@ void Series_renderer::rhi_record_series_primitive(
     if (count == 0) {
         return;
     }
-    const std::vector<builtin_segment_span_t> segment_spans =
-        is_dots ? std::vector<builtin_segment_span_t>{}
-                : builtin_segment_spans(window);
+    // segment_spans were computed in rhi_prepare_series_primitive and carried on
+    // the prepared draw command; DOTS pass an empty span list (drawn per-sample).
     const bool has_segment_span = !segment_spans.empty();
     if (!is_dots && !has_segment_span) {
         return;

@@ -193,6 +193,22 @@ plot::Data_access_policy make_value_only_access_policy()
     return policy;
 }
 
+// Timestamp + range, no primary value. Valid for auto-range and custom
+// range-band layers, but a built-in value style must not draw it.
+plot::Data_access_policy make_range_only_access_policy()
+{
+    plot::Data_access_policy policy;
+    policy.get_timestamp = [](const void* sample) {
+        return static_cast<const test_sample_t*>(sample)->timestamp_ns;
+    };
+    policy.get_range = [](const void* sample) {
+        const float value = static_cast<const test_sample_t*>(sample)->value;
+        return std::make_pair(value - 1.0f, value + 1.0f);
+    };
+    policy.layout_key = 13;
+    return policy;
+}
+
 struct access_call_counts_t
 {
     int timestamp = 0;
@@ -3318,6 +3334,109 @@ bool test_layer_state_recreated_for_program_identity_changes()
     return true;
 }
 
+// Item #1 regression: a range-only access policy (timestamp + range, no
+// primary value) is valid for auto-range and custom range-band layers, but the
+// built-in LINE/DOTS/AREA styles read only the value lane. Feeding such a
+// policy to a value style previously rendered a flat line at y = 0; the
+// dispatch gate must instead skip every built-in primitive. A value policy over
+// an identical window must still draw, proving the window is renderable and
+// only the missing value accessor suppresses the built-ins.
+//
+// (The companion item #2 fix -- treating a failed SRB rebuild as a skipped
+// draw rather than binding an unusable object -- has no regression test here:
+// the Null QRhi backend used by Offscreen_rhi_fixture never fails create(), so
+// the failure branch is not inducible without a mock RHI seam. It stays covered
+// implicitly by the existing prepare-path tests exercising the success branch.)
+bool test_range_only_access_skips_builtin_value_styles()
+{
+    constexpr std::int64_t k_second_ns = 1'000'000'000LL;
+
+    auto range_source = std::make_shared<Test_source>();
+    range_source->set_samples({
+        {0LL, 1.0f},
+        {1LL * k_second_ns, 2.0f},
+        {2LL * k_second_ns, 3.0f},
+        {3LL * k_second_ns, 4.0f}
+    });
+    auto value_source = std::make_shared<Test_source>();
+    value_source->set_samples({
+        {0LL, 1.0f},
+        {1LL * k_second_ns, 2.0f},
+        {2LL * k_second_ns, 3.0f},
+        {3LL * k_second_ns, 4.0f}
+    });
+
+    auto range_series = make_builtin_plus_layer_series(
+        range_source, plot::Display_style::DOTS_LINE_AREA, {});
+    range_series->access = make_range_only_access_policy();
+
+    auto value_series = make_builtin_plus_layer_series(
+        value_source, plot::Display_style::DOTS_LINE_AREA, {});
+
+    std::map<int, std::shared_ptr<const plot::series_data_t>> series_map;
+    const int range_series_id = 130;
+    const int value_series_id = 131;
+    series_map[range_series_id] = range_series;
+    series_map[value_series_id] = value_series;
+
+    plot::Asset_loader asset_loader;
+    plot::Series_renderer renderer;
+    renderer.initialize(asset_loader);
+
+    Offscreen_rhi_fixture rhi_fixture;
+    std::string error_message;
+    TEST_ASSERT(rhi_fixture.initialize(error_message), error_message);
+
+    plot::Plot_config config;
+    const plot::frame_layout_result_t layout = make_layout();
+    plot::frame_context_t ctx = make_context(layout, config);
+    ctx.t0 = 0;
+    ctx.t1 = 3LL * k_second_ns;
+    ctx.t_available_min = ctx.t0;
+    ctx.t_available_max = ctx.t1;
+
+    std::vector<layer_event_t> events;
+    TEST_ASSERT(
+        rhi_fixture.render_layer_frame(
+            renderer, ctx, series_map, events, error_message),
+        error_message);
+
+    // The value-policy series proves the shared window is renderable: it draws
+    // built-in primitives over the same four samples.
+    auto value_it = renderer.m_vbo_states.find(value_series_id);
+    TEST_ASSERT(value_it != renderer.m_vbo_states.end(),
+        "expected renderer VBO state for the value-policy contrast series");
+    const auto& value_view = value_it->second.main_view;
+    TEST_ASSERT(value_view.last_primitive_prepare_count > 0,
+        "value-policy series should prepare built-in primitives");
+    TEST_ASSERT(value_view.last_recorded_line_segment_count > 0,
+        "value-policy series should record line segments");
+    TEST_ASSERT(value_view.last_recorded_area_segment_count > 0,
+        "value-policy series should record area segments");
+    TEST_ASSERT(value_view.last_recorded_dot_sample_count > 0,
+        "value-policy series should record dot samples");
+
+    // The range-only series shares an identical window but lacks a value
+    // accessor: the dispatch gate must skip every built-in primitive rather
+    // than silently record a flat y = 0 line.
+    auto range_it = renderer.m_vbo_states.find(range_series_id);
+    TEST_ASSERT(range_it != renderer.m_vbo_states.end(),
+        "expected renderer VBO state for the range-only series");
+    const auto& range_view = range_it->second.main_view;
+    TEST_ASSERT(range_view.last_primitive_prepare_count == 0,
+        "range-only access must not prepare any built-in value primitive");
+    TEST_ASSERT(range_view.last_recorded_line_segment_count == 0 &&
+            range_view.last_recorded_line_span_count == 0,
+        "range-only access must record no line geometry");
+    TEST_ASSERT(range_view.last_recorded_area_segment_count == 0 &&
+            range_view.last_recorded_area_span_count == 0,
+        "range-only access must record no area geometry");
+    TEST_ASSERT(range_view.last_recorded_dot_sample_count == 0,
+        "range-only access must record no dots");
+
+    return true;
+}
+
 } // namespace
 
 int main()
@@ -3361,6 +3480,7 @@ int main()
     RUN_TEST(test_external_layer_skips_busy_stale_fallback_and_recovers);
     RUN_TEST(test_external_layer_replans_when_snapshot_advances_after_sequence_probe);
     RUN_TEST(test_layer_state_recreated_for_program_identity_changes);
+    RUN_TEST(test_range_only_access_skips_builtin_value_styles);
 
     std::cout << "Results: " << passed << " passed, " << failed << " failed" << std::endl;
     return failed > 0 ? 1 : 0;
