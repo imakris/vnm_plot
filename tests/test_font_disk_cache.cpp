@@ -20,8 +20,8 @@ namespace plot = vnm::plot;
 namespace {
 
 constexpr std::uint32_t k_magic = 0x4d534446; // 'MSDF'
-constexpr std::uint32_t k_cache_version = 3;
-constexpr std::uint32_t k_previous_cache_version = 2;
+constexpr std::uint32_t k_cache_version = 4;
+constexpr std::uint32_t k_previous_cache_version = 3;
 constexpr std::uint32_t k_pixel_height = 18;
 constexpr std::uint32_t k_atlas_texture_size = 2048;
 constexpr std::uint32_t k_expected_atlas_bytes =
@@ -93,27 +93,32 @@ void write_zero_bytes(std::ofstream& out, std::uint32_t byte_count)
 
 void write_valid_glyph(std::ofstream& out)
 {
+    // Scale-independent geometry in font units: bounds_right >= bounds_left and
+    // bounds_top >= bounds_bottom, with the visibility flag last (matches the
+    // renderer's on-disk glyph layout).
     const std::uint32_t codepoint = static_cast<std::uint32_t>('A');
-    const float advance_x = 10.0f;
-    const float plane_left = 0.0f;
-    const float plane_bottom = 0.0f;
-    const float plane_right = 1.0f;
-    const float plane_top = 1.0f;
+    const float advance_units = 10.0f;
+    const float bounds_left_units = 0.0f;
+    const float bounds_bottom_units = 0.0f;
+    const float bounds_right_units = 1.0f;
+    const float bounds_top_units = 1.0f;
     const float uv_left = 0.0f;
     const float uv_bottom = 1.0f;
     const float uv_right = 1.0f;
     const float uv_top = 0.0f;
+    const std::uint8_t visible = 1u;
 
     write_value(out, codepoint);
-    write_value(out, advance_x);
-    write_value(out, plane_left);
-    write_value(out, plane_bottom);
-    write_value(out, plane_right);
-    write_value(out, plane_top);
+    write_value(out, advance_units);
+    write_value(out, bounds_left_units);
+    write_value(out, bounds_bottom_units);
+    write_value(out, bounds_right_units);
+    write_value(out, bounds_top_units);
     write_value(out, uv_left);
     write_value(out, uv_bottom);
     write_value(out, uv_right);
     write_value(out, uv_top);
+    write_value(out, visible);
 }
 
 bool write_cache_file(
@@ -133,18 +138,27 @@ bool write_cache_file(
         static_cast<std::streamsize>(options.digest.size()));
     write_value(out, options.atlas_size);
 
-    const float px_range = 10.0f;
+    // Scale-independent atlas header: font-unit metrics plus the bake-time
+    // projection parameters. atlas_px_range, bitmap_scale, and ascender must be
+    // strictly positive for the loader to accept the file.
+    const std::uint32_t baked_pixel_height = 48u;
+    const double atlas_px_range = 10.0;
+    const double bitmap_scale = 1.0;
+    const float sharpness_bias = 2.5f;
     const float ascender = 14.0f;
     const float descender = -4.0f;
     const float line_height = 20.0f;
     const float em_size = 18.0f;
-    const float zero_advance_px = 9.0f;
-    write_value(out, px_range);
+    const float zero_advance_units = 9.0f;
+    write_value(out, baked_pixel_height);
+    write_value(out, atlas_px_range);
+    write_value(out, bitmap_scale);
+    write_value(out, sharpness_bias);
     write_value(out, ascender);
     write_value(out, descender);
     write_value(out, line_height);
     write_value(out, em_size);
-    write_value(out, zero_advance_px);
+    write_value(out, zero_advance_units);
 
     const std::uint8_t zero_available = 1u;
     const std::uint8_t padding[3]{0u, 0u, 0u};

@@ -33,13 +33,13 @@ namespace vnm::plot {
 
 namespace {
 
-constexpr std::uint32_t k_cache_version = 3;
+constexpr std::uint32_t k_cache_version = 4;
 constexpr double k_min_atlas_font_size = 48.0;
 constexpr float k_atlas_px_range = 10.0f;
 constexpr float k_sharpness_bias = 2.5f;
 constexpr int k_atlas_texture_size = 2048;
 constexpr char k_msdf_builder_semantics[] =
-    "vnm_msdf_text_default_font_scaling_mtsdf_px_range";
+    "vnm_msdf_text_scale_independent_font_units_mtsdf";
 
 std::atomic<bool> s_disk_cache_enabled{true};
 
@@ -131,6 +131,10 @@ std::atomic<std::uint64_t> s_next_cache_epoch{1};
 struct cached_font_data_t
 {
     msdf_atlas_t atlas;
+    // The requested draw pixel height this cache entry was built for. The atlas
+    // is baked at a (possibly larger) bucket, so this is tracked separately from
+    // atlas.baked_pixel_height and is the cache-map key and disk-file height.
+    int draw_pixel_height = 0;
     std::uint64_t cache_epoch = 0;
     Sha256::Digest font_digest{};
 };
@@ -167,7 +171,7 @@ void store_cached_font(const std::shared_ptr<cached_font_data_t>& font)
         }
     }
 
-    s_cached_fonts[font->atlas.pixel_height] = font;
+    s_cached_fonts[font->draw_pixel_height] = font;
 }
 
 vnm::msdf_text::options_t atlas_options()
@@ -200,14 +204,17 @@ bool uv_in_range(float value)
 
 bool validate_cached_glyph(const msdf_glyph_t& g)
 {
+    // Geometry is stored in scale-independent font units (Y-up bounds); plane
+    // rectangles are derived per draw size via scaled_glyph(). Invisible
+    // advance-only glyphs (e.g. U+0020) carry zero bounds, so equality is valid.
     return
-        std::isfinite(g.advance_x) &&
-        std::isfinite(g.plane_left) &&
-        std::isfinite(g.plane_bottom) &&
-        std::isfinite(g.plane_right) &&
-        std::isfinite(g.plane_top) &&
-        g.plane_right >= g.plane_left &&
-        g.plane_top >= g.plane_bottom &&
+        std::isfinite(g.advance_units) &&
+        std::isfinite(g.bounds_left_units) &&
+        std::isfinite(g.bounds_bottom_units) &&
+        std::isfinite(g.bounds_right_units) &&
+        std::isfinite(g.bounds_top_units) &&
+        g.bounds_right_units >= g.bounds_left_units &&
+        g.bounds_top_units >= g.bounds_bottom_units &&
         uv_in_range(g.uv_left) &&
         uv_in_range(g.uv_bottom) &&
         uv_in_range(g.uv_right) &&
@@ -216,10 +223,21 @@ bool validate_cached_glyph(const msdf_glyph_t& g)
         g.uv_bottom >= g.uv_top;
 }
 
+// draw_scale matching the library's draw_scaling_for(): draw_pixel_height /
+// font-unit ascender. Used to project a font-unit advance to output pixels.
+float draw_scale_for(const msdf_atlas_t& atlas, int draw_pixel_height)
+{
+    const float ascender = atlas.font_metrics_units.ascender;
+    return (ascender > 0.f)
+        ? static_cast<float>(draw_pixel_height) / ascender
+        : 0.f;
+}
+
 void add_text_to_vectors(
     const char* text,
     float x,
     float y,
+    int draw_pixel_height,
     const msdf_atlas_t& atlas,
     std::vector<float>& vertex_data,
     std::vector<std::uint32_t>& index_data)
@@ -230,7 +248,8 @@ void add_text_to_vectors(
 
     std::vector<text_vertex_t> vertices;
     std::vector<std::uint32_t> indices;
-    vnm::msdf_text::append_text_quads(atlas, text, x, y, vertices, &indices);
+    vnm::msdf_text::append_text_quads(
+        atlas, draw_pixel_height, text, x, y, vertices, &indices);
     if (vertices.empty() || indices.empty()) {
         return;
     }
@@ -277,6 +296,7 @@ void add_text_to_buffer(const char* text, float x, float y, thread_local_font_re
         text,
         x,
         y,
+        res->m_pixel_height,
         res->m_atlas,
         res->m_buffer->vertex_data,
         res->m_buffer->index_data);
@@ -365,7 +385,7 @@ std::shared_ptr<cached_font_data_t> load_cached_font_from_disk(
     }
 
     auto font = std::make_shared<cached_font_data_t>();
-    font->atlas.pixel_height = pixel_height;
+    font->draw_pixel_height = pixel_height;
     font->font_digest = digest;
 
     std::uint32_t atlas_size = 0;
@@ -377,21 +397,31 @@ std::shared_ptr<cached_font_data_t> load_cached_font_from_disk(
     }
     font->atlas.atlas_size = static_cast<int>(atlas_size);
 
-    if (!read(font->atlas.px_range) ||
-        !read(font->atlas.font_metrics.ascender) ||
-        !read(font->atlas.font_metrics.descender) ||
-        !read(font->atlas.font_metrics.line_height) ||
-        !read(font->atlas.font_metrics.em_size) ||
-        !read(font->atlas.zero_advance_px))
+    std::uint32_t baked_pixel_height = 0;
+    if (!read(baked_pixel_height) ||
+        !read(font->atlas.atlas_px_range) ||
+        !read(font->atlas.bitmap_scale) ||
+        !read(font->atlas.sharpness_bias) ||
+        !read(font->atlas.font_metrics_units.ascender) ||
+        !read(font->atlas.font_metrics_units.descender) ||
+        !read(font->atlas.font_metrics_units.line_height) ||
+        !read(font->atlas.font_metrics_units.em_size) ||
+        !read(font->atlas.zero_advance_units))
     {
         return nullptr;
     }
-    if (!std::isfinite(font->atlas.px_range) ||
-        !std::isfinite(font->atlas.font_metrics.ascender) ||
-        !std::isfinite(font->atlas.font_metrics.descender) ||
-        !std::isfinite(font->atlas.font_metrics.line_height) ||
-        !std::isfinite(font->atlas.font_metrics.em_size) ||
-        !std::isfinite(font->atlas.zero_advance_px))
+    font->atlas.baked_pixel_height = static_cast<int>(baked_pixel_height);
+    // ascender, bitmap_scale, and atlas_px_range are divisors/projections in the
+    // scaling helpers, so require them strictly positive; the rest must be finite.
+    if (!(font->atlas.atlas_px_range > 0.0) ||
+        !(font->atlas.bitmap_scale > 0.0) ||
+        !std::isfinite(font->atlas.sharpness_bias) ||
+        !std::isfinite(font->atlas.font_metrics_units.ascender) ||
+        !(font->atlas.font_metrics_units.ascender > 0.f) ||
+        !std::isfinite(font->atlas.font_metrics_units.descender) ||
+        !std::isfinite(font->atlas.font_metrics_units.line_height) ||
+        !std::isfinite(font->atlas.font_metrics_units.em_size) ||
+        !std::isfinite(font->atlas.zero_advance_units))
     {
         return nullptr;
     }
@@ -413,20 +443,23 @@ std::shared_ptr<cached_font_data_t> load_cached_font_from_disk(
     }
     for (std::uint32_t i = 0; i < glyph_count; ++i) {
         std::uint32_t code = 0;
+        std::uint8_t visible = 0;
         msdf_glyph_t g{};
         if (!read(code) ||
-            !read(g.advance_x) ||
-            !read(g.plane_left) ||
-            !read(g.plane_bottom) ||
-            !read(g.plane_right) ||
-            !read(g.plane_top) ||
+            !read(g.advance_units) ||
+            !read(g.bounds_left_units) ||
+            !read(g.bounds_bottom_units) ||
+            !read(g.bounds_right_units) ||
+            !read(g.bounds_top_units) ||
             !read(g.uv_left) ||
             !read(g.uv_bottom) ||
             !read(g.uv_right) ||
-            !read(g.uv_top))
+            !read(g.uv_top) ||
+            !read(visible))
         {
             return nullptr;
         }
+        g.visible = (visible != 0);
         if (!validate_cached_glyph(g)) {
             return nullptr;
         }
@@ -451,7 +484,7 @@ std::shared_ptr<cached_font_data_t> load_cached_font_from_disk(
         if (!std::isfinite(value)) {
             return nullptr;
         }
-        font->atlas.kerning_px.emplace(key, value);
+        font->atlas.kerning_units.emplace(key, value);
     }
 
     std::uint32_t atlas_bytes = 0;
@@ -493,15 +526,18 @@ void save_cached_font_to_disk(
     constexpr std::uint32_t k_magic = 0x4d534446; // 'MSDF'
     write(k_magic);
     write(k_cache_version);
-    write(static_cast<std::uint32_t>(font.atlas.pixel_height));
+    write(static_cast<std::uint32_t>(font.draw_pixel_height));
     out.write(reinterpret_cast<const char*>(font.font_digest.data()), font.font_digest.size());
     write(static_cast<std::uint32_t>(font.atlas.atlas_size));
-    write(font.atlas.px_range);
-    write(font.atlas.font_metrics.ascender);
-    write(font.atlas.font_metrics.descender);
-    write(font.atlas.font_metrics.line_height);
-    write(font.atlas.font_metrics.em_size);
-    write(font.atlas.zero_advance_px);
+    write(static_cast<std::uint32_t>(font.atlas.baked_pixel_height));
+    write(font.atlas.atlas_px_range);
+    write(font.atlas.bitmap_scale);
+    write(font.atlas.sharpness_bias);
+    write(font.atlas.font_metrics_units.ascender);
+    write(font.atlas.font_metrics_units.descender);
+    write(font.atlas.font_metrics_units.line_height);
+    write(font.atlas.font_metrics_units.em_size);
+    write(font.atlas.zero_advance_units);
     std::uint8_t zero_available = font.atlas.zero_advance_available ? 1u : 0u;
     out.write(reinterpret_cast<const char*>(&zero_available), sizeof(zero_available));
     std::uint8_t padding[3]{0, 0, 0};
@@ -510,19 +546,20 @@ void save_cached_font_to_disk(
     write(static_cast<std::uint32_t>(font.atlas.glyphs.size()));
     for (const auto& [code, g] : font.atlas.glyphs) {
         write(static_cast<std::uint32_t>(code));
-        write(g.advance_x);
-        write(g.plane_left);
-        write(g.plane_bottom);
-        write(g.plane_right);
-        write(g.plane_top);
+        write(g.advance_units);
+        write(g.bounds_left_units);
+        write(g.bounds_bottom_units);
+        write(g.bounds_right_units);
+        write(g.bounds_top_units);
         write(g.uv_left);
         write(g.uv_bottom);
         write(g.uv_right);
         write(g.uv_top);
+        write(static_cast<std::uint8_t>(g.visible ? 1u : 0u));
     }
 
-    write(static_cast<std::uint32_t>(font.atlas.kerning_px.size()));
-    for (const auto& [key, value] : font.atlas.kerning_px) {
+    write(static_cast<std::uint32_t>(font.atlas.kerning_units.size()));
+    for (const auto& [key, value] : font.atlas.kerning_units) {
         write(key);
         write(value);
     }
@@ -543,6 +580,7 @@ std::shared_ptr<cached_font_data_t> build_font_cache(
 {
     auto font = std::make_shared<cached_font_data_t>();
     font->font_digest = font_digest;
+    font->draw_pixel_height = pixel_height;
 
     auto result = vnm::msdf_text::build_font_atlas(
         s_font_storage.data(),
@@ -746,6 +784,16 @@ struct Font_renderer::impl_t
         }
         return m_font_cache ? m_font_cache->cache_epoch : std::uint64_t{0};
     }
+
+    // The draw pixel height matching current_atlas(): the scale-independent atlas
+    // needs it to derive draw-size geometry, advances, metrics, and px_range.
+    int current_draw_pixel_height() const
+    {
+        if (m_resources) {
+            return m_resources->m_pixel_height;
+        }
+        return m_metric_pixel_height;
+    }
 };
 
 // --- Public API Implementation ---
@@ -820,7 +868,8 @@ float Font_renderer::measure_text_px(const char* text) const
     if (!text || !atlas) {
         return 0.0f;
     }
-    return vnm::msdf_text::measure_text_advance_px(*atlas, text);
+    return vnm::msdf_text::measure_text_advance_px(
+        *atlas, m_impl->current_draw_pixel_height(), text);
 }
 
 std::uint64_t Font_renderer::text_measure_cache_key() const
@@ -831,7 +880,11 @@ std::uint64_t Font_renderer::text_measure_cache_key() const
 float Font_renderer::monospace_advance_px() const
 {
     const msdf_atlas_t* atlas = m_impl->current_atlas();
-    return atlas ? atlas->zero_advance_px : 0.f;
+    if (!atlas) {
+        return 0.f;
+    }
+    return atlas->zero_advance_units *
+        draw_scale_for(*atlas, m_impl->current_draw_pixel_height());
 }
 
 bool Font_renderer::monospace_advance_is_reliable() const
@@ -847,11 +900,14 @@ float Font_renderer::compute_numeric_bottom() const
         return 0.0f;
     }
     static const char* k_sample = "0123456789-+.,";
+    const int draw_px = m_impl->current_draw_pixel_height();
     float max_bottom = -std::numeric_limits<float>::infinity();
     for (const char* p = k_sample; *p; ++p) {
         const auto it = atlas->glyphs.find(static_cast<unsigned char>(*p));
         if (it != atlas->glyphs.end()) {
-            const float neg_bottom = -(it->second.plane_bottom);
+            const float plane_bottom =
+                vnm::msdf_text::scaled_glyph(*atlas, it->second, draw_px).plane_bottom;
+            const float neg_bottom = -plane_bottom;
             if (neg_bottom > max_bottom) {
                 max_bottom = neg_bottom;
             }
@@ -863,7 +919,11 @@ float Font_renderer::compute_numeric_bottom() const
 float Font_renderer::baseline_offset_px() const
 {
     const msdf_atlas_t* atlas = m_impl->current_atlas();
-    return atlas ? -atlas->font_metrics.descender : 0.f;
+    if (!atlas) {
+        return 0.f;
+    }
+    return -vnm::msdf_text::scaled_font_metrics(
+        *atlas, m_impl->current_draw_pixel_height()).descender;
 }
 
 void Font_renderer::batch_text(float x, float y, const char* text)
@@ -877,6 +937,7 @@ void Font_renderer::batch_text(float x, float y, const char* text)
             text,
             x,
             y,
+            cached->draw_pixel_height,
             cached->atlas,
             m_impl->m_rhi_vertex_data,
             m_impl->m_rhi_index_data);
@@ -1202,7 +1263,8 @@ void Font_renderer::rhi_queue_draw(
         block.shadow_color[1] = draw_shadow.color.g;
         block.shadow_color[2] = draw_shadow.color.b;
         block.shadow_color[3] = draw_shadow.color.a;
-        block.px_range = cached.atlas.px_range;
+        block.px_range = vnm::msdf_text::px_range_for_pixel_height(
+            cached.atlas, cached.draw_pixel_height);
         block.shadow_radius = draw_shadow.radius_px;
         updates->updateDynamicBuffer(call.ubo.get(), 0, sizeof(block), &block);
 
