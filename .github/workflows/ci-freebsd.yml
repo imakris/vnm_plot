@@ -1,0 +1,51 @@
+name: CI FreeBSD
+
+on:
+  push:
+    branches: [ main, master, dev ]
+  pull_request:
+    branches: [ main, master, dev ]
+
+jobs:
+  build-rhi:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: QRhi (FreeBSD)
+            text: OFF
+            examples: OFF
+          - name: QRhi+Text (FreeBSD)
+            text: ON
+            examples: ON
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build and test (FreeBSD 15.0)
+        uses: vmactions/freebsd-vm@v1
+        env:
+          TEXT: ${{ matrix.text }}
+          EXAMPLES: ${{ matrix.examples }}
+        with:
+          release: "15.0"
+          usesh: true
+          envs: 'TEXT EXAMPLES'
+          prepare: |
+            pkg bootstrap -fy
+            mkdir -p /usr/local/etc/pkg/repos
+            echo 'FreeBSD-ports: { enabled: no }' > /usr/local/etc/pkg/repos/FreeBSD-ports.conf
+            echo 'FreeBSD: { url: https://pkg.FreeBSD.org/${ABI}/latest }' > /usr/local/etc/pkg/repos/FreeBSD.conf
+            pkg update -f
+            pkg install -y git cmake pkgconf qt6-base qt6-declarative qt6-shadertools
+          run: |
+            cmake -S . -B build \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DVNM_PLOT_ENABLE_TEXT=${TEXT} \
+              -DVNM_PLOT_BUILD_TESTS=ON \
+              -DVNM_PLOT_BUILD_EXAMPLES=${EXAMPLES} \
+              -DVNM_PLOT_BUILD_FUNCTION_PLOTTER=OFF
+            cmake --build build --config Release
+            cd build && env QT_QPA_PLATFORM=offscreen ctest --output-on-failure
