@@ -36,10 +36,16 @@ namespace {
 constexpr std::uint32_t k_cache_version = 4;
 constexpr double k_min_atlas_font_size = 48.0;
 constexpr float k_atlas_px_range = 10.0f;
-constexpr float k_sharpness_bias = 2.5f;
+// 1.0 is a one-output-pixel anti-aliasing ramp now that vnm_msdf_text encodes
+// atlas_px_range in true atlas pixels; 2.5 compensated for the shallow
+// font-dependent encode the builder produced before that conversion.
+constexpr float k_sharpness_bias = 1.0f;
 constexpr int k_atlas_texture_size = 2048;
+// Hashed into the font digest so a change in the builder's bake semantics
+// re-keys the cache. The atlas_px_range suffix marks the corrected encode
+// (range converted to msdfgen shape units, so SDF slope is font-independent).
 constexpr char k_msdf_builder_semantics[] =
-    "vnm_msdf_text_scale_independent_font_units_mtsdf";
+    "vnm_msdf_text_scale_independent_font_units_mtsdf_atlas_px_range";
 
 std::atomic<bool> s_disk_cache_enabled{true};
 
