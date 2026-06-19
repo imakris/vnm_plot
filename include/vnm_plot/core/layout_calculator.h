@@ -108,7 +108,4 @@ private:
     mutable std::vector<double>                   m_scratch_vals_d;
 };
 
-// Shutdown caches (call during application shutdown)
-void shutdown_layout_caches();
-
 } // namespace vnm::plot

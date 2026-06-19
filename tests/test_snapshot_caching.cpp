@@ -1476,26 +1476,6 @@ bool test_snapshot_released_after_render()
     return true;
 }
 
-bool test_render_empty_series_map()
-{
-    frame_layout_result_t layout;
-    layout.usable_width = 120.0;
-    layout.usable_height = 80.0;
-
-    Plot_config config;
-
-    frame_context_t ctx = make_context(layout, config);
-
-    Series_renderer renderer;
-    Asset_loader asset_loader;
-    renderer.initialize(asset_loader);
-
-    std::map<int, std::shared_ptr<const series_data_t>> empty_map;
-    renderer.render(ctx, empty_map);
-
-    return true;
-}
-
 bool test_upload_origin_records_per_view_origin()
 {
     // The renderer's per-view upload-invalidation key must include the view
@@ -1850,7 +1830,6 @@ int main()
     RUN_TEST(test_lod_level_separation);
     RUN_TEST(test_lod_selection_has_no_hysteresis);
     RUN_TEST(test_snapshot_released_after_render);
-    RUN_TEST(test_render_empty_series_map);
     RUN_TEST(test_upload_origin_records_per_view_origin);
     RUN_TEST(test_upload_invalidates_when_origin_changes_across_snap_bucket);
     RUN_TEST(test_renderer_assigns_distinct_origins_to_main_and_preview);

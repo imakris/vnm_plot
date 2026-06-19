@@ -97,18 +97,6 @@ if(WIN32)
     target_compile_definitions(function_plotter PRIVATE NOMINMAX)
 endif()
 
-# -----------------------------------------------------------------------------
-# Resources
-# -----------------------------------------------------------------------------
-
-# Copy QML files to build directory for development
-add_custom_command(TARGET function_plotter POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${CMAKE_CURRENT_SOURCE_DIR}/qml"
-        "$<TARGET_FILE_DIR:function_plotter>/qml"
-    COMMENT "Copying QML files"
-)
-
 # Deploy Qt runtime DLLs next to the example so it can be launched by
 # double-clicking from Explorer (no manual PATH or vcvarsall shell needed).
 if(WIN32 AND NOT CMAKE_CROSSCOMPILING)

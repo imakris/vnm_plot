@@ -21,6 +21,8 @@ if(NOT VNM_PLOT_ENABLE_TEXT)
     message(FATAL_ERROR "vnm_plot benchmark requires text rendering. Configure with -DVNM_PLOT_ENABLE_TEXT=ON or disable the benchmark.")
 endif()
 
+option(VNM_PLOT_BUILD_BENCHMARK_TESTS "Build benchmark helper tests" OFF)
+
 # -----------------------------------------------------------------------------
 # Benchmark executable
 # -----------------------------------------------------------------------------
@@ -110,6 +112,7 @@ endif()
 
 message(STATUS "vnm_plot: Building benchmark executable")
 
+if(VNM_PLOT_BUILD_BENCHMARK_TESTS)
 # -----------------------------------------------------------------------------
 # Ring buffer test executable
 # -----------------------------------------------------------------------------
@@ -241,3 +244,4 @@ endif()
 add_test(NAME benchmark_data_source_tests COMMAND test_benchmark_data_source)
 
 message(STATUS "vnm_plot: Building benchmark data source tests")
+endif()

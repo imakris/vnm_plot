@@ -1,5 +1,4 @@
 #include <vnm_plot/rhi/primitive_renderer.h>
-#include <vnm_plot/rhi/asset_loader.h>
 #include <vnm_plot/core/constants.h>
 #include <vnm_plot/core/plot_config.h>
 #include "rhi_helpers.h"
@@ -192,21 +191,9 @@ void Primitive_renderer::set_log_callback(std::function<void(const std::string&)
     m_log_error = std::move(callback);
 }
 
-bool Primitive_renderer::initialize(Asset_loader& asset_loader)
-{
-    (void)asset_loader;
-    if (m_initialized) {
-        return true;
-    }
-
-    m_initialized = true;
-    return true;
-}
-
 void Primitive_renderer::cleanup_resources()
 {
     m_cpu_buffer.clear();
-    m_initialized = false;
 
     m_rhi_state->rect_calls.clear();
     m_rhi_state->grid_calls.clear();

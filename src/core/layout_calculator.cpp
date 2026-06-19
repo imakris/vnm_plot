@@ -3,7 +3,6 @@
 #include <vnm_plot/core/constants.h>
 #include <vnm_plot/core/plot_config.h>
 #include <vnm_plot/core/time_units.h>
-#include "tls_registry.h"
 
 #include <algorithm>
 #include <array>
@@ -13,7 +12,6 @@
 #include <cstring>
 #include <iterator>
 #include <limits>
-#include <memory>
 #include <type_traits>
 #include <unordered_map>
 #include <utility>
@@ -405,12 +403,14 @@ private:
 
 Timestamp_label_cache& timestamp_label_cache()
 {
-    return thread_local_singleton<Timestamp_label_cache>();
+    thread_local Timestamp_label_cache cache;
+    return cache;
 }
 
 Format_signature_cache& format_signature_cache()
 {
-    return thread_local_singleton<Format_signature_cache>();
+    thread_local Format_signature_cache cache;
+    return cache;
 }
 
 bool has_anchor_within(
@@ -1233,12 +1233,6 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
     }
 
     return res;
-}
-
-void shutdown_layout_caches()
-{
-    thread_local_registry<Timestamp_label_cache>().shutdown();
-    thread_local_registry<Format_signature_cache>().shutdown();
 }
 
 } // namespace vnm::plot

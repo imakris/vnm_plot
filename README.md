@@ -187,8 +187,9 @@ cmake --build build
 - `vnm_plot_preview_config` - preview uses a separate data source and AREA style via `preview_config`
 - `function_plotter` - multiple functions, per-series styles, expression evaluation via mexce
 
-`function_plotter` depends on `mexce`. You can point at a local checkout by
-configuring with `-DMEXCE_LOCAL_PATH=...`.
+`function_plotter` is opt-in because it depends on Qt Multimedia and `mexce`.
+Build it with `-DVNM_PLOT_BUILD_EXAMPLES=ON -DVNM_PLOT_BUILD_FUNCTION_PLOTTER=ON`;
+point at a local mexce checkout with `-DMEXCE_LOCAL_PATH=...`.
 
 ## Configuration
 

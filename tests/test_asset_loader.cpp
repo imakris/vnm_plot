@@ -98,39 +98,6 @@ bool test_override_directory_falls_back_to_embedded_when_missing()
     return true;
 }
 
-bool test_load_shader_missing_required_stages_logs_and_returns_nullopt()
-{
-    plot::Asset_loader loader;
-    std::vector<std::string> messages;
-    loader.set_log_callback([&](const std::string& msg) { messages.push_back(msg); });
-
-    auto missing_vert = loader.load_shader("ghost");
-    TEST_ASSERT(!missing_vert.has_value(), "shader without any stage should fail to load");
-
-    bool mentions_vert = false;
-    for (const auto& m : messages) {
-        if (m.find("ghost.vert") != std::string::npos) {
-            mentions_vert = true;
-            break;
-        }
-    }
-    TEST_ASSERT(mentions_vert, "log should mention the missing vertex shader");
-    return true;
-}
-
-bool test_load_shader_returns_vertex_and_fragment_sources()
-{
-    plot::Asset_loader loader;
-    loader.register_embedded("good.vert", "vertex");
-    loader.register_embedded("good.frag", "fragment");
-
-    auto sources = loader.load_shader("good");
-    TEST_ASSERT(sources.has_value(), "shader with vert+frag should succeed");
-    TEST_ASSERT(sources->vertex == "vertex", "vertex bytes should match");
-    TEST_ASSERT(sources->fragment == "fragment", "fragment bytes should match");
-    return true;
-}
-
 } // namespace
 
 int main()
@@ -144,8 +111,6 @@ int main()
     RUN_TEST(test_embedded_asset_returns_registered_bytes);
     RUN_TEST(test_override_directory_beats_embedded_asset);
     RUN_TEST(test_override_directory_falls_back_to_embedded_when_missing);
-    RUN_TEST(test_load_shader_missing_required_stages_logs_and_returns_nullopt);
-    RUN_TEST(test_load_shader_returns_vertex_and_fragment_sources);
 
     std::cout << "Results: " << passed << " passed, " << failed << " failed" << std::endl;
     return failed > 0 ? 1 : 0;

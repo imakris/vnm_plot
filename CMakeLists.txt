@@ -13,7 +13,7 @@ project(vnm_plot
 
 # Options
 option(VNM_PLOT_BUILD_EXAMPLES "Build example applications" OFF)
-option(VNM_PLOT_BUILD_FUNCTION_PLOTTER "Build the Qt Multimedia function_plotter example" ON)
+option(VNM_PLOT_BUILD_FUNCTION_PLOTTER "Build the Qt Multimedia function_plotter example" OFF)
 option(VNM_PLOT_ENABLE_TEXT "Enable MSDF text rendering (requires FreeType + msdfgen)" ON)
 option(VNM_PLOT_BUILD_TESTS "Build test suite" OFF)
 option(VNM_PLOT_USE_SYSTEM_LIBS "Prefer find_package dependencies over FetchContent when available" OFF)
@@ -22,20 +22,6 @@ set(VNM_PLOT_VNM_MSDF_TEXT_VERSION 0.2.0)
 include(FetchContent)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/EmbedAssets.cmake)
 
-function(vnm_plot_set_fetchcontent_build_dir name dir_name)
-    string(TOLOWER "${CMAKE_CXX_COMPILER_ID}" _fc_compiler_tag)
-    set(_fc_config_suffix "-${_fc_compiler_tag}")
-    if(CMAKE_BUILD_TYPE)
-        string(TOLOWER "${CMAKE_BUILD_TYPE}" _fc_bt_lower)
-        string(APPEND _fc_config_suffix "-${_fc_bt_lower}")
-    endif()
-
-    set(FETCHCONTENT_BINARY_DIR_${name}
-        "${FETCHCONTENT_BASE_DIR}/${dir_name}-build${_fc_config_suffix}"
-        CACHE PATH "" FORCE)
-endfunction()
-
-include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/workspace_deps_overrides.cmake OPTIONAL)
 if(VNM_PLOT_DEP_OVERRIDES_FILE AND EXISTS "${VNM_PLOT_DEP_OVERRIDES_FILE}")
     message(STATUS "vnm_plot: Loading dependency overrides from ${VNM_PLOT_DEP_OVERRIDES_FILE}")
     include("${VNM_PLOT_DEP_OVERRIDES_FILE}")
@@ -79,12 +65,10 @@ else()
         else()
             message(STATUS "vnm_plot: Fetching glm")
         endif()
-        # Keep full history for fetched libraries because this workspace patches and
-        # reviews them directly instead of treating them as disposable third-party code.
         FetchContent_Declare(glm
             GIT_REPOSITORY https://github.com/g-truc/glm.git
             GIT_TAG        1.0.1
-            GIT_SHALLOW    FALSE
+            GIT_SHALLOW    TRUE
         )
         FetchContent_MakeAvailable(glm)
         if(TARGET glm AND NOT TARGET glm::glm)
@@ -117,19 +101,15 @@ if(VNM_PLOT_ENABLE_TEXT)
                 ABSOLUTE)
             if(EXISTS "${_vnm_plot_msdf_text_source}/CMakeLists.txt")
                 message(STATUS "vnm_plot: Using sibling vnm_msdf_text source")
-                vnm_plot_set_fetchcontent_build_dir(vnm_msdf_text vnm_msdf_text)
                 FetchContent_Declare(vnm_msdf_text
-                    SOURCE_DIR  "${_vnm_plot_msdf_text_source}"
-                    BINARY_DIR  "${FETCHCONTENT_BINARY_DIR_vnm_msdf_text}"
+                    SOURCE_DIR "${_vnm_plot_msdf_text_source}"
                 )
             else()
                 message(STATUS "vnm_plot: Fetching vnm_msdf_text")
-                vnm_plot_set_fetchcontent_build_dir(vnm_msdf_text vnm_msdf_text)
                 FetchContent_Declare(vnm_msdf_text
                     GIT_REPOSITORY https://github.com/imakris/vnm_msdf_text.git
                     GIT_TAG        master
-                    GIT_SHALLOW    FALSE
-                    BINARY_DIR     "${FETCHCONTENT_BINARY_DIR_vnm_msdf_text}"
+                    GIT_SHALLOW    TRUE
                 )
             endif()
             FetchContent_MakeAvailable(vnm_msdf_text)

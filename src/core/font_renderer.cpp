@@ -1,14 +1,15 @@
 #include <vnm_plot/rhi/font_renderer.h>
 #include <vnm_plot/rhi/asset_loader.h>
 #include "platform_paths.h"
-#include "sha256.h"
-#include "tls_registry.h"
 #include "rhi_helpers.h"
 
 #include <glm/gtc/type_ptr.hpp>
 #include <vnm_msdf_text/msdf_text.h>
 
+#include <QByteArray>
+#include <QByteArrayView>
 #include <QFile>
+#include <QCryptographicHash>
 #include <QImage>
 #include <rhi/qrhi.h>
 
@@ -116,7 +117,10 @@ struct thread_local_font_resources_t
     std::uint64_t m_cache_epoch = 0;
     msdf_atlas_t m_atlas;
 
-    ~thread_local_font_resources_t() = default;
+    ~thread_local_font_resources_t()
+    {
+        destroy_resources();
+    }
 
     void destroy_resources()
     {
@@ -129,7 +133,8 @@ struct thread_local_font_resources_t
 
 thread_local_font_resources_t& thread_local_resources()
 {
-    return thread_local_singleton<thread_local_font_resources_t>();
+    thread_local thread_local_font_resources_t resources;
+    return resources;
 }
 
 std::atomic<std::uint64_t> s_next_cache_epoch{1};
@@ -142,7 +147,7 @@ struct cached_font_data_t
     // atlas.baked_pixel_height and is the cache-map key and disk-file height.
     int draw_pixel_height = 0;
     std::uint64_t cache_epoch = 0;
-    Sha256::Digest font_digest{};
+    std::array<std::uint8_t, 32> font_digest{};
 };
 
 static std::mutex s_cached_fonts_mutex;
@@ -150,7 +155,7 @@ static std::unordered_map<int, std::shared_ptr<cached_font_data_t>> s_cached_fon
 
 std::shared_ptr<cached_font_data_t> get_cached_font(
     int pixel_height,
-    const Sha256::Digest& font_digest)
+    const std::array<std::uint8_t, 32>& font_digest)
 {
     std::lock_guard<std::mutex> lock(s_cached_fonts_mutex);
     auto it = s_cached_fonts.find(pixel_height);
@@ -310,21 +315,49 @@ void add_text_to_buffer(const char* text, float x, float y, thread_local_font_re
         res->m_buffer->index_data);
 }
 
-Sha256::Digest compute_font_digest()
+std::array<std::uint8_t, 32> compute_font_digest()
 {
-    Sha256 ctx;
-    ctx.update(&k_cache_version, sizeof(k_cache_version));
-    ctx.update(&k_min_atlas_font_size, sizeof(k_min_atlas_font_size));
-    ctx.update(&k_atlas_px_range, sizeof(k_atlas_px_range));
-    ctx.update(&k_sharpness_bias, sizeof(k_sharpness_bias));
-    ctx.update(&k_atlas_texture_size, sizeof(k_atlas_texture_size));
-    ctx.update(k_msdf_builder_semantics);
-    ctx.update(glyph_seed_string());
-    ctx.update(s_font_storage);
-    return ctx.finalize();
+    QCryptographicHash hash(QCryptographicHash::Sha256);
+    const auto add_view = [&hash](const char* data, qsizetype size) {
+        hash.addData(QByteArrayView(data, size));
+    };
+    const auto add_bytes = [&add_view](const auto& value) {
+        add_view(reinterpret_cast<const char*>(&value), sizeof(value));
+    };
+    add_bytes(k_cache_version);
+    add_bytes(k_min_atlas_font_size);
+    add_bytes(k_atlas_px_range);
+    add_bytes(k_sharpness_bias);
+    add_bytes(k_atlas_texture_size);
+    const std::string_view semantics(k_msdf_builder_semantics);
+    add_view(semantics.data(), static_cast<qsizetype>(semantics.size()));
+    const std::string glyph_seed = glyph_seed_string();
+    add_view(glyph_seed.data(), static_cast<qsizetype>(glyph_seed.size()));
+    if (!s_font_storage.empty()) {
+        add_view(
+            reinterpret_cast<const char*>(s_font_storage.data()),
+            static_cast<qsizetype>(s_font_storage.size()));
+    }
+
+    const QByteArray bytes = hash.result();
+    std::array<std::uint8_t, 32> digest{};
+    std::copy_n(
+        reinterpret_cast<const std::uint8_t*>(bytes.constData()),
+        std::min<std::size_t>(digest.size(), static_cast<std::size_t>(bytes.size())),
+        digest.begin());
+    return digest;
 }
 
-std::filesystem::path cache_file_path(int pixel_height, const Sha256::Digest& font_digest)
+std::string digest_to_hex(const std::array<std::uint8_t, 32>& digest)
+{
+    return QByteArray(
+        reinterpret_cast<const char*>(digest.data()),
+        static_cast<qsizetype>(digest.size())).toHex().toStdString();
+}
+
+std::filesystem::path cache_file_path(
+    int pixel_height,
+    const std::array<std::uint8_t, 32>& font_digest)
 {
     static std::filesystem::path s_cache_dir;
 
@@ -345,7 +378,7 @@ std::filesystem::path cache_file_path(int pixel_height, const Sha256::Digest& fo
 
     std::ostringstream oss;
     oss << "msdf_cache_v" << k_cache_version << "_px" << pixel_height << "_font";
-    oss << Sha256::to_hex(font_digest);
+    oss << digest_to_hex(font_digest);
     oss << ".bin";
     return s_cache_dir / oss.str();
 }
@@ -353,7 +386,7 @@ std::filesystem::path cache_file_path(int pixel_height, const Sha256::Digest& fo
 // Forward declarations for disk cache helpers
 std::shared_ptr<cached_font_data_t> load_cached_font_from_disk(
     const std::filesystem::path& path,
-    const Sha256::Digest& expected_digest,
+    const std::array<std::uint8_t, 32>& expected_digest,
     int pixel_height);
 
 void save_cached_font_to_disk(
@@ -362,7 +395,7 @@ void save_cached_font_to_disk(
 
 std::shared_ptr<cached_font_data_t> load_cached_font_from_disk(
     const std::filesystem::path& path,
-    const Sha256::Digest& expected_digest,
+    const std::array<std::uint8_t, 32>& expected_digest,
     int pixel_height)
 {
     std::ifstream in(path, std::ios::binary);
@@ -386,7 +419,7 @@ std::shared_ptr<cached_font_data_t> load_cached_font_from_disk(
         return nullptr;
     }
 
-    Sha256::Digest digest{};
+    std::array<std::uint8_t, 32> digest{};
     in.read(reinterpret_cast<char*>(digest.data()), digest.size());
     if (!in || digest != expected_digest) {
         return nullptr;
@@ -582,7 +615,7 @@ void save_cached_font_to_disk(
 
 std::shared_ptr<cached_font_data_t> build_font_cache(
     int pixel_height,
-    const Sha256::Digest& font_digest,
+    const std::array<std::uint8_t, 32>& font_digest,
     const std::function<void(const std::string&)>& log_error,
     const std::function<void(const std::string&)>& log_debug)
 {
@@ -668,9 +701,8 @@ bool validate_font_disk_cache_file(
     const font_disk_cache_digest_t& expected_digest,
     int pixel_height)
 {
-    Sha256::Digest digest{};
-    std::copy(expected_digest.begin(), expected_digest.end(), digest.begin());
-    return static_cast<bool>(load_cached_font_from_disk(path, digest, pixel_height));
+    return static_cast<bool>(
+        load_cached_font_from_disk(path, expected_digest, pixel_height));
 }
 
 } // namespace detail

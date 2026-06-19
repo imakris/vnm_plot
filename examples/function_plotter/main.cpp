@@ -76,12 +76,8 @@ int main(int argc, char* argv[])
     engine.load(url);
 
     if (engine.rootObjects().isEmpty()) {
-        // Try loading from file system for development
-        engine.load(QUrl::fromLocalFile("qml/main.qml"));
-        if (engine.rootObjects().isEmpty()) {
-            qCritical() << "Failed to load QML";
-            return -1;
-        }
+        qCritical() << "Failed to load QML";
+        return -1;
     }
 
     return app.exec();

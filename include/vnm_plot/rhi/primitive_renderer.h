@@ -25,8 +25,6 @@ class Profiler;  // Forward declaration
 
 namespace vnm::plot {
 
-class Asset_loader;
-
 // -----------------------------------------------------------------------------
 // Primitive_renderer
 // -----------------------------------------------------------------------------
@@ -43,8 +41,6 @@ public:
     // Non-copyable (owns GPU resources)
     Primitive_renderer(const Primitive_renderer&) = delete;
     Primitive_renderer& operator=(const Primitive_renderer&) = delete;
-
-    bool initialize(Asset_loader& asset_loader);
 
     void cleanup_resources();
 
@@ -100,7 +96,6 @@ private:
     };
 
     std::vector<rect_vertex_t> m_cpu_buffer;
-    bool                       m_initialized = false;
     vnm::plot::Profiler*       m_profiler    = nullptr;
     std::function<void(const std::string&)> m_log_error;
 

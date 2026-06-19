@@ -45,18 +45,6 @@ public:
     // First checks override directory, then embedded assets.
     [[nodiscard]] std::optional<Byte_buffer> load(std::string_view name) const;
 
-    // --- Convenience methods for shader loading ---
-
-    // Load a shader program's sources (vertex, fragment).
-    struct Shader_sources
-    {
-        Byte_buffer vertex;
-        Byte_buffer fragment;
-    };
-
-    // Load shader sources by base name (appends .vert, .frag).
-    [[nodiscard]] std::optional<Shader_sources> load_shader(std::string_view base_name) const;
-
 private:
     bool load_file(std::string_view path, Byte_buffer& out) const;
     void log_error(const std::string& message) const;

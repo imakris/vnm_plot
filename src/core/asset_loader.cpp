@@ -82,29 +82,4 @@ std::optional<Byte_buffer> Asset_loader::load(std::string_view name) const
     return std::nullopt;
 }
 
-std::optional<Asset_loader::Shader_sources> Asset_loader::load_shader(std::string_view base_name) const
-{
-    Shader_sources sources;
-
-    const std::string base(base_name);
-
-    // Load vertex shader (required)
-    auto vert = load(base + ".vert");
-    if (!vert) {
-        log_error("Missing vertex shader: " + base + ".vert");
-        return std::nullopt;
-    }
-    sources.vertex = std::move(*vert);
-
-    // Load fragment shader (required)
-    auto frag = load(base + ".frag");
-    if (!frag) {
-        log_error("Missing fragment shader: " + base + ".frag");
-        return std::nullopt;
-    }
-    sources.fragment = std::move(*frag);
-
-    return sources;
-}
-
 } // namespace vnm::plot
