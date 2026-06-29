@@ -719,7 +719,9 @@ struct Text_block_std140
     float shadow_color[4] = {};
     float px_range = 0.f;
     float shadow_radius = 0.f;
-    float padding[2] = {};
+    float lcd_subpixel_order = 0.f;
+    float padding[1] = {};
+    float background_color[4] = {};
 };
 
 static_assert(offsetof(Text_block_std140, pmv)              ==  0, "Text UBO pmv offset");
@@ -727,7 +729,9 @@ static_assert(offsetof(Text_block_std140, color)            == 64, "Text UBO col
 static_assert(offsetof(Text_block_std140, shadow_color)     == 80, "Text UBO shadow color offset");
 static_assert(offsetof(Text_block_std140, px_range)         == 96, "Text UBO px_range offset");
 static_assert(offsetof(Text_block_std140, shadow_radius)    == 100, "Text UBO shadow radius offset");
-static_assert(sizeof(Text_block_std140)                     == 112, "Text UBO std140 size");
+static_assert(offsetof(Text_block_std140, lcd_subpixel_order) == 104, "Text UBO LCD order offset");
+static_assert(offsetof(Text_block_std140, background_color) == 112, "Text UBO background color offset");
+static_assert(sizeof(Text_block_std140)                     == 128, "Text UBO std140 size");
 
 constexpr std::uint32_t k_text_ubo_bytes = sizeof(Text_block_std140);
 
@@ -745,6 +749,24 @@ enum class rhi_text_pass_t : std::uint8_t
     SHADOW,
     FOREGROUND,
 };
+
+float text_lcd_shader_value(text_lcd_subpixel_order_t order)
+{
+    switch (order) {
+        case text_lcd_subpixel_order_t::RGB:
+            return 1.0f;
+        case text_lcd_subpixel_order_t::BGR:
+            return 2.0f;
+        case text_lcd_subpixel_order_t::VRGB:
+            return 3.0f;
+        case text_lcd_subpixel_order_t::VBGR:
+            return 4.0f;
+        case text_lcd_subpixel_order_t::NONE:
+            return 0.0f;
+    }
+
+    return 0.0f;
+}
 
 struct rhi_text_draw_op_t
 {
@@ -1008,7 +1030,8 @@ void Font_renderer::rhi_queue_draw(
     const glm::mat4& pmv,
     const glm::vec4& color,
     const text_scissor_t& scissor,
-    const text_shadow_t& shadow)
+    const text_shadow_t& shadow,
+    const text_lcd_t& lcd)
 {
     if (!ctx.rhi || !ctx.rhi_updates || !ctx.render_target || !m_impl->m_font_cache) {
         m_impl->m_rhi_vertex_data.clear();
@@ -1307,6 +1330,11 @@ void Font_renderer::rhi_queue_draw(
         block.px_range = vnm::msdf_text::px_range_for_pixel_height(
             cached.atlas, cached.draw_pixel_height);
         block.shadow_radius = draw_shadow.radius_px;
+        block.lcd_subpixel_order = text_lcd_shader_value(lcd.subpixel_order);
+        block.background_color[0] = lcd.background_color.r;
+        block.background_color[1] = lcd.background_color.g;
+        block.background_color[2] = lcd.background_color.b;
+        block.background_color[3] = lcd.background_color.a;
         updates->updateDynamicBuffer(call.ubo.get(), 0, sizeof(block), &block);
 
         rhi_text_draw_op_t op{};

@@ -7,6 +7,9 @@ layout(std140, binding = 0) uniform Block
     vec4  shadow_color;
     float px_range;
     float shadow_radius;
+    float lcd_subpixel_order;
+    float padding;
+    vec4  background_color;
 } u;
 
 layout(location = 0) in vec2 vertex;

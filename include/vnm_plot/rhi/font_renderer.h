@@ -36,6 +36,21 @@ struct text_shadow_t
     float     radius_px = 0.0f;
 };
 
+enum class text_lcd_subpixel_order_t : std::uint8_t
+{
+    NONE,
+    RGB,
+    BGR,
+    VRGB,
+    VBGR,
+};
+
+struct text_lcd_t
+{
+    text_lcd_subpixel_order_t subpixel_order = text_lcd_subpixel_order_t::NONE;
+    glm::vec4 background_color = glm::vec4(0.f);
+};
+
 // -----------------------------------------------------------------------------
 // Font Cache Configuration
 // -----------------------------------------------------------------------------
@@ -128,7 +143,8 @@ public:
         const glm::mat4& pmv,
         const glm::vec4& color,
         const text_scissor_t& scissor = {},
-        const text_shadow_t& shadow = {});
+        const text_shadow_t& shadow = {},
+        const text_lcd_t& lcd = {});
 
     // Uploads the accumulated QRhi text geometry after all draw batches are queued.
     void rhi_finalize_frame(const frame_context_t& ctx);
