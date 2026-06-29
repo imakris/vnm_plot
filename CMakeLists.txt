@@ -171,6 +171,7 @@ set(VNM_PLOT_LAYOUT_SOURCES
     src/core/auto_range_resolver.cpp
     src/core/frame_range_planner.cpp
     src/core/series_window_planner.cpp
+    src/core/time_grid.cpp
 )
 
 set(VNM_PLOT_LAYOUT_HEADERS
@@ -178,6 +179,7 @@ set(VNM_PLOT_LAYOUT_HEADERS
     include/vnm_plot/core/algo.h
     include/vnm_plot/core/layout_calculator.h
     include/vnm_plot/core/series_window.h
+    include/vnm_plot/core/time_grid.h
 )
 
 set(VNM_PLOT_RHI_SOURCES

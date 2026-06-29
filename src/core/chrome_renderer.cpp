@@ -3,6 +3,7 @@
 #include <vnm_plot/core/color_palette.h>
 #include <vnm_plot/core/constants.h>
 #include <vnm_plot/core/plot_config.h>
+#include <vnm_plot/core/time_grid.h>
 #include <vnm_plot/core/algo.h>
 #include <vnm_plot/core/time_units.h>
 
@@ -13,9 +14,7 @@
 #include <cmath>
 
 namespace vnm::plot {
-using detail::build_time_steps_covering;
 using detail::circular_index;
-using detail::find_time_step_start_index;
 using detail::get_shift;
 using detail::k_cell_span_max_factor;
 using detail::k_cell_span_min_factor;
@@ -25,86 +24,25 @@ using detail::k_preview_min_window_px;
 
 namespace {
 
-bool is_integer_multiple(double parent, double child)
-{
-    if (!(parent > 0.0) || !(child > 0.0)) {
-        return false;
-    }
-
-    const double ratio = parent / child;
-    const double rounded = std::round(ratio);
-    if (rounded < 1.0) {
-        return false;
-    }
-
-    const double tol = std::min(1e-3, std::max(1e-8, std::abs(ratio) * 1e-12));
-    return std::abs(ratio - rounded) <= tol;
-}
-
 float compute_grid_alpha(float spacing_px, double cell_span_min, double fade_den)
 {
     const double fade = (double(spacing_px) - cell_span_min) / fade_den;
     return static_cast<float>(std::clamp(fade, 0.0, 1.0) * k_grid_line_alpha_base);
 }
 
-void append_grid_level(grid_layer_params_t& levels, float spacing_px, float start_px,
-                       double cell_span_min, double fade_den)
+void append_grid_level(
+    grid_layer_params_t& levels,
+    float spacing_px,
+    float start_px,
+    double cell_span_min,
+    double fade_den)
 {
     levels.spacing_px[levels.count] = spacing_px;
-    levels.start_px[levels.count] = start_px;
-    const float a = compute_grid_alpha(spacing_px, cell_span_min, fade_den);
-    levels.alpha[levels.count] = a;
-    levels.thickness_px[levels.count] = 0.6f + 0.6f * (a / k_grid_line_alpha_base);
+    levels.start_px[levels.count]   = start_px;
+    const float alpha = compute_grid_alpha(spacing_px, cell_span_min, fade_den);
+    levels.alpha[levels.count]        = alpha;
+    levels.thickness_px[levels.count] = 0.6f + 0.6f * (alpha / k_grid_line_alpha_base);
     ++levels.count;
-}
-
-grid_layer_params_t build_time_grid(
-    double t_min,
-    double t_max,
-    double width_px,
-    double font_px,
-    const std::function<void(const std::string&)>& log_debug)
-{
-    grid_layer_params_t levels;
-    const double range = t_max - t_min;
-    if (!(range > 0.0) || !(width_px > 0.0)) {
-        return levels;
-    }
-
-    const double cell_span_min = font_px * k_cell_span_min_factor;
-    const double fade_den = std::max<double>(1e-6, font_px * (k_cell_span_max_factor - k_cell_span_min_factor));
-
-    const double px_per_unit = width_px / range;
-    const auto steps = build_time_steps_covering(range);
-    int idx = std::max(0, find_time_step_start_index(steps, range));
-    while (idx + 1 < static_cast<int>(steps.size()) && steps[idx] * px_per_unit < cell_span_min) {
-        ++idx;
-    }
-
-    double last_step = 0.0;
-    bool logged_non_multiple = false;
-    for (; idx >= 0 && levels.count < grid_layer_params_t::k_max_levels; --idx) {
-        const double step = steps[idx];
-        const float spacing_px = static_cast<float>(step * px_per_unit);
-        if (spacing_px < cell_span_min) {
-            break;
-        }
-        if (last_step > 0.0 && !is_integer_multiple(last_step, step)) {
-            if (!logged_non_multiple && log_debug) {
-                log_debug(
-                    "vnm_plot: dropping non-multiple time grid step; adjust build_time_steps_covering() "
-                    "subdivision levels to exact multiples.");
-                logged_non_multiple = true;
-            }
-            continue;
-        }
-        const double shift_units = get_shift(step, t_min);
-        append_grid_level(levels, spacing_px,
-            static_cast<float>(shift_units * px_per_unit), cell_span_min, fade_den);
-        last_step = step;
-    }
-
-    return levels;
 }
 
 grid_layer_params_t flip_grid_levels_y(const grid_layer_params_t& levels, float height_px)
@@ -221,12 +159,18 @@ void Chrome_renderer::render_grid_and_backgrounds(
     constexpr double k_seconds_per_ns = 1.0e-9;
     const double t0_seconds = static_cast<double>(ctx.t0) * k_seconds_per_ns;
     const double t1_seconds = static_cast<double>(ctx.t1) * k_seconds_per_ns;
-    const grid_layer_params_t horizontal_levels = build_time_grid(
+    bool dropped_non_multiple_step = false;
+    const grid_layer_params_t horizontal_levels = build_time_grid_layers(
         t0_seconds,
         t1_seconds,
         pl.usable_width,
         ctx.adjusted_font_px,
-        ctx.config ? ctx.config->log_debug : std::function<void(const std::string&)>());
+        &dropped_non_multiple_step);
+    if (dropped_non_multiple_step && ctx.config && ctx.config->log_debug) {
+        ctx.config->log_debug(
+            "vnm_plot: dropping non-multiple time grid step; adjust "
+            "build_time_steps_covering() subdivision levels to exact multiples.");
+    }
 
     const grid_layer_params_t vertical_levels_gl = flip_grid_levels_y(vertical_levels, main_size.y);
 
