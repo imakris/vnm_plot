@@ -9,6 +9,7 @@
 #include <QDebug>
 #include <QQuickWindow>
 #include <QScreen>
+#include <QWindow>
 
 #include <QColor>
 #include <QVariantMap>
@@ -126,16 +127,25 @@ Plot_widget::Plot_widget()
     // and framebuffer orientation are handled by the renderer's QRhi
     // projection correction.
     setMirrorVertically(false);
+    setSmooth(false);
     setAlphaBlending(true);
 
     // Match the multisample count used by the benchmark and examples.
     setSampleCount(k_msaa_samples);
     setFlag(ItemHasContents, true);
+
+    QObject::connect(
+        this,
+        &QQuickItem::windowChanged,
+        this,
+        &Plot_widget::handle_window_changed);
 }
 
 Plot_widget::~Plot_widget()
 {
     m_vbar_width_timer.stop();
+    QObject::disconnect(m_window_screen_connection);
+    m_window_screen_connection = {};
 
     if (m_time_axis) {
         if (m_time_axis->sync_vbar_width()) {
@@ -829,6 +839,29 @@ double Plot_widget::update_dpi_scaling_factor()
     }
     update();
     return scaling;
+}
+
+void Plot_widget::invalidate_display_context()
+{
+    update_dpi_scaling_factor();
+}
+
+void Plot_widget::handle_window_changed(QQuickWindow* window)
+{
+    QObject::disconnect(m_window_screen_connection);
+    m_window_screen_connection = {};
+
+    if (window) {
+        m_window_screen_connection = QObject::connect(
+            window,
+            &QWindow::screenChanged,
+            this,
+            [this](QScreen*) {
+                invalidate_display_context();
+            });
+    }
+
+    invalidate_display_context();
 }
 
 void Plot_widget::set_visible_info(int flags)

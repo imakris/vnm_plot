@@ -12,7 +12,6 @@
 #include <QtGui/QIcon>
 #include <QtQml/QQmlApplicationEngine>
 #include <QtQml/QQmlContext>
-#include <QtQuick/QQuickWindow>
 #include <QSurfaceFormat>
 
 int main(int argc, char* argv[])
@@ -41,7 +40,7 @@ int main(int argc, char* argv[])
     // Create the function plotter backend
     Function_plotter plotter;
 
-    // Load with a default presetwrite
+    // Load the default preset
     plotter.load_preset(0);  // Sine wave
 
     // Set up QML engine

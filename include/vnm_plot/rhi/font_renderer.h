@@ -3,6 +3,7 @@
 // VNM Plot Library - RHI Font Renderer
 // MSDF text rendering with font loading, measurement, and QRhi rendering.
 
+#include <vnm_plot/core/text_lcd.h>
 #include <vnm_plot/rhi/frame_context.h>
 
 #include <glm/glm.hpp>
@@ -34,15 +35,6 @@ struct text_shadow_t
 {
     glm::vec4 color     = glm::vec4(0.f);
     float     radius_px = 0.0f;
-};
-
-enum class text_lcd_subpixel_order_t : std::uint8_t
-{
-    NONE,
-    RGB,
-    BGR,
-    VRGB,
-    VBGR,
 };
 
 struct text_lcd_t
@@ -113,6 +105,9 @@ public:
     // Measures the horizontal pixel width of a given string.
     float measure_text_px(const char* text) const;
 
+    // Returns the visual glyph quad bounds for text at the given baseline.
+    bool text_visual_bounds_px(const char* text, float x, float y, glm::vec4& bounds) const;
+
     // Returns a key that changes when font metrics change (for caching).
     std::uint64_t text_measure_cache_key() const;
 
@@ -143,8 +138,14 @@ public:
         const glm::mat4& pmv,
         const glm::vec4& color,
         const text_scissor_t& scissor = {},
-        const text_shadow_t& shadow = {},
-        const text_lcd_t& lcd = {});
+        const text_shadow_t& shadow = {});
+    void rhi_queue_draw(
+        const frame_context_t& ctx,
+        const glm::mat4& pmv,
+        const glm::vec4& color,
+        const text_scissor_t& scissor,
+        const text_shadow_t& shadow,
+        const text_lcd_t& lcd);
 
     // Uploads the accumulated QRhi text geometry after all draw batches are queued.
     void rhi_finalize_frame(const frame_context_t& ctx);

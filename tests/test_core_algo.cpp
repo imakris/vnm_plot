@@ -3,10 +3,12 @@
 #include "test_macros.h"
 
 #include <vnm_plot/core/algo.h>
+#include <vnm_plot/core/color_palette.h>
 #include <vnm_plot/core/plot_config.h>
-#include <vnm_plot/rhi/text_renderer.h>
+#include <vnm_plot/core/text_lcd.h>
 #include <vnm_plot/core/time_units.h>
 #include <vnm_plot/core/types.h>
+#include <vnm_plot/rhi/text_renderer.h>
 
 #include <cmath>
 #include <cstddef>
@@ -26,6 +28,9 @@ static_assert(
 static_assert(
     std::is_same_v<plot::Text_renderer::horizontal_axis_fade_tracker_t::key_type, std::int64_t>,
     "horizontal label fade tracking must be keyed by int64 nanosecond timestamps");
+static_assert(
+    std::is_same_v<std::underlying_type_t<plot::text_lcd_subpixel_order_t>, std::uint8_t>,
+    "text LCD subpixel order ABI must remain uint8_t");
 
 namespace {
 
@@ -667,6 +672,188 @@ bool test_horizontal_label_fade_keys_preserve_int64_timestamps()
     return true;
 }
 
+bool test_text_lcd_policy_helpers()
+{
+    using order_t = plot::text_lcd_subpixel_order_t;
+    using surface_t = plot::text_lcd_draw_surface_t;
+
+    const order_t invalid_order = static_cast<order_t>(6);
+    const order_t invalid_high_order = static_cast<order_t>(255);
+    const order_t values[] = {
+        order_t::NONE,
+        order_t::RGB,
+        order_t::BGR,
+        order_t::VRGB,
+        order_t::VBGR,
+        order_t::AUTO,
+        invalid_order,
+        invalid_high_order,
+    };
+
+    TEST_ASSERT(static_cast<int>(order_t::NONE) == 0, "LCD NONE value must remain 0");
+    TEST_ASSERT(static_cast<int>(order_t::RGB)  == 1, "LCD RGB value must remain 1");
+    TEST_ASSERT(static_cast<int>(order_t::BGR)  == 2, "LCD BGR value must remain 2");
+    TEST_ASSERT(static_cast<int>(order_t::VRGB) == 3, "LCD VRGB value must remain 3");
+    TEST_ASSERT(static_cast<int>(order_t::VBGR) == 4, "LCD VBGR value must remain 4");
+    TEST_ASSERT(static_cast<int>(order_t::AUTO) == 5, "LCD AUTO value must be 5");
+
+    const order_t display_orders[] = {order_t::RGB, order_t::BGR, order_t::VRGB, order_t::VBGR};
+    for (order_t order : display_orders) {
+        TEST_ASSERT(plot::text_lcd_subpixel_order_is_display_specific(order),
+            "display-specific LCD orders should be classified for LCD sampling");
+        TEST_ASSERT(plot::text_lcd_auto_order_from_detections(order, order_t::NONE) == order,
+            "Qt LCD detection should preserve every display-specific order");
+        TEST_ASSERT(plot::text_lcd_auto_order_from_detections(order_t::NONE, order) == order,
+            "OS LCD detection should preserve every display-specific order");
+        TEST_ASSERT(plot::text_lcd_effective_order(order_t::AUTO, order) == order,
+            "AUTO should resolve to every display-specific detected order");
+        TEST_ASSERT(plot::text_lcd_effective_order_for_frame(order, order_t::NONE, 8) == order,
+            "explicit display-specific frame order should not depend on sample count");
+        TEST_ASSERT(plot::text_lcd_draw_is_eligible(
+                surface_t::VERTICAL_AXIS_LABEL, order, 1.0f, true),
+            "vertical axis labels may be LCD-eligible for every display-specific order");
+        TEST_ASSERT(plot::text_lcd_draw_is_eligible(
+                surface_t::HORIZONTAL_AXIS_LABEL, order, 1.0f, true),
+            "horizontal axis labels may be LCD-eligible for every display-specific order");
+    }
+    TEST_ASSERT(!plot::text_lcd_subpixel_order_is_display_specific(order_t::AUTO),
+        "AUTO should not be a draw order");
+
+    TEST_ASSERT(plot::text_lcd_auto_order_from_detections(order_t::RGB, order_t::BGR) == order_t::RGB,
+        "Qt LCD detection should win over OS detection");
+    TEST_ASSERT(plot::text_lcd_auto_order_from_detections(order_t::NONE, order_t::BGR) == order_t::BGR,
+        "OS LCD detection should be used when Qt has no order");
+    TEST_ASSERT(plot::text_lcd_auto_order_from_detections(order_t::NONE, order_t::NONE) == order_t::NONE,
+        "AUTO detection should fail closed when no source has an order");
+
+    TEST_ASSERT(plot::text_lcd_effective_order(order_t::AUTO, order_t::RGB) == order_t::RGB,
+        "AUTO should resolve to a display-specific detected order");
+    TEST_ASSERT(plot::text_lcd_effective_order(order_t::AUTO, order_t::AUTO) == order_t::NONE,
+        "AUTO should not resolve to AUTO");
+    TEST_ASSERT(plot::text_lcd_effective_order(order_t::RGB, order_t::NONE) == order_t::RGB,
+        "explicit RGB should not depend on platform detection");
+    TEST_ASSERT(plot::text_lcd_effective_order(order_t::NONE, order_t::RGB) == order_t::NONE,
+        "explicit NONE should stay grayscale");
+
+    for (order_t requested : values) {
+        for (order_t resolved : values) {
+            TEST_ASSERT(plot::text_lcd_effective_order(requested, resolved) != order_t::AUTO,
+                "effective LCD order must never return AUTO");
+        }
+    }
+
+    TEST_ASSERT(plot::text_lcd_shader_uniform_value(order_t::NONE) == 0.0f,
+        "LCD NONE shader value should be 0");
+    TEST_ASSERT(plot::text_lcd_shader_uniform_value(order_t::RGB) == 1.0f,
+        "LCD RGB shader value should be 1");
+    TEST_ASSERT(plot::text_lcd_shader_uniform_value(order_t::BGR) == 2.0f,
+        "LCD BGR shader value should be 2");
+    TEST_ASSERT(plot::text_lcd_shader_uniform_value(order_t::VRGB) == 3.0f,
+        "LCD VRGB shader value should be 3");
+    TEST_ASSERT(plot::text_lcd_shader_uniform_value(order_t::VBGR) == 4.0f,
+        "LCD VBGR shader value should be 4");
+    TEST_ASSERT(plot::text_lcd_shader_uniform_value(order_t::AUTO) == 0.0f,
+        "LCD AUTO shader value should fail closed to 0");
+    TEST_ASSERT(plot::text_lcd_shader_uniform_value(invalid_order) == 0.0f,
+        "invalid LCD shader value should fail closed to 0");
+
+    // MSAA alone is not a gate for fragment-frequency LCD text.
+    TEST_ASSERT(plot::text_lcd_effective_order_for_frame(order_t::AUTO, order_t::RGB, 8) == order_t::RGB,
+        "AUTO should use platform order on multisampled render targets");
+    TEST_ASSERT(plot::text_lcd_effective_order_for_frame(order_t::AUTO, order_t::RGB, 1) == order_t::RGB,
+        "AUTO should use platform order on single-sample render targets");
+    TEST_ASSERT(plot::text_lcd_effective_order_for_frame(order_t::AUTO, order_t::NONE, 8) == order_t::NONE,
+        "AUTO with no platform order should stay grayscale");
+    TEST_ASSERT(plot::text_lcd_effective_order_for_frame(order_t::AUTO, order_t::AUTO, 1) == order_t::NONE,
+        "AUTO platform result should not propagate to the frame");
+    TEST_ASSERT(plot::text_lcd_effective_order_for_frame(order_t::AUTO, invalid_order, 1) == order_t::NONE,
+        "invalid platform order should fail closed");
+    TEST_ASSERT(plot::text_lcd_effective_order_for_frame(order_t::NONE, order_t::RGB, 1) == order_t::NONE,
+        "explicit NONE should stay grayscale at frame level");
+    TEST_ASSERT(plot::text_lcd_effective_order_for_frame(invalid_order, order_t::RGB, 1) == order_t::NONE,
+        "invalid requested frame order should fail closed");
+
+    TEST_ASSERT(!plot::text_lcd_draw_is_eligible(
+            surface_t::INFO_OVERLAY, order_t::RGB, 1.0f, false),
+        "info overlay should not be LCD-eligible without backing");
+    TEST_ASSERT(!plot::text_lcd_draw_is_eligible(
+            surface_t::HORIZONTAL_AXIS_LABEL, order_t::RGB, 1.0f, false),
+        "horizontal axis labels should not be LCD-eligible without backing");
+    TEST_ASSERT(!plot::text_lcd_draw_is_eligible(
+            surface_t::VERTICAL_AXIS_LABEL, order_t::RGB, 1.0f, false),
+        "vertical axis labels should not be LCD-eligible without backing");
+    TEST_ASSERT(!plot::text_lcd_draw_is_eligible(
+            surface_t::INFO_OVERLAY, order_t::RGB, 1.0f, true),
+        "info overlay should not be LCD-eligible even with backing");
+    TEST_ASSERT(!plot::text_lcd_draw_is_eligible(
+            surface_t::PLOT_BODY_TEXT, order_t::RGB, 1.0f, true),
+        "plot body text should not be LCD-eligible even with backing");
+    TEST_ASSERT(!plot::text_lcd_draw_is_eligible(
+            surface_t::SHADOWED_TEXT, order_t::RGB, 1.0f, true),
+        "shadowed text should not be LCD-eligible even with backing");
+    TEST_ASSERT(!plot::text_lcd_draw_is_eligible(
+            surface_t::VERTICAL_AXIS_LABEL, order_t::NONE, 1.0f, true),
+        "axis labels should not be LCD-eligible for NONE frame order");
+    TEST_ASSERT(!plot::text_lcd_draw_is_eligible(
+            surface_t::HORIZONTAL_AXIS_LABEL, order_t::NONE, 1.0f, true),
+        "axis labels should not be LCD-eligible for NONE frame order");
+    TEST_ASSERT(!plot::text_lcd_draw_is_eligible(
+            surface_t::VERTICAL_AXIS_LABEL, order_t::AUTO, 1.0f, true),
+        "axis labels should not be LCD-eligible for AUTO frame order");
+    TEST_ASSERT(!plot::text_lcd_draw_is_eligible(
+            surface_t::HORIZONTAL_AXIS_LABEL, order_t::AUTO, 1.0f, true),
+        "axis labels should not be LCD-eligible for AUTO frame order");
+    TEST_ASSERT(!plot::text_lcd_draw_is_eligible(
+            surface_t::VERTICAL_AXIS_LABEL, order_t::RGB, 0.998f, true),
+        "axis labels should not be LCD-eligible with translucent backing");
+    TEST_ASSERT(!plot::text_lcd_draw_is_eligible(
+            surface_t::VERTICAL_AXIS_LABEL, order_t::RGB,
+            std::numeric_limits<float>::quiet_NaN(), true),
+        "axis labels should not be LCD-eligible with unknown backing alpha");
+    TEST_ASSERT(!plot::text_lcd_draw_is_eligible(
+            static_cast<surface_t>(255), order_t::RGB, 1.0f, true),
+        "invalid draw surfaces should fail closed");
+
+    return true;
+}
+
+bool test_built_in_label_backgrounds_are_opaque_for_lcd()
+{
+    const plot::Color_palette dark = plot::Color_palette::dark();
+    const plot::Color_palette light = plot::Color_palette::light();
+    const auto expected_light_vertical = plot::hex_to_vec4("ff959595");
+
+    TEST_ASSERT(dark.h_label_background.a >= 0.999f,
+        "dark horizontal label background should be opaque for LCD backing");
+    TEST_ASSERT(dark.v_label_background.a >= 0.999f,
+        "dark vertical label background should be opaque for LCD backing");
+    TEST_ASSERT(light.h_label_background.a >= 0.999f,
+        "light horizontal label background should be opaque for LCD backing");
+    TEST_ASSERT(light.v_label_background.a >= 0.999f,
+        "light vertical label background should be opaque for LCD backing");
+    TEST_ASSERT(
+        light.v_label_background.r == expected_light_vertical.r &&
+        light.v_label_background.g == expected_light_vertical.g &&
+        light.v_label_background.b == expected_light_vertical.b,
+        "light vertical label background should preserve RGB while becoming opaque");
+
+    return true;
+}
+
+bool test_plot_config_default_lcd_request_is_auto_but_fails_closed()
+{
+    const plot::Plot_config config;
+    TEST_ASSERT(
+        config.text_lcd_subpixel_order == plot::text_lcd_subpixel_order_t::AUTO,
+        "plot text LCD request should default to AUTO");
+    TEST_ASSERT(
+        plot::text_lcd_effective_order(
+            config.text_lcd_subpixel_order,
+            plot::text_lcd_subpixel_order_t::NONE) == plot::text_lcd_subpixel_order_t::NONE,
+        "default AUTO request should fail closed without a trusted platform order");
+    return true;
+}
+
 } // namespace
 
 int main()
@@ -695,6 +882,9 @@ int main()
     RUN_TEST(test_format_axis_fixed_or_int);
     RUN_TEST(test_time_unit_helpers_handle_edges);
     RUN_TEST(test_horizontal_label_fade_keys_preserve_int64_timestamps);
+    RUN_TEST(test_text_lcd_policy_helpers);
+    RUN_TEST(test_built_in_label_backgrounds_are_opaque_for_lcd);
+    RUN_TEST(test_plot_config_default_lcd_request_is_auto_but_fails_closed);
 
     std::cout << "Results: " << passed << " passed, " << failed << " failed" << std::endl;
     return failed > 0 ? 1 : 0;

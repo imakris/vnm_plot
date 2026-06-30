@@ -6,6 +6,7 @@
 #include <vnm_plot/core/time_grid.h>
 #include <vnm_plot/core/algo.h>
 #include <vnm_plot/core/time_units.h>
+#include "label_pane_geometry.h"
 
 #include <glm/glm.hpp>
 
@@ -132,12 +133,13 @@ void Chrome_renderer::render_grid_and_backgrounds(
     prims.batch_rect(preview_background,
         glm::vec4(0.f, float(ctx.win_h) - float(ctx.adjusted_preview_height), float(ctx.win_w), float(ctx.win_h)));
 
-    prims.batch_rect(h_label_color,
-        glm::vec4(0.f, float(pl.usable_height),
-                  float(ctx.win_w), float(pl.usable_height + ctx.base_label_height_px)));
-    prims.batch_rect(v_label_color,
-        glm::vec4(float(pl.usable_width), 0.f,
-                  float(pl.usable_width + pl.v_bar_width), float(pl.usable_height)));
+    glm::vec4 label_pane_rect;
+    if (detail::horizontal_axis_label_pane_rect(ctx, label_pane_rect)) {
+        prims.batch_rect(h_label_color, label_pane_rect);
+    }
+    if (detail::vertical_axis_label_pane_rect(ctx, label_pane_rect)) {
+        prims.batch_rect(v_label_color, label_pane_rect);
+    }
     prims.batch_rect(separator_color,
         glm::vec4(0.f, float(ctx.win_h) - float(ctx.adjusted_reserved_height),
                   float(ctx.win_w), float(ctx.win_h - ctx.adjusted_reserved_height + 1.0)));

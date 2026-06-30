@@ -1,4 +1,5 @@
 #include <vnm_plot/rhi/font_renderer.h>
+#include <vnm_plot/core/text_lcd.h>
 #include <vnm_plot/rhi/asset_loader.h>
 #include "platform_paths.h"
 #include "rhi_helpers.h"
@@ -27,6 +28,7 @@
 #include <memory>
 #include <mutex>
 #include <sstream>
+#include <type_traits>
 #include <unordered_map>
 #include <vector>
 
@@ -70,7 +72,8 @@ namespace {
 
 struct vertex_buffer_t
 {
-    std::vector<float> vertex_data; // 8 floats per vertex: position, tex coord, tex bounds
+    // 10 floats per vertex: position, tex bounds, local glyph frame rect
+    std::vector<float> vertex_data;
     std::vector<std::uint32_t> index_data;
 };
 
@@ -79,7 +82,28 @@ using msdf_glyph_t = vnm::msdf_text::glyph_t;
 using msdf_kerning_key_t = vnm::msdf_text::kerning_key_t;
 using text_vertex_t = vnm::msdf_text::text_vertex_t;
 
-static_assert(sizeof(text_vertex_t) == 8 * sizeof(float), "MSDF text vertex layout");
+constexpr std::size_t k_text_vertex_float_count = 10u;
+
+struct rhi_text_vertex_t
+{
+    float x = 0.f;
+    float y = 0.f;
+    float s_min = 0.f;
+    float t_min = 0.f;
+    float s_max = 0.f;
+    float t_max = 0.f;
+    float frame_x = 0.f;
+    float frame_y = 0.f;
+    float frame_width = 0.f;
+    float frame_height = 0.f;
+};
+
+static_assert(
+    sizeof(rhi_text_vertex_t) == k_text_vertex_float_count * sizeof(float),
+    "MSDF RHI text vertex layout");
+static_assert(
+    std::is_standard_layout_v<rhi_text_vertex_t>,
+    "MSDF RHI text vertex must remain standard layout");
 
 vertex_buffer_t* vertex_buffer_new(const char*)
 {
@@ -259,19 +283,59 @@ void add_text_to_vectors(
         return;
     }
 
-    std::vector<text_vertex_t> vertices;
+    std::vector<text_vertex_t> source_vertices;
     std::vector<std::uint32_t> indices;
     vnm::msdf_text::append_text_quads(
-        atlas, draw_pixel_height, text, x, y, vertices, &indices);
-    if (vertices.empty() || indices.empty()) {
+        atlas, draw_pixel_height, text, x, y, source_vertices, &indices);
+    if (source_vertices.empty() ||
+        indices.empty() ||
+        source_vertices.size() % 4u != 0u)
+    {
         return;
     }
 
-    if (vertex_data.size() % 8u != 0u) {
+    std::vector<rhi_text_vertex_t> vertices;
+    vertices.reserve(source_vertices.size());
+    for (std::size_t i = 0; i < source_vertices.size(); i += 4u) {
+        const text_vertex_t& a = source_vertices[i + 0u];
+        const text_vertex_t& b = source_vertices[i + 1u];
+        const text_vertex_t& c = source_vertices[i + 2u];
+        const text_vertex_t& d = source_vertices[i + 3u];
+
+        const float frame_left = std::min(std::min(a.x, b.x), std::min(c.x, d.x));
+        const float frame_top = std::min(std::min(a.y, b.y), std::min(c.y, d.y));
+        const float frame_right = std::max(std::max(a.x, b.x), std::max(c.x, d.x));
+        const float frame_bottom = std::max(std::max(a.y, b.y), std::max(c.y, d.y));
+        const float frame_width = frame_right - frame_left;
+        const float frame_height = frame_bottom - frame_top;
+
+        const auto append_vertex = [&](const text_vertex_t& vertex) {
+            vertices.push_back(rhi_text_vertex_t{
+                vertex.x,
+                vertex.y,
+                vertex.s_min,
+                vertex.t_min,
+                vertex.s_max,
+                vertex.t_max,
+                frame_left,
+                frame_top,
+                frame_width,
+                frame_height});
+        };
+
+        append_vertex(a);
+        append_vertex(b);
+        append_vertex(c);
+        append_vertex(d);
+    }
+
+    if (vertex_data.size() % k_text_vertex_float_count != 0u) {
         return;
     }
     quint32 base_vertex = 0;
-    if (!detail::to_qrhi_count(vertex_data.size() / 8u, base_vertex)) {
+    if (!detail::to_qrhi_count(
+            vertex_data.size() / k_text_vertex_float_count, base_vertex))
+    {
         return;
     }
 
@@ -280,10 +344,14 @@ void add_text_to_vectors(
     std::size_t new_index_count = 0;
     std::size_t new_vertex_count = 0;
     quint32 checked_qrhi_value = 0;
-    if (!detail::checked_size_product(vertices.size(), 8u, added_float_count) ||
+    if (!detail::checked_size_product(
+            vertices.size(), k_text_vertex_float_count, added_float_count) ||
         !detail::checked_size_add(vertex_data.size(), added_float_count, new_float_count) ||
         !detail::checked_size_add(index_data.size(), indices.size(), new_index_count) ||
-        !detail::checked_size_add(vertex_data.size() / 8u, vertices.size(), new_vertex_count) ||
+        !detail::checked_size_add(
+            vertex_data.size() / k_text_vertex_float_count,
+            vertices.size(),
+            new_vertex_count) ||
         !detail::to_qrhi_count(new_vertex_count, checked_qrhi_value) ||
         !detail::qrhi_byte_size(new_float_count, sizeof(float), checked_qrhi_value) ||
         !detail::qrhi_byte_size(
@@ -291,13 +359,24 @@ void add_text_to_vectors(
     {
         return;
     }
+    vertex_data.reserve(new_float_count);
     index_data.reserve(new_index_count);
     for (std::uint32_t index : indices) {
         index_data.push_back(base_vertex + index);
     }
 
-    const auto* first = reinterpret_cast<const float*>(vertices.data());
-    vertex_data.insert(vertex_data.end(), first, first + vertices.size() * 8);
+    for (const rhi_text_vertex_t& vertex : vertices) {
+        vertex_data.push_back(vertex.x);
+        vertex_data.push_back(vertex.y);
+        vertex_data.push_back(vertex.s_min);
+        vertex_data.push_back(vertex.t_min);
+        vertex_data.push_back(vertex.s_max);
+        vertex_data.push_back(vertex.t_max);
+        vertex_data.push_back(vertex.frame_x);
+        vertex_data.push_back(vertex.frame_y);
+        vertex_data.push_back(vertex.frame_width);
+        vertex_data.push_back(vertex.frame_height);
+    }
 }
 
 void add_text_to_buffer(const char* text, float x, float y, thread_local_font_resources_t* res)
@@ -718,9 +797,12 @@ struct Text_block_std140
     float color[4] = {};
     float shadow_color[4] = {};
     float px_range = 0.f;
+    float target_width = 0.f;
+    float target_height = 0.f;
     float shadow_radius = 0.f;
     float lcd_subpixel_order = 0.f;
-    float padding[1] = {};
+    std::int32_t framebuffer_y_up = 0;
+    float padding[2] = {};
     float background_color[4] = {};
 };
 
@@ -728,10 +810,13 @@ static_assert(offsetof(Text_block_std140, pmv)              ==  0, "Text UBO pmv
 static_assert(offsetof(Text_block_std140, color)            == 64, "Text UBO color offset");
 static_assert(offsetof(Text_block_std140, shadow_color)     == 80, "Text UBO shadow color offset");
 static_assert(offsetof(Text_block_std140, px_range)         == 96, "Text UBO px_range offset");
-static_assert(offsetof(Text_block_std140, shadow_radius)    == 100, "Text UBO shadow radius offset");
-static_assert(offsetof(Text_block_std140, lcd_subpixel_order) == 104, "Text UBO LCD order offset");
-static_assert(offsetof(Text_block_std140, background_color) == 112, "Text UBO background color offset");
-static_assert(sizeof(Text_block_std140)                     == 128, "Text UBO std140 size");
+static_assert(offsetof(Text_block_std140, target_width)     == 100, "Text UBO target width offset");
+static_assert(offsetof(Text_block_std140, target_height)    == 104, "Text UBO target height offset");
+static_assert(offsetof(Text_block_std140, shadow_radius)    == 108, "Text UBO shadow radius offset");
+static_assert(offsetof(Text_block_std140, lcd_subpixel_order) == 112, "Text UBO LCD order offset");
+static_assert(offsetof(Text_block_std140, framebuffer_y_up) == 116, "Text UBO framebuffer y-up offset");
+static_assert(offsetof(Text_block_std140, background_color) == 128, "Text UBO background color offset");
+static_assert(sizeof(Text_block_std140)                     == 144, "Text UBO std140 size");
 
 constexpr std::uint32_t k_text_ubo_bytes = sizeof(Text_block_std140);
 
@@ -749,24 +834,6 @@ enum class rhi_text_pass_t : std::uint8_t
     SHADOW,
     FOREGROUND,
 };
-
-float text_lcd_shader_value(text_lcd_subpixel_order_t order)
-{
-    switch (order) {
-        case text_lcd_subpixel_order_t::RGB:
-            return 1.0f;
-        case text_lcd_subpixel_order_t::BGR:
-            return 2.0f;
-        case text_lcd_subpixel_order_t::VRGB:
-            return 3.0f;
-        case text_lcd_subpixel_order_t::VBGR:
-            return 4.0f;
-        case text_lcd_subpixel_order_t::NONE:
-            return 0.0f;
-    }
-
-    return 0.0f;
-}
 
 struct rhi_text_draw_op_t
 {
@@ -881,7 +948,7 @@ void Font_renderer::initialize(Asset_loader& asset_loader, int pixel_height, boo
     auto& resources = thread_local_resources();
     if (force_rebuild || resources.m_pixel_height != pixel_height) {
         resources.destroy_resources();
-        resources.m_buffer = vertex_buffer_new("vertex:2f,tex_coord:2f,tex_bounds:4f");
+        resources.m_buffer = vertex_buffer_new("vertex:2f,tex_bounds:4f,frame_rect:4f");
     }
     if (!m_impl->m_font_cache) {
         m_impl->m_resources = nullptr;
@@ -932,6 +999,36 @@ float Font_renderer::measure_text_px(const char* text) const
     }
     return vnm::msdf_text::measure_text_advance_px(
         *atlas, m_impl->current_draw_pixel_height(), text);
+}
+
+bool Font_renderer::text_visual_bounds_px(const char* text, float x, float y, glm::vec4& bounds) const
+{
+    const msdf_atlas_t* atlas = m_impl->current_atlas();
+    if (!text || !atlas) {
+        return false;
+    }
+
+    const vnm::msdf_text::text_bounds_t measured =
+        vnm::msdf_text::measure_text_bounds_px(
+            *atlas,
+            m_impl->current_draw_pixel_height(),
+            text);
+    if (!measured.has_visible_glyphs) {
+        return false;
+    }
+
+    bounds = glm::vec4(
+        x + measured.left,
+        y + measured.top,
+        x + measured.right,
+        y + measured.bottom);
+    return
+        std::isfinite(bounds.x) &&
+        std::isfinite(bounds.y) &&
+        std::isfinite(bounds.z) &&
+        std::isfinite(bounds.w) &&
+        bounds.z > bounds.x &&
+        bounds.w > bounds.y;
 }
 
 std::uint64_t Font_renderer::text_measure_cache_key() const
@@ -1030,6 +1127,16 @@ void Font_renderer::rhi_queue_draw(
     const glm::mat4& pmv,
     const glm::vec4& color,
     const text_scissor_t& scissor,
+    const text_shadow_t& shadow)
+{
+    rhi_queue_draw(ctx, pmv, color, scissor, shadow, {});
+}
+
+void Font_renderer::rhi_queue_draw(
+    const frame_context_t& ctx,
+    const glm::mat4& pmv,
+    const glm::vec4& color,
+    const text_scissor_t& scissor,
     const text_shadow_t& shadow,
     const text_lcd_t& lcd)
 {
@@ -1044,8 +1151,8 @@ void Font_renderer::rhi_queue_draw(
 
     const std::size_t vertex_start_float_count =
         m_impl->m_rhi_frame_vertex_data.size();
-    if (vertex_start_float_count % 8u != 0u ||
-        m_impl->m_rhi_vertex_data.size() % 8u != 0u)
+    if (vertex_start_float_count % k_text_vertex_float_count != 0u ||
+        m_impl->m_rhi_vertex_data.size() % k_text_vertex_float_count != 0u)
     {
         m_impl->m_rhi_vertex_data.clear();
         m_impl->m_rhi_index_data.clear();
@@ -1057,7 +1164,8 @@ void Font_renderer::rhi_queue_draw(
     quint32 index_count = 0;
     if (!detail::to_qrhi_count(
             m_impl->m_rhi_frame_index_data.size(), index_start) ||
-        !detail::to_qrhi_count(vertex_start_float_count / 8u, base_vertex) ||
+        !detail::to_qrhi_count(
+            vertex_start_float_count / k_text_vertex_float_count, base_vertex) ||
         !detail::to_qrhi_count(m_impl->m_rhi_index_data.size(), index_count))
     {
         m_impl->m_rhi_vertex_data.clear();
@@ -1078,8 +1186,8 @@ void Font_renderer::rhi_queue_draw(
             m_impl->m_rhi_index_data.size(),
             new_index_count) ||
         !detail::checked_size_add(
-            vertex_start_float_count / 8u,
-            m_impl->m_rhi_vertex_data.size() / 8u,
+            vertex_start_float_count / k_text_vertex_float_count,
+            m_impl->m_rhi_vertex_data.size() / k_text_vertex_float_count,
             queued_vertex_count) ||
         !detail::to_qrhi_count(queued_vertex_count, checked_qrhi_bytes) ||
         !detail::qrhi_byte_size(
@@ -1213,6 +1321,11 @@ void Font_renderer::rhi_queue_draw(
     };
 
     const bool has_shadow = shadow.radius_px > 0.0f && shadow.color.a > 0.0f;
+    text_lcd_t effective_lcd = lcd;
+    if (has_shadow) {
+        effective_lcd.subpixel_order = text_lcd_subpixel_order_t::NONE;
+    }
+
     const std::size_t first_call_index = acquire_call();
     if (first_call_index == std::numeric_limits<std::size_t>::max()) {
         m_impl->m_rhi_vertex_data.clear();
@@ -1268,18 +1381,18 @@ void Font_renderer::rhi_queue_draw(
 
         QRhiVertexInputLayout vlayout;
         QRhiVertexInputBinding binding(
-            static_cast<quint32>(sizeof(text_vertex_t)));
+            static_cast<quint32>(sizeof(rhi_text_vertex_t)));
         QRhiVertexInputAttribute position(
             0, 0, QRhiVertexInputAttribute::Float2,
-            static_cast<quint32>(offsetof(text_vertex_t, x)));
-        QRhiVertexInputAttribute tex_coord(
-            0, 1, QRhiVertexInputAttribute::Float2,
-            static_cast<quint32>(offsetof(text_vertex_t, s)));
+            static_cast<quint32>(offsetof(rhi_text_vertex_t, x)));
         QRhiVertexInputAttribute tex_bounds(
+            0, 1, QRhiVertexInputAttribute::Float4,
+            static_cast<quint32>(offsetof(rhi_text_vertex_t, s_min)));
+        QRhiVertexInputAttribute frame_rect(
             0, 2, QRhiVertexInputAttribute::Float4,
-            static_cast<quint32>(offsetof(text_vertex_t, s_min)));
+            static_cast<quint32>(offsetof(rhi_text_vertex_t, frame_x)));
         vlayout.setBindings({binding});
-        vlayout.setAttributes({position, tex_coord, tex_bounds});
+        vlayout.setAttributes({position, tex_bounds, frame_rect});
 
         rhi_state.pipeline.reset(rhi->newGraphicsPipeline());
         rhi_state.pipeline->setShaderStages({
@@ -1329,12 +1442,16 @@ void Font_renderer::rhi_queue_draw(
         block.shadow_color[3] = draw_shadow.color.a;
         block.px_range = vnm::msdf_text::px_range_for_pixel_height(
             cached.atlas, cached.draw_pixel_height);
+        block.target_width = static_cast<float>(std::max(1, ctx.win_w));
+        block.target_height = static_cast<float>(std::max(1, ctx.win_h));
         block.shadow_radius = draw_shadow.radius_px;
-        block.lcd_subpixel_order = text_lcd_shader_value(lcd.subpixel_order);
-        block.background_color[0] = lcd.background_color.r;
-        block.background_color[1] = lcd.background_color.g;
-        block.background_color[2] = lcd.background_color.b;
-        block.background_color[3] = lcd.background_color.a;
+        block.lcd_subpixel_order = text_lcd_shader_uniform_value(effective_lcd.subpixel_order);
+        block.framebuffer_y_up =
+            (ctx.rhi && ctx.rhi->isYUpInFramebuffer()) ? 1 : 0;
+        block.background_color[0] = effective_lcd.background_color.r;
+        block.background_color[1] = effective_lcd.background_color.g;
+        block.background_color[2] = effective_lcd.background_color.b;
+        block.background_color[3] = effective_lcd.background_color.a;
         updates->updateDynamicBuffer(call.ubo.get(), 0, sizeof(block), &block);
 
         rhi_text_draw_op_t op{};

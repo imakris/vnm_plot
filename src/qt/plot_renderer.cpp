@@ -1,9 +1,11 @@
 #include "plot_renderer.h"
+#include "text_lcd_resolver.h"
 #include <vnm_plot/qt/plot_widget.h>
 #include <vnm_plot/core/color_palette.h>
 #include <vnm_plot/core/constants.h>
 #include <vnm_plot/core/layout_calculator.h>
 #include <vnm_plot/core/plot_config.h>
+#include <vnm_plot/core/text_lcd.h>
 #include <vnm_plot/rhi/asset_loader.h>
 #include <vnm_plot/rhi/chrome_renderer.h>
 #include <vnm_plot/rhi/font_renderer.h>
@@ -11,6 +13,7 @@
 #include <vnm_plot/rhi/series_renderer.h>
 #include <vnm_plot/rhi/text_renderer.h>
 #include "../core/frame_range_planner.h"
+#include "../core/label_pane_geometry.h"
 
 #include <QColor>
 #include <QMatrix4x4>
@@ -43,6 +46,32 @@ glm::vec4 qcolor_to_vec4(const QColor& color)
         static_cast<float>(color.greenF()),
         static_cast<float>(color.blueF()),
         static_cast<float>(color.alphaF()));
+}
+
+struct label_pane_opacity_t
+{
+    bool vertical_axis_label_pane_is_opaque   = false;
+    bool horizontal_axis_label_pane_is_opaque = false;
+};
+
+bool color_is_opaque(const glm::vec4& color)
+{
+    return color.a >= 0.999f;
+}
+
+label_pane_opacity_t label_pane_opacity_for_text(const frame_context_t& ctx)
+{
+    const Color_palette palette = resolved_color_palette(ctx.config, ctx.dark_mode);
+
+    glm::vec4 pane_rect;
+    label_pane_opacity_t opacity;
+    opacity.horizontal_axis_label_pane_is_opaque =
+        color_is_opaque(palette.h_label_background) &&
+        detail::horizontal_axis_label_pane_rect(ctx, pane_rect);
+    opacity.vertical_axis_label_pane_is_opaque =
+        color_is_opaque(palette.v_label_background) &&
+        detail::vertical_axis_label_pane_rect(ctx, pane_rect);
+    return opacity;
 }
 
 Layout_calculator::parameters_t build_layout_params(
@@ -118,6 +147,8 @@ struct Plot_renderer::impl_t
         double         adjusted_preview_height = 0.0;
         double         vbar_width_pixels = 0.0;
         glm::vec4      window_background = glm::vec4(0.f, 0.f, 0.f, 1.f);
+        text_lcd_subpixel_order_t platform_text_lcd_subpixel_order =
+            text_lcd_subpixel_order_t::NONE;
         std::uint64_t  config_revision = 0;
     };
 
@@ -192,6 +223,10 @@ void Plot_renderer::synchronize(QQuickRhiItem* item)
     if (QQuickWindow* window = widget->window()) {
         m_impl->snapshot.window_background = qcolor_to_vec4(window->color());
     }
+    m_impl->snapshot.platform_text_lcd_subpixel_order =
+        resolve_text_lcd_subpixel_order_for_window(
+            m_impl->snapshot.config.text_lcd_subpixel_order,
+            widget->window());
     m_impl->snapshot.config_revision = widget->m_config_revision.load(std::memory_order_acquire);
 }
 
@@ -205,6 +240,11 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
 
     const auto& snapshot = m_impl->snapshot;
     const Plot_config& config = snapshot.config;
+    Plot_config frame_config = config;
+    frame_config.text_lcd_subpixel_order = text_lcd_effective_order_for_frame(
+        config.text_lcd_subpixel_order,
+        snapshot.platform_text_lcd_subpixel_order,
+        rt->sampleCount());
     vnm::plot::Profiler* profiler = config.profiler.get();
     const auto callback_now = std::chrono::steady_clock::now();
     if (profiler && m_impl->last_render_callback.time_since_epoch().count() != 0) {
@@ -417,7 +457,7 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
     ctx.visible_info_flags = snapshot.visible_info_flags;
     ctx.dark_mode = config.dark_mode;
     ctx.plot_body_background = plot_body_background;
-    ctx.config = &config;
+    ctx.config = &frame_config;
     ctx.rhi = rhi_ptr;
     ctx.cb = cb;
     ctx.render_target = rt;
@@ -456,7 +496,13 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
 
 #if defined(VNM_PLOT_ENABLE_TEXT)
         if (m_impl->text && config.show_text) {
-            m_impl->text->prepare(ctx, false, false);
+            const label_pane_opacity_t pane_opacity = label_pane_opacity_for_text(ctx);
+            m_impl->text->prepare(
+                ctx,
+                false,
+                false,
+                pane_opacity.vertical_axis_label_pane_is_opaque,
+                pane_opacity.horizontal_axis_label_pane_is_opaque);
         }
 #endif
 

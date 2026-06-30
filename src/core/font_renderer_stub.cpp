@@ -65,6 +65,11 @@ float Font_renderer::measure_text_px(const char*) const
     return 0.0f;
 }
 
+bool Font_renderer::text_visual_bounds_px(const char*, float, float, glm::vec4&) const
+{
+    return false;
+}
+
 std::uint64_t Font_renderer::text_measure_cache_key() const
 {
     return 0;
@@ -106,6 +111,17 @@ void Font_renderer::rhi_queue_draw(
     const glm::vec4&,
     const text_scissor_t&,
     const text_shadow_t&)
+{
+    // No-op in stub.
+}
+
+void Font_renderer::rhi_queue_draw(
+    const frame_context_t&,
+    const glm::mat4&,
+    const glm::vec4&,
+    const text_scissor_t&,
+    const text_shadow_t&,
+    const text_lcd_t&)
 {
     // No-op in stub.
 }

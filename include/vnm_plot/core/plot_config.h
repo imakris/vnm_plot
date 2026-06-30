@@ -6,6 +6,7 @@
 // still being customizable by the host application.
 
 #include <vnm_plot/core/color_palette.h>
+#include <vnm_plot/core/text_lcd.h>
 #include <vnm_plot/core/time_units.h>
 
 #include <cstdint>
@@ -169,6 +170,8 @@ struct Plot_config
     // When true, padding cannot pull a nonnegative auto-computed range below zero.
     bool floor_nonnegative_auto_v_range_at_zero = false;
 
+    // --- Text LCD ---
+    text_lcd_subpixel_order_t text_lcd_subpixel_order = text_lcd_subpixel_order_t::AUTO;
 };
 
 inline Color_palette resolved_color_palette(const Plot_config* config, bool dark_mode)

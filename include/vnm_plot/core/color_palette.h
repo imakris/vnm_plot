@@ -69,7 +69,7 @@ struct Color_palette
         Color_palette p;
         p.background                  = hex_to_vec4("ffffffff");
         p.h_label_background          = hex_to_vec4("ffbadaef");
-        p.v_label_background          = hex_to_vec4("cc959595");
+        p.v_label_background          = hex_to_vec4("ff959595");
         p.preview_background          = hex_to_vec4("ffeeeeee");
         p.separator                   = hex_to_vec4("ff999999");
         p.grid_line                   = hex_to_vec4("ff000000");

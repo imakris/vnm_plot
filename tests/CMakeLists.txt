@@ -19,12 +19,16 @@ set(_vnm_plot_rhi_tests
     test_core_algo
     test_asset_loader
     test_rhi_helpers
+    test_label_pane_geometry
     test_qrhi_layer_lifecycle
     test_qrhi_public_api
 )
 
 if(VNM_PLOT_ENABLE_TEXT)
-    list(APPEND _vnm_plot_rhi_tests test_font_disk_cache)
+    list(APPEND _vnm_plot_rhi_tests
+        test_font_disk_cache
+        test_font_renderer_bounds
+    )
     target_compile_definitions(vnm_plot_rhi PRIVATE VNM_PLOT_ENABLE_TEST_HOOKS=1)
 endif()
 
@@ -78,10 +82,25 @@ if(TARGET vnm_plot_qtquick)
 
     add_executable(test_plot_time_axis test_plot_time_axis.cpp)
     target_link_libraries(test_plot_time_axis PRIVATE vnm_plot::qtquick)
+
+    add_executable(test_text_lcd_resolver test_text_lcd_resolver.cpp)
+    target_link_libraries(test_text_lcd_resolver
+        PRIVATE
+            vnm_plot::qtquick
+            Qt6::GuiPrivate
+            Qt6::Gui
+    )
+    target_include_directories(test_text_lcd_resolver PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/qt
+    )
 endif()
 
 if(TARGET vnm_plot_qtquick)
-    set_target_properties(test_plot_interaction_item test_plot_time_axis PROPERTIES
+    set_target_properties(
+        test_plot_interaction_item
+        test_plot_time_axis
+        test_text_lcd_resolver
+        PROPERTIES
         CXX_STANDARD 17
         CXX_STANDARD_REQUIRED ON
     )
@@ -107,15 +126,20 @@ vnm_plot_add_test(GpuSampleOrigin test_gpu_sample_origin)
 vnm_plot_add_test(LayoutCalculator test_layout_calculator)
 vnm_plot_add_test(TimeGrid test_time_grid)
 vnm_plot_add_test(RhiHelpers test_rhi_helpers)
+vnm_plot_add_test(LabelPaneGeometry test_label_pane_geometry)
 vnm_plot_add_test(QrhiLayerLifecycle test_qrhi_layer_lifecycle)
 vnm_plot_add_test(QrhiPublicApi test_qrhi_public_api)
 if(TARGET test_font_disk_cache)
     vnm_plot_add_test(FontDiskCache test_font_disk_cache)
 endif()
+if(TARGET test_font_renderer_bounds)
+    vnm_plot_add_test(FontRendererBounds test_font_renderer_bounds)
+endif()
 
 if(TARGET vnm_plot_qtquick)
     vnm_plot_add_test(PlotInteractionItem test_plot_interaction_item)
     vnm_plot_add_test(PlotTimeAxis test_plot_time_axis)
+    vnm_plot_add_test(TextLcdResolver test_text_lcd_resolver)
 endif()
 
 if(WIN32)
@@ -157,6 +181,9 @@ if(WIN32)
     endif()
     if(TARGET test_plot_time_axis)
         list(APPEND _vnm_plot_windows_test_targets test_plot_time_axis)
+    endif()
+    if(TARGET test_text_lcd_resolver)
+        list(APPEND _vnm_plot_windows_test_targets test_text_lcd_resolver)
     endif()
 
     set(_vnm_plot_windows_test_runtime_dir "${CMAKE_CURRENT_BINARY_DIR}")
@@ -236,4 +263,5 @@ endforeach()
 if(TARGET vnm_plot_qtquick)
     message(STATUS "  - test_plot_interaction_item")
     message(STATUS "  - test_plot_time_axis")
+    message(STATUS "  - test_text_lcd_resolver")
 endif()

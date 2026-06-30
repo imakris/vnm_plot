@@ -29,6 +29,14 @@ public:
 
     // QRhi path: build all text draw batches and upload resources before beginPass().
     bool prepare(const frame_context_t& ctx, bool fade_v_labels, bool fade_h_labels);
+    // Pane opacity inputs describe chrome panes already queued for this frame;
+    // false keeps LCD disabled for that axis label surface.
+    bool prepare(
+        const frame_context_t& ctx,
+        bool fade_v_labels,
+        bool fade_h_labels,
+        bool vertical_axis_label_pane_is_opaque,
+        bool horizontal_axis_label_pane_is_opaque);
 
     // QRhi path: record the prepared text draw calls inside the active pass.
     void record(const frame_context_t& ctx);
@@ -70,8 +78,14 @@ private:
     vertical_axis_fade_tracker_t m_vertical_fade;
     horizontal_axis_fade_tracker_t m_horizontal_fade;
 
-    bool render_axis_labels(const frame_context_t& ctx, bool fade_labels);
-    bool render_info_overlay(const frame_context_t& ctx, bool fade_labels);
+    bool render_axis_labels(
+        const frame_context_t& ctx,
+        bool fade_labels,
+        bool vertical_axis_label_pane_is_opaque = false);
+    bool render_info_overlay(
+        const frame_context_t& ctx,
+        bool fade_labels,
+        bool horizontal_axis_label_pane_is_opaque = false);
 };
 
 } // namespace vnm::plot

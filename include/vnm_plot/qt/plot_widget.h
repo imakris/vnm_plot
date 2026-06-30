@@ -25,6 +25,8 @@
 #include <utility>
 #include <vector>
 
+class QQuickWindow;
+
 namespace vnm::plot {
 
 class Plot_renderer;
@@ -324,6 +326,8 @@ private:
     void set_rendered_t_range(qint64 t_min_ns, qint64 t_max_ns) const;
     void sync_time_axis_state();
     void clear_time_axis();
+    void handle_window_changed(QQuickWindow* window);
+    void invalidate_display_context();
     void apply_vbar_width_target(double px, bool publish_shared = false);
     void publish_measured_vbar_width(double px) const;
 
@@ -332,6 +336,7 @@ private:
     QMetaObject::Connection m_time_axis_destroyed_connection;
     QMetaObject::Connection m_time_axis_vbar_connection;
     QMetaObject::Connection m_time_axis_sync_vbar_connection;
+    QMetaObject::Connection m_window_screen_connection;
 };
 
 } // namespace vnm::plot

@@ -1,9 +1,11 @@
 #include <vnm_plot/rhi/text_renderer.h>
+#include <vnm_plot/core/color_palette.h>
 #include <vnm_plot/core/constants.h>
 #include <vnm_plot/core/plot_config.h>
+#include <vnm_plot/core/text_lcd.h>
 #include <vnm_plot/rhi/font_renderer.h>
 #include <vnm_plot/core/time_units.h>
-#include "rhi_helpers.h"
+#include "label_pane_geometry.h"
 
 #include <glm/glm.hpp>
 
@@ -26,13 +28,49 @@ using detail::k_value_decimals;
 
 namespace {
 
-using detail::to_int_rounded;
-using detail::to_positive_int;
-
 constexpr float k_text_shadow_alpha = 0.76f;
 constexpr float k_text_shadow_min_radius_px = 1.05f;
 constexpr float k_text_shadow_max_radius_px = 2.25f;
 constexpr float k_text_shadow_radius_factor = 0.19f;
+
+bool rect_contains(const glm::vec4& outer, const glm::vec4& inner)
+{
+    return
+        outer.x <= inner.x &&
+        outer.y <= inner.y &&
+        outer.z >= inner.z &&
+        outer.w >= inner.w;
+}
+
+bool fit_rect_vertically_within(glm::vec4& rect, float& baseline_y, const glm::vec4& clip)
+{
+    const float clip_height = clip.w - clip.y;
+    const float rect_height = rect.w - rect.y;
+    if (!(clip_height > 0.0f) || !(rect_height > 0.0f) || rect_height > clip_height) {
+        return rect_contains(clip, rect);
+    }
+
+    float dy = 0.0f;
+    if (rect.y < clip.y) {
+        dy = clip.y - rect.y;
+    }
+    if (rect.w + dy > clip.w) {
+        dy += clip.w - (rect.w + dy);
+    }
+
+    const glm::vec4 shifted(
+        rect.x,
+        rect.y + dy,
+        rect.z,
+        rect.w + dy);
+    if (!rect_contains(clip, shifted)) {
+        return false;
+    }
+
+    rect = shifted;
+    baseline_y += dy;
+    return true;
+}
 
 glm::vec4 text_color_for_theme(bool dark_mode)
 {
@@ -51,6 +89,29 @@ text_shadow_t text_shadow_for_background(const glm::vec4& background, double fon
         k_text_shadow_min_radius_px,
         k_text_shadow_max_radius_px);
     return shadow;
+}
+
+text_lcd_subpixel_order_t text_lcd_frame_order(const frame_context_t& ctx)
+{
+    const text_lcd_subpixel_order_t requested = ctx.config
+        ? ctx.config->text_lcd_subpixel_order
+        : text_lcd_subpixel_order_t::NONE;
+    // Direct-RHI/manual callers may bypass the Qt frame resolver, so AUTO is
+    // intentionally collapsed again before draw queuing.
+    return text_lcd_effective_order(requested, text_lcd_subpixel_order_t::NONE);
+}
+
+text_lcd_t text_lcd_for_background(
+    const frame_context_t& ctx,
+    const glm::vec4& background,
+    bool draw_lcd_eligible)
+{
+    text_lcd_t lcd;
+    lcd.subpixel_order = draw_lcd_eligible
+        ? text_lcd_frame_order(ctx)
+        : text_lcd_subpixel_order_t::NONE;
+    lcd.background_color = background;
+    return lcd;
 }
 
 template <typename Labels, typename Tracker, typename KeyFunc, typename DrawFunc>
@@ -165,14 +226,24 @@ bool Text_renderer::render(const frame_context_t& ctx, bool fade_v_labels, bool 
 
 bool Text_renderer::prepare(const frame_context_t& ctx, bool fade_v_labels, bool fade_h_labels)
 {
+    return prepare(ctx, fade_v_labels, fade_h_labels, false, false);
+}
+
+bool Text_renderer::prepare(
+    const frame_context_t& ctx,
+    bool fade_v_labels,
+    bool fade_h_labels,
+    bool vertical_axis_label_pane_is_opaque,
+    bool horizontal_axis_label_pane_is_opaque)
+{
     if (!m_fonts) {
         return false;
     }
 
     m_fonts->rhi_begin_frame();
     bool any_active = false;
-    any_active |= render_axis_labels(ctx, fade_v_labels);
-    any_active |= render_info_overlay(ctx, fade_h_labels);
+    any_active |= render_axis_labels(ctx, fade_v_labels, vertical_axis_label_pane_is_opaque);
+    any_active |= render_info_overlay(ctx, fade_h_labels, horizontal_axis_label_pane_is_opaque);
     m_fonts->rhi_finalize_frame(ctx);
     return any_active;
 }
@@ -184,34 +255,51 @@ void Text_renderer::record(const frame_context_t& ctx)
     }
 }
 
-bool Text_renderer::render_axis_labels(const frame_context_t& ctx, bool fade_labels)
+bool Text_renderer::render_axis_labels(
+    const frame_context_t& ctx,
+    bool fade_labels,
+    bool vertical_axis_label_pane_is_opaque)
 {
     const auto& pl = ctx.layout;
     const bool dark_mode = ctx.dark_mode;
     const glm::vec4 font_color = text_color_for_theme(dark_mode);
+    const Color_palette palette = resolved_color_palette(ctx.config, dark_mode);
+    const text_lcd_subpixel_order_t frame_order = text_lcd_frame_order(ctx);
+    const bool label_lcd_possible = text_lcd_draw_is_eligible(
+        text_lcd_draw_surface_t::VERTICAL_AXIS_LABEL,
+        frame_order,
+        palette.v_label_background.a,
+        vertical_axis_label_pane_is_opaque);
 
-    const float right_edge_x = static_cast<float>(pl.usable_width + pl.v_bar_width - k_v_label_horizontal_padding_px);
+    const float right_edge_x = static_cast<float>(
+        pl.usable_width + pl.v_bar_width - k_v_label_horizontal_padding_px);
     const float min_x = static_cast<float>(pl.usable_width + k_text_margin_px);
     const float baseline_off = m_fonts->baseline_offset_px();
     const double v_span = double(ctx.v1) - double(ctx.v0);
 
-    text_scissor_t rhi_scissor;
+    text_scissor_t label_scissor;
+    glm::vec4 label_backing_rect;
+    bool have_label_backing = false;
     if (ctx.rhi) {
-        int scissor_x = 0;
-        int scissor_y = 0;
-        int scissor_w = 0;
-        int scissor_h = 0;
-        if (!to_int_rounded(pl.usable_width, scissor_x) ||
-            !to_int_rounded(double(ctx.win_h) - double(pl.usable_height), scissor_y) ||
-            !to_positive_int(pl.v_bar_width, scissor_w) ||
-            !to_positive_int(pl.usable_height, scissor_h)) {
-            return true;
+        have_label_backing =
+            detail::vertical_axis_label_pane_rect(ctx, label_backing_rect) &&
+            detail::framebuffer_scissor_from_top_left_rect(
+                label_backing_rect, ctx.win_w, ctx.win_h, label_scissor);
+        if (!label_scissor.enabled) {
+            if (fade_labels) {
+                return update_and_draw_faded_labels(
+                    pl.v_labels,
+                    m_vertical_fade,
+                    k_label_fade_duration_ms,
+                    [](const v_label_t& label) { return label.value; },
+                    [](double, const label_fade_state_t&) {});
+            }
+            const auto now = std::chrono::steady_clock::now();
+            m_vertical_fade.states.clear();
+            m_vertical_fade.last_update = now;
+            m_vertical_fade.initialized = true;
+            return false;
         }
-        rhi_scissor.enabled = true;
-        rhi_scissor.x      = scissor_x;
-        rhi_scissor.y      = scissor_y;
-        rhi_scissor.width  = scissor_w;
-        rhi_scissor.height = scissor_h;
     }
 
     const auto draw_label = [&](double value, const label_fade_state_t& state) {
@@ -236,13 +324,35 @@ bool Text_renderer::render_axis_labels(const frame_context_t& ctx, bool fade_lab
         const float snapped_x = std::floor(pen_x + k_pixel_snap);
         const float snapped_y = std::floor(pen_y + k_pixel_snap);
 
-        m_fonts->batch_text(snapped_x, snapped_y, state.text.c_str());
-        if (fade_labels) {
-            if (ctx.rhi) {
-                glm::vec4 color = font_color;
-                color.a *= state.alpha;
-                m_fonts->rhi_queue_draw(ctx, ctx.pmv, color, rhi_scissor);
+        glm::vec4 text_bounds;
+        bool have_text_bounds = false;
+        bool text_fits_label_backing = false;
+        if (label_lcd_possible &&
+            label_scissor.enabled &&
+            have_label_backing &&
+            state.alpha >= 0.999f)
+        {
+            have_text_bounds = m_fonts->text_visual_bounds_px(
+                state.text.c_str(), snapped_x, snapped_y, text_bounds);
+            if (have_text_bounds) {
+                text_fits_label_backing = rect_contains(label_backing_rect, text_bounds);
             }
+        }
+
+        m_fonts->batch_text(snapped_x, snapped_y, state.text.c_str());
+        if (ctx.rhi) {
+            const bool label_lcd_eligible =
+                label_lcd_possible &&
+                label_scissor.enabled &&
+                state.alpha >= 0.999f &&
+                text_fits_label_backing;
+            const text_lcd_t label_lcd =
+                text_lcd_for_background(ctx, palette.v_label_background, label_lcd_eligible);
+            glm::vec4 color = font_color;
+            if (fade_labels) {
+                color.a *= state.alpha;
+            }
+            m_fonts->rhi_queue_draw(ctx, ctx.pmv, color, label_scissor, {}, label_lcd);
         }
     };
 
@@ -270,19 +380,40 @@ bool Text_renderer::render_axis_labels(const frame_context_t& ctx, bool fade_lab
         m_vertical_fade.initialized = true;
     }
 
-    if (!fade_labels) {
-        if (ctx.rhi) {
-            m_fonts->rhi_queue_draw(ctx, ctx.pmv, font_color, rhi_scissor);
-        }
-    }
     return any_active;
 }
 
-bool Text_renderer::render_info_overlay(const frame_context_t& ctx, bool fade_labels)
+bool Text_renderer::render_info_overlay(
+    const frame_context_t& ctx,
+    bool fade_labels,
+    bool horizontal_axis_label_pane_is_opaque)
 {
     const auto& pl = ctx.layout;
     const bool dark_mode = ctx.dark_mode;
     const glm::vec4 font_color = text_color_for_theme(dark_mode);
+    const Color_palette palette = resolved_color_palette(ctx.config, dark_mode);
+    const text_lcd_subpixel_order_t frame_order = text_lcd_frame_order(ctx);
+    const bool label_lcd_possible = text_lcd_draw_is_eligible(
+        text_lcd_draw_surface_t::HORIZONTAL_AXIS_LABEL,
+        frame_order,
+        palette.h_label_background.a,
+        horizontal_axis_label_pane_is_opaque);
+    const bool overlay_lcd_eligible = text_lcd_draw_is_eligible(
+        text_lcd_draw_surface_t::SHADOWED_TEXT,
+        frame_order,
+        ctx.plot_body_background.a,
+        false);
+    text_scissor_t label_scissor;
+    glm::vec4 label_backing_rect;
+    bool have_label_backing = false;
+    if (ctx.rhi) {
+        have_label_backing =
+            detail::horizontal_axis_label_pane_rect(ctx, label_backing_rect) &&
+            detail::framebuffer_scissor_from_top_left_rect(
+                label_backing_rect, ctx.win_w, ctx.win_h, label_scissor);
+    }
+    const text_lcd_t overlay_lcd =
+        text_lcd_for_background(ctx, ctx.plot_body_background, overlay_lcd_eligible);
     const text_shadow_t overlay_shadow =
         text_shadow_for_background(ctx.plot_body_background, ctx.adjusted_font_px);
     const auto t_span = positive_span_ns_as_long_double(ctx.t0, ctx.t1);
@@ -298,15 +429,41 @@ bool Text_renderer::render_info_overlay(const frame_context_t& ctx, bool fade_la
         const float x_anchor = static_cast<float>(
             t_delta * px_per_unit);
         const float pen_x = x_anchor + k_text_margin_px;
-        const float pen_y = static_cast<float>(pl.usable_height + k_h_label_vertical_nudge_px * ctx.adjusted_font_px);
+        float pen_y = static_cast<float>(
+            pl.usable_height + k_h_label_vertical_nudge_px * ctx.adjusted_font_px);
+
+        glm::vec4 text_bounds;
+        bool have_text_bounds = false;
+        bool text_fits_label_scissor = false;
+        bool text_fits_label_backing = false;
+        if (ctx.rhi && label_scissor.enabled && have_label_backing) {
+            have_text_bounds = m_fonts->text_visual_bounds_px(
+                state.text.c_str(), pen_x, pen_y, text_bounds);
+            if (have_text_bounds) {
+                text_fits_label_scissor =
+                    fit_rect_vertically_within(text_bounds, pen_y, label_backing_rect);
+                text_fits_label_backing =
+                    text_fits_label_scissor &&
+                    rect_contains(label_backing_rect, text_bounds);
+            }
+        }
 
         m_fonts->batch_text(pen_x, pen_y, state.text.c_str());
-        if (fade_labels) {
-            if (ctx.rhi) {
-                glm::vec4 color = font_color;
+        if (ctx.rhi) {
+            const bool label_lcd_eligible =
+                label_lcd_possible &&
+                label_scissor.enabled &&
+                state.alpha >= 0.999f &&
+                text_fits_label_backing;
+            const text_lcd_t label_lcd =
+                text_lcd_for_background(ctx, palette.h_label_background, label_lcd_eligible);
+            glm::vec4 color = font_color;
+            if (fade_labels) {
                 color.a *= state.alpha;
-                m_fonts->rhi_queue_draw(ctx, ctx.pmv, color);
             }
+            const text_scissor_t draw_scissor =
+                label_scissor.enabled ? label_scissor : text_scissor_t{};
+            m_fonts->rhi_queue_draw(ctx, ctx.pmv, color, draw_scissor, {}, label_lcd);
         }
     };
 
@@ -333,12 +490,6 @@ bool Text_renderer::render_info_overlay(const frame_context_t& ctx, bool fade_la
         }
         m_horizontal_fade.last_update = now;
         m_horizontal_fade.initialized = true;
-    }
-
-    if (!fade_labels) {
-        if (ctx.rhi) {
-            m_fonts->rhi_queue_draw(ctx, ctx.pmv, font_color);
-        }
     }
 
     const bool show_value_range =
@@ -421,7 +572,7 @@ bool Text_renderer::render_info_overlay(const frame_context_t& ctx, bool fade_la
 
     if (overlay_line_count > 0) {
         if (ctx.rhi) {
-            m_fonts->rhi_queue_draw(ctx, ctx.pmv, font_color, {}, overlay_shadow);
+            m_fonts->rhi_queue_draw(ctx, ctx.pmv, font_color, {}, overlay_shadow, overlay_lcd);
         }
     }
     return any_active;

@@ -6,16 +6,20 @@ layout(std140, binding = 0) uniform Block
     vec4  color;
     vec4  shadow_color;
     float px_range;
+    float target_width;
+    float target_height;
     float shadow_radius;
     float lcd_subpixel_order;
-    float padding;
+    int   framebuffer_y_up;
+    float padding_0;
+    float padding_1;
     vec4  background_color;
 } u;
 
 layout(binding = 1) uniform sampler2D msdf_tex;
 
-layout(location = 0) smooth in vec2 vs_tex_coord;
-layout(location = 1) flat   in vec4 vs_tex_bounds;
+layout(location = 0) smooth in vec4 vs_tex_bounds;
+layout(location = 1) smooth in vec4 vs_frame_rect;
 
 layout(location = 0) out vec4 out_color;
 
@@ -67,11 +71,16 @@ float shadow_alpha_from_texel(vec4 texel)
     return smootherstep(-radius, 0.5, sd);
 }
 
-float glyph_alpha_at_ratio(vec2 glyph_ratio, vec2 uv_min, vec2 uv_max)
+vec4 glyph_texel_at_ratio(vec2 glyph_ratio, vec2 uv_min, vec2 uv_max)
 {
     vec2 glyph_span = max(vs_tex_bounds.zw - vs_tex_bounds.xy, vec2(0.000001));
     vec2 glyph_uv   = vs_tex_bounds.xy + glyph_ratio * glyph_span;
-    return glyph_alpha_from_texel(sample_glyph(glyph_uv, uv_min, uv_max));
+    return sample_glyph(glyph_uv, uv_min, uv_max);
+}
+
+float glyph_alpha_at_ratio(vec2 glyph_ratio, vec2 uv_min, vec2 uv_max)
+{
+    return glyph_alpha_from_texel(glyph_texel_at_ratio(glyph_ratio, uv_min, uv_max));
 }
 
 vec3 filtered_lcd_coverage(
@@ -126,15 +135,16 @@ void main()
     vec2 clamp_margin = min(half_texel, glyph_span * 0.499);
     vec2 uv_min       = vs_tex_bounds.xy + clamp_margin;
     vec2 uv_max       = vs_tex_bounds.zw - clamp_margin;
-    vec2 clamped_uv   = clamp(vs_tex_coord, uv_min, uv_max);
 
-    vec4 texel = sample_glyph(clamped_uv, uv_min, uv_max);
-
-    float glyph_alpha = glyph_alpha_from_texel(texel);
-    float shadow_alpha = 0.0;
-    if (u.shadow_radius > 0.0 && u.shadow_color.a > 0.0) {
-        shadow_alpha = shadow_alpha_from_texel(texel);
-    }
+    vec2 frame_origin = vs_frame_rect.xy;
+    vec2 frame_size = max(vec2(1.0), vs_frame_rect.zw);
+    float frag_y = (u.framebuffer_y_up != 0)
+        ? (u.target_height - gl_FragCoord.y)
+        : gl_FragCoord.y;
+    vec2 glyph_pixel = vec2(gl_FragCoord.x, frag_y) - frame_origin;
+    vec2 glyph_ratio = vec2(
+        glyph_pixel.x / frame_size.x,
+        1.0 - glyph_pixel.y / frame_size.y);
 
     bool lcd_rgb = u.lcd_subpixel_order > 0.5 && u.lcd_subpixel_order < 1.5;
     bool lcd_bgr = u.lcd_subpixel_order > 1.5 && u.lcd_subpixel_order < 2.5;
@@ -142,21 +152,15 @@ void main()
     bool lcd_vbgr = u.lcd_subpixel_order > 3.5 && u.lcd_subpixel_order < 4.5;
     bool lcd_horizontal = lcd_rgb || lcd_bgr;
     bool lcd_vertical = lcd_vrgb || lcd_vbgr;
-    vec2 safe_glyph_span = max(glyph_span, vec2(0.000001));
-    vec2 glyph_ratio = (vs_tex_coord - vs_tex_bounds.xy) / safe_glyph_span;
-    float horizontal_step = abs(dFdx(glyph_ratio.x)) / 3.0;
-    float vertical_step = abs(dFdy(glyph_ratio.y)) / 3.0;
     bool lcd_enabled =
         (lcd_horizontal || lcd_vertical) &&
         u.shadow_radius <= 0.0 &&
         u.color.a >= 0.999 &&
-        u.background_color.a >= 0.999 &&
-        ((lcd_horizontal && horizontal_step > 0.0) ||
-         (lcd_vertical && vertical_step > 0.0));
+        u.background_color.a >= 0.999;
     if (lcd_enabled) {
         vec2 subpixel_step = lcd_horizontal
-            ? vec2(horizontal_step, 0.0)
-            : vec2(0.0, -vertical_step);
+            ? vec2(1.0 / (3.0 * frame_size.x), 0.0)
+            : vec2(0.0, -1.0 / (3.0 * frame_size.y));
         bool forward_order = lcd_rgb || lcd_vrgb;
         vec3 lcd_coverage =
             filtered_lcd_coverage(glyph_ratio, subpixel_step, forward_order, uv_min, uv_max);
@@ -176,6 +180,13 @@ void main()
             alpha;
         out_color = vec4(clamp(straight_rgb, 0.0, 1.0), alpha);
         return;
+    }
+
+    vec4 texel = glyph_texel_at_ratio(glyph_ratio, uv_min, uv_max);
+    float glyph_alpha = glyph_alpha_from_texel(texel);
+    float shadow_alpha = 0.0;
+    if (u.shadow_radius > 0.0 && u.shadow_color.a > 0.0) {
+        shadow_alpha = shadow_alpha_from_texel(texel);
     }
 
     float glyph_a = u.color.a * glyph_alpha;

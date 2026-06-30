@@ -162,6 +162,7 @@ set(VNM_PLOT_DATA_HEADERS
     include/vnm_plot/core/constants.h
     include/vnm_plot/core/plot_config.h
     include/vnm_plot/core/series_builder.h
+    include/vnm_plot/core/text_lcd.h
     include/vnm_plot/core/time_units.h
     include/vnm_plot/core/types.h
 )
@@ -219,6 +220,7 @@ set(VNM_PLOT_RHI_HEADERS
 
 set(VNM_PLOT_QTQUICK_SOURCES
     src/qt/plot_renderer.cpp
+    src/qt/text_lcd_resolver.cpp
     src/qt/plot_widget.cpp
     src/qt/plot_interaction_item.cpp
     src/qt/plot_time_axis.cpp
@@ -231,6 +233,7 @@ set(VNM_PLOT_QTQUICK_HEADERS
     include/vnm_plot/qt/plot_interaction_item.h
     include/vnm_plot/qt/plot_time_axis.h
     src/qt/plot_renderer.h
+    src/qt/text_lcd_resolver.h
 )
 
 # -----------------------------------------------------------------------------
@@ -443,6 +446,10 @@ target_link_libraries(vnm_plot_qtquick
     PRIVATE
         Qt6::GuiPrivate
 )
+
+if(WIN32)
+    target_link_libraries(vnm_plot_qtquick PRIVATE user32)
+endif()
 
 message(STATUS "vnm_plot: Building Qt Quick library")
 
