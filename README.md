@@ -158,16 +158,19 @@ cmake --build build
 ```
 
 Qt 6 (Core, Gui, Quick, GuiPrivate, ShaderTools) is required. The build fetches
-glm when it is not already available. Text rendering uses `vnm_msdf_text`; CMake
-uses a sibling `../vnm_msdf_text` checkout when present, otherwise it fetches the
-GitHub `master` branch. `vnm_msdf_text` fetches FreeType and msdfgen when they
+glm when it is not already available. Public vnm_plot headers use the
+dependency-light `vnm_msdf_text` LCD contract component. When text rendering is
+enabled, vnm_plot also uses the full `vnm_msdf_text` MSDF atlas path. CMake uses
+a sibling `../vnm_msdf_text` checkout when present, otherwise it fetches the
+GitHub `master` branch. The atlas path fetches FreeType and msdfgen when they
 are not already available as targets.
 
 CI currently builds QRhi and QRhi+Text on Linux, macOS, Windows, and FreeBSD.
 The GitHub Actions jobs use the Qt 6.10.1 SDK on Linux, macOS, and Windows so
 the QRhi private headers and `qsb` shader compiler are available consistently.
 
-To disable text rendering (skips `vnm_msdf_text`, FreeType, and msdfgen):
+To disable text rendering (skips the full MSDF atlas/text renderer path, while
+still keeping the public LCD contract dependency):
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DVNM_PLOT_ENABLE_TEXT=OFF
@@ -241,11 +244,13 @@ application needs a frozen revision.
 
 Install exports are find_package-ready only when exported dependencies are
 already imported package targets. Configure with `-DVNM_PLOT_USE_SYSTEM_LIBS=ON`
-and provide find_package-able `glm` and, when text rendering is enabled,
-`vnm_msdf_text`. When those dependencies are built locally through
-FetchContent, install still installs headers and libraries, but skips the CMake
-package export because CMake cannot export those local dependency targets from
-this project.
+and provide find_package-able `glm` and `vnm_msdf_text` with at least the
+`lcd_contract` component for public vnm_plot headers and `vnm_plot::data` /
+`vnm_plot::layout` consumers. Text-enabled `vnm_plot::rhi` and
+`vnm_plot::qtquick` package consumers also need the `atlas` component. When
+those dependencies are built locally through FetchContent, install still
+installs headers and libraries, but skips the CMake package export because
+CMake cannot export those local dependency targets from this project.
 
 Installed package targets are `vnm_plot::data`, `vnm_plot::layout`,
 `vnm_plot::rhi`, and `vnm_plot::qtquick`. Requesting the `data` or `layout`

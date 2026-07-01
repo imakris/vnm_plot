@@ -171,7 +171,7 @@ struct Plot_config
     bool floor_nonnegative_auto_v_range_at_zero = false;
 
     // --- Text LCD ---
-    text_lcd_subpixel_order_t text_lcd_subpixel_order = text_lcd_subpixel_order_t::AUTO;
+    text_lcd_request_t text_lcd_request = text_lcd_auto_request();
 };
 
 inline Color_palette resolved_color_palette(const Plot_config* config, bool dark_mode)

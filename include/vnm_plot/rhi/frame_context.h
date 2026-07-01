@@ -3,6 +3,7 @@
 // VNM Plot Library - RHI Frame Context
 // Per-frame QRhi render state passed across RHI renderers and custom layers.
 
+#include <vnm_plot/core/text_lcd.h>
 #include <vnm_plot/core/types.h>
 
 #include <glm/mat4x4.hpp>
@@ -43,6 +44,10 @@ struct frame_context_t
     int visible_info_flags = k_visible_info_none;
     bool dark_mode = false;
     glm::vec4 plot_body_background = glm::vec4(0.f, 0.f, 0.f, 1.f);
+    // With config, this is the host-resolved AUTO order; explicit requests in
+    // config still take precedence. Without config, it is a manual frame order.
+    text_lcd_resolved_subpixel_order_t text_lcd_subpixel_order =
+        text_lcd_resolved_subpixel_order_t::NONE;
 
     const Plot_config* config = nullptr;
 

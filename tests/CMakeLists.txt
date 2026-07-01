@@ -28,6 +28,7 @@ if(VNM_PLOT_ENABLE_TEXT)
     list(APPEND _vnm_plot_rhi_tests
         test_font_disk_cache
         test_font_renderer_bounds
+        test_msdf_lcd_shader_reference
     )
     target_compile_definitions(vnm_plot_rhi PRIVATE VNM_PLOT_ENABLE_TEST_HOOKS=1)
 endif()
@@ -75,6 +76,16 @@ target_link_libraries(test_rhi_helpers PRIVATE Qt6::GuiPrivate Qt6::Gui)
 if(TARGET test_font_disk_cache)
     target_compile_definitions(test_font_disk_cache PRIVATE VNM_PLOT_ENABLE_TEST_HOOKS=1)
 endif()
+if(TARGET test_msdf_lcd_shader_reference)
+    if(NOT TARGET vnm_msdf_text::lcd_shader_reference)
+        find_package(vnm_msdf_text ${VNM_PLOT_VNM_MSDF_TEXT_VERSION} CONFIG REQUIRED
+            COMPONENTS lcd_shader_reference)
+    endif()
+    target_link_libraries(test_msdf_lcd_shader_reference PRIVATE vnm_msdf_text::lcd_shader_reference)
+    target_compile_definitions(test_msdf_lcd_shader_reference PRIVATE
+        VNM_PLOT_MSDF_TEXT_FRAG_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../shaders/qsb/msdf_text.frag"
+    )
+endif()
 
 if(TARGET vnm_plot_qtquick)
     add_executable(test_plot_interaction_item test_plot_interaction_item.cpp)
@@ -114,6 +125,31 @@ function(vnm_plot_add_test test_name target_name)
     set(_vnm_plot_test_names "${_vnm_plot_test_names}" PARENT_SCOPE)
 endfunction()
 
+function(vnm_plot_target_is_imported out_var target_name)
+    set(_imported FALSE)
+    if(TARGET ${target_name})
+        get_target_property(_target_imported ${target_name} IMPORTED)
+        if(_target_imported)
+            set(_imported TRUE)
+        endif()
+    endif()
+    set(${out_var} ${_imported} PARENT_SCOPE)
+endfunction()
+
+function(vnm_plot_target_header_include_dir out_var target_name relative_header)
+    set(_resolved_include_dir)
+    get_target_property(_include_dirs ${target_name} INTERFACE_INCLUDE_DIRECTORIES)
+    foreach(_include_dir IN LISTS _include_dirs)
+        string(GENEX_STRIP "${_include_dir}" _stripped_include_dir)
+        if(IS_ABSOLUTE "${_stripped_include_dir}" AND
+           EXISTS "${_stripped_include_dir}/${relative_header}")
+            set(_resolved_include_dir "${_stripped_include_dir}")
+            break()
+        endif()
+    endforeach()
+    set(${out_var} "${_resolved_include_dir}" PARENT_SCOPE)
+endfunction()
+
 vnm_plot_add_test(CacheInvalidation test_cache_invalidation)
 vnm_plot_add_test(SnapshotCaching test_snapshot_caching)
 vnm_plot_add_test(TypedApi test_typed_api)
@@ -135,12 +171,92 @@ endif()
 if(TARGET test_font_renderer_bounds)
     vnm_plot_add_test(FontRendererBounds test_font_renderer_bounds)
 endif()
+if(TARGET test_msdf_lcd_shader_reference)
+    vnm_plot_add_test(MsdfLcdShaderReference test_msdf_lcd_shader_reference)
+endif()
 
 if(TARGET vnm_plot_qtquick)
     vnm_plot_add_test(PlotInteractionItem test_plot_interaction_item)
     vnm_plot_add_test(PlotTimeAxis test_plot_time_axis)
     vnm_plot_add_test(TextLcdResolver test_text_lcd_resolver)
 endif()
+
+set(_vnm_plot_package_smoke_viable TRUE)
+set(_vnm_plot_package_smoke_skip_reason)
+
+if(NOT CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
+    set(_vnm_plot_package_smoke_viable FALSE)
+    set(_vnm_plot_package_smoke_skip_reason
+        "top-level install packaging is not active")
+endif()
+
+if(_vnm_plot_package_smoke_viable)
+    foreach(_dep IN ITEMS glm::glm vnm_msdf_text::lcd_contract)
+        vnm_plot_target_is_imported(_vnm_plot_dep_imported ${_dep})
+        if(NOT _vnm_plot_dep_imported)
+            set(_vnm_plot_package_smoke_viable FALSE)
+            set(_vnm_plot_package_smoke_skip_reason
+                "install export requires imported glm and vnm_msdf_text targets")
+        endif()
+    endforeach()
+endif()
+
+if(_vnm_plot_package_smoke_viable AND VNM_PLOT_ENABLE_TEXT)
+    vnm_plot_target_is_imported(
+        _vnm_plot_msdf_text_atlas_imported
+        vnm_msdf_text::vnm_msdf_text)
+    if(NOT _vnm_plot_msdf_text_atlas_imported)
+        set(_vnm_plot_package_smoke_viable FALSE)
+        set(_vnm_plot_package_smoke_skip_reason
+            "text-enabled install export requires imported vnm_msdf_text atlas target")
+    endif()
+endif()
+
+if(_vnm_plot_package_smoke_viable)
+    vnm_plot_target_header_include_dir(
+        _vnm_plot_glm_include_dir
+        glm::glm
+        glm/glm.hpp)
+    vnm_plot_target_header_include_dir(
+        _vnm_plot_msdf_text_include_dir
+        vnm_msdf_text::lcd_contract
+        vnm_msdf_text/lcd_contract.h)
+    if(NOT _vnm_plot_glm_include_dir OR
+       NOT _vnm_plot_msdf_text_include_dir)
+        set(_vnm_plot_package_smoke_viable FALSE)
+        set(_vnm_plot_package_smoke_skip_reason
+            "package smoke could not resolve public dependency include directories")
+    endif()
+endif()
+
+if(_vnm_plot_package_smoke_viable)
+    add_test(
+        NAME PackageSmoke
+        COMMAND ${CMAKE_COMMAND}
+            "-DVNM_PLOT_BINARY_DIR=${PROJECT_BINARY_DIR}"
+            "-DVNM_PLOT_GLM_INCLUDE_DIR=${_vnm_plot_glm_include_dir}"
+            "-DVNM_PLOT_MSDF_TEXT_INCLUDE_DIR=${_vnm_plot_msdf_text_include_dir}"
+            "-DVNM_PLOT_TEST_BUILD_TYPE=${CMAKE_BUILD_TYPE}"
+            "-DVNM_PLOT_TEST_CONFIG=$<CONFIG>"
+            "-DVNM_PLOT_TEST_GENERATOR=${CMAKE_GENERATOR}"
+            "-DVNM_PLOT_TEST_GENERATOR_PLATFORM=${CMAKE_GENERATOR_PLATFORM}"
+            "-DVNM_PLOT_TEST_GENERATOR_TOOLSET=${CMAKE_GENERATOR_TOOLSET}"
+            "-DVNM_PLOT_TEST_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}"
+            "-DVNM_PLOT_TEST_QT6_DIR=${Qt6_DIR}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/package_smoke.cmake")
+    list(APPEND _vnm_plot_test_names PackageSmoke)
+else()
+    message(STATUS
+        "vnm_plot: PackageSmoke test not configured: "
+        "${_vnm_plot_package_smoke_skip_reason}")
+endif()
+
+unset(_vnm_plot_dep_imported)
+unset(_vnm_plot_glm_include_dir)
+unset(_vnm_plot_msdf_text_atlas_imported)
+unset(_vnm_plot_msdf_text_include_dir)
+unset(_vnm_plot_package_smoke_skip_reason)
+unset(_vnm_plot_package_smoke_viable)
 
 if(WIN32)
     get_target_property(_vnm_plot_qmake_executable Qt6::qmake IMPORTED_LOCATION)
@@ -184,6 +300,9 @@ if(WIN32)
     endif()
     if(TARGET test_text_lcd_resolver)
         list(APPEND _vnm_plot_windows_test_targets test_text_lcd_resolver)
+    endif()
+    if(TARGET test_msdf_lcd_shader_reference)
+        list(APPEND _vnm_plot_windows_test_targets test_msdf_lcd_shader_reference)
     endif()
 
     set(_vnm_plot_windows_test_runtime_dir "${CMAKE_CURRENT_BINARY_DIR}")

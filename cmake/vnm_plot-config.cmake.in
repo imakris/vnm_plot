@@ -4,10 +4,17 @@ include(CMakeFindDependencyMacro)
 
 find_dependency(glm)
 
+set(_vnm_plot_needs_data_dependencies FALSE)
 set(_vnm_plot_needs_rhi_dependencies FALSE)
 set(_vnm_plot_needs_qtquick_dependencies FALSE)
 if(vnm_plot_FIND_COMPONENTS)
     foreach(_vnm_plot_component IN LISTS vnm_plot_FIND_COMPONENTS)
+        if(_vnm_plot_component STREQUAL "data" OR
+           _vnm_plot_component STREQUAL "layout" OR
+           _vnm_plot_component STREQUAL "rhi" OR
+           _vnm_plot_component STREQUAL "qtquick")
+            set(_vnm_plot_needs_data_dependencies TRUE)
+        endif()
         if(_vnm_plot_component STREQUAL "rhi" OR
            _vnm_plot_component STREQUAL "qtquick")
             set(_vnm_plot_needs_rhi_dependencies TRUE)
@@ -17,6 +24,7 @@ if(vnm_plot_FIND_COMPONENTS)
         endif()
     endforeach()
 else()
+    set(_vnm_plot_needs_data_dependencies TRUE)
     set(_vnm_plot_needs_rhi_dependencies TRUE)
     set(_vnm_plot_needs_qtquick_dependencies TRUE)
 endif()
@@ -36,10 +44,19 @@ elseif(_vnm_plot_needs_rhi_dependencies)
     find_dependency(Qt6 REQUIRED COMPONENTS Gui GuiPrivate)
 endif()
 
+set(_vnm_plot_msdf_text_components)
+if(_vnm_plot_needs_data_dependencies)
+    list(APPEND _vnm_plot_msdf_text_components lcd_contract)
+endif()
 if(_vnm_plot_needs_rhi_dependencies)
     if(@VNM_PLOT_CONFIG_ENABLE_TEXT@)
-        find_dependency(vnm_msdf_text @VNM_PLOT_VNM_MSDF_TEXT_VERSION@)
+        list(APPEND _vnm_plot_msdf_text_components atlas)
     endif()
+endif()
+if(_vnm_plot_msdf_text_components)
+    list(REMOVE_DUPLICATES _vnm_plot_msdf_text_components)
+    find_dependency(vnm_msdf_text @VNM_PLOT_VNM_MSDF_TEXT_VERSION@
+        COMPONENTS ${_vnm_plot_msdf_text_components})
 endif()
 
 include("${CMAKE_CURRENT_LIST_DIR}/vnm_plotTargets.cmake")
@@ -50,3 +67,9 @@ set(vnm_plot_rhi_FOUND TRUE)
 set(vnm_plot_qtquick_FOUND TRUE)
 
 check_required_components(vnm_plot)
+
+unset(_vnm_plot_component)
+unset(_vnm_plot_msdf_text_components)
+unset(_vnm_plot_needs_data_dependencies)
+unset(_vnm_plot_needs_qtquick_dependencies)
+unset(_vnm_plot_needs_rhi_dependencies)

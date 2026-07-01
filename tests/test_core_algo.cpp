@@ -9,6 +9,7 @@
 #include <vnm_plot/core/time_units.h>
 #include <vnm_plot/core/types.h>
 #include <vnm_plot/rhi/text_renderer.h>
+#include "../src/core/text_lcd_policy.h"
 
 #include <cmath>
 #include <cstddef>
@@ -29,8 +30,18 @@ static_assert(
     std::is_same_v<plot::Text_renderer::horizontal_axis_fade_tracker_t::key_type, std::int64_t>,
     "horizontal label fade tracking must be keyed by int64 nanosecond timestamps");
 static_assert(
-    std::is_same_v<std::underlying_type_t<plot::text_lcd_subpixel_order_t>, std::uint8_t>,
-    "text LCD subpixel order ABI must remain uint8_t");
+    std::is_same_v<decltype(plot::text_lcd_request_t{}.automatic), bool>,
+    "text LCD request state must keep AUTO separate from resolved order");
+static_assert(
+    std::is_same_v<
+        decltype(plot::text_lcd_request_t{}.resolved_order),
+        plot::text_lcd_resolved_subpixel_order_t>,
+    "text LCD request state must compose the shared resolved order type");
+static_assert(
+    std::is_same_v<
+        plot::text_lcd_resolved_subpixel_order_t,
+        vnm::msdf_text::lcd::Resolved_lcd_subpixel_order>,
+    "text LCD resolved order must use the shared vnm_msdf_text contract type");
 
 namespace {
 
@@ -674,144 +685,128 @@ bool test_horizontal_label_fade_keys_preserve_int64_timestamps()
 
 bool test_text_lcd_policy_helpers()
 {
-    using order_t = plot::text_lcd_subpixel_order_t;
-    using surface_t = plot::text_lcd_draw_surface_t;
+    using request_t = plot::text_lcd_request_t;
+    using resolved_t = plot::text_lcd_resolved_subpixel_order_t;
+    using surface_t = plot::detail::text_lcd_draw_surface_t;
 
-    const order_t invalid_order = static_cast<order_t>(6);
-    const order_t invalid_high_order = static_cast<order_t>(255);
-    const order_t values[] = {
-        order_t::NONE,
-        order_t::RGB,
-        order_t::BGR,
-        order_t::VRGB,
-        order_t::VBGR,
-        order_t::AUTO,
-        invalid_order,
-        invalid_high_order,
+    const request_t auto_request = plot::text_lcd_auto_request();
+    const request_t none_request = plot::text_lcd_none_request();
+    const request_t bgr_request = plot::text_lcd_explicit_request(resolved_t::BGR);
+    const request_t invalid_request{false, static_cast<resolved_t>(255)};
+
+    TEST_ASSERT(auto_request.automatic, "LCD request should model AUTO as request state");
+    TEST_ASSERT(auto_request.resolved_order == resolved_t::NONE,
+        "AUTO request should not carry a draw order");
+    TEST_ASSERT(!none_request.automatic, "NONE request should be explicit");
+    TEST_ASSERT(none_request.resolved_order == resolved_t::NONE,
+        "NONE request should carry the shared resolved NONE value");
+    TEST_ASSERT(
+        plot::text_lcd_explicit_request(static_cast<resolved_t>(255)).resolved_order ==
+            resolved_t::NONE,
+        "invalid explicit LCD request factory should fail closed to NONE");
+
+    const resolved_t display_orders[] = {
+        resolved_t::RGB,
+        resolved_t::BGR,
+        resolved_t::VRGB,
+        resolved_t::VBGR,
     };
-
-    TEST_ASSERT(static_cast<int>(order_t::NONE) == 0, "LCD NONE value must remain 0");
-    TEST_ASSERT(static_cast<int>(order_t::RGB)  == 1, "LCD RGB value must remain 1");
-    TEST_ASSERT(static_cast<int>(order_t::BGR)  == 2, "LCD BGR value must remain 2");
-    TEST_ASSERT(static_cast<int>(order_t::VRGB) == 3, "LCD VRGB value must remain 3");
-    TEST_ASSERT(static_cast<int>(order_t::VBGR) == 4, "LCD VBGR value must remain 4");
-    TEST_ASSERT(static_cast<int>(order_t::AUTO) == 5, "LCD AUTO value must be 5");
-
-    const order_t display_orders[] = {order_t::RGB, order_t::BGR, order_t::VRGB, order_t::VBGR};
-    for (order_t order : display_orders) {
-        TEST_ASSERT(plot::text_lcd_subpixel_order_is_display_specific(order),
-            "display-specific LCD orders should be classified for LCD sampling");
-        TEST_ASSERT(plot::text_lcd_auto_order_from_detections(order, order_t::NONE) == order,
+    for (resolved_t order : display_orders) {
+        const request_t explicit_request = plot::text_lcd_explicit_request(order);
+        TEST_ASSERT(!explicit_request.automatic, "display LCD request should be explicit");
+        TEST_ASSERT(explicit_request.resolved_order == order,
+            "display LCD request should preserve the shared resolved order");
+        TEST_ASSERT(plot::detail::text_lcd_auto_order_from_detections(order, resolved_t::NONE) == order,
             "Qt LCD detection should preserve every display-specific order");
-        TEST_ASSERT(plot::text_lcd_auto_order_from_detections(order_t::NONE, order) == order,
+        TEST_ASSERT(plot::detail::text_lcd_auto_order_from_detections(resolved_t::NONE, order) == order,
             "OS LCD detection should preserve every display-specific order");
-        TEST_ASSERT(plot::text_lcd_effective_order(order_t::AUTO, order) == order,
+        TEST_ASSERT(plot::detail::text_lcd_effective_order(auto_request, order) == order,
             "AUTO should resolve to every display-specific detected order");
-        TEST_ASSERT(plot::text_lcd_effective_order_for_frame(order, order_t::NONE, 8) == order,
-            "explicit display-specific frame order should not depend on sample count");
-        TEST_ASSERT(plot::text_lcd_draw_is_eligible(
+        TEST_ASSERT(plot::detail::text_lcd_draw_is_eligible(
                 surface_t::VERTICAL_AXIS_LABEL, order, 1.0f, true),
             "vertical axis labels may be LCD-eligible for every display-specific order");
-        TEST_ASSERT(plot::text_lcd_draw_is_eligible(
+        TEST_ASSERT(plot::detail::text_lcd_draw_is_eligible(
                 surface_t::HORIZONTAL_AXIS_LABEL, order, 1.0f, true),
             "horizontal axis labels may be LCD-eligible for every display-specific order");
     }
-    TEST_ASSERT(!plot::text_lcd_subpixel_order_is_display_specific(order_t::AUTO),
-        "AUTO should not be a draw order");
 
-    TEST_ASSERT(plot::text_lcd_auto_order_from_detections(order_t::RGB, order_t::BGR) == order_t::RGB,
+    TEST_ASSERT(plot::detail::text_lcd_auto_order_from_detections(resolved_t::RGB, resolved_t::BGR) == resolved_t::RGB,
         "Qt LCD detection should win over OS detection");
-    TEST_ASSERT(plot::text_lcd_auto_order_from_detections(order_t::NONE, order_t::BGR) == order_t::BGR,
+    TEST_ASSERT(plot::detail::text_lcd_auto_order_from_detections(resolved_t::NONE, resolved_t::BGR) == resolved_t::BGR,
         "OS LCD detection should be used when Qt has no order");
-    TEST_ASSERT(plot::text_lcd_auto_order_from_detections(order_t::NONE, order_t::NONE) == order_t::NONE,
+    TEST_ASSERT(plot::detail::text_lcd_auto_order_from_detections(resolved_t::NONE, resolved_t::NONE) == resolved_t::NONE,
         "AUTO detection should fail closed when no source has an order");
 
-    TEST_ASSERT(plot::text_lcd_effective_order(order_t::AUTO, order_t::RGB) == order_t::RGB,
+    TEST_ASSERT(plot::detail::text_lcd_effective_order(auto_request, resolved_t::RGB) == resolved_t::RGB,
         "AUTO should resolve to a display-specific detected order");
-    TEST_ASSERT(plot::text_lcd_effective_order(order_t::AUTO, order_t::AUTO) == order_t::NONE,
-        "AUTO should not resolve to AUTO");
-    TEST_ASSERT(plot::text_lcd_effective_order(order_t::RGB, order_t::NONE) == order_t::RGB,
+    TEST_ASSERT(plot::detail::text_lcd_effective_order(auto_request, resolved_t::NONE) == resolved_t::NONE,
+        "AUTO should fail closed without platform detection");
+    TEST_ASSERT(
+        plot::detail::text_lcd_effective_order(
+            plot::text_lcd_explicit_request(resolved_t::RGB),
+            resolved_t::NONE) == resolved_t::RGB,
         "explicit RGB should not depend on platform detection");
-    TEST_ASSERT(plot::text_lcd_effective_order(order_t::NONE, order_t::RGB) == order_t::NONE,
+    TEST_ASSERT(plot::detail::text_lcd_effective_order(none_request, resolved_t::RGB) == resolved_t::NONE,
         "explicit NONE should stay grayscale");
-
-    for (order_t requested : values) {
-        for (order_t resolved : values) {
-            TEST_ASSERT(plot::text_lcd_effective_order(requested, resolved) != order_t::AUTO,
-                "effective LCD order must never return AUTO");
-        }
-    }
-
-    TEST_ASSERT(plot::text_lcd_shader_uniform_value(order_t::NONE) == 0.0f,
-        "LCD NONE shader value should be 0");
-    TEST_ASSERT(plot::text_lcd_shader_uniform_value(order_t::RGB) == 1.0f,
-        "LCD RGB shader value should be 1");
-    TEST_ASSERT(plot::text_lcd_shader_uniform_value(order_t::BGR) == 2.0f,
-        "LCD BGR shader value should be 2");
-    TEST_ASSERT(plot::text_lcd_shader_uniform_value(order_t::VRGB) == 3.0f,
-        "LCD VRGB shader value should be 3");
-    TEST_ASSERT(plot::text_lcd_shader_uniform_value(order_t::VBGR) == 4.0f,
-        "LCD VBGR shader value should be 4");
-    TEST_ASSERT(plot::text_lcd_shader_uniform_value(order_t::AUTO) == 0.0f,
-        "LCD AUTO shader value should fail closed to 0");
-    TEST_ASSERT(plot::text_lcd_shader_uniform_value(invalid_order) == 0.0f,
-        "invalid LCD shader value should fail closed to 0");
-
-    // MSAA alone is not a gate for fragment-frequency LCD text.
-    TEST_ASSERT(plot::text_lcd_effective_order_for_frame(order_t::AUTO, order_t::RGB, 8) == order_t::RGB,
-        "AUTO should use platform order on multisampled render targets");
-    TEST_ASSERT(plot::text_lcd_effective_order_for_frame(order_t::AUTO, order_t::RGB, 1) == order_t::RGB,
-        "AUTO should use platform order on single-sample render targets");
-    TEST_ASSERT(plot::text_lcd_effective_order_for_frame(order_t::AUTO, order_t::NONE, 8) == order_t::NONE,
-        "AUTO with no platform order should stay grayscale");
-    TEST_ASSERT(plot::text_lcd_effective_order_for_frame(order_t::AUTO, order_t::AUTO, 1) == order_t::NONE,
-        "AUTO platform result should not propagate to the frame");
-    TEST_ASSERT(plot::text_lcd_effective_order_for_frame(order_t::AUTO, invalid_order, 1) == order_t::NONE,
-        "invalid platform order should fail closed");
-    TEST_ASSERT(plot::text_lcd_effective_order_for_frame(order_t::NONE, order_t::RGB, 1) == order_t::NONE,
-        "explicit NONE should stay grayscale at frame level");
-    TEST_ASSERT(plot::text_lcd_effective_order_for_frame(invalid_order, order_t::RGB, 1) == order_t::NONE,
+    TEST_ASSERT(plot::detail::text_lcd_effective_order(invalid_request, resolved_t::RGB) == resolved_t::NONE,
         "invalid requested frame order should fail closed");
 
-    TEST_ASSERT(!plot::text_lcd_draw_is_eligible(
-            surface_t::INFO_OVERLAY, order_t::RGB, 1.0f, false),
-        "info overlay should not be LCD-eligible without backing");
-    TEST_ASSERT(!plot::text_lcd_draw_is_eligible(
-            surface_t::HORIZONTAL_AXIS_LABEL, order_t::RGB, 1.0f, false),
+    for (resolved_t order : display_orders) {
+        TEST_ASSERT(
+            plot::detail::text_lcd_effective_order(
+                plot::text_lcd_explicit_request(order),
+                resolved_t::NONE) == order,
+            "explicit display LCD requests should produce a resolved draw order");
+    }
+
+    TEST_ASSERT(plot::detail::text_lcd_effective_order_for_frame(auto_request, resolved_t::RGB) == resolved_t::RGB,
+        "AUTO should use platform order at frame level");
+    TEST_ASSERT(plot::detail::text_lcd_effective_order_for_frame(auto_request, resolved_t::NONE) == resolved_t::NONE,
+        "AUTO with no platform order should stay grayscale");
+    TEST_ASSERT(plot::detail::text_lcd_effective_order_for_frame(none_request, resolved_t::RGB) == resolved_t::NONE,
+        "explicit NONE should stay grayscale at frame level");
+    TEST_ASSERT(
+        plot::detail::text_lcd_effective_order_for_frame(
+            &auto_request,
+            resolved_t::NONE) == resolved_t::NONE,
+        "direct RHI AUTO should fail closed without an AUTO-resolved frame order");
+    TEST_ASSERT(
+        plot::detail::text_lcd_effective_order_for_frame(
+            &bgr_request,
+            resolved_t::NONE) == resolved_t::BGR,
+        "direct RHI explicit requests should resolve without an AUTO-resolved frame order");
+    TEST_ASSERT(
+        plot::detail::text_lcd_effective_order_for_frame(
+            &bgr_request,
+            resolved_t::RGB) == resolved_t::BGR,
+        "direct RHI explicit requests should override AUTO-resolved frame order");
+    TEST_ASSERT(
+        plot::detail::text_lcd_effective_order_for_frame(
+            nullptr,
+            resolved_t::VRGB) == resolved_t::VRGB,
+        "manual frame order should still work without config");
+
+    TEST_ASSERT(!plot::detail::text_lcd_draw_is_eligible(
+            surface_t::HORIZONTAL_AXIS_LABEL, resolved_t::RGB, 1.0f, false),
         "horizontal axis labels should not be LCD-eligible without backing");
-    TEST_ASSERT(!plot::text_lcd_draw_is_eligible(
-            surface_t::VERTICAL_AXIS_LABEL, order_t::RGB, 1.0f, false),
+    TEST_ASSERT(!plot::detail::text_lcd_draw_is_eligible(
+            surface_t::VERTICAL_AXIS_LABEL, resolved_t::RGB, 1.0f, false),
         "vertical axis labels should not be LCD-eligible without backing");
-    TEST_ASSERT(!plot::text_lcd_draw_is_eligible(
-            surface_t::INFO_OVERLAY, order_t::RGB, 1.0f, true),
-        "info overlay should not be LCD-eligible even with backing");
-    TEST_ASSERT(!plot::text_lcd_draw_is_eligible(
-            surface_t::PLOT_BODY_TEXT, order_t::RGB, 1.0f, true),
-        "plot body text should not be LCD-eligible even with backing");
-    TEST_ASSERT(!plot::text_lcd_draw_is_eligible(
-            surface_t::SHADOWED_TEXT, order_t::RGB, 1.0f, true),
-        "shadowed text should not be LCD-eligible even with backing");
-    TEST_ASSERT(!plot::text_lcd_draw_is_eligible(
-            surface_t::VERTICAL_AXIS_LABEL, order_t::NONE, 1.0f, true),
+    TEST_ASSERT(!plot::detail::text_lcd_draw_is_eligible(
+            surface_t::VERTICAL_AXIS_LABEL, resolved_t::NONE, 1.0f, true),
         "axis labels should not be LCD-eligible for NONE frame order");
-    TEST_ASSERT(!plot::text_lcd_draw_is_eligible(
-            surface_t::HORIZONTAL_AXIS_LABEL, order_t::NONE, 1.0f, true),
+    TEST_ASSERT(!plot::detail::text_lcd_draw_is_eligible(
+            surface_t::HORIZONTAL_AXIS_LABEL, resolved_t::NONE, 1.0f, true),
         "axis labels should not be LCD-eligible for NONE frame order");
-    TEST_ASSERT(!plot::text_lcd_draw_is_eligible(
-            surface_t::VERTICAL_AXIS_LABEL, order_t::AUTO, 1.0f, true),
-        "axis labels should not be LCD-eligible for AUTO frame order");
-    TEST_ASSERT(!plot::text_lcd_draw_is_eligible(
-            surface_t::HORIZONTAL_AXIS_LABEL, order_t::AUTO, 1.0f, true),
-        "axis labels should not be LCD-eligible for AUTO frame order");
-    TEST_ASSERT(!plot::text_lcd_draw_is_eligible(
-            surface_t::VERTICAL_AXIS_LABEL, order_t::RGB, 0.998f, true),
+    TEST_ASSERT(!plot::detail::text_lcd_draw_is_eligible(
+            surface_t::VERTICAL_AXIS_LABEL, resolved_t::RGB, 0.998f, true),
         "axis labels should not be LCD-eligible with translucent backing");
-    TEST_ASSERT(!plot::text_lcd_draw_is_eligible(
-            surface_t::VERTICAL_AXIS_LABEL, order_t::RGB,
+    TEST_ASSERT(!plot::detail::text_lcd_draw_is_eligible(
+            surface_t::VERTICAL_AXIS_LABEL, resolved_t::RGB,
             std::numeric_limits<float>::quiet_NaN(), true),
         "axis labels should not be LCD-eligible with unknown backing alpha");
-    TEST_ASSERT(!plot::text_lcd_draw_is_eligible(
-            static_cast<surface_t>(255), order_t::RGB, 1.0f, true),
+    TEST_ASSERT(!plot::detail::text_lcd_draw_is_eligible(
+            static_cast<surface_t>(255), resolved_t::RGB, 1.0f, true),
         "invalid draw surfaces should fail closed");
 
     return true;
@@ -844,12 +839,17 @@ bool test_plot_config_default_lcd_request_is_auto_but_fails_closed()
 {
     const plot::Plot_config config;
     TEST_ASSERT(
-        config.text_lcd_subpixel_order == plot::text_lcd_subpixel_order_t::AUTO,
+        config.text_lcd_request.automatic,
         "plot text LCD request should default to AUTO");
     TEST_ASSERT(
-        plot::text_lcd_effective_order(
-            config.text_lcd_subpixel_order,
-            plot::text_lcd_subpixel_order_t::NONE) == plot::text_lcd_subpixel_order_t::NONE,
+        config.text_lcd_request.resolved_order ==
+            plot::text_lcd_resolved_subpixel_order_t::NONE,
+        "plot default AUTO request should not carry a draw order");
+    TEST_ASSERT(
+        plot::detail::text_lcd_effective_order(
+            config.text_lcd_request,
+            plot::text_lcd_resolved_subpixel_order_t::NONE) ==
+                plot::text_lcd_resolved_subpixel_order_t::NONE,
         "default AUTO request should fail closed without a trusted platform order");
     return true;
 }

@@ -5,6 +5,7 @@
 #include "rhi_helpers.h"
 
 #include <glm/gtc/type_ptr.hpp>
+#include <vnm_msdf_text/lcd_contract.h>
 #include <vnm_msdf_text/msdf_text.h>
 
 #include <QByteArray>
@@ -1323,7 +1324,7 @@ void Font_renderer::rhi_queue_draw(
     const bool has_shadow = shadow.radius_px > 0.0f && shadow.color.a > 0.0f;
     text_lcd_t effective_lcd = lcd;
     if (has_shadow) {
-        effective_lcd.subpixel_order = text_lcd_subpixel_order_t::NONE;
+        effective_lcd.subpixel_order = text_lcd_resolved_subpixel_order_t::NONE;
     }
 
     const std::size_t first_call_index = acquire_call();
@@ -1445,7 +1446,8 @@ void Font_renderer::rhi_queue_draw(
         block.target_width = static_cast<float>(std::max(1, ctx.win_w));
         block.target_height = static_cast<float>(std::max(1, ctx.win_h));
         block.shadow_radius = draw_shadow.radius_px;
-        block.lcd_subpixel_order = text_lcd_shader_uniform_value(effective_lcd.subpixel_order);
+        block.lcd_subpixel_order =
+            vnm::msdf_text::lcd::shader_uniform_value(effective_lcd.subpixel_order);
         block.framebuffer_y_up =
             (ctx.rhi && ctx.rhi->isYUpInFramebuffer()) ? 1 : 0;
         block.background_color[0] = effective_lcd.background_color.r;

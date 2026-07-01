@@ -39,7 +39,8 @@ struct text_shadow_t
 
 struct text_lcd_t
 {
-    text_lcd_subpixel_order_t subpixel_order = text_lcd_subpixel_order_t::NONE;
+    text_lcd_resolved_subpixel_order_t subpixel_order =
+        text_lcd_resolved_subpixel_order_t::NONE;
     glm::vec4 background_color = glm::vec4(0.f);
 };
 

@@ -14,6 +14,7 @@
 #include <vnm_plot/rhi/text_renderer.h>
 #include "../core/frame_range_planner.h"
 #include "../core/label_pane_geometry.h"
+#include "../core/text_lcd_policy.h"
 
 #include <QColor>
 #include <QMatrix4x4>
@@ -56,7 +57,7 @@ struct label_pane_opacity_t
 
 bool color_is_opaque(const glm::vec4& color)
 {
-    return color.a >= 0.999f;
+    return color.a >= detail::k_text_lcd_opaque_alpha_cutoff;
 }
 
 label_pane_opacity_t label_pane_opacity_for_text(const frame_context_t& ctx)
@@ -147,8 +148,8 @@ struct Plot_renderer::impl_t
         double         adjusted_preview_height = 0.0;
         double         vbar_width_pixels = 0.0;
         glm::vec4      window_background = glm::vec4(0.f, 0.f, 0.f, 1.f);
-        text_lcd_subpixel_order_t platform_text_lcd_subpixel_order =
-            text_lcd_subpixel_order_t::NONE;
+        text_lcd_resolved_subpixel_order_t auto_text_lcd_subpixel_order =
+            text_lcd_resolved_subpixel_order_t::NONE;
         std::uint64_t  config_revision = 0;
     };
 
@@ -223,10 +224,15 @@ void Plot_renderer::synchronize(QQuickRhiItem* item)
     if (QQuickWindow* window = widget->window()) {
         m_impl->snapshot.window_background = qcolor_to_vec4(window->color());
     }
-    m_impl->snapshot.platform_text_lcd_subpixel_order =
-        resolve_text_lcd_subpixel_order_for_window(
-            m_impl->snapshot.config.text_lcd_subpixel_order,
-            widget->window());
+    // Only AUTO needs platform probing here. The core text renderer combines
+    // this with the request again so direct-RHI explicit requests need no
+    // prefilled frame order.
+    m_impl->snapshot.auto_text_lcd_subpixel_order =
+        m_impl->snapshot.config.text_lcd_request.automatic
+            ? resolve_text_lcd_subpixel_order_for_window(
+                  m_impl->snapshot.config.text_lcd_request,
+                  widget->window())
+            : text_lcd_resolved_subpixel_order_t::NONE;
     m_impl->snapshot.config_revision = widget->m_config_revision.load(std::memory_order_acquire);
 }
 
@@ -240,11 +246,6 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
 
     const auto& snapshot = m_impl->snapshot;
     const Plot_config& config = snapshot.config;
-    Plot_config frame_config = config;
-    frame_config.text_lcd_subpixel_order = text_lcd_effective_order_for_frame(
-        config.text_lcd_subpixel_order,
-        snapshot.platform_text_lcd_subpixel_order,
-        rt->sampleCount());
     vnm::plot::Profiler* profiler = config.profiler.get();
     const auto callback_now = std::chrono::steady_clock::now();
     if (profiler && m_impl->last_render_callback.time_since_epoch().count() != 0) {
@@ -457,7 +458,8 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
     ctx.visible_info_flags = snapshot.visible_info_flags;
     ctx.dark_mode = config.dark_mode;
     ctx.plot_body_background = plot_body_background;
-    ctx.config = &frame_config;
+    ctx.text_lcd_subpixel_order = snapshot.auto_text_lcd_subpixel_order;
+    ctx.config = &config;
     ctx.rhi = rhi_ptr;
     ctx.cb = cb;
     ctx.render_target = rt;

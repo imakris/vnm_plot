@@ -77,28 +77,122 @@ else()
     endif()
 endif()
 
-# --- Shared MSDF text atlas builder ---
-if(VNM_PLOT_ENABLE_TEXT)
-    if(VNM_PLOT_USE_SYSTEM_LIBS)
-        set(_vnm_plot_msdf_text_fetch_deps OFF)
-    else()
-        set(_vnm_plot_msdf_text_fetch_deps ON)
+# --- Shared MSDF LCD contract and text atlas builder ---
+function(_vnm_plot_alias_existing_msdf_text_targets)
+    if(TARGET vnm_msdf_text_lcd_contract AND
+       NOT TARGET vnm_msdf_text::lcd_contract)
+        add_library(vnm_msdf_text::lcd_contract ALIAS vnm_msdf_text_lcd_contract)
     endif()
-    unset(VNM_MSDF_TEXT_USE_SYSTEM_LIBS CACHE)
-    set(VNM_MSDF_TEXT_FETCH_DEPS "${_vnm_plot_msdf_text_fetch_deps}" CACHE BOOL "" FORCE)
-    if(TARGET vnm_msdf_text::vnm_msdf_text)
-        message(STATUS "vnm_plot: Using existing vnm_msdf_text target")
-    else()
-        if(VNM_PLOT_USE_SYSTEM_LIBS)
-            find_package(vnm_msdf_text ${VNM_PLOT_VNM_MSDF_TEXT_VERSION} CONFIG QUIET)
-            if(TARGET vnm_msdf_text::vnm_msdf_text)
-                message(STATUS "vnm_plot: Using vnm_msdf_text from find_package")
-            endif()
+    if(TARGET vnm_msdf_text AND
+       NOT TARGET vnm_msdf_text::vnm_msdf_text)
+        add_library(vnm_msdf_text::vnm_msdf_text ALIAS vnm_msdf_text)
+    endif()
+endfunction()
+
+function(_vnm_plot_missing_targets out_var)
+    set(_missing)
+    foreach(_target IN LISTS ARGN)
+        if(NOT TARGET ${_target})
+            list(APPEND _missing ${_target})
         endif()
-        if(NOT TARGET vnm_msdf_text::vnm_msdf_text)
-            get_filename_component(_vnm_plot_msdf_text_source
-                "${CMAKE_CURRENT_SOURCE_DIR}/../vnm_msdf_text"
-                ABSOLUTE)
+    endforeach()
+    set(${out_var} "${_missing}" PARENT_SCOPE)
+endfunction()
+
+function(_vnm_plot_has_any_msdf_text_target out_var)
+    set(_has_target FALSE)
+    foreach(_target IN ITEMS
+        vnm_msdf_text::lcd_contract
+        vnm_msdf_text::vnm_msdf_text
+        vnm_msdf_text_lcd_contract
+        vnm_msdf_text
+    )
+        if(TARGET ${_target})
+            set(_has_target TRUE)
+        endif()
+    endforeach()
+    set(${out_var} ${_has_target} PARENT_SCOPE)
+endfunction()
+
+function(_vnm_plot_add_msdf_text_lcd_contract_from_source source_dir)
+    if(TARGET vnm_msdf_text::lcd_contract)
+        return()
+    endif()
+
+    if(TARGET vnm_msdf_text_lcd_contract)
+        _vnm_plot_alias_existing_msdf_text_targets()
+        return()
+    endif()
+
+    if(NOT EXISTS "${source_dir}/include/vnm_msdf_text/lcd_contract.h")
+        message(FATAL_ERROR
+            "vnm_plot: vnm_msdf_text LCD contract header not found in "
+            "${source_dir}.")
+    endif()
+
+    add_library(vnm_msdf_text_lcd_contract INTERFACE)
+    add_library(vnm_msdf_text::lcd_contract ALIAS vnm_msdf_text_lcd_contract)
+
+    set_target_properties(vnm_msdf_text_lcd_contract PROPERTIES
+        EXPORT_NAME lcd_contract
+    )
+
+    target_include_directories(vnm_msdf_text_lcd_contract
+        INTERFACE
+            $<BUILD_INTERFACE:${source_dir}/include>
+    )
+
+    target_compile_features(vnm_msdf_text_lcd_contract INTERFACE cxx_std_17)
+endfunction()
+
+set(_vnm_plot_msdf_text_components lcd_contract)
+set(_vnm_plot_msdf_text_required_targets vnm_msdf_text::lcd_contract)
+if(VNM_PLOT_ENABLE_TEXT)
+    list(APPEND _vnm_plot_msdf_text_components atlas)
+    list(APPEND _vnm_plot_msdf_text_required_targets
+        vnm_msdf_text::vnm_msdf_text
+    )
+endif()
+
+if(VNM_PLOT_USE_SYSTEM_LIBS)
+    set(_vnm_plot_msdf_text_fetch_deps OFF)
+else()
+    set(_vnm_plot_msdf_text_fetch_deps ON)
+endif()
+
+_vnm_plot_alias_existing_msdf_text_targets()
+_vnm_plot_missing_targets(
+    _vnm_plot_missing_msdf_text_targets
+    ${_vnm_plot_msdf_text_required_targets})
+
+if(_vnm_plot_missing_msdf_text_targets)
+    _vnm_plot_has_any_msdf_text_target(_vnm_plot_has_partial_msdf_text_targets)
+    if(VNM_PLOT_USE_SYSTEM_LIBS AND
+       NOT _vnm_plot_has_partial_msdf_text_targets)
+        find_package(vnm_msdf_text ${VNM_PLOT_VNM_MSDF_TEXT_VERSION} CONFIG QUIET
+            COMPONENTS ${_vnm_plot_msdf_text_components})
+        _vnm_plot_alias_existing_msdf_text_targets()
+        _vnm_plot_missing_targets(
+            _vnm_plot_missing_msdf_text_targets
+            ${_vnm_plot_msdf_text_required_targets})
+        if(NOT _vnm_plot_missing_msdf_text_targets)
+            message(STATUS "vnm_plot: Using vnm_msdf_text from find_package")
+        endif()
+    endif()
+endif()
+
+if(_vnm_plot_missing_msdf_text_targets)
+    _vnm_plot_has_any_msdf_text_target(_vnm_plot_has_partial_msdf_text_targets)
+    if(NOT _vnm_plot_has_partial_msdf_text_targets)
+        get_filename_component(_vnm_plot_msdf_text_source
+            "${CMAKE_CURRENT_SOURCE_DIR}/../vnm_msdf_text"
+            ABSOLUTE)
+        if(VNM_PLOT_ENABLE_TEXT)
+            unset(VNM_MSDF_TEXT_USE_SYSTEM_LIBS CACHE)
+            set(VNM_MSDF_TEXT_FETCH_DEPS
+                "${_vnm_plot_msdf_text_fetch_deps}"
+                CACHE BOOL "" FORCE)
+
             if(EXISTS "${_vnm_plot_msdf_text_source}/CMakeLists.txt")
                 message(STATUS "vnm_plot: Using sibling vnm_msdf_text source")
                 FetchContent_Declare(vnm_msdf_text
@@ -113,11 +207,49 @@ if(VNM_PLOT_ENABLE_TEXT)
                 )
             endif()
             FetchContent_MakeAvailable(vnm_msdf_text)
-            unset(_vnm_plot_msdf_text_source)
+        else()
+            if(EXISTS "${_vnm_plot_msdf_text_source}/include/vnm_msdf_text/lcd_contract.h")
+                message(STATUS "vnm_plot: Using sibling vnm_msdf_text LCD contract headers")
+                _vnm_plot_add_msdf_text_lcd_contract_from_source("${_vnm_plot_msdf_text_source}")
+            else()
+                message(STATUS "vnm_plot: Fetching vnm_msdf_text LCD contract headers")
+                FetchContent_Declare(vnm_msdf_text
+                    GIT_REPOSITORY https://github.com/imakris/vnm_msdf_text.git
+                    GIT_TAG        master
+                    GIT_SHALLOW    TRUE
+                )
+                FetchContent_GetProperties(vnm_msdf_text)
+                if(NOT vnm_msdf_text_POPULATED)
+                    FetchContent_Populate(vnm_msdf_text)
+                endif()
+                _vnm_plot_add_msdf_text_lcd_contract_from_source("${vnm_msdf_text_SOURCE_DIR}")
+            endif()
         endif()
+        unset(_vnm_plot_msdf_text_source)
+
+        _vnm_plot_alias_existing_msdf_text_targets()
+        _vnm_plot_missing_targets(
+            _vnm_plot_missing_msdf_text_targets
+            ${_vnm_plot_msdf_text_required_targets})
     endif()
-    unset(_vnm_plot_msdf_text_fetch_deps)
-endif() # VNM_PLOT_ENABLE_TEXT
+endif()
+
+if(_vnm_plot_missing_msdf_text_targets)
+    string(REPLACE ";" ", " _vnm_plot_missing_msdf_text_targets_display
+        "${_vnm_plot_missing_msdf_text_targets}")
+    message(FATAL_ERROR
+        "vnm_plot: missing required vnm_msdf_text target(s): "
+        "${_vnm_plot_missing_msdf_text_targets_display}. Provide the full "
+        "target set in the superbuild or a vnm_msdf_text package/source tree "
+        "with components: ${_vnm_plot_msdf_text_components}.")
+endif()
+
+unset(_vnm_plot_has_partial_msdf_text_targets)
+unset(_vnm_plot_missing_msdf_text_targets)
+unset(_vnm_plot_missing_msdf_text_targets_display)
+unset(_vnm_plot_msdf_text_components)
+unset(_vnm_plot_msdf_text_fetch_deps)
+unset(_vnm_plot_msdf_text_required_targets)
 
 if(VNM_PLOT_ENABLE_TEXT)
     if(NOT VNM_MSDF_TEXT_DEFAULT_FONT_FILE)
@@ -292,6 +424,7 @@ vnm_plot_configure_library_target(vnm_plot_data)
 target_link_libraries(vnm_plot_data
     PUBLIC
         glm::glm
+        vnm_msdf_text::lcd_contract
 )
 
 message(STATUS "vnm_plot: Building data library")
@@ -507,7 +640,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     # FetchContent path produces locally-built targets which can't be
     # exported here.
     set(_vnm_plot_export_ok TRUE)
-    foreach(_dep IN ITEMS glm::glm)
+    foreach(_dep IN ITEMS glm::glm vnm_msdf_text::lcd_contract)
         if(TARGET ${_dep})
             get_target_property(_dep_imported ${_dep} IMPORTED)
             if(NOT _dep_imported)
@@ -515,11 +648,15 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             endif()
         endif()
     endforeach()
-    if(VNM_PLOT_ENABLE_TEXT AND TARGET vnm_msdf_text::vnm_msdf_text)
-        get_target_property(_dep_imported vnm_msdf_text::vnm_msdf_text IMPORTED)
-        if(NOT _dep_imported)
-            set(_vnm_plot_export_ok FALSE)
-        endif()
+    if(VNM_PLOT_ENABLE_TEXT)
+        foreach(_dep IN ITEMS vnm_msdf_text::vnm_msdf_text)
+            if(TARGET ${_dep})
+                get_target_property(_dep_imported ${_dep} IMPORTED)
+                if(NOT _dep_imported)
+                    set(_vnm_plot_export_ok FALSE)
+                endif()
+            endif()
+        endforeach()
     endif()
 
     if(_vnm_plot_export_ok)
