@@ -98,6 +98,8 @@ struct Graphics_device_info {
     std::string backend = "uninitialized";
     std::string device_name = "unknown";
     std::string device_type = "unknown";
+    std::string fallback_surface_requested_format = "not-applicable";
+    std::string fallback_surface_resolved_format = "not-applicable";
     std::uint64_t device_id = 0;
     std::uint64_t vendor_id = 0;
 };

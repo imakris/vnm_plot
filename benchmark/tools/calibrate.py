@@ -171,6 +171,8 @@ FINGERPRINT_FIELDS = (
     "env.GALLIUM_DRIVER",
     "env.LP_NUM_THREADS",
     "executable_sha256",
+    "fallback_surface_requested_format",
+    "fallback_surface_resolved_format",
     "framebuffer",
     "kernel_type",
     "kernel_version",
@@ -324,6 +326,17 @@ def validate_fixed_render_protocol(metadata: dict[str, Any], scenario_id: str) -
             raise RuntimeError(
                 f"{scenario_id} metadata {name}={metadata.get(name)!r}, "
                 f"expected {expected!r}"
+            )
+    if metadata.get("actual_graphics_backend", "").lower() == "opengl":
+        requested_format = metadata.get("fallback_surface_requested_format")
+        if requested_format != "3.3|core|1":
+            raise RuntimeError(
+                f"{scenario_id} metadata fallback_surface_requested_format="
+                f"{requested_format!r}, expected '3.3|core|1'"
+            )
+        if metadata.get("fallback_surface_resolved_format") in (None, "not-applicable"):
+            raise RuntimeError(
+                f"{scenario_id} is missing resolved fallback-surface format"
             )
 
 

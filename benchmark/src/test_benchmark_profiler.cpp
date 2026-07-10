@@ -8,6 +8,8 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
+#include <new>
 #include <sstream>
 #include <thread>
 
@@ -64,6 +66,34 @@ bool test_allocation_tracker_counts_ordinary_allocation()
         "allocation tracker positive control should count an ordinary allocation");
     TEST_ASSERT(measurement.bytes >= 257,
         "allocation tracker positive control should retain allocated bytes");
+    return true;
+}
+
+bool test_allocation_failure_diagnostics()
+{
+    vnm::benchmark::clear_thread_allocation_failure();
+    auto allocation_failure = vnm::benchmark::last_thread_allocation_failure();
+    TEST_ASSERT(allocation_failure.size == 0, "failure size should reset");
+    TEST_ASSERT(allocation_failure.alignment == 0, "failure alignment should reset");
+    TEST_ASSERT(allocation_failure.error == 0, "failure error should reset");
+    TEST_ASSERT(!allocation_failure.aligned, "failure aligned flag should reset");
+
+    const std::size_t impossible_size = std::numeric_limits<std::size_t>::max();
+    try {
+        void* memory = ::operator new(impossible_size);
+        ::operator delete(memory);
+        TEST_ASSERT(false, "impossible allocation should throw std::bad_alloc");
+    }
+    catch (const std::bad_alloc&) {
+    }
+    allocation_failure = vnm::benchmark::last_thread_allocation_failure();
+    TEST_ASSERT(allocation_failure.size == impossible_size,
+        "failed allocation size should be retained");
+    TEST_ASSERT(allocation_failure.alignment == 0,
+        "ordinary failed allocation should not retain alignment");
+    TEST_ASSERT(!allocation_failure.aligned,
+        "ordinary failed allocation should not be marked aligned");
+    vnm::benchmark::clear_thread_allocation_failure();
     return true;
 }
 
@@ -541,6 +571,7 @@ int main() {
 
     RUN_TEST(test_basic_scope);
     RUN_TEST(test_allocation_tracker_counts_ordinary_allocation);
+    RUN_TEST(test_allocation_failure_diagnostics);
     RUN_TEST(test_profiler_allocations_are_excluded_from_frame_measurement);
     RUN_TEST(test_nested_scopes);
     RUN_TEST(test_scope_aggregation);

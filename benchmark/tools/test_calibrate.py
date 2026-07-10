@@ -160,6 +160,27 @@ class CalibrationProtocolTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, name):
                     calibrate.validate_fixed_render_protocol(tampered, "test-scenario")
 
+    def test_opengl_fallback_surface_protocol_is_enforced(self) -> None:
+        metadata = {
+            "actual_graphics_backend": "OpenGL",
+            "context_profile_request": "core",
+            "context_sample_count": "1",
+            "context_version_request": "3.3",
+            "fallback_surface_requested_format": "3.3|core|1",
+            "fallback_surface_resolved_format": "3.3|core|0",
+            "sample_count": "4",
+        }
+        calibrate.validate_fixed_render_protocol(metadata, "test-scenario")
+        for name, invalid in (
+            ("fallback_surface_requested_format", "4.3|core|1"),
+            ("fallback_surface_resolved_format", "not-applicable"),
+        ):
+            with self.subTest(name=name):
+                tampered = dict(metadata)
+                tampered[name] = invalid
+                with self.assertRaisesRegex(RuntimeError, "fallback"):
+                    calibrate.validate_fixed_render_protocol(tampered, "test-scenario")
+
     def test_timeout_output_is_json_serializable_text(self) -> None:
         self.assertEqual(calibrate.captured_text(b"partial\xff"), "partial�")
 

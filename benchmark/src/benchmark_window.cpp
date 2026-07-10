@@ -68,6 +68,21 @@ std::string frame_op_result_name(QRhi::FrameOpResult result)
     return "unknown";
 }
 
+std::string surface_format_identity(const QSurfaceFormat& format)
+{
+    const char* profile = "none";
+    if (format.profile() == QSurfaceFormat::CoreProfile) {
+        profile = "core";
+    }
+    else
+    if (format.profile() == QSurfaceFormat::CompatibilityProfile) {
+        profile = "compatibility";
+    }
+    return std::to_string(format.majorVersion()) + "." +
+        std::to_string(format.minorVersion()) + "|" + profile + "|" +
+        std::to_string(format.samples());
+}
+
 Graphics_device_info graphics_device_info_from_rhi(QRhi& rhi)
 {
     const QRhiDriverInfo driver = rhi.driverInfo();
@@ -872,6 +887,8 @@ void Benchmark_rhi_offscreen_runner::fill_static_data()
 bool Benchmark_rhi_offscreen_runner::initialize_rhi(std::string& error_message)
 {
     m_backend_create_substep = "select_backend";
+    std::string fallback_surface_requested_format = "not-applicable";
+    std::string fallback_surface_resolved_format = "not-applicable";
     const auto create_null_rhi = [&]() {
         QRhiNullInitParams params;
         m_backend_create_substep = "rhi_create";
@@ -881,9 +898,20 @@ bool Benchmark_rhi_offscreen_runner::initialize_rhi(std::string& error_message)
 
     const auto create_opengl_rhi = [&]() {
 #if QT_CONFIG(opengl)
-        m_backend_create_substep = "fallback_surface";
-        m_fallback_surface.reset(QRhiGles2InitParams::newFallbackSurface());
         QRhiGles2InitParams params;
+        m_backend_create_substep = "fallback_surface_allocate";
+        m_fallback_surface = std::make_unique<QOffscreenSurface>();
+        fallback_surface_requested_format = surface_format_identity(params.format);
+        m_fallback_surface->setFormat(params.format);
+        m_backend_create_substep = "fallback_surface_create";
+        m_fallback_surface->create();
+        m_backend_create_substep = "fallback_surface_validate";
+        if (!m_fallback_surface->isValid()) {
+            error_message = "cold.fallback_surface: failed to create a valid offscreen surface";
+            m_fallback_surface.reset();
+            return false;
+        }
+        fallback_surface_resolved_format = surface_format_identity(m_fallback_surface->format());
         params.fallbackSurface = m_fallback_surface.get();
         m_backend_create_substep = "rhi_create";
         m_rhi.reset(QRhi::create(QRhi::OpenGLES2, &params));
@@ -986,6 +1014,10 @@ bool Benchmark_rhi_offscreen_runner::initialize_rhi(std::string& error_message)
 
     m_backend_create_substep = "graphics_info";
     m_graphics_info = graphics_device_info_from_rhi(*m_rhi);
+    m_graphics_info.fallback_surface_requested_format =
+        fallback_surface_requested_format;
+    m_graphics_info.fallback_surface_resolved_format =
+        fallback_surface_resolved_format;
 
     const QSize size(m_config.framebuffer_width, m_config.framebuffer_height);
     const int sample_count = static_cast<int>(m_config.sample_count);
@@ -1318,7 +1350,7 @@ bool Benchmark_rhi_offscreen_runner::run(std::string& error_message)
         error_message = "phase_trace.open: failed to open " + m_phase_trace_path;
         return false;
     }
-    error_message.reserve(192);
+    error_message.reserve(384);
     record_phase("cold.setup.begin");
     const auto cold_started = std::chrono::steady_clock::now();
     const auto setup_started = cold_started;
@@ -1331,6 +1363,7 @@ bool Benchmark_rhi_offscreen_runner::run(std::string& error_message)
 
     const auto backend_started = std::chrono::steady_clock::now();
     record_phase("cold.backend_create.begin");
+    clear_thread_allocation_failure();
     try {
         if (!initialize_rhi(error_message)) {
             record_phase("cold.backend_create.failed");
@@ -1345,10 +1378,26 @@ bool Benchmark_rhi_offscreen_runner::run(std::string& error_message)
             "cold.backend_create.%s.bad_alloc",
             m_backend_create_substep);
         record_phase(failure_phase);
-        std::fprintf(stderr, "%s: std::bad_alloc\n", failure_phase);
+        const Thread_allocation_failure allocation_failure =
+            last_thread_allocation_failure();
+        char failure_detail[384];
+        std::snprintf(
+            failure_detail,
+            sizeof(failure_detail),
+            "%s: std::bad_alloc; observed_by_global_new=%s; "
+            "last_allocation_failure_size=%zu; "
+            "last_allocation_failure_alignment=%zu; "
+            "last_allocation_failure_error=%d; "
+            "last_allocation_failure_aligned=%s",
+            failure_phase,
+            allocation_failure.size != 0 ? "true" : "false",
+            allocation_failure.size,
+            allocation_failure.alignment,
+            allocation_failure.error,
+            allocation_failure.aligned ? "true" : "false");
+        std::fprintf(stderr, "%s\n", failure_detail);
         std::fflush(stderr);
-        error_message.assign(failure_phase);
-        error_message.append(": std::bad_alloc");
+        error_message.assign(failure_detail);
         return false;
     }
     record_phase("cold.backend_create.end");

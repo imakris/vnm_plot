@@ -101,6 +101,11 @@ def validate(
             f"expected backend {args.graphics_backend}, "
             f"got {metadata['actual_graphics_backend']}"
         )
+    if actual == "opengl":
+        if metadata.get("fallback_surface_requested_format") != "3.3|core|1":
+            raise RuntimeError("OpenGL fallback-surface request changed")
+        if metadata.get("fallback_surface_resolved_format") in (None, "not-applicable"):
+            raise RuntimeError("OpenGL fallback-surface resolution is missing")
     if int(metadata["measured_frames"]) != args.frames:
         raise RuntimeError("metadata measured-frame count mismatch")
     if metadata.get("static_sample_count") != "10000":

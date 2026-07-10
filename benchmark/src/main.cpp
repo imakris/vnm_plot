@@ -674,6 +674,10 @@ int main(int argc, char* argv[])
         meta.reproduction["finish_state"] = config.finish
             ? "enabled"
             : config.capture_pixel_checksum ? "forced-by-pixel-readback" : "disabled";
+        meta.reproduction["fallback_surface_requested_format"] =
+            graphics.fallback_surface_requested_format;
+        meta.reproduction["fallback_surface_resolved_format"] =
+            graphics.fallback_surface_resolved_format;
         meta.reproduction["framebuffer"] = std::to_string(config.framebuffer_width) + "x" +
             std::to_string(config.framebuffer_height);
         meta.reproduction["context_profile_request"] = "core";
