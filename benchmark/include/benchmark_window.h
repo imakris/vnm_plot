@@ -272,7 +272,6 @@ private:
     std::size_t m_pixel_nonuniform_count = 0;
     std::chrono::steady_clock::time_point m_phase_trace_started;
     std::string m_phase_trace_path;
-    const char* m_backend_create_substep = "not_started";
     mutable std::ofstream m_phase_trace;
 };
 

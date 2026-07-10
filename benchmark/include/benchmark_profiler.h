@@ -5,6 +5,7 @@
 #define VNM_PLOT_BENCHMARK_PROFILER_H
 
 #include "allocation_tracker.h"
+#include "path_io.h"
 
 #include <vnm_plot/core/plot_config.h>
 
@@ -262,10 +263,10 @@ public:
         std::filesystem::path output_path = meta.output_directory / filename;
 
         // Ensure directory exists
-        std::filesystem::create_directories(meta.output_directory);
+        std::filesystem::create_directories(path_for_file_io(meta.output_directory));
 
         // Write report
-        std::ofstream ofs(output_path);
+        std::ofstream ofs(path_for_file_io(output_path));
         if (!ofs) {
             throw std::runtime_error("cannot open benchmark report: " + output_path.string());
         }
@@ -287,10 +288,10 @@ public:
     std::filesystem::path write_raw_report(const Report_metadata& meta) const
     {
         const std::filesystem::path output_path = raw_report_path(meta);
-        std::filesystem::create_directories(meta.output_directory);
+        std::filesystem::create_directories(path_for_file_io(meta.output_directory));
 
         std::lock_guard<std::mutex> lock(m_mutex);
-        std::ofstream ofs(output_path);
+        std::ofstream ofs(path_for_file_io(output_path));
         if (!ofs) {
             throw std::runtime_error("cannot open raw benchmark report: " + output_path.string());
         }

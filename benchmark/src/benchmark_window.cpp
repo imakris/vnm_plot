@@ -2,6 +2,7 @@
 
 #include "benchmark_window.h"
 #include "allocation_tracker.h"
+#include "path_io.h"
 
 #include <vnm_plot/core/plot_config.h>
 
@@ -886,12 +887,10 @@ void Benchmark_rhi_offscreen_runner::fill_static_data()
 
 bool Benchmark_rhi_offscreen_runner::initialize_rhi(std::string& error_message)
 {
-    m_backend_create_substep = "select_backend";
     std::string fallback_surface_requested_format = "not-applicable";
     std::string fallback_surface_resolved_format = "not-applicable";
     const auto create_null_rhi = [&]() {
         QRhiNullInitParams params;
-        m_backend_create_substep = "rhi_create";
         m_rhi.reset(QRhi::create(QRhi::Null, &params));
         return m_rhi != nullptr;
     };
@@ -899,21 +898,15 @@ bool Benchmark_rhi_offscreen_runner::initialize_rhi(std::string& error_message)
     const auto create_opengl_rhi = [&]() {
 #if QT_CONFIG(opengl)
         QRhiGles2InitParams params;
-        m_backend_create_substep = "fallback_surface_allocate";
-        m_fallback_surface = std::make_unique<QOffscreenSurface>();
         fallback_surface_requested_format = surface_format_identity(params.format);
-        m_fallback_surface->setFormat(params.format);
-        m_backend_create_substep = "fallback_surface_create";
-        m_fallback_surface->create();
-        m_backend_create_substep = "fallback_surface_validate";
-        if (!m_fallback_surface->isValid()) {
+        m_fallback_surface.reset(QRhiGles2InitParams::newFallbackSurface());
+        if (!m_fallback_surface || !m_fallback_surface->isValid()) {
             error_message = "cold.fallback_surface: failed to create a valid offscreen surface";
             m_fallback_surface.reset();
             return false;
         }
         fallback_surface_resolved_format = surface_format_identity(m_fallback_surface->format());
         params.fallbackSurface = m_fallback_surface.get();
-        m_backend_create_substep = "rhi_create";
         m_rhi.reset(QRhi::create(QRhi::OpenGLES2, &params));
         if (!m_rhi) {
             m_fallback_surface.reset();
@@ -927,7 +920,6 @@ bool Benchmark_rhi_offscreen_runner::initialize_rhi(std::string& error_message)
     const auto create_d3d11_rhi = [&]() {
 #ifdef Q_OS_WIN
         QRhiD3D11InitParams params;
-        m_backend_create_substep = "rhi_create";
         m_rhi.reset(QRhi::create(QRhi::D3D11, &params));
         return m_rhi != nullptr;
 #else
@@ -938,7 +930,6 @@ bool Benchmark_rhi_offscreen_runner::initialize_rhi(std::string& error_message)
     const auto create_metal_rhi = [&]() {
 #if defined(Q_OS_MACOS) && QT_CONFIG(metal)
         QRhiMetalInitParams params;
-        m_backend_create_substep = "rhi_create";
         m_rhi.reset(QRhi::create(QRhi::Metal, &params));
         return m_rhi != nullptr;
 #else
@@ -948,16 +939,13 @@ bool Benchmark_rhi_offscreen_runner::initialize_rhi(std::string& error_message)
 
     const auto create_vulkan_rhi = [&]() {
 #if QT_CONFIG(vulkan) && __has_include(<vulkan/vulkan.h>)
-        m_backend_create_substep = "vulkan_instance_allocate";
         m_vulkan_instance = std::make_unique<QVulkanInstance>();
-        m_backend_create_substep = "vulkan_instance_create";
         if (!m_vulkan_instance->create()) {
             m_vulkan_instance.reset();
             return false;
         }
         QRhiVulkanInitParams params;
         params.inst = m_vulkan_instance.get();
-        m_backend_create_substep = "rhi_create";
         m_rhi.reset(QRhi::create(QRhi::Vulkan, &params));
         if (!m_rhi) {
             m_vulkan_instance.reset();
@@ -1000,7 +988,6 @@ bool Benchmark_rhi_offscreen_runner::initialize_rhi(std::string& error_message)
 #endif
     }
 
-    m_backend_create_substep = "backend_validate";
     if (!created || !m_rhi) {
         error_message = "cold.backend_create: failed to create requested offscreen QRhi backend '" +
             requested + "'";
@@ -1012,7 +999,6 @@ bool Benchmark_rhi_offscreen_runner::initialize_rhi(std::string& error_message)
         return false;
     }
 
-    m_backend_create_substep = "graphics_info";
     m_graphics_info = graphics_device_info_from_rhi(*m_rhi);
     m_graphics_info.fallback_surface_requested_format =
         fallback_surface_requested_format;
@@ -1021,7 +1007,6 @@ bool Benchmark_rhi_offscreen_runner::initialize_rhi(std::string& error_message)
 
     const QSize size(m_config.framebuffer_width, m_config.framebuffer_height);
     const int sample_count = static_cast<int>(m_config.sample_count);
-    m_backend_create_substep = "color_buffer_allocate";
     m_color_buffer.reset(m_rhi->newRenderBuffer(
         QRhiRenderBuffer::Color,
         size,
@@ -1032,53 +1017,44 @@ bool Benchmark_rhi_offscreen_runner::initialize_rhi(std::string& error_message)
         error_message = "Failed to allocate QRhi offscreen color buffer";
         return false;
     }
-    m_backend_create_substep = "color_buffer_create";
     if (!m_color_buffer->create()) {
         error_message = "Failed to create QRhi offscreen color buffer";
         return false;
     }
 
     if (m_config.capture_pixel_checksum) {
-        m_backend_create_substep = "resolve_texture_allocate";
         m_resolve_texture.reset(m_rhi->newTexture(
             QRhiTexture::RGBA8,
             size,
             1,
             QRhiTexture::RenderTarget | QRhiTexture::UsedAsTransferSource));
-        m_backend_create_substep = "resolve_texture_create";
         if (!m_resolve_texture || !m_resolve_texture->create()) {
             error_message = "cold.render_target: failed to create pixel readback resolve texture";
             return false;
         }
     }
 
-    m_backend_create_substep = "render_target_describe";
     QRhiColorAttachment color_attachment;
     color_attachment.setRenderBuffer(m_color_buffer.get());
     if (m_resolve_texture) {
         color_attachment.setResolveTexture(m_resolve_texture.get());
     }
     QRhiTextureRenderTargetDescription rt_desc(color_attachment);
-    m_backend_create_substep = "render_target_allocate";
     m_render_target.reset(m_rhi->newTextureRenderTarget(rt_desc));
     if (!m_render_target) {
         error_message = "Failed to allocate QRhi offscreen render target";
         return false;
     }
-    m_backend_create_substep = "render_pass_allocate";
     m_render_pass_descriptor.reset(m_render_target->newCompatibleRenderPassDescriptor());
     if (!m_render_pass_descriptor) {
         error_message = "Failed to allocate QRhi offscreen render pass descriptor";
         return false;
     }
     m_render_target->setRenderPassDescriptor(m_render_pass_descriptor.get());
-    m_backend_create_substep = "render_target_create";
     if (!m_render_target->create()) {
         error_message = "Failed to create QRhi offscreen render target";
         return false;
     }
-
-    m_backend_create_substep = "complete";
     return true;
 }
 
@@ -1345,7 +1321,9 @@ bool Benchmark_rhi_offscreen_runner::run(std::string& error_message)
         std::filesystem::path(m_config.output_directory) /
         ("benchmark_phase_trace_" + std::to_string(trace_identity) + "_" +
             std::to_string(QCoreApplication::applicationPid()) + ".jsonl")).string();
-    m_phase_trace.open(m_phase_trace_path, std::ios::out | std::ios::trunc);
+    m_phase_trace.open(
+        path_for_file_io(m_phase_trace_path),
+        std::ios::out | std::ios::trunc);
     if (!m_phase_trace) {
         error_message = "phase_trace.open: failed to open " + m_phase_trace_path;
         return false;
@@ -1363,7 +1341,6 @@ bool Benchmark_rhi_offscreen_runner::run(std::string& error_message)
 
     const auto backend_started = std::chrono::steady_clock::now();
     record_phase("cold.backend_create.begin");
-    clear_thread_allocation_failure();
     try {
         if (!initialize_rhi(error_message)) {
             record_phase("cold.backend_create.failed");
@@ -1371,35 +1348,8 @@ bool Benchmark_rhi_offscreen_runner::run(std::string& error_message)
         }
     }
     catch (const std::bad_alloc&) {
-        char failure_phase[128];
-        std::snprintf(
-            failure_phase,
-            sizeof(failure_phase),
-            "cold.backend_create.%s.bad_alloc",
-            m_backend_create_substep);
-        record_phase(failure_phase);
-        const Thread_allocation_failure allocation_failure =
-            last_thread_allocation_failure();
-        char failure_detail[384];
-        std::snprintf(
-            failure_detail,
-            sizeof(failure_detail),
-            "%s: std::bad_alloc; observed_by_global_new=%s; "
-            "last_allocation_failure_size=%zu; "
-            "last_allocation_failure_alignment=%zu; "
-            "last_allocation_failure_effective_alignment=%zu; "
-            "last_allocation_failure_error=%d; "
-            "last_allocation_failure_aligned=%s",
-            failure_phase,
-            allocation_failure.size != 0 ? "true" : "false",
-            allocation_failure.size,
-            allocation_failure.alignment,
-            allocation_failure.effective_alignment,
-            allocation_failure.error,
-            allocation_failure.aligned ? "true" : "false");
-        std::fprintf(stderr, "%s\n", failure_detail);
-        std::fflush(stderr);
-        error_message.assign(failure_detail);
+        record_phase("cold.backend_create.failed");
+        error_message = "cold.backend_create: std::bad_alloc";
         return false;
     }
     record_phase("cold.backend_create.end");
@@ -1414,21 +1364,22 @@ bool Benchmark_rhi_offscreen_runner::run(std::string& error_message)
         m_generator_thread = std::thread(&Benchmark_rhi_offscreen_runner::generator_thread_func, this);
     }
 
+    record_phase("warmup.begin");
     for (std::size_t frame = 0; frame < m_config.warmup_frames; ++frame) {
-        record_phase("warmup.frame.begin", frame);
         const auto warmup_started = std::chrono::steady_clock::now();
         if (!render_frame(error_message, false)) {
+            record_phase("warmup.frame.failed", frame);
             error_message = "warmup.frame: " + error_message;
             stop_generator_thread();
             return false;
         }
-        record_phase("warmup.frame.end", frame);
         if (frame == 0) {
             m_cold_first_submission_ms = std::chrono::duration<double, std::milli>(
                 std::chrono::steady_clock::now() - warmup_started).count();
             m_cold_shader_pipeline_prepare_ms = m_last_prepare_ms;
         }
     }
+    record_phase("warmup.end");
 
     m_cold_total_ms = std::chrono::duration<double, std::milli>(
         std::chrono::steady_clock::now() - cold_started).count();
@@ -1455,15 +1406,14 @@ bool Benchmark_rhi_offscreen_runner::run(std::string& error_message)
         "benchmark.warmup.frame_count",
         static_cast<double>(m_config.warmup_frames));
 
+    record_phase("measure.begin");
     m_started_at = std::chrono::system_clock::now();
     const auto measured_started = std::chrono::steady_clock::now();
     resume_generator_publication();
     const auto duration = std::chrono::duration<double>(m_config.duration_seconds);
 
     const auto render_measured_frame = [&](std::size_t frame) {
-        record_phase("measure.frame.begin", frame);
         if (render_frame(error_message, true)) {
-            record_phase("measure.frame.end", frame);
             return true;
         }
         record_phase("measure.frame.failed", frame);
@@ -1491,6 +1441,7 @@ bool Benchmark_rhi_offscreen_runner::run(std::string& error_message)
 
     pause_generator_publication();
     const auto measured_ended = std::chrono::steady_clock::now();
+    record_phase("measure.end");
     const double measured_seconds = std::chrono::duration<double>(
         measured_ended - measured_started).count();
     record_final_statistics(measured_seconds);

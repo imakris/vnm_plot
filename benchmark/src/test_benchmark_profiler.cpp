@@ -8,12 +8,12 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <limits>
 #include <new>
 #include <sstream>
 #include <thread>
 
 using vnm::benchmark::Benchmark_profiler;
+using vnm::benchmark::path_for_file_io;
 using vnm::benchmark::Profile_scope;
 using vnm::benchmark::Report_metadata;
 
@@ -69,38 +69,6 @@ bool test_allocation_tracker_counts_ordinary_allocation()
     return true;
 }
 
-bool test_allocation_failure_diagnostics()
-{
-    vnm::benchmark::clear_thread_allocation_failure();
-    auto allocation_failure = vnm::benchmark::last_thread_allocation_failure();
-    TEST_ASSERT(allocation_failure.size == 0, "failure size should reset");
-    TEST_ASSERT(allocation_failure.alignment == 0, "failure alignment should reset");
-    TEST_ASSERT(allocation_failure.effective_alignment == 0,
-        "failure effective alignment should reset");
-    TEST_ASSERT(allocation_failure.error == 0, "failure error should reset");
-    TEST_ASSERT(!allocation_failure.aligned, "failure aligned flag should reset");
-
-    const std::size_t impossible_size = std::numeric_limits<std::size_t>::max();
-    try {
-        void* memory = ::operator new(impossible_size);
-        ::operator delete(memory);
-        TEST_ASSERT(false, "impossible allocation should throw std::bad_alloc");
-    }
-    catch (const std::bad_alloc&) {
-    }
-    allocation_failure = vnm::benchmark::last_thread_allocation_failure();
-    TEST_ASSERT(allocation_failure.size == impossible_size,
-        "failed allocation size should be retained");
-    TEST_ASSERT(allocation_failure.alignment == 0,
-        "ordinary failed allocation should not retain alignment");
-    TEST_ASSERT(allocation_failure.effective_alignment == 0,
-        "ordinary failed allocation should not retain effective alignment");
-    TEST_ASSERT(!allocation_failure.aligned,
-        "ordinary failed allocation should not be marked aligned");
-    vnm::benchmark::clear_thread_allocation_failure();
-    return true;
-}
-
 bool test_sub_pointer_aligned_allocation()
 {
     constexpr std::size_t requested_alignment = 4;
@@ -111,23 +79,77 @@ bool test_sub_pointer_aligned_allocation()
     TEST_ASSERT(address % sizeof(void*) == 0,
         "sub-pointer alignment should be normalized for posix_memalign");
     ::operator delete(memory, std::align_val_t{requested_alignment});
+    return true;
+}
 
-    vnm::benchmark::clear_thread_allocation_failure();
-    try {
-        memory = ::operator new(
-            std::numeric_limits<std::size_t>::max(),
-            std::align_val_t{requested_alignment});
-        ::operator delete(memory, std::align_val_t{requested_alignment});
-        TEST_ASSERT(false, "impossible aligned allocation should throw std::bad_alloc");
+bool test_file_io_path_contract()
+{
+    const std::filesystem::path logical = "relative/report.txt";
+#if defined(_WIN32)
+    const std::filesystem::path adapted = path_for_file_io(logical);
+    TEST_ASSERT(adapted.is_absolute(),
+        "Windows file-I/O paths should become absolute");
+    TEST_ASSERT(adapted.native().starts_with(L"\\\\?\\"),
+        "Windows file-I/O paths should use the extended namespace");
+    TEST_ASSERT(path_for_file_io(adapted) == adapted,
+        "extended Windows paths should be idempotent");
+
+    const std::filesystem::path unc = L"\\\\server\\share\\report.txt";
+    TEST_ASSERT(
+        path_for_file_io(unc).native() == L"\\\\?\\UNC\\server\\share\\report.txt",
+        "UNC paths should use the extended UNC namespace");
+    const std::filesystem::path device = L"\\\\.\\PhysicalDrive0";
+    TEST_ASSERT(path_for_file_io(device) == device,
+        "device paths should remain unchanged");
+#else
+    TEST_ASSERT(path_for_file_io(logical) == logical,
+        "non-Windows file-I/O paths should remain unchanged");
+#endif
+    return true;
+}
+
+bool test_long_report_path()
+{
+#if defined(_WIN32)
+    Benchmark_profiler profiler;
+    profiler.record_observation("benchmark.frame.total_ms", 1.0);
+
+    const std::filesystem::path root = std::filesystem::temp_directory_path() /
+        "vnm_plot_benchmark_long_path_test";
+    Report_metadata meta;
+    meta.session = "long_path";
+    meta.stream = "LONG";
+    meta.output_directory = root;
+    meta.started_at = std::chrono::system_clock::from_time_t(1'700'000'002);
+    meta.generated_at = meta.started_at;
+    while (meta.output_directory.native().size() <= 250) {
+        meta.output_directory /= "segment0123456789";
     }
-    catch (const std::bad_alloc&) {
-    }
-    const auto failure = vnm::benchmark::last_thread_allocation_failure();
-    TEST_ASSERT(failure.alignment == requested_alignment,
-        "failed aligned allocation should retain requested alignment");
-    TEST_ASSERT(failure.effective_alignment == sizeof(void*),
-        "failed aligned allocation should retain normalized alignment");
-    vnm::benchmark::clear_thread_allocation_failure();
+
+    const std::filesystem::path report_path = profiler.write_report(meta);
+    const std::filesystem::path raw_path = profiler.raw_report_path(meta);
+    TEST_ASSERT(report_path.native().size() > 300,
+        "text report regression path should exceed 300 characters");
+    TEST_ASSERT(raw_path.native().size() > 300,
+        "raw report regression path should exceed 300 characters");
+    TEST_ASSERT(!report_path.native().starts_with(L"\\\\?\\"),
+        "returned text report path should remain logical");
+    TEST_ASSERT(!raw_path.native().starts_with(L"\\\\?\\"),
+        "returned raw report path should remain logical");
+
+    std::ifstream report(path_for_file_io(report_path));
+    std::ifstream raw(path_for_file_io(raw_path));
+    TEST_ASSERT(report.peek() != std::ifstream::traits_type::eof(),
+        "long text report should be readable");
+    TEST_ASSERT(raw.peek() != std::ifstream::traits_type::eof(),
+        "long raw report should be readable");
+
+    report.close();
+    raw.close();
+    std::error_code ec;
+    std::filesystem::remove_all(path_for_file_io(root), ec);
+    TEST_ASSERT(!ec, "long report test cleanup should succeed");
+#endif
     return true;
 }
 
@@ -605,8 +627,9 @@ int main() {
 
     RUN_TEST(test_basic_scope);
     RUN_TEST(test_allocation_tracker_counts_ordinary_allocation);
-    RUN_TEST(test_allocation_failure_diagnostics);
     RUN_TEST(test_sub_pointer_aligned_allocation);
+    RUN_TEST(test_file_io_path_contract);
+    RUN_TEST(test_long_report_path);
     RUN_TEST(test_profiler_allocations_are_excluded_from_frame_measurement);
     RUN_TEST(test_nested_scopes);
     RUN_TEST(test_scope_aggregation);

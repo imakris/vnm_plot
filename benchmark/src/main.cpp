@@ -4,6 +4,7 @@
 #include "benchmark_build_metadata.h"
 #include "benchmark_profiler.h"
 #include "benchmark_window.h"
+#include "path_io.h"
 
 #include <QByteArray>
 #include <QCoreApplication>
@@ -574,7 +575,8 @@ int main(int argc, char* argv[])
 
     // Ensure output directory exists
     try {
-        std::filesystem::create_directories(config.output_directory);
+        std::filesystem::create_directories(
+            vnm::benchmark::path_for_file_io(config.output_directory));
     }
     catch (const std::filesystem::filesystem_error& e) {
         std::cerr << "Error: Cannot create output directory '"

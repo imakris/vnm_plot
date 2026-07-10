@@ -17,7 +17,6 @@ option(VNM_PLOT_BUILD_FUNCTION_PLOTTER "Build the Qt Multimedia function_plotter
 option(VNM_PLOT_ENABLE_TEXT "Enable MSDF text rendering (requires FreeType + msdfgen)" ON)
 option(VNM_PLOT_BUILD_TESTS "Build test suite" OFF)
 option(VNM_PLOT_USE_SYSTEM_LIBS "Prefer find_package dependencies over FetchContent when available" OFF)
-set(VNM_PLOT_VNM_MSDF_TEXT_VERSION 0.2.0)
 
 include(FetchContent)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/EmbedAssets.cmake)
@@ -169,7 +168,7 @@ if(_vnm_plot_missing_msdf_text_targets)
     _vnm_plot_has_any_msdf_text_target(_vnm_plot_has_partial_msdf_text_targets)
     if(VNM_PLOT_USE_SYSTEM_LIBS AND
        NOT _vnm_plot_has_partial_msdf_text_targets)
-        find_package(vnm_msdf_text ${VNM_PLOT_VNM_MSDF_TEXT_VERSION} CONFIG QUIET
+        find_package(vnm_msdf_text CONFIG QUIET
             COMPONENTS ${_vnm_plot_msdf_text_components})
         _vnm_plot_alias_existing_msdf_text_targets()
         _vnm_plot_missing_targets(

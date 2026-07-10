@@ -122,15 +122,40 @@ Failure ownership is explicit: dependency publication and the four `vnm_plot` wo
 
 ### 2026-07-10 Batch 2 execution addendum
 
-The original review above is preserved as historical evidence. Subsequent Batch 2 implementation reached delivery PR #18 and validation PR #19. At candidate `715d6b8`, Windows passed while Linux, macOS, and FreeBSD exposed three independent portability defects: an offscreen OpenGL context failure, an unconditional Vulkan header, and a missing thread link. Three xhigh review workers also returned red on evidence integrity, and the owner supplied a fourth review with compatible findings.
+The original review above is preserved as architectural evidence. Batch execution
+status, candidate hashes, failed hypotheses, retained run identifiers, and
+recovery history live in `VNM_PLOT_IMPLEMENTATION_PLAN.md`; they are not repeated
+here.
 
-Remediation through `0dbbb41` requests Qt's native QRhi backend without imposing a Vulkan/OpenGL/D3D/Metal product matrix; rejects Null for retained evidence; records the actual backend/device plus source, dependency, executable, Qt, machine, OS, and CPU identity; makes smoke artifacts mandatory; uses Xvfb on Unix CI; links `Threads::Threads`; and guards Vulkan compilation. The calibration runner now fixes the protocol at six scenarios and 108 scenario executions, retains a separate current-environment probe, requires every deterministic-zero observation to be zero, validates terminal phase traces and artifact hashes, and cannot transition to checkpoint PASS. A separate owner command may record PASS only against the exact retained proposal SHA-256 after every required phase passes on clean source and dependency trees.
+The retained benchmark requests Qt's native QRhi backend, rejects Null evidence,
+and records the actual backend/device without making Vulkan, OpenGL, D3D, Metal,
+or any future API a product requirement. It records source, dependency,
+executable, Qt, machine, OS/CPU, renderer environment, and complete invocation
+identity. Unix hosted validation uses Xvfb where a native window-system context
+requires it. Platform-specific compile and link requirements remain guarded by
+their actual availability.
 
-The benchmark now distinguishes logical zero-copy view bytes from physical copied bytes, measures render-thread CPU allocations separately from QRhi buffer creation, keeps producer counters inside an exact paused measurement epoch but outside the writer mutex, opens one buffered phase-trace stream, and uses 10,000 static samples rather than the superseded five-point visual fixture. The old 84-run artifacts are obsolete and cannot approve Checkpoint 2.1. Clean CI, unanimous iterative three-worker review, the new 108-execution baseline, and explicit owner approval of its exact proposal hash remain open at this addendum.
+The calibration architecture fixes six scenarios and 108 scenario executions,
+plus a separate current-environment probe. It uses 10,000 static samples,
+requires every retained deterministic-zero value to be zero, validates artifact
+hashes and aggregate terminal phase traces, and separates logical zero-copy view
+bytes from physical copied bytes. Render-thread CPU allocations and QRhi buffer
+creation are distinct counters. Producer statistics are reset inside an exact
+paused epoch, updated outside the writer mutex, and the publication schedule is
+rebased before measurement so warm-up debt cannot enter live throughput.
 
-Later focused review found that the initial pause-aware rate clock still carried pre-epoch scheduling debt into a short live measurement. The corrected producer rebases its schedule to the current logical publication count while paused at measurement start and rechecks the target before publishing. A 10-frame proof now imports zero warm-up publications; the canonical 120-frame, 64-series workload publishes 154 logical samples at an aggregate 57,924 samples/s with zero overwrites and zero copied snapshot bytes. This is evidence that the epoch boundary is clean, not an approved numeric performance margin. The runner will calculate the complete two-set margin proposal after clean CI and unanimous reviewer closure, and only the owner can approve that exact retained proposal hash.
+One phase-trace stream remains open for a run. Eleven aggregate success
+boundaries are flushed outside the measured frame loop; a frame-specific record
+is emitted only on failure. Measured-frame metadata and output counters
+independently enforce exact workload completion. Windows native file operations
+adapt deep logical artifact paths to extended-length paths without changing
+commands, metadata, hashes, recovery relationships, or proposal semantics.
 
-The `049587c` native Unix rerun exposed hosted software-renderer memory pressure during backend creation, not a product requirement for a particular graphics API. At `86ad4c0`, Windows and macOS passed text OFF/ON and Linux text OFF passed, but Linux text ON still exhausted LLVM memory with one llvmpipe worker; the attempted FreeBSD NFS workspace also triggered correct Git ownership rejection before compilation. A first softpipe experiment removed the OOM but was rejected because the package offered only GLSL 410 to a 3.3 renderer and produced a clear-only frame; default llvmpipe still OOMed after context sampling was reduced. All 12 current shaders use GL 3.3-capable attributes and std140 UBOs rather than storage buffers, so the bounded compatibility attempt retains both GLSL 330 and 410 variants, requests 3.3 Core/sample1 only for the offscreen context, uses softpipe with one worker on hosted Linux, and leaves the measured render buffer at 4x. FreeBSD cannot create a softpipe `drisw` screen, so its bounded path leaves `GALLIUM_DRIVER` unset and disables llvmpipe rendering threads with `LP_NUM_THREADS=0`. When that still produced `std::bad_alloc`, the guest capacity was raised from 6 GiB to 10 GiB and the failure was localized through Qt's convenience fallback-surface helper to the real QRhi context. The direct documented surface path and allocation telemetry then proved that the benchmark's replacement aligned new passed a valid C++ alignment-4 request directly to FreeBSD `posix_memalign`, whose C contract requires at least pointer alignment. The tracker now normalizes only that effective allocator alignment and tests the alignment-4 case. A resource-level test verifies both desktop shader variants, and the existing nonuniform-pixel oracle remains mandatory. `GALLIUM_DRIVER`, `LP_NUM_THREADS`, the requested context version, both sample counts, and fallback-surface formats are fingerprinted. FreeBSD evidence packaging occurs inside the rsync-isolated guest; the guest registers only its exact host-owned checkout as Git-safe, writes a copied-back status marker, and exits cleanly for copyback, then the host uploads evidence before propagating the recorded failure. The gate also creates a synthetic-source terminal FAIL manifest and diagnostic log when source identity or preflight itself fails, and requires preflight/invocation/raw renderer settings to agree.
+The runner can end only in retained failure or
+`CALIBRATION_REVIEW_REQUIRED`. A separate owner action may record checkpoint
+PASS only after inspection of the exact generated proposal and approval of its
+SHA-256 on clean source and dependency identities. Superseded calibration
+artifacts cannot approve the checkpoint.
 
 ## Prioritized architecture and performance findings
 

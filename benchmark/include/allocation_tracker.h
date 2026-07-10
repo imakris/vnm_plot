@@ -3,7 +3,6 @@
 #ifndef VNM_PLOT_BENCHMARK_ALLOCATION_TRACKER_H
 #define VNM_PLOT_BENCHMARK_ALLOCATION_TRACKER_H
 
-#include <cstddef>
 #include <cstdint>
 
 namespace vnm::benchmark {
@@ -13,20 +12,10 @@ struct Thread_allocation_measurement {
     std::uint64_t bytes = 0;
 };
 
-struct Thread_allocation_failure {
-    std::size_t size = 0;
-    std::size_t alignment = 0;
-    std::size_t effective_alignment = 0;
-    int error = 0;
-    bool aligned = false;
-};
-
 void begin_thread_allocation_measurement() noexcept;
 Thread_allocation_measurement end_thread_allocation_measurement() noexcept;
 void suspend_thread_allocation_measurement() noexcept;
 void resume_thread_allocation_measurement() noexcept;
-void clear_thread_allocation_failure() noexcept;
-Thread_allocation_failure last_thread_allocation_failure() noexcept;
 
 class Thread_allocation_suppression {
 public:

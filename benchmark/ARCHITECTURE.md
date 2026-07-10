@@ -86,7 +86,13 @@ Benchmark_profiler produces a stable benchmark report:
 
 The report is written at the end of the benchmark run to the configured output
 folder with the inspector_benchmark_YYYYMMDD_HHMMSS_<STREAM>_<DataType>.txt
-naming convention.
+naming convention. Windows file operations adapt logical paths to the native
+extended-length namespace without exposing that transport spelling in retained
+metadata.
+
+The phase trace flushes a fixed eleven aggregate success boundaries outside the
+measured frame loop. Only a failure adds a frame-specific boundary, so external
+termination retains progress without per-frame trace I/O.
 
 ## Configuration and CLI
 The executable accepts CLI options for duration, data type, seed, rate, ring
@@ -98,6 +104,7 @@ resolved once at startup to keep runs reproducible.
 - benchmark/include/brownian_generator.h
 - benchmark/include/benchmark_data_source.h
 - benchmark/include/benchmark_profiler.h
+- benchmark/include/path_io.h
 - benchmark/include/benchmark_window.h
 - benchmark/src/benchmark_window.cpp
 - benchmark/src/main.cpp

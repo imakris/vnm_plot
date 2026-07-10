@@ -110,6 +110,7 @@ set(BENCHMARK_SOURCES
 set(BENCHMARK_HEADERS
     include/ring_buffer.h
     include/allocation_tracker.h
+    include/path_io.h
     include/publication_rate_clock.h
     include/sample_types.h
     include/brownian_generator.h
@@ -350,6 +351,17 @@ add_test(
 )
 set_tests_properties(benchmark_calibration_tool_tests PROPERTIES
     TIMEOUT 60
+    ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1"
+)
+
+add_test(
+    NAME benchmark_phase_trace_flush
+    COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/test_phase_trace_flush.py"
+        --executable "$<TARGET_FILE:vnm_plot_benchmark>"
+)
+set_tests_properties(benchmark_phase_trace_flush PROPERTIES
+    TIMEOUT 45
     ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1"
 )
 

@@ -78,7 +78,7 @@ if(TARGET test_font_disk_cache)
 endif()
 if(TARGET test_msdf_lcd_shader_reference)
     if(NOT TARGET vnm_msdf_text::lcd_shader_reference)
-        find_package(vnm_msdf_text ${VNM_PLOT_VNM_MSDF_TEXT_VERSION} CONFIG REQUIRED
+        find_package(vnm_msdf_text CONFIG REQUIRED
             COMPONENTS lcd_shader_reference)
     endif()
     target_link_libraries(test_msdf_lcd_shader_reference PRIVATE vnm_msdf_text::lcd_shader_reference)

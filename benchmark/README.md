@@ -37,9 +37,18 @@ to remain exactly zero. Render-thread CPU allocation count/bytes cover the full
 measured frame while excluding the benchmark profiler's own map/sample storage;
 `renderer.frame.gpu_buffer_allocation_*` separately counts QRhi buffer creation.
 
-The phase trace is flushed at cold setup, backend creation, every warmup and
-measured frame boundary, generator shutdown, and completion. If an external
-timeout kills a run, its last complete phase remains available.
+The phase trace records and immediately flushes eleven aggregate cold-setup,
+backend-creation, warm-up, measurement, generator-shutdown, and completion
+boundaries outside the measured frame loop. A frame-specific record is emitted
+and flushed only on failure. An externally terminated run therefore retains its
+last completed boundary without adding filesystem work to measured frames.
+Measured-frame metadata and output counters independently enforce the frame
+count.
+
+On Windows, benchmark file operations use extended-length native paths while
+metadata, commands, errors, and returned artifact paths retain their ordinary
+logical spelling. Deep append-only gate paths therefore do not change evidence
+identity or calibration semantics.
 
 ## Calibration protocol
 

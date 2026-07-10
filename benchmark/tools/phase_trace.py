@@ -9,28 +9,19 @@ from typing import Any
 
 
 def expected_phases(warmup_frames: int, measured_frames: int) -> list[tuple[str, int]]:
-    phases = [
+    return [
         ("cold.setup.begin", 0),
         ("cold.setup.end", 0),
         ("cold.backend_create.begin", 0),
         ("cold.backend_create.end", 0),
+        ("warmup.begin", 0),
+        ("warmup.end", 0),
+        ("measure.begin", 0),
+        ("measure.end", 0),
+        ("shutdown.generator.begin", 0),
+        ("shutdown.generator.end", 0),
+        ("complete", 0),
     ]
-    for frame in range(warmup_frames):
-        phases.extend(
-            (("warmup.frame.begin", frame), ("warmup.frame.end", frame))
-        )
-    for frame in range(measured_frames):
-        phases.extend(
-            (("measure.frame.begin", frame), ("measure.frame.end", frame))
-        )
-    phases.extend(
-        (
-            ("shutdown.generator.begin", 0),
-            ("shutdown.generator.end", 0),
-            ("complete", 0),
-        )
-    )
-    return phases
 
 
 def parse_and_validate_phase_trace(

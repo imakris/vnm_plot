@@ -200,6 +200,13 @@ class CalibrationProtocolTests(unittest.TestCase):
             self.assertEqual(command[command.index("--static-samples") + 1], "10000")
             self.assertEqual(command[command.index("--frames") + 1], "1")
 
+    def test_phase_trace_uses_only_aggregate_success_boundaries(self) -> None:
+        phases = calibrate.expected_phases(2, 120)
+        self.assertEqual(len(phases), 11)
+        self.assertIn(("warmup.begin", 0), phases)
+        self.assertIn(("measure.end", 0), phases)
+        self.assertFalse(any(".frame." in phase for phase, _ in phases))
+
     def test_attempt_identities_are_unique_and_append_only_shaped(self) -> None:
         first = calibrate.attempt_identity()
         second = calibrate.attempt_identity()
