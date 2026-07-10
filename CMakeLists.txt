@@ -492,8 +492,8 @@ message(STATUS "vnm_plot: Building RHI library")
 #
 # Bake every shader in shaders/qsb/ into a multi-profile .qsb artifact and
 # embed it under :/vnm_plot/shaders/qsb/<name>.qsb. Profile set covers Vulkan
-# (SPIR-V), Metal 1.2 + 2.1, D3D11 (HLSL 5.0), and desktop GL 4.10 so RHI can
-# pick a working artifact on every supported backend.
+# (SPIR-V), Metal 1.2 + 2.1, D3D11 (HLSL 5.0), and desktop GL 3.30 + 4.10 so
+# RHI can pick a working artifact on every supported backend.
 # -----------------------------------------------------------------------------
 
 set(VNM_PLOT_QSB_SHADERS
