@@ -1075,9 +1075,9 @@ void Series_renderer::prepare(
             }
             if (profiler) {
                 profiler->record_observation(
-                    "renderer.frame.buffer_allocation_bytes",
+                    "renderer.frame.gpu_buffer_allocation_bytes",
                     static_cast<double>(sizeof(series_view_uniform_std140_t)));
-                profiler->record_counter("renderer.frame.buffer_allocation_count");
+                profiler->record_counter("renderer.frame.gpu_buffer_allocation_count");
             }
         }
 
@@ -1835,10 +1835,10 @@ bool Series_renderer::rhi_prepare_series_view_samples(
                 ++view_state.last_vbo_generation;
                 if (ctx.config && ctx.config->profiler) {
                     ctx.config->profiler->record_observation(
-                        "renderer.frame.buffer_allocation_bytes",
+                        "renderer.frame.gpu_buffer_allocation_bytes",
                         static_cast<double>(alloc_bytes));
                     ctx.config->profiler->record_counter(
-                        "renderer.frame.buffer_allocation_count");
+                        "renderer.frame.gpu_buffer_allocation_count");
                 }
             }
             else {
@@ -1949,10 +1949,10 @@ bool Series_renderer::rhi_prepare_series_primitive(
             entry.last_ubo = nullptr;
             if (ctx.config && ctx.config->profiler) {
                 ctx.config->profiler->record_observation(
-                    "renderer.frame.buffer_allocation_bytes",
+                    "renderer.frame.gpu_buffer_allocation_bytes",
                     static_cast<double>(k_series_ubo_bytes));
                 ctx.config->profiler->record_counter(
-                    "renderer.frame.buffer_allocation_count");
+                    "renderer.frame.gpu_buffer_allocation_count");
             }
         }
         return true;
@@ -2030,10 +2030,10 @@ bool Series_renderer::rhi_prepare_series_primitive(
                 view_state.rhi_line_window_vbo_capacity_bytes = alloc_bytes;
                 if (ctx.config && ctx.config->profiler) {
                     ctx.config->profiler->record_observation(
-                        "renderer.frame.buffer_allocation_bytes",
+                        "renderer.frame.gpu_buffer_allocation_bytes",
                         static_cast<double>(alloc_bytes));
                     ctx.config->profiler->record_counter(
-                        "renderer.frame.buffer_allocation_count");
+                        "renderer.frame.gpu_buffer_allocation_count");
                 }
             }
             else {

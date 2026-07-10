@@ -16,7 +16,8 @@ profiling report format for reproducible comparisons.
 ## Major Components
 - Ring_buffer<T>
   - Thread-safe circular buffer with overwrite semantics.
-  - Supports copy-on-snapshot via copy_to() for stable reads.
+  - Exposes split-span zero-copy views protected by a retained shared lock.
+  - Keeps `copy_to()` only as an explicit copying helper; snapshots do not use it.
 
 - Brownian_generator
   - Generates Bar_sample or Trade_sample using geometric Brownian motion.
@@ -24,8 +25,9 @@ profiling report format for reproducible comparisons.
 
 - Benchmark_data_source<T>
   - Implements vnm::plot::Data_source.
-  - Uses copy-on-snapshot to provide contiguous data for rendering.
-  - Tracks sequence numbers and computes value ranges for auto-scaling.
+  - Publishes zero-copy snapshots that may contain two ring-buffer spans.
+  - Reports logical view bytes separately from exact copied bytes (zero).
+  - Tracks the stable ring revision used by `current_sequence()`.
 
 - Benchmark_profiler
   - Implements vnm::plot::Profiler.
@@ -41,11 +43,14 @@ profiling report format for reproducible comparisons.
 - Generator thread:
   - Produces samples at the configured rate using steady_clock pacing.
   - Writes into the ring buffer only; no rendering work.
+  - A coordinated publication barrier bounds complete logical publications
+    across every series to the retained measurement interval.
 
 - UI/render thread:
-  - Executes paintGL() via Qt's event loop.
-  - Requests snapshots from the Data_source and renders with vnm_plot.
-  - Records profiling scopes through Plot_config::profiler.
+  - The retained path drives QRhi offscreen frames directly.
+  - Requests zero-copy snapshots from the Data_source and renders with vnm_plot.
+  - Records profiling scopes, render-thread CPU allocations, and QRhi buffer
+    allocations through Plot_config::profiler.
 
 ## Rendering Pipeline
 - vnm_plot Asset_loader loads embedded shaders.

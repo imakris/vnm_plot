@@ -4,9 +4,9 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import subprocess
-import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -31,16 +31,22 @@ def normalized_backend(name: str) -> str:
     return normalized
 
 
-def expected_native_backend() -> str:
-    if sys.platform == "win32":
-        return "d3d11"
-    if sys.platform == "darwin":
-        return "metal"
-    return "opengl"
-
-
 def write_json(path: Path, value: object) -> None:
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def captured_text(value: object) -> str:
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return str(value or "")
 
 
 def observation_total(payload: dict, name: str) -> float:
@@ -50,11 +56,18 @@ def observation_total(payload: dict, name: str) -> float:
 def validate(payload: dict, args: argparse.Namespace, attempt_dir: Path) -> None:
     metadata = payload["metadata"]
     actual = normalized_backend(metadata["actual_graphics_backend"])
-    expected = expected_native_backend() if args.graphics_backend == "native" else args.graphics_backend
-    if actual != normalized_backend(expected):
-        raise RuntimeError(f"expected backend {expected}, got {metadata['actual_graphics_backend']}")
+    if args.graphics_backend == "native":
+        if actual in {"", "null", "uninitialized"}:
+            raise RuntimeError(f"native QRhi selected {metadata['actual_graphics_backend']}")
+    elif actual != normalized_backend(args.graphics_backend):
+        raise RuntimeError(
+            f"expected backend {args.graphics_backend}, "
+            f"got {metadata['actual_graphics_backend']}"
+        )
     if int(metadata["measured_frames"]) != args.frames:
         raise RuntimeError("metadata measured-frame count mismatch")
+    if metadata.get("static_sample_count") != "10000":
+        raise RuntimeError("static smoke sample-count mismatch")
     if int(metadata["pixel_checksum"]) == 0:
         raise RuntimeError("pixel checksum is zero")
     if int(metadata["pixel_nonuniform_count"]) == 0:
@@ -71,9 +84,12 @@ def validate(payload: dict, args: argparse.Namespace, attempt_dir: Path) -> None
         raise RuntimeError("total upload bytes are missing")
     if observation_total(payload, "benchmark.snapshot.count") <= 0:
         raise RuntimeError("snapshot counter is missing")
+    if observation_total(payload, "benchmark.snapshot.view_bytes") < 10_000:
+        raise RuntimeError("static smoke did not expose the representative data window")
     deterministic_zeros = (
         "benchmark.ring.overwritten_samples",
-        "renderer.frame.buffer_allocation_count",
+        "benchmark.snapshot.copied_bytes",
+        "renderer.frame.gpu_buffer_allocation_count",
         "renderer.series_window.monotonicity_scan_count",
         "renderer.series_window.monotonicity_scan_samples",
         "renderer.frame.upload.known_custom_count",
@@ -84,8 +100,18 @@ def validate(payload: dict, args: argparse.Namespace, attempt_dir: Path) -> None
     trace_path = Path(metadata["phase_trace_path"])
     if not trace_path.is_absolute():
         trace_path = attempt_dir / trace_path.name
+    trace_path = trace_path.resolve()
+    if trace_path.parent != attempt_dir.resolve():
+        raise RuntimeError("phase trace escapes its smoke attempt")
     if not trace_path.is_file():
         raise RuntimeError("phase trace is missing")
+    phases = [
+        json.loads(line)
+        for line in trace_path.read_text(encoding="utf-8").splitlines()
+        if line
+    ]
+    if not phases or phases[-1].get("phase") != "complete":
+        raise RuntimeError("phase trace does not end at complete")
 
 
 def main() -> int:
@@ -102,6 +128,7 @@ def main() -> int:
         "--data-type", "bars",
         "--render-style", "line",
         "--seed", "12345",
+        "--static-samples", "10000",
         "--warmup-frames", "2",
         "--frames", str(args.frames),
         "--finish",
@@ -110,39 +137,62 @@ def main() -> int:
         "--output-dir", str(attempt.resolve()),
         "--scenario", f"ci-{args.graphics_backend}-smoke",
     ]
-    completed = subprocess.run(command, check=False, capture_output=True, text=True, timeout=60)
-    write_json(
-        attempt / "smoke_invocation.json",
-        {
-            "command": command,
-            "returncode": completed.returncode,
-            "stdout": completed.stdout,
-            "stderr": completed.stderr,
-        },
-    )
-    if completed.returncode != 0:
-        if args.allow_unavailable and "backend_create" in completed.stderr:
+    try:
+        completed = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        write_json(
+            attempt / "smoke_invocation.json",
+            {
+                "command": command,
+                "returncode": completed.returncode,
+                "stdout": completed.stdout,
+                "stderr": completed.stderr,
+            },
+        )
+        if completed.returncode != 0 and args.allow_unavailable and "backend_create" in completed.stderr:
             write_json(
                 attempt / "smoke_validation.json",
                 {"status": "UNAVAILABLE", "reason": completed.stderr.strip()},
             )
             return 0
-        raise RuntimeError(completed.stderr.strip() or "benchmark smoke failed")
-    artifacts = list(attempt.glob("inspector_benchmark_*.json"))
-    if len(artifacts) != 1:
-        raise RuntimeError(f"expected one raw artifact, found {len(artifacts)}")
-    payload = json.loads(artifacts[0].read_text(encoding="utf-8"))
-    validate(payload, args, attempt)
-    write_json(
-        attempt / "smoke_validation.json",
-        {
-            "status": "PASS",
-            "artifact": artifacts[0].name,
-            "backend": payload["metadata"]["actual_graphics_backend"],
-            "pixel_checksum": payload["metadata"]["pixel_checksum"],
-            "pixel_nonuniform_count": payload["metadata"]["pixel_nonuniform_count"],
-        },
-    )
+        if completed.returncode != 0:
+            raise RuntimeError(completed.stderr.strip() or "benchmark smoke failed")
+        artifacts = list(attempt.glob("inspector_benchmark_*.json"))
+        if len(artifacts) != 1:
+            raise RuntimeError(f"expected one raw artifact, found {len(artifacts)}")
+        payload = json.loads(artifacts[0].read_text(encoding="utf-8"))
+        validate(payload, args, attempt)
+        write_json(
+            attempt / "smoke_validation.json",
+            {
+                "status": "PASS",
+                "artifact": artifacts[0].name,
+                "artifact_sha256": sha256_file(artifacts[0]),
+                "backend": payload["metadata"]["actual_graphics_backend"],
+                "pixel_checksum": payload["metadata"]["pixel_checksum"],
+                "pixel_nonuniform_count": payload["metadata"]["pixel_nonuniform_count"],
+            },
+        )
+    except Exception as exc:
+        if not (attempt / "smoke_invocation.json").exists():
+            timeout_payload = {
+                "command": command,
+                "returncode": None,
+                "timeout_seconds": 60,
+                "stdout": captured_text(getattr(exc, "stdout", "")),
+                "stderr": captured_text(getattr(exc, "stderr", "")),
+            }
+            write_json(attempt / "smoke_invocation.json", timeout_payload)
+        write_json(
+            attempt / "smoke_validation.json",
+            {"status": "FAIL", "reason": str(exc)},
+        )
+        raise
     print(attempt.resolve())
     return 0
 

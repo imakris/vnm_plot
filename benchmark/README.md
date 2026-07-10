@@ -4,7 +4,9 @@
 
 - `--backend qrhi|qrhi-offscreen` selects the presentation path.
 - `--graphics-backend native|d3d11|metal|vulkan|opengl|null` selects the
-  graphics API. `native` never falls back to Null. Null is available only when
+  graphics API for diagnostics. Retained evidence requests `native` and accepts
+  whichever non-Null API Qt selects. No particular Vulkan, OpenGL, D3D, Metal,
+  or future graphics API is a product requirement. Null is available only when
   it is requested explicitly.
 
 For repeatable runs, prefer an exact frame count:
@@ -29,6 +31,12 @@ p50/p95/p99 values. High-rate metrics use deterministic reservoir sampling with
 the retained limit recorded in the artifact; aggregate count/total/min/max are
 not sampled.
 
+Snapshot accounting distinguishes logical `benchmark.snapshot.view_bytes` from
+physical `benchmark.snapshot.copied_bytes`; direct ring views require the latter
+to remain exactly zero. Render-thread CPU allocation count/bytes cover the full
+measured frame, while `renderer.frame.gpu_buffer_allocation_*` separately counts
+QRhi buffer creation.
+
 The phase trace is flushed at cold setup, backend creation, every warmup and
 measured frame boundary, generator shutdown, and completion. If an external
 timeout kills a run, its last complete phase remains available.
@@ -41,10 +49,21 @@ and data source; the generator publishes the same deterministic sample to each
 ring. This avoids nested direct-view locks while preserving per-series renderer
 work and total publication counters.
 
+Static scenarios contain 10,000 deterministic samples per series; live
+scenarios publish 1,000 samples per series per second so the fixed 100,000
+sample rings remain below overwrite capacity during the measured workload. GPU
+buffer growth in a live run is measured and calibrated rather than declared a
+deterministic zero. The runner
+first executes and retains a native environment probe, then binds every new or
+resumed run to its source, executable, dependency, machine, OS/CPU, Qt,
+device, driver, and actual backend fingerprint.
+
 The fixed protocol performs two calibration sets. Each set has two complete
 untimed warm-up runs followed by seven measured runs. Every run itself has two
 runner warm-up frames followed by 120 measured, GPU-finished frames at 1200x720
-with text enabled. It writes `scenario_manifest.json`, every raw run artifact
+with text enabled. Across six scenarios this is 24 warm-up plus 84 measured
+executions; the separate native environment probe is diagnostic and is not part
+of those 108 scenario executions. It writes `scenario_manifest.json`, every raw run artifact
 and phase trace, and `proposed_noise_margins.json`:
 
 ```powershell
@@ -67,15 +86,29 @@ review-required.
 `tools/run_gate.py` is the append-only checkpoint entry point. A full run checks
 the external style pipeline and versioned `actionlint`, configures and builds,
 runs CTest (including native pixel/counter validation), retains the latest smoke
-attempt for each requested backend, and runs the fixed calibration protocol:
+native smoke attempt, and runs the fixed calibration protocol:
 
 ```powershell
 python benchmark\tools\run_gate.py `
   --source-root . `
   --build-dir build-text `
-  --checkpoint 2.1 `
-  --owner-approved-generated-calibration
+  --checkpoint 2.1
 ```
+
+The full runner ends with `CALIBRATION_REVIEW_REQUIRED` and prints the retained
+proposal SHA256. It cannot approve its own output. After the repository owner
+has inspected that exact proposal, the owner records approval against its hash:
+
+```powershell
+python benchmark\tools\approve_gate.py `
+  --attempt-dir <retained-gate-attempt> `
+  --proposal-sha256 <reviewed-sha256> `
+  --approved-by <owner-identity>
+```
+
+Only that explicit second step can transition a complete, clean checkpoint gate
+to `PASS`. CI smoke packaging is labeled `DIAGNOSTIC_PASS` and is never a
+checkpoint approval.
 
 Every invocation creates a new
 `<build>/gate-artifacts/batch-2/<source-identity>/<timestamp>/` directory. Its

@@ -131,15 +131,17 @@ def repository_identity(path: Path) -> dict[str, Any]:
         return {"path": str(path), "status": "ENVIRONMENT_BOOTSTRAP_REQUIRED"}
     result: dict[str, Any] = {"path": str(path.resolve())}
     try:
+        status = git_output(
+            path,
+            "status",
+            "--porcelain=v1",
+            "--untracked-files=all",
+        )
         result.update(
             {
                 "commit": git_output(path, "rev-parse", "HEAD"),
-                "status": git_output(
-                    path,
-                    "status",
-                    "--porcelain=v1",
-                    "--untracked-files=all",
-                ),
+                "dirty": bool(status),
+                "status": status,
             }
         )
     except (OSError, RuntimeError) as exc:
@@ -255,12 +257,12 @@ class Gate:
                 "build_dir": str(args.build_dir.resolve()),
                 "configuration": args.config,
                 "preflight": preflight_payload,
-                "owner_conditional_calibration_approval": (
-                    args.owner_approved_generated_calibration
-                ),
             },
             "phases": self.phases,
             "artifact_hashes": {},
+            "status_history": [
+                {"status": "RUNNING", "recorded_at_utc": self.started_at}
+            ],
         }
         self.write_manifest()
 
@@ -325,19 +327,12 @@ class Gate:
     def retain_smoke(self) -> None:
         source = self.args.build_dir / "benchmark" / "smoke-reports"
         destination = self.attempt_dir / "smoke-evidence"
-        if source.is_dir():
-            for backend_root in sorted(path for path in source.iterdir() if path.is_dir()):
-                candidates = sorted(
-                    path
-                    for path in backend_root.iterdir()
-                    if path.is_dir() and (path / "smoke_validation.json").is_file()
-                )
-                if candidates:
-                    selected = candidates[-1]
-                    shutil.copytree(
-                        selected,
-                        destination / backend_root.name / selected.name,
-                    )
+        backend_root = source / "native"
+        if backend_root.is_dir():
+            candidates = sorted(path for path in backend_root.iterdir() if path.is_dir())
+            if candidates:
+                selected = candidates[-1]
+                shutil.copytree(selected, destination / "native" / selected.name)
         validations = []
         graphics = []
         if destination.is_dir():
@@ -354,13 +349,30 @@ class Gate:
                     artifacts[0].read_text(encoding="utf-8")
                 )["metadata"]
                 expected_source = self.manifest["inputs"]["source"]
+                dependency = self.manifest["inputs"]["preflight"].get("dependency", {})
                 expected = {
+                    "build_source_dirty": "false" if not expected_source["dirty"] else "true",
                     "build_source_commit": expected_source["commit"],
+                    "build_source_diff_sha256": expected_source["diff_sha256"],
+                    "build_source_tree": expected_source["git_tree"],
                     "source_commit": expected_source["commit"],
                     "source_diff_sha256": expected_source["diff_sha256"],
                     "source_dirty": "true" if expected_source["dirty"] else "false",
                     "source_tree": expected_source["exact_tree_sha256"],
                 }
+                if dependency.get("commit"):
+                    expected.update(
+                        {
+                            "build_dependency_commit": dependency["commit"],
+                            "build_dependency_dirty": (
+                                "true" if dependency.get("dirty") else "false"
+                            ),
+                            "dependency_commit": dependency["commit"],
+                            "dependency_dirty": (
+                                "true" if dependency.get("dirty") else "false"
+                            ),
+                        }
+                    )
                 mismatches = {
                     field: {"expected": value, "actual": metadata.get(field)}
                     for field, value in expected.items()
@@ -387,8 +399,8 @@ class Gate:
             self.attempt_dir / "preflight" / "preflight.json",
             self.manifest["inputs"]["preflight"],
         )
-        status = "PASS" if validations and all(
-            item.get("status") in {"PASS", "UNAVAILABLE"} and not item.get("gate_error")
+        status = "PASS" if len(validations) == 1 and all(
+            item.get("status") == "PASS" and not item.get("gate_error")
             for item in validations
         ) else "FAIL"
         phase = {
@@ -408,12 +420,20 @@ class Gate:
             raise RuntimeError("no complete passing smoke evidence was retained")
 
     def finalize(self, status: str, exit_status: int, reason: str = "") -> None:
+        if status == "PASS":
+            raise RuntimeError(
+                "checkpoint PASS may only be recorded by approve_gate.py after "
+                "owner review of the retained calibration proposal"
+            )
         self.manifest["status"] = status
         self.manifest["exit_status"] = exit_status
         self.manifest["ended_at_utc"] = utc_now()
         self.manifest["current_phase"] = self.phases[-1]["name"] if self.phases else "preflight"
         if reason:
             self.manifest["reason"] = reason
+        self.manifest["status_history"].append(
+            {"status": status, "recorded_at_utc": self.manifest["ended_at_utc"]}
+        )
         hashes: dict[str, str] = {}
         for path in sorted(self.attempt_dir.rglob("*")):
             if path.is_file() and path.name != "gate_manifest.json":
@@ -455,9 +475,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--mode", choices=("full", "ci-retain"), default="full")
     parser.add_argument("--recovery-of")
     parser.add_argument("--upstream-status", default="success")
-    parser.add_argument("--calibration-frames", type=int, default=120)
-    parser.add_argument("--skip-calibration", action="store_true")
-    parser.add_argument("--owner-approved-generated-calibration", action="store_true")
     return parser.parse_args()
 
 
@@ -474,6 +491,21 @@ def configure_command(args: argparse.Namespace) -> list[str]:
         "-DVNM_PLOT_BUILD_BENCHMARK_TESTS=ON",
         f"-DCMAKE_BUILD_TYPE={args.config}",
     ]
+
+
+def resolve_benchmark_executable(build_dir: Path, config: str) -> Path:
+    executable_name = "vnm_plot_benchmark.exe" if os.name == "nt" else "vnm_plot_benchmark"
+    candidates = (
+        build_dir / "benchmark" / config / executable_name,
+        build_dir / "benchmark" / executable_name,
+    )
+    retained = [candidate.resolve() for candidate in candidates if candidate.is_file()]
+    if len(retained) != 1:
+        raise RuntimeError(
+            "expected exactly one benchmark executable for configuration "
+            f"{config}, found {[str(path) for path in retained]}"
+        )
+    return retained[0]
 
 
 def main() -> int:
@@ -498,7 +530,14 @@ def main() -> int:
             gate.retain_smoke()
             if args.upstream_status.lower() != "success":
                 raise RuntimeError(f"upstream CI status was {args.upstream_status}")
+            gate.finalize("DIAGNOSTIC_PASS", 0)
+            print(attempt_dir)
+            return 0
         else:
+            if args.checkpoint != "2.1":
+                raise RuntimeError("the full retained gate currently implements checkpoint 2.1")
+            if source["dirty"]:
+                raise RuntimeError("full checkpoint gate requires a clean source tree")
             pipeline = args.standards_root / "tools" / "style_pipeline.py"
             if not pipeline.is_file():
                 raise RuntimeError(f"style pipeline bootstrap is missing: {pipeline}")
@@ -510,6 +549,9 @@ def main() -> int:
             gate.run_phase("actionlint", [actionlint])
             gate.run_phase("configure", configure_command(args), timeout=300)
             gate.refresh_configured_preflight()
+            dependency = gate.manifest["inputs"]["preflight"]["dependency"]
+            if dependency.get("dirty", True):
+                raise RuntimeError("full checkpoint gate requires a clean dependency tree")
             gate.run_phase(
                 "build",
                 ["cmake", "--build", str(args.build_dir), "--config", args.config],
@@ -528,40 +570,34 @@ def main() -> int:
                 timeout=1200,
             )
             gate.retain_smoke()
-            if not args.skip_calibration:
-                executable_name = "vnm_plot_benchmark.exe" if os.name == "nt" else "vnm_plot_benchmark"
-                executable = args.build_dir / "benchmark" / executable_name
-                calibration_dir = attempt_dir / "calibration"
-                gate.run_phase(
-                    "calibration",
-                    [
-                        sys.executable,
-                        str(args.source_root / "benchmark" / "tools" / "calibrate.py"),
-                        "--executable",
-                        str(executable),
-                        "--output-dir",
-                        str(calibration_dir),
-                        "--frames",
-                        str(args.calibration_frames),
-                    ],
-                    timeout=7200,
-                )
-                if args.owner_approved_generated_calibration:
-                    proposal = calibration_dir / "proposed_noise_margins.json"
-                    approval = {
-                        "schema_version": 1,
-                        "status": "OWNER_CONDITIONALLY_APPROVED",
-                        "recorded_at_utc": utc_now(),
-                        "condition": "generated after retained baseline calibration",
-                        "owner_instruction_date": "2026-07-10",
-                        "proposal": proposal.relative_to(attempt_dir).as_posix(),
-                        "proposal_sha256": sha256_file(proposal),
-                        "note": "The runner proposes rules; this record captures the owner's prior conditional approval.",
-                    }
-                    write_json(calibration_dir / "owner_approval.json", approval)
-        gate.finalize("PASS", 0)
+            executable = resolve_benchmark_executable(args.build_dir, args.config)
+            calibration_dir = attempt_dir / "calibration"
+            gate.run_phase(
+                "calibration",
+                [
+                    sys.executable,
+                    str(args.source_root / "benchmark" / "tools" / "calibrate.py"),
+                    "--executable",
+                    str(executable),
+                    "--output-dir",
+                    str(calibration_dir),
+                ],
+                timeout=7200,
+            )
+            proposal = calibration_dir / "proposed_noise_margins.json"
+            proposal_sha256 = sha256_file(proposal)
+            gate.manifest["inputs"]["calibration_proposal"] = {
+                "path": proposal.relative_to(attempt_dir).as_posix(),
+                "sha256": proposal_sha256,
+            }
+        gate.finalize(
+            "CALIBRATION_REVIEW_REQUIRED",
+            2,
+            "owner approval must reference the retained calibration proposal SHA256",
+        )
         print(attempt_dir)
-        return 0
+        print(f"proposal_sha256={proposal_sha256}")
+        return 2
     except Exception as exc:  # noqa: BLE001 - retain the exact failed phase.
         gate.finalize("FAIL", 1, str(exc))
         print(f"gate failed: {exc}; retained {attempt_dir}", file=sys.stderr)

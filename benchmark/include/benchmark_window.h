@@ -28,6 +28,8 @@
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
+#include <fstream>
 #include <limits>
 #include <map>
 #include <memory>
@@ -77,9 +79,10 @@ struct Benchmark_config {
     std::size_t measured_frames = 0;
     std::string scenario = "ad-hoc";
     bool capture_pixel_checksum = false;
-    // Visual-diff mode: pre-fill 5 fixed samples (4-segment zig-zag) and
-    // skip the generator. Useful for side-by-side rendering comparisons.
+    // Static mode pre-fills a representative deterministic data window and
+    // skips the producer thread.
     bool static_data = false;
+    std::size_t static_sample_count = 10'000;
     // Line thickness in pixels (default 1.5 for animated runs; bumped via
     // --line-px when comparing visuals so segments are easy to inspect).
     double line_width_px = 1.5;
@@ -196,6 +199,9 @@ private:
     void setup_series();
     void generator_thread_func();
     void stop_generator_thread();
+    void pause_generator_publication();
+    void resume_generator_publication();
+    bool wait_for_generator_permission();
     void fill_static_data();
     bool initialize_rhi(std::string& error_message);
     bool render_frame(std::string& error_message, bool measured);
@@ -213,6 +219,10 @@ private:
 
     std::thread m_generator_thread;
     std::atomic<bool> m_stop_generator{false};
+    std::atomic<bool> m_generator_pause_requested{false};
+    std::mutex m_generator_control_mutex;
+    std::condition_variable m_generator_control_cv;
+    bool m_generator_paused = false;
 
     std::unique_ptr<QOffscreenSurface> m_fallback_surface;
 #if QT_CONFIG(vulkan) && __has_include(<vulkan/vulkan.h>)
@@ -256,6 +266,7 @@ private:
     std::size_t m_pixel_nonuniform_count = 0;
     std::chrono::steady_clock::time_point m_phase_trace_started;
     std::string m_phase_trace_path;
+    mutable std::ofstream m_phase_trace;
 };
 
 }  // namespace vnm::benchmark

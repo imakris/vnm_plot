@@ -61,18 +61,17 @@ jobs:
 
       - name: Package checkpoint evidence
         if: always() && matrix.benchmark == 'ON'
-        continue-on-error: true
         run: >-
           python benchmark/tools/run_gate.py --source-root . --build-dir build
           --mode ci-retain --upstream-status "${{ job.status }}"
 
       - name: Retain benchmark gate evidence
-        if: always()
+        if: always() && matrix.benchmark == 'ON'
         uses: actions/upload-artifact@v4
         with:
           name: benchmark-gate-windows-${{ matrix.text }}
           path: build/gate-artifacts
-          if-no-files-found: ignore
+          if-no-files-found: error
           retention-days: 30
 
       - name: Build summary

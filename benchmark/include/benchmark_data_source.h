@@ -54,8 +54,9 @@ public:
             m_profiler->record_observation("benchmark.snapshot.time_ns", snapshot_ns);
             m_profiler->record_counter("benchmark.snapshot.count");
             m_profiler->record_observation(
-                "benchmark.snapshot.bytes",
+                "benchmark.snapshot.view_bytes",
                 static_cast<double>(view.count * sizeof(T)));
+            m_profiler->record_observation("benchmark.snapshot.copied_bytes", 0.0);
         }
 
         vnm::plot::data_snapshot_t snapshot;

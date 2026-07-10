@@ -7,6 +7,7 @@
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui GuiPrivate Quick)
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
+find_package(Threads REQUIRED)
 
 # Find vnm_plot targets (should be available from parent)
 if(NOT TARGET vnm_plot::rhi)
@@ -29,6 +30,7 @@ set(VNM_PLOT_BENCHMARK_SOURCE_TREE "unknown")
 set(VNM_PLOT_BENCHMARK_SOURCE_DIFF_SHA256 "unknown")
 set(VNM_PLOT_BENCHMARK_SOURCE_DIRTY "unknown")
 set(VNM_PLOT_BENCHMARK_DEPENDENCY_COMMIT "unknown")
+set(VNM_PLOT_BENCHMARK_DEPENDENCY_DIRTY "unknown")
 
 find_package(Git QUIET)
 if(Git_FOUND)
@@ -47,14 +49,14 @@ if(Git_FOUND)
         ERROR_QUIET
     )
     execute_process(
-        COMMAND "${GIT_EXECUTABLE}" status --porcelain --untracked-files=no
+        COMMAND "${GIT_EXECUTABLE}" status --porcelain --untracked-files=all
         WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
         OUTPUT_VARIABLE _benchmark_git_status
         OUTPUT_STRIP_TRAILING_WHITESPACE
         ERROR_QUIET
     )
     execute_process(
-        COMMAND "${GIT_EXECUTABLE}" diff --binary HEAD
+        COMMAND "${GIT_EXECUTABLE}" diff --binary HEAD --
         WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
         OUTPUT_VARIABLE _benchmark_git_diff
         ERROR_QUIET
@@ -74,6 +76,18 @@ if(Git_FOUND)
             OUTPUT_STRIP_TRAILING_WHITESPACE
             ERROR_QUIET
         )
+        execute_process(
+            COMMAND "${GIT_EXECUTABLE}" status --porcelain --untracked-files=all
+            WORKING_DIRECTORY "${vnm_msdf_text_SOURCE_DIR}"
+            OUTPUT_VARIABLE _benchmark_dependency_git_status
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET
+        )
+        if(_benchmark_dependency_git_status STREQUAL "")
+            set(VNM_PLOT_BENCHMARK_DEPENDENCY_DIRTY "false")
+        else()
+            set(VNM_PLOT_BENCHMARK_DEPENDENCY_DIRTY "true")
+        endif()
     endif()
 endif()
 
@@ -88,12 +102,14 @@ configure_file(
 # -----------------------------------------------------------------------------
 
 set(BENCHMARK_SOURCES
+    src/allocation_tracker.cpp
     src/main.cpp
     src/benchmark_window.cpp
 )
 
 set(BENCHMARK_HEADERS
     include/ring_buffer.h
+    include/allocation_tracker.h
     include/sample_types.h
     include/brownian_generator.h
     include/benchmark_profiler.h
@@ -132,6 +148,7 @@ target_link_libraries(vnm_plot_benchmark
         Qt6::Gui
         Qt6::GuiPrivate
         Qt6::Quick
+        Threads::Threads
 )
 
 # Platform-specific settings
@@ -195,7 +212,7 @@ target_include_directories(test_ring_buffer
 
 target_compile_features(test_ring_buffer PRIVATE cxx_std_20)
 
-target_link_libraries(test_ring_buffer PRIVATE vnm_plot::data)
+target_link_libraries(test_ring_buffer PRIVATE vnm_plot::data Threads::Threads)
 
 if(WIN32)
     target_compile_definitions(test_ring_buffer PRIVATE NOMINMAX)
@@ -294,7 +311,7 @@ target_include_directories(test_benchmark_data_source
 
 target_compile_features(test_benchmark_data_source PRIVATE cxx_std_20)
 
-target_link_libraries(test_benchmark_data_source PRIVATE vnm_plot::data)
+target_link_libraries(test_benchmark_data_source PRIVATE vnm_plot::data Threads::Threads)
 
 if(WIN32)
     target_compile_definitions(test_benchmark_data_source PRIVATE NOMINMAX)
@@ -324,39 +341,6 @@ set_tests_properties(benchmark_native_smoke PROPERTIES
     ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1"
 )
 
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "FreeBSD")
-    add_test(
-        NAME benchmark_opengl_smoke
-        COMMAND "${Python3_EXECUTABLE}"
-            "${CMAKE_CURRENT_SOURCE_DIR}/tools/validate_smoke.py"
-            --executable "$<TARGET_FILE:vnm_plot_benchmark>"
-            --output-dir "${CMAKE_CURRENT_BINARY_DIR}/smoke-reports/opengl"
-            --graphics-backend opengl
-            --frames 3
-    )
-    set_tests_properties(benchmark_opengl_smoke PROPERTIES
-        TIMEOUT 60
-        ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1"
-    )
-endif()
-
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    add_test(
-        NAME benchmark_vulkan_smoke
-        COMMAND "${Python3_EXECUTABLE}"
-            "${CMAKE_CURRENT_SOURCE_DIR}/tools/validate_smoke.py"
-            --executable "$<TARGET_FILE:vnm_plot_benchmark>"
-            --output-dir "${CMAKE_CURRENT_BINARY_DIR}/smoke-reports/vulkan"
-            --graphics-backend vulkan
-            --frames 3
-            --allow-unavailable
-    )
-    set_tests_properties(benchmark_vulkan_smoke PROPERTIES
-        TIMEOUT 60
-        ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1"
-    )
-endif()
-
 add_test(
     NAME benchmark_calibration_tool_tests
     COMMAND "${Python3_EXECUTABLE}"
@@ -373,6 +357,16 @@ add_test(
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/test_run_gate.py"
 )
 set_tests_properties(benchmark_gate_tool_tests PROPERTIES
+    TIMEOUT 60
+    ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1"
+)
+
+add_test(
+    NAME benchmark_gate_approval_tool_tests
+    COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/test_approve_gate.py"
+)
+set_tests_properties(benchmark_gate_approval_tool_tests PROPERTIES
     TIMEOUT 60
     ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1"
 )

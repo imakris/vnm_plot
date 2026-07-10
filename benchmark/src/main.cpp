@@ -192,7 +192,8 @@ void print_usage(const char* program_name)
               << "  --backend <backend>     qrhi|qrhi-offscreen (default: qrhi-offscreen)\n"
               << "  --graphics-backend <b> native|d3d11|metal|vulkan|opengl|null (default: native)\n"
               << "  --render-style <style>  dots|line|area (default: dots for trades, area for bars)\n"
-              << "  --static                Skip the generator and render a fixed 4-segment line (visual-diff mode)\n"
+              << "  --static                Skip the generator and render a deterministic static window\n"
+              << "  --static-samples <n>    Samples per static series (default: 10000)\n"
               << "  --line-px <pixels>      Line thickness for line/area rendering (default: 1.5)\n"
               << "  --point-px <pixels>     Dot diameter for dots rendering (default: 1.0)\n"
               << "  --output-dir <path>     Output directory for reports (default: current dir)\n"
@@ -313,6 +314,10 @@ Parse_result parse_args(int argc, char* argv[])
             else
             if (arg == "--static") {
                 config.static_data = true;
+            }
+            else
+            if (arg == "--static-samples" && i + 1 < argc) {
+                config.static_sample_count = std::stoull(argv[++i]);
             }
             else
             if (arg == "--line-px" && i + 1 < argc) {
@@ -464,6 +469,9 @@ std::string validate_config(const vnm::benchmark::Benchmark_config& config)
     if (config.series_count == 0 || config.series_count > 4096) {
         return "Series count must be between 1 and 4096";
     }
+    if (config.static_sample_count < 2 || config.static_sample_count > config.ring_capacity) {
+        return "Static sample count must be between 2 and the ring capacity";
+    }
     if (config.volatility < 0.0 || config.volatility > 1.0) {
         return "Volatility must be between 0.0 and 1.0 (got " +
                std::to_string(config.volatility) + ")";
@@ -507,6 +515,8 @@ void print_config_summary(const vnm::benchmark::Benchmark_config& config, std::o
        << "  Rate:         " << config.rate << " samples/sec\n"
        << "  Ring size:    " << config.ring_capacity << "\n"
        << "  Series:       " << config.series_count << "\n"
+       << "  Static data:  " << (config.static_data ? "yes" : "no")
+       << " (" << config.static_sample_count << " samples/series)\n"
        << "  Volatility:   " << config.volatility << "\n"
        << "  Seed:         " << config.seed << "\n"
        << "  Output dir:   " << config.output_directory << "\n"
@@ -611,21 +621,35 @@ int main(int argc, char* argv[])
         "git",
         {"rev-parse", "HEAD"},
         QString::fromUtf8(VNM_PLOT_BENCHMARK_DEPENDENCY_ROOT)).trimmed());
+    const QByteArray dependency_status = run_process(
+        "git",
+        {"status", "--porcelain", "--untracked-files=all"},
+        QString::fromUtf8(VNM_PLOT_BENCHMARK_DEPENDENCY_ROOT));
+    const bool dependency_dirty = !dependency_status.trimmed().isEmpty();
     const std::string executable_sha256 = sha256_file(QCoreApplication::applicationFilePath());
+    const std::string machine_id_sha256 = sha256_bytes(QSysInfo::machineUniqueId());
 
     const auto add_reproduction_metadata = [&](auto& meta, const auto& benchmark) {
         const auto graphics = benchmark.graphics_device_info();
         meta.reproduction["actual_graphics_backend"] = graphics.backend;
         meta.reproduction["build_source_commit"] = VNM_PLOT_BENCHMARK_SOURCE_COMMIT;
+        meta.reproduction["build_source_dirty"] = VNM_PLOT_BENCHMARK_SOURCE_DIRTY;
         meta.reproduction["build_source_diff_sha256"] =
             VNM_PLOT_BENCHMARK_SOURCE_DIFF_SHA256;
         meta.reproduction["build_source_tree"] = VNM_PLOT_BENCHMARK_SOURCE_TREE;
+        meta.reproduction["build_dependency_commit"] =
+            VNM_PLOT_BENCHMARK_DEPENDENCY_COMMIT;
+        meta.reproduction["build_dependency_dirty"] =
+            VNM_PLOT_BENCHMARK_DEPENDENCY_DIRTY;
+        meta.reproduction["build_qt_version"] = QT_VERSION_STR;
         meta.reproduction["build_type"] = VNM_PLOT_BENCHMARK_BUILD_TYPE;
         meta.reproduction["cmake_version"] = VNM_PLOT_BENCHMARK_CMAKE_VERSION;
         meta.reproduction["compiler"] = compiler_identity();
         meta.reproduction["dependency_commit"] = dependency_commit.empty()
             ? VNM_PLOT_BENCHMARK_DEPENDENCY_COMMIT
             : dependency_commit;
+        meta.reproduction["dependency_dirty"] = dependency_dirty ? "true" : "false";
+        meta.reproduction["dependency_status"] = bytes_to_string(dependency_status);
         meta.reproduction["device_id"] = std::to_string(graphics.device_id);
         meta.reproduction["device_name"] = graphics.device_name;
         meta.reproduction["device_type"] = graphics.device_type;
@@ -648,6 +672,7 @@ int main(int argc, char* argv[])
         meta.reproduction["pixel_nonuniform_count"] =
             std::to_string(benchmark.pixel_nonuniform_count());
         meta.reproduction["qt_version"] = qVersion();
+        meta.reproduction["machine_id_sha256"] = machine_id_sha256;
         meta.reproduction["requested_graphics_backend"] = config.graphics_backend;
         meta.reproduction["scenario"] = config.scenario;
         meta.reproduction["seed"] = std::to_string(config.seed);
@@ -661,12 +686,20 @@ int main(int argc, char* argv[])
         meta.reproduction["source_status"] = source_identity.status;
         meta.reproduction["source_tree"] = source_identity.exact_tree_sha256;
         meta.reproduction["static_data"] = config.static_data ? "true" : "false";
+        meta.reproduction["static_sample_count"] =
+            std::to_string(config.static_sample_count);
         meta.reproduction["rate"] = std::to_string(config.rate);
         meta.reproduction["render_style"] = config.style.empty()
             ? (config.data_type == "Trades" ? "Dots" : "Area")
             : config.style;
         meta.reproduction["ring_capacity"] = std::to_string(config.ring_capacity);
         meta.reproduction["os"] = bytes_to_string(QSysInfo::prettyProductName().toUtf8());
+        meta.reproduction["kernel_type"] = bytes_to_string(QSysInfo::kernelType().toUtf8());
+        meta.reproduction["kernel_version"] = bytes_to_string(QSysInfo::kernelVersion().toUtf8());
+        meta.reproduction["product_type"] = bytes_to_string(QSysInfo::productType().toUtf8());
+        meta.reproduction["product_version"] = bytes_to_string(QSysInfo::productVersion().toUtf8());
+        meta.reproduction["build_cpu_architecture"] =
+            bytes_to_string(QSysInfo::buildCpuArchitecture().toUtf8());
         meta.reproduction["cpu_architecture"] =
             bytes_to_string(QSysInfo::currentCpuArchitecture().toUtf8());
         meta.reproduction["env.QSG_RHI_BACKEND"] = bytes_to_string(qgetenv("QSG_RHI_BACKEND"));

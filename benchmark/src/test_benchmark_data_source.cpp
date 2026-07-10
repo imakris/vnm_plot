@@ -454,8 +454,8 @@ bool test_unsupported_lod() {
     return true;
 }
 
-// Test: Sequence short-circuit avoids redundant copies
-bool test_sequence_short_circuit() {
+// Test: Stable sequence preserves the zero-copy view identity.
+bool test_sequence_short_circuit_preserves_view_identity() {
     Ring_buffer<Bar_sample> buffer(100);
     Benchmark_data_source<Bar_sample> source(buffer);
 
@@ -496,7 +496,7 @@ bool test_sequence_short_circuit() {
     bar2.close = 200.0f;
     buffer.push(bar2);
 
-    // Third snapshot should detect change and copy new data
+    // Third snapshot should detect the new revision and expose the expanded view.
     auto result3 = source.try_snapshot();
     TEST_ASSERT(result3.status == vnm::plot::snapshot_result_t::Snapshot_status::READY,
                 "new snapshot should be READY");
@@ -591,7 +591,7 @@ int main() {
     RUN_TEST(test_snapshot_live_view);
     RUN_TEST(test_brownian_integration);
     RUN_TEST(test_unsupported_lod);
-    RUN_TEST(test_sequence_short_circuit);
+    RUN_TEST(test_sequence_short_circuit_preserves_view_identity);
     RUN_TEST(test_access_policy_layout_keys);
     RUN_TEST(test_release_snapshot_before_nested_query);
 

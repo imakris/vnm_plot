@@ -17,6 +17,18 @@ from pathlib import Path
 from typing import Any
 
 
+FIXED_WIDTH = 1200
+FIXED_HEIGHT = 720
+FIXED_WARMUP_RUNS = 2
+FIXED_WARMUP_FRAMES = 2
+FIXED_MEASURED_FRAMES = 120
+FIXED_SETS = 2
+FIXED_RUNS_PER_SET = 7
+FIXED_UNSTABLE_DRIFT_THRESHOLD = 0.25
+FIXED_STATIC_SAMPLE_COUNT = 10_000
+FIXED_LIVE_RATE = 1_000
+
+
 METRIC_POLICIES: dict[str, dict[str, Any]] = {
     "benchmark.frame.total_ms": {"reducers": ("p50", "p95", "p99"), "unit": "ms"},
     "benchmark.frame.submission_ms": {"reducers": ("p50", "p95", "p99"), "unit": "ms"},
@@ -24,7 +36,12 @@ METRIC_POLICIES: dict[str, dict[str, Any]] = {
     "benchmark.planning.time_ms": {"reducers": ("p50", "p95", "p99"), "unit": "ms"},
     "benchmark.snapshot.time_ns": {"reducers": ("p50", "p95", "p99"), "unit": "ns"},
     "benchmark.snapshot.count": {"reducers": ("total",), "unit": "count"},
-    "benchmark.snapshot.bytes": {"reducers": ("total",), "unit": "bytes"},
+    "benchmark.snapshot.view_bytes": {"reducers": ("total",), "unit": "bytes"},
+    "benchmark.snapshot.copied_bytes": {
+        "reducers": ("total",),
+        "unit": "bytes",
+        "deterministic_zero": True,
+    },
     "benchmark.producer.lock_wait_ns": {"reducers": ("mean",), "unit": "ns"},
     "benchmark.ring.published_samples": {"reducers": ("total",), "unit": "count"},
     "benchmark.ring.published_samples_per_second": {
@@ -48,15 +65,21 @@ METRIC_POLICIES: dict[str, dict[str, Any]] = {
         "unit": "count",
         "deterministic_zero": True,
     },
-    "renderer.frame.buffer_allocation_count": {
+    "renderer.frame.gpu_buffer_allocation_count": {
         "reducers": ("total",),
         "unit": "count",
-        "deterministic_zero": True,
     },
-    "renderer.frame.buffer_allocation_bytes": {
+    "renderer.frame.gpu_buffer_allocation_bytes": {
         "reducers": ("total",),
         "unit": "bytes",
-        "deterministic_zero": True,
+    },
+    "benchmark.frame.cpu_allocation_count": {
+        "reducers": ("p50", "p95", "p99"),
+        "unit": "count",
+    },
+    "benchmark.frame.cpu_allocation_bytes": {
+        "reducers": ("p50", "p95", "p99"),
+        "unit": "bytes",
     },
     "renderer.frame.upload.primary_bytes": {
         "reducers": ("p50", "p95", "p99"),
@@ -109,19 +132,33 @@ METRIC_POLICIES: dict[str, dict[str, Any]] = {
 
 FINGERPRINT_FIELDS = (
     "actual_graphics_backend",
+    "build_cpu_architecture",
+    "build_dependency_commit",
+    "build_dependency_dirty",
+    "build_qt_version",
     "build_source_commit",
+    "build_source_diff_sha256",
+    "build_source_dirty",
+    "build_source_tree",
     "build_type",
     "cmake_version",
     "compiler",
     "dependency_commit",
+    "dependency_dirty",
     "device_id",
     "device_name",
     "driver_identity",
+    "driver_version",
     "executable_sha256",
     "framebuffer",
+    "kernel_type",
+    "kernel_version",
+    "machine_id_sha256",
+    "os",
     "qt_version",
     "source_commit",
     "source_diff_sha256",
+    "source_git_tree",
     "source_tree",
     "vendor_id",
 )
@@ -132,24 +169,23 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--executable", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--graphics-backend", default="native")
-    parser.add_argument("--width", type=int, default=1200)
-    parser.add_argument("--height", type=int, default=720)
-    parser.add_argument("--warmup-runs", type=int, default=2)
-    parser.add_argument("--warmup-frames", type=int, default=2)
-    parser.add_argument("--frames", type=int, default=120)
-    parser.add_argument("--sets", type=int, default=2)
-    parser.add_argument("--runs-per-set", type=int, default=7)
+    parser.add_argument("--width", type=int, default=FIXED_WIDTH)
+    parser.add_argument("--height", type=int, default=FIXED_HEIGHT)
+    parser.add_argument("--warmup-runs", type=int, default=FIXED_WARMUP_RUNS)
+    parser.add_argument("--warmup-frames", type=int, default=FIXED_WARMUP_FRAMES)
+    parser.add_argument("--frames", type=int, default=FIXED_MEASURED_FRAMES)
+    parser.add_argument("--sets", type=int, default=FIXED_SETS)
+    parser.add_argument("--runs-per-set", type=int, default=FIXED_RUNS_PER_SET)
     parser.add_argument("--timeout-seconds", type=float, default=120.0)
-    parser.add_argument("--unstable-drift-threshold", type=float, default=0.25)
+    parser.add_argument(
+        "--unstable-drift-threshold",
+        type=float,
+        default=FIXED_UNSTABLE_DRIFT_THRESHOLD,
+    )
     parser.add_argument(
         "--manifest-only",
         action="store_true",
         help="Write the generated scenario manifest without executing runs.",
-    )
-    parser.add_argument(
-        "--allow-dirty-source",
-        action="store_true",
-        help="Permit calibration artifacts built from a dirty source tree.",
     )
     return parser.parse_args()
 
@@ -160,6 +196,12 @@ def sha256_file(path: Path) -> str:
         for chunk in iter(lambda: source.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def captured_text(value: object) -> str:
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return str(value or "")
 
 
 def make_scenarios() -> list[dict[str, Any]]:
@@ -177,7 +219,7 @@ def make_scenarios() -> list[dict[str, Any]]:
                     "render_style": "line",
                     "series_count": series_count,
                     "seed": seed,
-                    "rate": 10_000,
+                    "rate": FIXED_LIVE_RATE,
                 }
             )
     return scenarios
@@ -225,6 +267,7 @@ def scenario_manifest(args: argparse.Namespace) -> dict[str, Any]:
             "graphics_backend": args.graphics_backend,
             "finish_each_frame": True,
             "framebuffer": {"width": args.width, "height": args.height},
+            "static_samples_per_series": FIXED_STATIC_SAMPLE_COUNT,
             "text_mode": "enabled",
             "outlier_policy": "retain-all",
             "stability_review_threshold": args.unstable_drift_threshold,
@@ -257,6 +300,7 @@ def validate_artifact(
         "series_count": str(scenario["series_count"]),
         "show_text": "true",
         "static_data": "true" if scenario["mode"] == "static" else "false",
+        "static_sample_count": str(FIXED_STATIC_SAMPLE_COUNT),
         "stream": run_id,
         "warmup_frames": str(args.warmup_frames),
     }
@@ -266,16 +310,14 @@ def validate_artifact(
                 f"{scenario['id']} metadata {name}={metadata.get(name)!r}, "
                 f"expected {expected!r}"
             )
-    if not args.allow_dirty_source and metadata.get("source_dirty") != "false":
-        raise RuntimeError(f"{scenario['id']} was built from a dirty source tree")
-    if metadata.get("build_source_commit") != metadata.get("source_commit"):
-        raise RuntimeError(f"{scenario['id']} binary/source commit mismatch")
+    validate_build_runtime_identity(args, metadata, scenario["id"])
     if metadata.get("executable_sha256") != sha256_file(args.executable):
         raise RuntimeError(f"{scenario['id']} executable fingerprint mismatch")
     if payload.get("invocation_args") != expected_command:
         raise RuntimeError(f"{scenario['id']} structured invocation mismatch")
     if int(metadata["measured_frames"]) != args.frames:
         raise RuntimeError(f"{scenario['id']} measured the wrong frame count")
+    validate_phase_trace(metadata, artifact.parent)
     observations = payload["observations"]
     output_count = observations["benchmark.frame.output_count"]["total"]
     if output_count != args.frames:
@@ -290,7 +332,62 @@ def validate_artifact(
         raise RuntimeError(
             f"{scenario['id']} is missing fingerprint fields: {missing_fingerprint}"
         )
+    expected_environment = getattr(args, "environment_fingerprint", None)
+    if expected_environment:
+        mismatches = {
+            field: {"expected": expected, "actual": metadata.get(field)}
+            for field, expected in expected_environment.items()
+            if str(metadata.get(field)) != str(expected)
+        }
+        if mismatches:
+            raise RuntimeError(
+                f"{scenario['id']} current environment fingerprint mismatch: {mismatches}"
+            )
     return payload
+
+
+def validate_build_runtime_identity(
+    args: argparse.Namespace,
+    metadata: dict[str, Any],
+    label: str,
+) -> None:
+    if metadata.get("source_dirty") != "false":
+        raise RuntimeError(f"{label} was run from a dirty source tree")
+    if metadata.get("build_source_dirty") != "false":
+        raise RuntimeError(f"{label} binary was configured from a dirty source tree")
+    identity_pairs = (
+        ("build_source_commit", "source_commit", "source commit"),
+        ("build_source_diff_sha256", "source_diff_sha256", "source diff"),
+        ("build_source_tree", "source_git_tree", "source git tree"),
+        ("build_dependency_commit", "dependency_commit", "dependency commit"),
+        ("build_qt_version", "qt_version", "Qt version"),
+    )
+    for build_field, runtime_field, description in identity_pairs:
+        if metadata.get(build_field) != metadata.get(runtime_field):
+            raise RuntimeError(f"{label} build/runtime {description} mismatch")
+    if metadata.get("build_dependency_dirty") != "false" or metadata.get("dependency_dirty") != "false":
+        raise RuntimeError(f"{label} dependency tree is dirty")
+
+
+def validate_phase_trace(metadata: dict[str, Any], attempt_dir: Path) -> Path:
+    trace_value = metadata.get("phase_trace_path")
+    if not trace_value:
+        raise RuntimeError("phase trace path is missing")
+    trace_path = Path(trace_value)
+    if not trace_path.is_absolute():
+        trace_path = attempt_dir / trace_path
+    trace_path = trace_path.resolve()
+    if trace_path.parent != attempt_dir.resolve():
+        raise RuntimeError("phase trace escapes its retained attempt")
+    if not trace_path.is_file():
+        raise RuntimeError("phase trace is missing")
+    lines = [line for line in trace_path.read_text(encoding="utf-8").splitlines() if line]
+    if not lines:
+        raise RuntimeError("phase trace is empty")
+    final_phase = json.loads(lines[-1])
+    if final_phase.get("phase") != "complete":
+        raise RuntimeError("phase trace does not end at complete")
+    return trace_path
 
 
 def attempt_identity() -> str:
@@ -310,6 +407,13 @@ def retained_success(
         if len(artifacts) != 1:
             continue
         try:
+            validation = json.loads(
+                (attempt / "validation.json").read_text(encoding="utf-8")
+            )
+            if validation.get("status") != "PASS":
+                continue
+            if validation.get("artifact_sha256") != sha256_file(artifacts[0]):
+                continue
             expected_command = make_command(args, scenario, run_id, attempt)
             invocation = json.loads(
                 (attempt / "invocation.json").read_text(encoding="utf-8")
@@ -319,7 +423,7 @@ def retained_success(
             if invocation.get("command") != expected_command:
                 continue
             validate_artifact(args, scenario, artifacts[0], run_id, expected_command)
-        except (KeyError, TypeError, ValueError, RuntimeError):
+        except (KeyError, OSError, TypeError, ValueError, RuntimeError):
             continue
         return artifacts[0]
     return None
@@ -340,6 +444,7 @@ def run_fingerprint(
         "measured_frames": args.frames,
         "scenario": scenario,
         "run_id": run_id,
+        "environment_fingerprint": getattr(args, "environment_fingerprint", {}),
     }
 
 
@@ -358,6 +463,7 @@ def make_command(
         "--series-count", str(scenario["series_count"]),
         "--seed", str(scenario["seed"]),
         "--rate", str(scenario["rate"]),
+        "--static-samples", str(FIXED_STATIC_SAMPLE_COUNT),
         "--width", str(args.width),
         "--height", str(args.height),
         "--warmup-frames", str(args.warmup_frames),
@@ -371,6 +477,121 @@ def make_command(
     if scenario["mode"] == "static":
         command.append("--static")
     return command
+
+
+def make_environment_probe_command(
+    args: argparse.Namespace,
+    attempt_dir: Path,
+) -> list[str]:
+    return [
+        str(args.executable.resolve()),
+        "--backend", "qrhi-offscreen",
+        "--graphics-backend", "native",
+        "--static",
+        "--data-type", "bars",
+        "--render-style", "line",
+        "--series-count", "1",
+        "--seed", "42",
+        "--rate", "10000",
+        "--static-samples", str(FIXED_STATIC_SAMPLE_COUNT),
+        "--width", str(FIXED_WIDTH),
+        "--height", str(FIXED_HEIGHT),
+        "--warmup-frames", str(FIXED_WARMUP_FRAMES),
+        "--frames", "1",
+        "--scenario", "calibration-environment-probe",
+        "--stream", "environment-probe",
+        "--output-dir", str(attempt_dir.resolve()),
+        "--finish",
+        "--quiet",
+    ]
+
+
+def run_environment_probe(args: argparse.Namespace) -> dict[str, str]:
+    probe_root = args.output_dir / "environment-probes"
+    probe_root.mkdir(parents=True, exist_ok=True)
+    previous_attempts = sorted(probe_root.glob("attempt-*"))
+    attempt_dir = probe_root / attempt_identity()
+    attempt_dir.mkdir(parents=True, exist_ok=False)
+    command = make_environment_probe_command(args, attempt_dir)
+    started_at = datetime.now(timezone.utc).isoformat()
+    try:
+        completed = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=args.timeout_seconds,
+        )
+        invocation = {
+            "schema_version": 1,
+            "attempt": attempt_dir.name,
+            "recovery_of": previous_attempts[-1].name if previous_attempts else None,
+            "started_at_utc": started_at,
+            "ended_at_utc": datetime.now(timezone.utc).isoformat(),
+            "command": command,
+            "returncode": completed.returncode,
+            "stdout": completed.stdout,
+            "stderr": completed.stderr,
+        }
+    except subprocess.TimeoutExpired as exc:
+        invocation = {
+            "schema_version": 1,
+            "attempt": attempt_dir.name,
+            "recovery_of": previous_attempts[-1].name if previous_attempts else None,
+            "started_at_utc": started_at,
+            "ended_at_utc": datetime.now(timezone.utc).isoformat(),
+            "command": command,
+            "timeout_seconds": args.timeout_seconds,
+            "stdout": captured_text(exc.stdout),
+            "stderr": captured_text(exc.stderr),
+        }
+        write_json(attempt_dir / "invocation.json", invocation)
+        write_json(attempt_dir / "validation.json", {"status": "FAIL", "reason": "timeout"})
+        raise RuntimeError(f"environment probe timed out; retained {attempt_dir}") from exc
+
+    write_json(attempt_dir / "invocation.json", invocation)
+    try:
+        if completed.returncode != 0:
+            raise RuntimeError(f"benchmark exited with {completed.returncode}")
+        artifacts = sorted(attempt_dir.glob("inspector_benchmark_*.json"))
+        if len(artifacts) != 1:
+            raise RuntimeError(f"expected one environment artifact, found {len(artifacts)}")
+        payload = json.loads(artifacts[0].read_text(encoding="utf-8"))
+        metadata = payload["metadata"]
+        if payload.get("invocation_args") != command:
+            raise RuntimeError("environment probe structured invocation mismatch")
+        if metadata.get("requested_graphics_backend") != "native":
+            raise RuntimeError("environment probe did not request native QRhi")
+        if metadata.get("actual_graphics_backend", "").lower() in {"", "null", "uninitialized"}:
+            raise RuntimeError("environment probe selected an unusable QRhi backend")
+        if metadata.get("scenario") != "calibration-environment-probe":
+            raise RuntimeError("environment probe scenario mismatch")
+        if int(metadata.get("measured_frames", 0)) != 1:
+            raise RuntimeError("environment probe frame count mismatch")
+        if metadata.get("executable_sha256") != sha256_file(args.executable):
+            raise RuntimeError("environment probe executable fingerprint mismatch")
+        validate_build_runtime_identity(args, metadata, "environment probe")
+        trace_path = validate_phase_trace(metadata, attempt_dir)
+        missing = [field for field in FINGERPRINT_FIELDS if not metadata.get(field)]
+        if missing:
+            raise RuntimeError(f"environment probe is missing fingerprint fields: {missing}")
+        fingerprint = {field: str(metadata[field]) for field in FINGERPRINT_FIELDS}
+    except Exception as exc:
+        write_json(attempt_dir / "validation.json", {"status": "FAIL", "reason": str(exc)})
+        raise
+
+    write_json(
+        attempt_dir / "validation.json",
+        {
+            "status": "PASS",
+            "artifact": artifacts[0].name,
+            "artifact_sha256": sha256_file(artifacts[0]),
+            "phase_trace": trace_path.name,
+            "phase_trace_sha256": sha256_file(trace_path),
+            "fingerprint": fingerprint,
+        },
+    )
+    return fingerprint
 
 
 def run_one(
@@ -432,10 +653,14 @@ def run_one(
             "fingerprint": fingerprint,
             "timeout_seconds": args.timeout_seconds,
             "phase": "external-timeout",
-            "stdout": exc.stdout or "",
-            "stderr": exc.stderr or "",
+            "stdout": captured_text(exc.stdout),
+            "stderr": captured_text(exc.stderr),
         }
         write_json(attempt_dir / "invocation.json", invocation)
+        write_json(
+            attempt_dir / "validation.json",
+            {"status": "FAIL", "reason": "external-timeout"},
+        )
         raise RuntimeError(
             f"{scenario['id']} {run_id} exceeded {args.timeout_seconds}s; "
             f"retained {attempt_dir}"
@@ -443,17 +668,51 @@ def run_one(
 
     write_json(attempt_dir / "invocation.json", invocation)
     if completed.returncode != 0:
+        write_json(
+            attempt_dir / "validation.json",
+            {
+                "status": "FAIL",
+                "reason": "benchmark-process-failed",
+                "returncode": completed.returncode,
+            },
+        )
         raise RuntimeError(
             f"{scenario['id']} {run_id} failed with {completed.returncode}; "
             f"retained {attempt_dir}"
         )
     artifacts = sorted(attempt_dir.glob("inspector_benchmark_*.json"))
     if len(artifacts) != 1:
+        write_json(
+            attempt_dir / "validation.json",
+            {
+                "status": "FAIL",
+                "reason": "missing-or-ambiguous-raw-artifact",
+                "artifact_count": len(artifacts),
+            },
+        )
         raise RuntimeError(
             f"{scenario['id']} {run_id} produced {len(artifacts)} raw artifacts; "
             f"retained {attempt_dir}"
         )
-    validate_artifact(args, scenario, artifacts[0], run_id, command)
+    try:
+        payload = validate_artifact(args, scenario, artifacts[0], run_id, command)
+        trace_path = validate_phase_trace(payload["metadata"], attempt_dir)
+    except Exception as exc:
+        write_json(
+            attempt_dir / "validation.json",
+            {"status": "FAIL", "reason": str(exc)},
+        )
+        raise
+    write_json(
+        attempt_dir / "validation.json",
+        {
+            "status": "PASS",
+            "artifact": artifacts[0].name,
+            "artifact_sha256": sha256_file(artifacts[0]),
+            "phase_trace": trace_path.name,
+            "phase_trace_sha256": sha256_file(trace_path),
+        },
+    )
     return artifacts[0]
 
 
@@ -511,10 +770,28 @@ def propose_rule(
     if policy.get("exact_expected"):
         result.update({"rule": "exact", "expected": center, "relative_margin": None})
         return result
-    if policy.get("deterministic_zero") and set_medians == [0.0, 0.0]:
-        result.update({"rule": "exact_zero", "absolute_margin": 0.0, "relative_margin": None})
+    if policy.get("deterministic_zero"):
+        all_values = [value for values in calibration_sets for value in values]
+        nonzero_values = [value for value in all_values if value != 0.0]
+        if not nonzero_values:
+            result.update(
+                {"rule": "exact_zero", "absolute_margin": 0.0, "relative_margin": None}
+            )
+            return result
+        result.update(
+            {
+                "rule": "exact_zero_violation",
+                "absolute_margin": None,
+                "relative_margin": None,
+                "status": "CALIBRATION_REVIEW_REQUIRED",
+                "reason": "deterministic-zero-observation-was-nonzero",
+                "nonzero_run_count": len(nonzero_values),
+                "nonzero_min": min(nonzero_values),
+                "nonzero_max": max(nonzero_values),
+            }
+        )
         return result
-    if min(set_medians) <= 0.0 or center <= resolution:
+    if min(set_medians) <= 0.0 or center < resolution:
         result.update(
             {
                 "rule": "absolute",
@@ -569,6 +846,7 @@ def calculate_margins(
     }
     fingerprint: dict[str, set[str]] = {field: set() for field in FINGERPRINT_FIELDS}
     review_required: list[str] = []
+    deterministic_zero_violations: list[str] = []
     for scenario in manifest["scenarios"]:
         scenario_id = scenario["id"]
         loaded_sets = [
@@ -605,6 +883,10 @@ def calculate_margins(
                 )
                 if rule["status"] == "CALIBRATION_REVIEW_REQUIRED":
                     review_required.append(f"{scenario_id}/{metric}/{reducer}")
+                if rule["rule"] == "exact_zero_violation":
+                    deterministic_zero_violations.append(
+                        f"{scenario_id}/{metric}/{reducer}"
+                    )
                 metric_proposal[reducer] = rule
             scenario_proposal[metric] = metric_proposal
         proposal["scenarios"][scenario_id] = scenario_proposal
@@ -616,15 +898,39 @@ def calculate_margins(
         field: next(iter(values)) for field, values in fingerprint.items()
     }
     proposal["review_required_rules"] = review_required
+    proposal["deterministic_zero_violations"] = deterministic_zero_violations
+    if deterministic_zero_violations:
+        proposal["status"] = "CALIBRATION_FAILED"
     return proposal
+
+
+def validate_fixed_protocol(args: argparse.Namespace) -> None:
+    fixed_protocol = {
+        "graphics_backend": (args.graphics_backend, "native"),
+        "width": (args.width, FIXED_WIDTH),
+        "height": (args.height, FIXED_HEIGHT),
+        "warmup_runs": (args.warmup_runs, FIXED_WARMUP_RUNS),
+        "warmup_frames": (args.warmup_frames, FIXED_WARMUP_FRAMES),
+        "frames": (args.frames, FIXED_MEASURED_FRAMES),
+        "sets": (args.sets, FIXED_SETS),
+        "runs_per_set": (args.runs_per_set, FIXED_RUNS_PER_SET),
+        "unstable_drift_threshold": (
+            args.unstable_drift_threshold,
+            FIXED_UNSTABLE_DRIFT_THRESHOLD,
+        ),
+    }
+    deviations = {
+        name: {"actual": actual, "required": required}
+        for name, (actual, required) in fixed_protocol.items()
+        if actual != required
+    }
+    if deviations:
+        raise ValueError(f"noncanonical retained calibration protocol: {deviations}")
 
 
 def main() -> int:
     args = parse_args()
-    if args.sets != 2 or args.runs_per_set != 7 or args.warmup_runs != 2:
-        raise ValueError("the retained protocol requires two sets, two warm-up runs, and seven measured runs")
-    if args.frames < 1 or args.warmup_frames < 0:
-        raise ValueError("frame counts are invalid")
+    validate_fixed_protocol(args)
     if not args.manifest_only and not args.executable.is_file():
         raise FileNotFoundError(args.executable)
 
@@ -632,6 +938,8 @@ def main() -> int:
     manifest = write_immutable_json(args.output_dir / "scenario_manifest.json", manifest)
     if args.manifest_only:
         return 0
+
+    args.environment_fingerprint = run_environment_probe(args)
 
     artifacts: dict[str, list[list[Path]]] = {}
     for scenario in manifest["scenarios"]:
@@ -649,6 +957,10 @@ def main() -> int:
 
     proposal = calculate_margins(args, manifest, artifacts)
     write_immutable_json(args.output_dir / "proposed_noise_margins.json", proposal)
+    if proposal["status"] == "CALIBRATION_FAILED":
+        raise RuntimeError(
+            "deterministic-zero calibration invariants failed; retained proposal records violations"
+        )
     print(args.output_dir.resolve())
     return 0
 

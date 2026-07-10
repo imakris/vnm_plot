@@ -1,6 +1,7 @@
 // vnm_plot Benchmark - Window Implementation
 
 #include "benchmark_window.h"
+#include "allocation_tracker.h"
 
 #include <vnm_plot/core/plot_config.h>
 
@@ -13,7 +14,9 @@
 #include <QQuickItem>
 #include <QSGRendererInterface>
 #include <QSurfaceFormat>
+#if QT_CONFIG(vulkan) && __has_include(<vulkan/vulkan.h>)
 #include <QVulkanInstance>
+#endif
 
 #include <rhi/qrhi.h>
 #include <rhi/qrhi_platform.h>
@@ -122,8 +125,10 @@ void ensure_interval_observations(Benchmark_profiler& profiler)
     profiler.ensure_observation("benchmark.producer.lock_wait_ns");
     profiler.ensure_observation("renderer.series_window.monotonicity_scan_count");
     profiler.ensure_observation("renderer.series_window.monotonicity_scan_samples");
-    profiler.ensure_observation("renderer.frame.buffer_allocation_bytes");
-    profiler.ensure_observation("renderer.frame.buffer_allocation_count");
+    profiler.ensure_observation("renderer.frame.gpu_buffer_allocation_bytes");
+    profiler.ensure_observation("renderer.frame.gpu_buffer_allocation_count");
+    profiler.ensure_observation("benchmark.frame.cpu_allocation_bytes");
+    profiler.ensure_observation("benchmark.frame.cpu_allocation_count");
 }
 
 template<typename T>
@@ -456,38 +461,21 @@ void Benchmark_rhi_window::generator_thread_func()
 
 void Benchmark_rhi_window::fill_static_data()
 {
-    constexpr std::array<int64_t, 5> ts_ns = {
-        int64_t{   230'000'000},
-        int64_t{ 1'230'000'000},
-        int64_t{ 2'230'000'000},
-        int64_t{ 3'230'000'000},
-        int64_t{ 4'230'000'000}
-    };
-    const std::array<float, 5> vs = {-0.43f, 0.43f, -0.43f, 0.43f, -0.43f};
-
-    for (std::size_t i = 0; i < ts_ns.size(); ++i) {
-        if (m_config.data_type == "Trades") {
-            Trade_sample s{};
-            s.timestamp = ts_ns[i];
-            s.price = vs[i];
-            s.size = 1.0f;
-            for (auto& buffer : m_trade_buffers) {
-                buffer->push(s);
-            }
-        }
-        else {
-            Bar_sample b{};
-            b.timestamp = ts_ns[i];
-            b.open = vs[i];
-            b.high = vs[i];
-            b.low  = vs[i];
-            b.close = vs[i];
-            b.volume = 1.0f;
-            for (auto& buffer : m_bar_buffers) {
-                buffer->push(b);
-            }
+    if (m_config.data_type == "Trades") {
+        std::vector<Trade_sample> samples(m_config.static_sample_count);
+        m_generator.generate_trades(samples.data(), samples.size());
+        for (auto& buffer : m_trade_buffers) {
+            buffer->push_batch(samples.data(), samples.size());
         }
     }
+    else {
+        std::vector<Bar_sample> samples(m_config.static_sample_count);
+        m_generator.generate_bars(samples.data(), samples.size());
+        for (auto& buffer : m_bar_buffers) {
+            buffer->push_batch(samples.data(), samples.size());
+        }
+    }
+    m_samples_generated.store(m_config.static_sample_count);
 }
 
 void Benchmark_rhi_window::setup_series()
@@ -760,12 +748,18 @@ void Benchmark_rhi_offscreen_runner::generator_thread_func()
     auto start_time = std::chrono::steady_clock::now();
 
     while (!m_stop_generator.load()) {
+        if (!wait_for_generator_permission()) {
+            break;
+        }
         auto now = std::chrono::steady_clock::now();
         double elapsed_ns = std::chrono::duration<double, std::nano>(now - start_time).count();
         double target_samples = elapsed_ns / ns_per_sample;
         std::size_t current_count = m_samples_generated.load();
 
         while (current_count < static_cast<std::size_t>(target_samples) && !m_stop_generator.load()) {
+            if (!wait_for_generator_permission()) {
+                break;
+            }
             if (m_config.data_type == "Trades") {
                 const Trade_sample sample = m_generator.next_trade();
                 for (auto& buffer : m_trade_buffers) {
@@ -790,44 +784,72 @@ void Benchmark_rhi_offscreen_runner::stop_generator_thread()
 {
     if (m_generator_thread.joinable()) {
         m_stop_generator.store(true);
+        m_generator_pause_requested.store(false);
+        m_generator_control_cv.notify_all();
         m_generator_thread.join();
     }
 }
 
+void Benchmark_rhi_offscreen_runner::pause_generator_publication()
+{
+    if (!m_generator_thread.joinable()) {
+        return;
+    }
+    m_generator_pause_requested.store(true, std::memory_order_release);
+    m_generator_control_cv.notify_all();
+    std::unique_lock lock(m_generator_control_mutex);
+    m_generator_control_cv.wait(lock, [&]() {
+        return m_generator_paused || m_stop_generator.load();
+    });
+}
+
+void Benchmark_rhi_offscreen_runner::resume_generator_publication()
+{
+    if (!m_generator_thread.joinable()) {
+        return;
+    }
+    m_generator_pause_requested.store(false, std::memory_order_release);
+    m_generator_control_cv.notify_all();
+    std::unique_lock lock(m_generator_control_mutex);
+    m_generator_control_cv.wait(lock, [&]() {
+        return !m_generator_paused || m_stop_generator.load();
+    });
+}
+
+bool Benchmark_rhi_offscreen_runner::wait_for_generator_permission()
+{
+    if (!m_generator_pause_requested.load(std::memory_order_acquire)) {
+        return !m_stop_generator.load();
+    }
+    std::unique_lock lock(m_generator_control_mutex);
+    m_generator_paused = true;
+    m_generator_control_cv.notify_all();
+    m_generator_control_cv.wait(lock, [&]() {
+        return !m_generator_pause_requested.load(std::memory_order_acquire) ||
+            m_stop_generator.load();
+    });
+    m_generator_paused = false;
+    m_generator_control_cv.notify_all();
+    return !m_stop_generator.load();
+}
+
 void Benchmark_rhi_offscreen_runner::fill_static_data()
 {
-    constexpr std::array<int64_t, 5> ts_ns = {
-        int64_t{   230'000'000},
-        int64_t{ 1'230'000'000},
-        int64_t{ 2'230'000'000},
-        int64_t{ 3'230'000'000},
-        int64_t{ 4'230'000'000}
-    };
-    const std::array<float, 5> vs = {-0.43f, 0.43f, -0.43f, 0.43f, -0.43f};
-
-    for (std::size_t i = 0; i < ts_ns.size(); ++i) {
-        if (m_config.data_type == "Trades") {
-            Trade_sample s{};
-            s.timestamp = ts_ns[i];
-            s.price = vs[i];
-            s.size = 1.0f;
-            for (auto& buffer : m_trade_buffers) {
-                buffer->push(s);
-            }
-        }
-        else {
-            Bar_sample b{};
-            b.timestamp = ts_ns[i];
-            b.open = vs[i];
-            b.high = vs[i];
-            b.low  = vs[i];
-            b.close = vs[i];
-            b.volume = 1.0f;
-            for (auto& buffer : m_bar_buffers) {
-                buffer->push(b);
-            }
+    if (m_config.data_type == "Trades") {
+        std::vector<Trade_sample> samples(m_config.static_sample_count);
+        m_generator.generate_trades(samples.data(), samples.size());
+        for (auto& buffer : m_trade_buffers) {
+            buffer->push_batch(samples.data(), samples.size());
         }
     }
+    else {
+        std::vector<Bar_sample> samples(m_config.static_sample_count);
+        m_generator.generate_bars(samples.data(), samples.size());
+        for (auto& buffer : m_bar_buffers) {
+            buffer->push_batch(samples.data(), samples.size());
+        }
+    }
+    m_samples_generated.store(m_config.static_sample_count);
 }
 
 bool Benchmark_rhi_offscreen_runner::initialize_rhi(std::string& error_message)
@@ -983,6 +1005,7 @@ bool Benchmark_rhi_offscreen_runner::render_frame(
     std::string& error_message,
     bool measured)
 {
+    Thread_allocation_scope allocation_scope(measured);
     const auto frame_started = std::chrono::steady_clock::now();
     const auto submission_started = frame_started;
     QRhiCommandBuffer* cb = nullptr;
@@ -1217,8 +1240,15 @@ bool Benchmark_rhi_offscreen_runner::render_frame(
             static_cast<double>(m_pixel_nonuniform_count));
     }
     if (measured) {
+        const Thread_allocation_measurement allocations = allocation_scope.finish();
         const double frame_ms = std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - frame_started).count();
+        m_profiler.record_observation(
+            "benchmark.frame.cpu_allocation_count",
+            static_cast<double>(allocations.count));
+        m_profiler.record_observation(
+            "benchmark.frame.cpu_allocation_bytes",
+            static_cast<double>(allocations.bytes));
         m_profiler.record_observation("benchmark.frame.total_ms", frame_ms);
         m_profiler.record_counter("benchmark.frame.output_count");
         ++m_measured_frame_count;
@@ -1234,6 +1264,11 @@ bool Benchmark_rhi_offscreen_runner::run(std::string& error_message)
         std::filesystem::path(m_config.output_directory) /
         ("benchmark_phase_trace_" + std::to_string(trace_identity) + "_" +
             std::to_string(QCoreApplication::applicationPid()) + ".jsonl")).string();
+    m_phase_trace.open(m_phase_trace_path, std::ios::out | std::ios::trunc);
+    if (!m_phase_trace) {
+        error_message = "phase_trace.open: failed to open " + m_phase_trace_path;
+        return false;
+    }
     record_phase("cold.setup.begin");
     const auto cold_started = std::chrono::steady_clock::now();
     const auto setup_started = cold_started;
@@ -1280,6 +1315,8 @@ bool Benchmark_rhi_offscreen_runner::run(std::string& error_message)
 
     m_cold_total_ms = std::chrono::duration<double, std::milli>(
         std::chrono::steady_clock::now() - cold_started).count();
+    const double clock_resolution_ns = steady_clock_resolution_ns();
+    pause_generator_publication();
     reset_ring_measurement_statistics(m_bar_buffers);
     reset_ring_measurement_statistics(m_trade_buffers);
     m_profiler.reset();
@@ -1296,13 +1333,14 @@ bool Benchmark_rhi_offscreen_runner::run(std::string& error_message)
     m_profiler.record_observation("benchmark.cold.total_ms", m_cold_total_ms);
     m_profiler.record_observation(
         "benchmark.clock.steady_resolution_ns",
-        steady_clock_resolution_ns());
+        clock_resolution_ns);
     m_profiler.record_observation(
         "benchmark.warmup.frame_count",
         static_cast<double>(m_config.warmup_frames));
 
     m_started_at = std::chrono::system_clock::now();
     const auto measured_started = std::chrono::steady_clock::now();
+    resume_generator_publication();
     const auto duration = std::chrono::duration<double>(m_config.duration_seconds);
 
     const auto render_measured_frame = [&](std::size_t frame) {
@@ -1334,8 +1372,11 @@ bool Benchmark_rhi_offscreen_runner::run(std::string& error_message)
         }
     }
 
+    pause_generator_publication();
+    const auto measured_ended = std::chrono::steady_clock::now();
     const double measured_seconds = std::chrono::duration<double>(
-        std::chrono::steady_clock::now() - measured_started).count();
+        measured_ended - measured_started).count();
+    record_final_statistics(measured_seconds);
 
     const auto shutdown_started = std::chrono::steady_clock::now();
     record_phase("shutdown.generator.begin");
@@ -1344,7 +1385,6 @@ bool Benchmark_rhi_offscreen_runner::run(std::string& error_message)
     const double shutdown_ms = std::chrono::duration<double, std::milli>(
         std::chrono::steady_clock::now() - shutdown_started).count();
     m_profiler.record_observation("benchmark.shutdown.generator_ms", shutdown_ms);
-    record_final_statistics(measured_seconds);
     record_phase("complete");
     return true;
 }
@@ -1355,10 +1395,10 @@ void Benchmark_rhi_offscreen_runner::record_phase(
 {
     const double elapsed_ms = std::chrono::duration<double, std::milli>(
         std::chrono::steady_clock::now() - m_phase_trace_started).count();
-    std::ofstream trace(m_phase_trace_path, std::ios::app);
-    if (trace) {
-        trace << "{\"elapsed_ms\":" << std::setprecision(17) << elapsed_ms
-              << ",\"phase\":\"" << phase << "\",\"frame\":" << frame << "}\n";
+    if (m_phase_trace) {
+        m_phase_trace << "{\"elapsed_ms\":" << std::setprecision(17) << elapsed_ms
+                      << ",\"phase\":\"" << phase << "\",\"frame\":" << frame << "}\n";
+        m_phase_trace.flush();
     }
 }
 

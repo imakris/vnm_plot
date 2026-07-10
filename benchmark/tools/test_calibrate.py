@@ -53,6 +53,27 @@ class CalibrationArithmeticTests(unittest.TestCase):
         self.assertEqual(rule["absolute_margin"], 0.0)
         self.assertIsNone(rule["relative_margin"])
 
+    def test_any_nonzero_deterministic_run_requires_review(self) -> None:
+        rule = calibrate.propose_rule(
+            {"unit": "count", "deterministic_zero": True},
+            [[0.0, 0.0, 0.0, 0.0, 1.0, 2.0, 3.0],
+             [0.0, 0.0, 0.0, 0.0, 4.0, 5.0, 6.0]],
+            resolution=1.0,
+            unstable_threshold=0.25,
+        )
+        self.assertEqual(rule["rule"], "exact_zero_violation")
+        self.assertEqual(rule["status"], "CALIBRATION_REVIEW_REQUIRED")
+        self.assertEqual(rule["nonzero_run_count"], 6)
+
+    def test_value_equal_to_resolution_is_not_sub_resolution(self) -> None:
+        rule = calibrate.propose_rule(
+            {"unit": "ns"},
+            [[10.0] * 7, [10.0] * 7],
+            resolution=10.0,
+            unstable_threshold=0.25,
+        )
+        self.assertEqual(rule["rule"], "relative")
+
     def test_sub_resolution_value_has_only_absolute_rule(self) -> None:
         rule = calibrate.propose_rule(
             {"unit": "ns"},
@@ -82,7 +103,6 @@ class CalibrationProtocolTests(unittest.TestCase):
             timeout_seconds=120.0,
             unstable_drift_threshold=0.25,
             manifest_only=True,
-            allow_dirty_source=False,
         )
 
     def test_manifest_records_fixed_protocol_and_scenarios(self) -> None:
@@ -93,7 +113,30 @@ class CalibrationProtocolTests(unittest.TestCase):
         self.assertEqual(protocol["warmup_runs_per_set"], 2)
         self.assertEqual(protocol["measured_runs_per_set"], 7)
         self.assertEqual(len(manifest["scenarios"]), 6)
+        self.assertEqual(
+            {scenario["rate"] for scenario in manifest["scenarios"]},
+            {calibrate.FIXED_LIVE_RATE},
+        )
         self.assertEqual(manifest["status"], "CALIBRATION_REVIEW_REQUIRED")
+
+    def test_timeout_output_is_json_serializable_text(self) -> None:
+        self.assertEqual(calibrate.captured_text(b"partial\xff"), "partial�")
+
+    def test_noncanonical_frame_count_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            args = self.make_args(Path(temporary))
+            args.frames = 1
+            with self.assertRaises(ValueError):
+                calibrate.validate_fixed_protocol(args)
+
+    def test_environment_probe_uses_native_fixed_workload(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            args = self.make_args(root)
+            command = calibrate.make_environment_probe_command(args, root / "probe")
+            self.assertEqual(command[command.index("--graphics-backend") + 1], "native")
+            self.assertEqual(command[command.index("--static-samples") + 1], "10000")
+            self.assertEqual(command[command.index("--frames") + 1], "1")
 
     def test_attempt_identities_are_unique_and_append_only_shaped(self) -> None:
         first = calibrate.attempt_identity()
@@ -166,6 +209,80 @@ class CalibrationProtocolTests(unittest.TestCase):
             calibrate.write_immutable_json(path, {"protocol": {"sets": 2}})
             with self.assertRaises(RuntimeError):
                 calibrate.write_immutable_json(path, {"protocol": {"sets": 3}})
+
+    def test_calculate_margins_covers_every_policy_and_reducer(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            args = self.make_args(root)
+            manifest = calibrate.scenario_manifest(args)
+            artifacts: dict[str, list[list[Path]]] = {}
+            for scenario in manifest["scenarios"]:
+                scenario_sets: list[list[Path]] = []
+                for set_index in range(2):
+                    paths: list[Path] = []
+                    for run_index in range(7):
+                        observations = {
+                            "benchmark.clock.steady_resolution_ns": {
+                                "mean": 1.0,
+                            }
+                        }
+                        for metric, policy in calibrate.METRIC_POLICIES.items():
+                            value = 0.0 if policy.get("deterministic_zero") else 10.0
+                            if policy.get("exact_expected"):
+                                value = float(args.frames)
+                            observations[metric] = {
+                                "total": value,
+                                "mean": value,
+                                "max": value,
+                                "p50": value,
+                                "p95": value,
+                                "p99": value,
+                            }
+                        payload = {
+                            "metadata": {
+                                field: "same" for field in calibrate.FINGERPRINT_FIELDS
+                            },
+                            "observations": observations,
+                        }
+                        path = root / f"{scenario['id']}-{set_index}-{run_index}.json"
+                        calibrate.write_json(path, payload)
+                        paths.append(path)
+                    scenario_sets.append(paths)
+                artifacts[scenario["id"]] = scenario_sets
+            proposal = calibrate.calculate_margins(args, manifest, artifacts)
+            first = proposal["scenarios"][manifest["scenarios"][0]["id"]]
+            self.assertEqual(set(first), set(calibrate.METRIC_POLICIES))
+            self.assertIn("p99", first["benchmark.frame.total_ms"])
+            self.assertEqual(
+                first["benchmark.ring.overwritten_samples"]["total"]["rule"],
+                "exact_zero",
+            )
+            self.assertNotEqual(
+                first["renderer.frame.gpu_buffer_allocation_count"]["total"]["rule"],
+                "exact_zero",
+            )
+
+    def test_phase_trace_must_end_at_complete(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            attempt = Path(temporary)
+            trace = attempt / "trace.jsonl"
+            trace.write_text(
+                '{"phase":"measure.frame.end"}\n',
+                encoding="utf-8",
+            )
+            with self.assertRaises(RuntimeError):
+                calibrate.validate_phase_trace(
+                    {"phase_trace_path": str(trace)},
+                    attempt,
+                )
+            trace.write_text('{"phase":"complete"}\n', encoding="utf-8")
+            self.assertEqual(
+                calibrate.validate_phase_trace(
+                    {"phase_trace_path": str(trace)},
+                    attempt,
+                ),
+                trace.resolve(),
+            )
 
 
 if __name__ == "__main__":

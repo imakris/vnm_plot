@@ -98,7 +98,6 @@ public:
 
         if (was_full) {
             m_tail.store((t + 1) % cap, std::memory_order_relaxed);
-            m_overwritten_samples.fetch_add(1, std::memory_order_relaxed);
         }
         else {
             const std::size_t new_count = count + 1;
@@ -106,10 +105,13 @@ public:
             update_high_water(new_count);
         }
 
-        m_published_samples.fetch_add(1, std::memory_order_relaxed);
         publish_next_revision();
-        record_producer_wait(wait_ns);
         lock.unlock();
+        m_published_samples.fetch_add(1, std::memory_order_relaxed);
+        if (was_full) {
+            m_overwritten_samples.fetch_add(1, std::memory_order_relaxed);
+        }
+        record_producer_wait(wait_ns);
     }
 
     /// Push multiple samples. Overwrites oldest as needed.
@@ -148,11 +150,11 @@ public:
 
         m_count.store(occupancy, std::memory_order_relaxed);
         update_high_water(occupancy);
+        m_revision.store(revision, std::memory_order_release);
+        lock.unlock();
         m_published_samples.fetch_add(count, std::memory_order_relaxed);
         m_overwritten_samples.fetch_add(overwritten, std::memory_order_relaxed);
-        m_revision.store(revision, std::memory_order_release);
         record_producer_wait(wait_ns);
-        lock.unlock();
     }
 
     // -------------------------------------------------------------------------
