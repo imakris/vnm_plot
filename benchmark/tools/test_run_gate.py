@@ -119,6 +119,22 @@ class GateEvidenceTests(unittest.TestCase):
         self.assertNotEqual(first, second)
         self.assertRegex(first, r"^\d{8}T\d{6}\.\d{6}Z-[0-9a-f]{8}$")
 
+    def test_freebsd_capacity_evidence_is_retained(self) -> None:
+        with (
+            mock.patch.object(run_gate.platform, "system", return_value="FreeBSD"),
+            mock.patch.object(
+                run_gate,
+                "command_output",
+                side_effect=("10737418240", "9663676416", "swap", "limits"),
+            ) as command_output,
+        ):
+            evidence = run_gate.guest_capacity_evidence(Path("."))
+        self.assertEqual(evidence["physical_memory_bytes"], "10737418240")
+        self.assertEqual(evidence["user_memory_bytes"], "9663676416")
+        self.assertEqual(evidence["swap"], "swap")
+        self.assertEqual(evidence["process_limits"], "limits")
+        self.assertEqual(command_output.call_count, 4)
+
     def test_finalize_hashes_artifacts_without_self_reference(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

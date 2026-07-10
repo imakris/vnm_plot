@@ -30,6 +30,7 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
+#include <new>
 #include <sstream>
 
 #if defined(Q_OS_WIN)
@@ -870,17 +871,21 @@ void Benchmark_rhi_offscreen_runner::fill_static_data()
 
 bool Benchmark_rhi_offscreen_runner::initialize_rhi(std::string& error_message)
 {
+    m_backend_create_substep = "select_backend";
     const auto create_null_rhi = [&]() {
         QRhiNullInitParams params;
+        m_backend_create_substep = "rhi_create";
         m_rhi.reset(QRhi::create(QRhi::Null, &params));
         return m_rhi != nullptr;
     };
 
     const auto create_opengl_rhi = [&]() {
 #if QT_CONFIG(opengl)
+        m_backend_create_substep = "fallback_surface";
         m_fallback_surface.reset(QRhiGles2InitParams::newFallbackSurface());
         QRhiGles2InitParams params;
         params.fallbackSurface = m_fallback_surface.get();
+        m_backend_create_substep = "rhi_create";
         m_rhi.reset(QRhi::create(QRhi::OpenGLES2, &params));
         if (!m_rhi) {
             m_fallback_surface.reset();
@@ -894,6 +899,7 @@ bool Benchmark_rhi_offscreen_runner::initialize_rhi(std::string& error_message)
     const auto create_d3d11_rhi = [&]() {
 #ifdef Q_OS_WIN
         QRhiD3D11InitParams params;
+        m_backend_create_substep = "rhi_create";
         m_rhi.reset(QRhi::create(QRhi::D3D11, &params));
         return m_rhi != nullptr;
 #else
@@ -904,6 +910,7 @@ bool Benchmark_rhi_offscreen_runner::initialize_rhi(std::string& error_message)
     const auto create_metal_rhi = [&]() {
 #if defined(Q_OS_MACOS) && QT_CONFIG(metal)
         QRhiMetalInitParams params;
+        m_backend_create_substep = "rhi_create";
         m_rhi.reset(QRhi::create(QRhi::Metal, &params));
         return m_rhi != nullptr;
 #else
@@ -913,13 +920,16 @@ bool Benchmark_rhi_offscreen_runner::initialize_rhi(std::string& error_message)
 
     const auto create_vulkan_rhi = [&]() {
 #if QT_CONFIG(vulkan) && __has_include(<vulkan/vulkan.h>)
+        m_backend_create_substep = "vulkan_instance_allocate";
         m_vulkan_instance = std::make_unique<QVulkanInstance>();
+        m_backend_create_substep = "vulkan_instance_create";
         if (!m_vulkan_instance->create()) {
             m_vulkan_instance.reset();
             return false;
         }
         QRhiVulkanInitParams params;
         params.inst = m_vulkan_instance.get();
+        m_backend_create_substep = "rhi_create";
         m_rhi.reset(QRhi::create(QRhi::Vulkan, &params));
         if (!m_rhi) {
             m_vulkan_instance.reset();
@@ -962,6 +972,7 @@ bool Benchmark_rhi_offscreen_runner::initialize_rhi(std::string& error_message)
 #endif
     }
 
+    m_backend_create_substep = "backend_validate";
     if (!created || !m_rhi) {
         error_message = "cold.backend_create: failed to create requested offscreen QRhi backend '" +
             requested + "'";
@@ -973,47 +984,69 @@ bool Benchmark_rhi_offscreen_runner::initialize_rhi(std::string& error_message)
         return false;
     }
 
+    m_backend_create_substep = "graphics_info";
     m_graphics_info = graphics_device_info_from_rhi(*m_rhi);
 
     const QSize size(m_config.framebuffer_width, m_config.framebuffer_height);
     const int sample_count = static_cast<int>(m_config.sample_count);
+    m_backend_create_substep = "color_buffer_allocate";
     m_color_buffer.reset(m_rhi->newRenderBuffer(
         QRhiRenderBuffer::Color,
         size,
         sample_count,
         {},
         QRhiTexture::RGBA8));
+    if (!m_color_buffer) {
+        error_message = "Failed to allocate QRhi offscreen color buffer";
+        return false;
+    }
+    m_backend_create_substep = "color_buffer_create";
     if (!m_color_buffer->create()) {
         error_message = "Failed to create QRhi offscreen color buffer";
         return false;
     }
 
     if (m_config.capture_pixel_checksum) {
+        m_backend_create_substep = "resolve_texture_allocate";
         m_resolve_texture.reset(m_rhi->newTexture(
             QRhiTexture::RGBA8,
             size,
             1,
             QRhiTexture::RenderTarget | QRhiTexture::UsedAsTransferSource));
+        m_backend_create_substep = "resolve_texture_create";
         if (!m_resolve_texture || !m_resolve_texture->create()) {
             error_message = "cold.render_target: failed to create pixel readback resolve texture";
             return false;
         }
     }
 
+    m_backend_create_substep = "render_target_describe";
     QRhiColorAttachment color_attachment;
     color_attachment.setRenderBuffer(m_color_buffer.get());
     if (m_resolve_texture) {
         color_attachment.setResolveTexture(m_resolve_texture.get());
     }
     QRhiTextureRenderTargetDescription rt_desc(color_attachment);
+    m_backend_create_substep = "render_target_allocate";
     m_render_target.reset(m_rhi->newTextureRenderTarget(rt_desc));
+    if (!m_render_target) {
+        error_message = "Failed to allocate QRhi offscreen render target";
+        return false;
+    }
+    m_backend_create_substep = "render_pass_allocate";
     m_render_pass_descriptor.reset(m_render_target->newCompatibleRenderPassDescriptor());
+    if (!m_render_pass_descriptor) {
+        error_message = "Failed to allocate QRhi offscreen render pass descriptor";
+        return false;
+    }
     m_render_target->setRenderPassDescriptor(m_render_pass_descriptor.get());
+    m_backend_create_substep = "render_target_create";
     if (!m_render_target->create()) {
         error_message = "Failed to create QRhi offscreen render target";
         return false;
     }
 
+    m_backend_create_substep = "complete";
     return true;
 }
 
@@ -1285,6 +1318,7 @@ bool Benchmark_rhi_offscreen_runner::run(std::string& error_message)
         error_message = "phase_trace.open: failed to open " + m_phase_trace_path;
         return false;
     }
+    error_message.reserve(192);
     record_phase("cold.setup.begin");
     const auto cold_started = std::chrono::steady_clock::now();
     const auto setup_started = cold_started;
@@ -1297,8 +1331,24 @@ bool Benchmark_rhi_offscreen_runner::run(std::string& error_message)
 
     const auto backend_started = std::chrono::steady_clock::now();
     record_phase("cold.backend_create.begin");
-    if (!initialize_rhi(error_message)) {
-        record_phase("cold.backend_create.failed");
+    try {
+        if (!initialize_rhi(error_message)) {
+            record_phase("cold.backend_create.failed");
+            return false;
+        }
+    }
+    catch (const std::bad_alloc&) {
+        char failure_phase[128];
+        std::snprintf(
+            failure_phase,
+            sizeof(failure_phase),
+            "cold.backend_create.%s.bad_alloc",
+            m_backend_create_substep);
+        record_phase(failure_phase);
+        std::fprintf(stderr, "%s: std::bad_alloc\n", failure_phase);
+        std::fflush(stderr);
+        error_message.assign(failure_phase);
+        error_message.append(": std::bad_alloc");
         return false;
     }
     record_phase("cold.backend_create.end");

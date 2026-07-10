@@ -315,6 +315,17 @@ def repository_identity(path: Path) -> dict[str, Any]:
     return result
 
 
+def guest_capacity_evidence(cwd: Path) -> dict[str, str]:
+    if platform.system() != "FreeBSD":
+        return {"status": "not-applicable"}
+    return {
+        "physical_memory_bytes": command_output(["sysctl", "-n", "hw.physmem"], cwd),
+        "user_memory_bytes": command_output(["sysctl", "-n", "hw.usermem"], cwd),
+        "swap": command_output(["swapinfo", "-h"], cwd),
+        "process_limits": command_output(["/bin/sh", "-c", "ulimit -a"], cwd),
+    }
+
+
 def preflight(
     args: argparse.Namespace,
     source: dict[str, Any],
@@ -352,6 +363,7 @@ def preflight(
         "source_diff_path": "preflight/source.diff",
         "platform": platform.platform(),
         "architecture": platform.machine(),
+        "capacity": guest_capacity_evidence(args.source_root),
         "python": {"version": sys.version, "executable": sys.executable},
         "cmake": command_output(["cmake", "--version"], args.source_root),
         "ctest": command_output(["ctest", "--version"], args.source_root),
