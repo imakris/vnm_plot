@@ -63,11 +63,11 @@ jobs:
             if [ "${ci_status}" = success ]; then
               Xvfb :99 -screen 0 1280x1024x24 >/tmp/vnm-plot-xvfb.log 2>&1 &
               export DISPLAY=:99
-              # The VM exposes many host CPUs to Mesa's software renderer but
-              # has a 6 GiB memory cap. Keep native QRhi and use its GL 3.3
-              # software rasterizer with bounded workers.
-              export GALLIUM_DRIVER=softpipe
-              export LP_NUM_THREADS=1
+              # FreeBSD's VM cannot create a softpipe drisw screen. Keep native
+              # QRhi on Mesa's available renderer and disable llvmpipe render
+              # threading to fit the 6 GiB guest without changing the oracle.
+              unset GALLIUM_DRIVER
+              export LP_NUM_THREADS=0
               (cd build && ctest --output-on-failure) || ci_status=failure
             fi
             gate_status=success
