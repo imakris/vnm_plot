@@ -16,6 +16,7 @@ struct Thread_allocation_measurement {
 struct Thread_allocation_failure {
     std::size_t size = 0;
     std::size_t alignment = 0;
+    std::size_t effective_alignment = 0;
     int error = 0;
     bool aligned = false;
 };

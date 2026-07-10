@@ -1387,12 +1387,14 @@ bool Benchmark_rhi_offscreen_runner::run(std::string& error_message)
             "%s: std::bad_alloc; observed_by_global_new=%s; "
             "last_allocation_failure_size=%zu; "
             "last_allocation_failure_alignment=%zu; "
+            "last_allocation_failure_effective_alignment=%zu; "
             "last_allocation_failure_error=%d; "
             "last_allocation_failure_aligned=%s",
             failure_phase,
             allocation_failure.size != 0 ? "true" : "false",
             allocation_failure.size,
             allocation_failure.alignment,
+            allocation_failure.effective_alignment,
             allocation_failure.error,
             allocation_failure.aligned ? "true" : "false");
         std::fprintf(stderr, "%s\n", failure_detail);

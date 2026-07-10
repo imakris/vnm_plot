@@ -75,6 +75,8 @@ bool test_allocation_failure_diagnostics()
     auto allocation_failure = vnm::benchmark::last_thread_allocation_failure();
     TEST_ASSERT(allocation_failure.size == 0, "failure size should reset");
     TEST_ASSERT(allocation_failure.alignment == 0, "failure alignment should reset");
+    TEST_ASSERT(allocation_failure.effective_alignment == 0,
+        "failure effective alignment should reset");
     TEST_ASSERT(allocation_failure.error == 0, "failure error should reset");
     TEST_ASSERT(!allocation_failure.aligned, "failure aligned flag should reset");
 
@@ -91,8 +93,40 @@ bool test_allocation_failure_diagnostics()
         "failed allocation size should be retained");
     TEST_ASSERT(allocation_failure.alignment == 0,
         "ordinary failed allocation should not retain alignment");
+    TEST_ASSERT(allocation_failure.effective_alignment == 0,
+        "ordinary failed allocation should not retain effective alignment");
     TEST_ASSERT(!allocation_failure.aligned,
         "ordinary failed allocation should not be marked aligned");
+    vnm::benchmark::clear_thread_allocation_failure();
+    return true;
+}
+
+bool test_sub_pointer_aligned_allocation()
+{
+    constexpr std::size_t requested_alignment = 4;
+    void* memory = ::operator new(512, std::align_val_t{requested_alignment});
+    const auto address = reinterpret_cast<std::uintptr_t>(memory);
+    TEST_ASSERT(address % requested_alignment == 0,
+        "aligned allocation should satisfy the requested alignment");
+    TEST_ASSERT(address % sizeof(void*) == 0,
+        "sub-pointer alignment should be normalized for posix_memalign");
+    ::operator delete(memory, std::align_val_t{requested_alignment});
+
+    vnm::benchmark::clear_thread_allocation_failure();
+    try {
+        memory = ::operator new(
+            std::numeric_limits<std::size_t>::max(),
+            std::align_val_t{requested_alignment});
+        ::operator delete(memory, std::align_val_t{requested_alignment});
+        TEST_ASSERT(false, "impossible aligned allocation should throw std::bad_alloc");
+    }
+    catch (const std::bad_alloc&) {
+    }
+    const auto failure = vnm::benchmark::last_thread_allocation_failure();
+    TEST_ASSERT(failure.alignment == requested_alignment,
+        "failed aligned allocation should retain requested alignment");
+    TEST_ASSERT(failure.effective_alignment == sizeof(void*),
+        "failed aligned allocation should retain normalized alignment");
     vnm::benchmark::clear_thread_allocation_failure();
     return true;
 }
@@ -572,6 +606,7 @@ int main() {
     RUN_TEST(test_basic_scope);
     RUN_TEST(test_allocation_tracker_counts_ordinary_allocation);
     RUN_TEST(test_allocation_failure_diagnostics);
+    RUN_TEST(test_sub_pointer_aligned_allocation);
     RUN_TEST(test_profiler_allocations_are_excluded_from_frame_measurement);
     RUN_TEST(test_nested_scopes);
     RUN_TEST(test_scope_aggregation);

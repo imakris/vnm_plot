@@ -31,7 +31,7 @@ void* allocate(std::size_t size)
     const std::size_t retained_size = size == 0 ? 1 : size;
     void* memory = std::malloc(retained_size);
     if (!memory) {
-        g_last_allocation_failure = {retained_size, 0, errno, false};
+        g_last_allocation_failure = {retained_size, 0, 0, errno, false};
         throw std::bad_alloc();
     }
     record_allocation(retained_size);
@@ -41,12 +41,18 @@ void* allocate(std::size_t size)
 void* allocate_aligned(std::size_t size, std::size_t alignment)
 {
     const std::size_t retained_size = size == 0 ? 1 : size;
+    const std::size_t effective_alignment = alignment < sizeof(void*)
+        ? sizeof(void*)
+        : alignment;
     void* memory = nullptr;
 #if defined(_MSC_VER)
-    memory = _aligned_malloc(retained_size, alignment);
+    memory = _aligned_malloc(retained_size, effective_alignment);
     const int allocation_error = memory ? 0 : errno;
 #else
-    const int allocation_error = posix_memalign(&memory, alignment, retained_size);
+    const int allocation_error = posix_memalign(
+        &memory,
+        effective_alignment,
+        retained_size);
     if (allocation_error != 0) {
         memory = nullptr;
     }
@@ -55,6 +61,7 @@ void* allocate_aligned(std::size_t size, std::size_t alignment)
         g_last_allocation_failure = {
             retained_size,
             alignment,
+            effective_alignment,
             allocation_error,
             true,
         };
