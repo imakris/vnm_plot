@@ -22,12 +22,19 @@ Claude was unavailable for the stated 85-minute review window. Three Codex worke
 
 ## Failure ledger
 
-The architecture review records **19 failed or terminated executions** in [Observed failures and current gate status](VNM_PLOT_ARCHITECTURE_AND_STACKING_REVIEW.md#observed-failures-and-current-gate-status). Plan authoring added one failed `apply_patch` verification: a combined patch expected text that no longer exactly matched the staged draft. Codex `/root` owned the authoring error and recovered by rereading the file and applying smaller exact hunks, bringing the running total to **20**. Preserve both ledgers rather than replacing them with later green results.
+The architecture review records **19 failed or terminated executions** in [Observed failures and current gate status](VNM_PLOT_ARCHITECTURE_AND_STACKING_REVIEW.md#observed-failures-and-current-gate-status). Plan authoring added one failed `apply_patch` verification: a combined patch expected text that no longer exactly matched the staged draft. Codex `/root` owned the authoring error and recovered by rereading the file and applying smaller exact hunks, bringing the total to **20** before implementation began.
+
+Batch 1B then added two failed style executions, bringing the running total to **22**:
+
+1. The aggregate `style_pipeline.py --write` invocation against the three originally named files advanced beyond the 14 switch fixes and attempted 737 insertions/826 deletions. Review caught `fix_hanging_indent.py` deleting a ternary expression's `?`, true arm, and `:` in `sample_statement_for_offset()` before commit. Codex `/root` owned the unsafe invocation, rejected the output, and restored all generated changes through `apply_patch`; no corrupting change was retained.
+2. After applying only the authorized 14 switch fixes, the canonical no-write pipeline passed its first stage and failed at stage two on four previously hidden `else if` layout violations. A read-only audit then showed 22 of 27 rule groups red; those counts are diagnostic/provisional because earlier ordered fixes can affect later checks.
+
+Preserve all ledgers rather than replacing them with later green results.
 
 | Current state | Owning batch |
 |---|---|
 | Dependency Windows workflow failed before creating jobs | Startup failure recovered by `vnm_msdf_text@b9c216a`; real Windows jobs were created. At the 2026-07-10 execution-record update, Linux/macOS/FreeBSD and the normal Windows job were green while Windows full export was still running in [run 29090524058](https://github.com/imakris/vnm_msdf_text/actions/runs/29090524058). Retain the original failure and close Batch 1A only after the terminal four-platform result is recorded. |
-| Fourteen style violations | Batch 1B — open |
+| Style baseline | The original 14 switch violations are recovered in local checkpoint `3fe78e6`. The short-circuiting pipeline exposed broader pre-existing governed debt and an unsafe `fix_hanging_indent.py` rewrite; expanded Batch 1B remains open. |
 | Benchmark cold dynamic timeout unresolved | Codex `/root` performance-harness owner; Batch 2 instruments it and the ledger stays open after Batch 2 if cause remains unresolved |
 | `vnm_plot` eight first-attempt CI failures | Recovered on attempt 2; retain as closed evidence |
 | MSVC initialization, local Qt platform, report-validation, and plan-authoring command failures | Recovered/documented; keep in final handoff |
@@ -132,27 +139,53 @@ Gate:
 - `vnm_plot` text-OFF/text-ON CI green on Linux, Windows, macOS, and FreeBSD;
 - resolved dependency commit recorded, never pinned.
 
-### Batch 1B — Formatting-only debt
+### Batch 1B — Formatting-only baseline migration
 
-Files:
+Initial checkpoint files:
 
 - `src/core/series_renderer.cpp:95`;
 - `src/core/types.cpp:47-53,389-394`;
 - `tests/test_msdf_lcd_shader_reference.cpp:217-225`.
 
-Actions:
+The original review observed only the first failing pipeline stage because the pipeline stops at the first nonzero checker. Once those 14 violations were fixed, the next stage and a read-only all-rule audit proved the baseline is broader. The batch remains formatting-only, but its scope expands to checker-enumerated C/C++ files as each canonical rule becomes active.
+
+#### Checkpoint 1B.1 — Original switch debt
 
 - change only the 14 reported case-layout/indentation violations;
 - keep provenance: five arrived in `2d94f01`, nine predate it.
-- use the canonical Varinomics pipeline:
+- retained local commit: `3fe78e6`;
+- gate evidence: switch checker green, `git diff --check` green, initialized Release build green, CTest 21/21 green.
+
+#### Checkpoint 1B.2 — Newly exposed `else if` debt
+
+- apply only the four token-preserving `else if` to `else` newline `if` layout fixes reported at:
+  - `src/core/layout_calculator.cpp:756,1024`;
+  - `src/qt/plot_widget.cpp:1197`;
+  - `include/vnm_plot/core/types.h:562`;
+- rerun the switch and unbraced-control-flow checks, `git diff --check`, initialized Release build, and CTest 21/21.
+
+#### Checkpoint 1B.3 onward — Ordered rule migration
+
+Process exactly one canonical style rule at a time in pipeline order:
+
+1. retain the no-write checker's enumerated findings and external standards identity;
+2. run only that rule's fixer against its enumerated files, never the aggregate pipeline `--write`;
+3. require a lexical C/C++ token-equivalence check for every formatting rewrite before build/test; any intended token change requires an explicit plan amendment and leaves this batch;
+4. inspect and retain the complete diff, then rerun all preceding rules plus the active rule;
+5. run `git diff --check`, the initialized Release build, and CTest 21/21;
+6. obtain the iterative three-worker and Claude Fable review required for the batch, feeding findings into the next remediation/review round;
+7. continue until the complete canonical pipeline passes without `--write`.
+
+The canonical check command is:
 
   ```powershell
   python C:\plms\varinomics\varinomics-standards\tools\style_pipeline.py `
     --root C:\plms\bsd_licensed\vnm_plot
   ```
 
-- add `--write` only to apply the confirmed formatting fixes, then rerun without `--write` from the first stage;
-- record standards repository base `f5edc8b` and `style_pipeline.py` SHA-256 `8715313C94D8DCC4257EB3792459BA8D7C759C9CEB6958958B64560FD65CB2F4` with the gate because the standards repository is external and moving.
+Record standards repository base `f5edc8b` and `style_pipeline.py` SHA-256 `8715313C94D8DCC4257EB3792459BA8D7C759C9CEB6958958B64560FD65CB2F4` with the initial gate because the standards repository is external and moving. Repin both after any standards-tool repair.
+
+`fix_hanging_indent.py` is quarantined: an isolated replay proved that its operator-return renderer corrupts the `std::string{}` ternary in `tests/test_msdf_lcd_shader_reference.cpp::sample_statement_for_offset()`. Do not run that fixer again until the standards repository has a focused regression test and corrected implementation, or until the affected findings are satisfied by manually reviewed token-equivalent edits. A later green result does not erase the failed aggregate-write execution.
 
 Gate:
 
