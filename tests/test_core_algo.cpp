@@ -271,10 +271,10 @@ bool test_bounds_on_segmented_snapshot()
     }
 
     plot::data_snapshot_t snap;
-    snap.data = tail.data();
-    snap.count = 10;
+    snap.data   = tail.data();
+    snap.count  = 10;
     snap.stride = sizeof(sample_t);
-    snap.data2 = head.data();
+    snap.data2  = head.data();
     snap.count2 = head.size();
 
     const auto get_ts = [](const void* p) -> std::int64_t {
@@ -301,8 +301,8 @@ bool test_select_visible_sample_window_monotonic_extends_bounds()
     }
 
     plot::data_snapshot_t snap;
-    snap.data = samples.data();
-    snap.count = samples.size();
+    snap.data   = samples.data();
+    snap.count  = samples.size();
     snap.stride = sizeof(sample_t);
 
     const auto get_ts = [](const void* p) -> std::int64_t {
@@ -343,8 +343,8 @@ bool test_select_visible_sample_window_non_monotonic_scans()
     };
 
     plot::data_snapshot_t snap;
-    snap.data = samples.data();
-    snap.count = samples.size();
+    snap.data   = samples.data();
+    snap.count  = samples.size();
     snap.stride = sizeof(sample_t);
 
     const auto get_ts = [](const void* p) -> std::int64_t {
@@ -382,8 +382,8 @@ bool test_aggregate_visible_sample_range_includes_step_after_hold()
     };
 
     plot::data_snapshot_t snap;
-    snap.data = samples.data();
-    snap.count = samples.size();
+    snap.data   = samples.data();
+    snap.count  = samples.size();
     snap.stride = sizeof(sample_t);
 
     const auto get_ts = [](const void* p) -> std::int64_t {
@@ -419,8 +419,8 @@ bool test_aggregate_visible_sample_range_rejects_nonfinite_range_endpoints()
     };
 
     plot::data_snapshot_t snap;
-    snap.data = samples.data();
-    snap.count = samples.size();
+    snap.data   = samples.data();
+    snap.count  = samples.size();
     snap.stride = sizeof(sample_t);
 
     const auto get_ts = [](const void* p) -> std::int64_t {
@@ -452,8 +452,8 @@ bool test_snapshot_truthiness_requires_usable_stride()
     std::vector<sample_t> samples = {{0, 1.0f}};
 
     plot::data_snapshot_t snap;
-    snap.data = samples.data();
-    snap.count = samples.size();
+    snap.data   = samples.data();
+    snap.count  = samples.size();
     snap.stride = 0;
 
     TEST_ASSERT(!snap.is_valid(), "stride-zero snapshot should be invalid");
@@ -475,10 +475,10 @@ bool test_snapshot_count1_clamps_malformed_count2()
     std::vector<sample_t> second = {{1, 2.0f}};
 
     plot::data_snapshot_t snap;
-    snap.data = first.data();
-    snap.count = first.size();
+    snap.data   = first.data();
+    snap.count  = first.size();
     snap.stride = sizeof(sample_t);
-    snap.data2 = second.data();
+    snap.data2  = second.data();
     snap.count2 = 2;
 
     TEST_ASSERT(snap.count1() == 0,
@@ -502,11 +502,11 @@ bool test_layout_cache_key_distinguishes_adjacent_int64_time_windows()
     // timestamps with single-nanosecond precision.
 
     plot::layout_cache_key_t base{};
-    base.v0 = 0.0f;
-    base.v1 = 1.0f;
-    base.t0 = 1'700'000'000'000'000'000LL; // ~late 2023 in ns since epoch
-    base.t1 = base.t0 + 60LL * 1'000'000'000LL; // 60-second window
-    base.viewport_size = plot::Size_2i{1024, 768};
+    base.v0                           = 0.0f;
+    base.v1                           = 1.0f;
+    base.t0                           = 1'700'000'000'000'000'000LL;      // ~late 2023 in ns since epoch
+    base.t1                           = base.t0 + 60LL * 1'000'000'000LL; // 60-second window
+    base.viewport_size                = plot::Size_2i{1024, 768};
     base.adjusted_reserved_height     = 24.0;
     base.adjusted_preview_height      = 32.0;
     base.adjusted_font_size_in_pixels = 13.5;
@@ -534,10 +534,10 @@ bool test_layout_cache_key_distinguishes_adjacent_int64_time_windows()
     // fields would lose precision entirely.
     plot::layout_cache_key_t high_a = base;
     plot::layout_cache_key_t high_b = base;
-    high_a.t0 = std::numeric_limits<std::int64_t>::max() - 1;
-    high_a.t1 = std::numeric_limits<std::int64_t>::max();
-    high_b.t0 = std::numeric_limits<std::int64_t>::max() - 2;
-    high_b.t1 = std::numeric_limits<std::int64_t>::max() - 1;
+    high_a.t0                       = std::numeric_limits<std::int64_t>::max() - 1;
+    high_a.t1                       = std::numeric_limits<std::int64_t>::max();
+    high_b.t0                       = std::numeric_limits<std::int64_t>::max() - 2;
+    high_b.t1                       = std::numeric_limits<std::int64_t>::max() - 1;
     TEST_ASSERT(!(high_a == high_b),
         "layout_cache_key_t must distinguish adjacent ns windows even "
         "near INT64_MAX where double fields would lose precision");

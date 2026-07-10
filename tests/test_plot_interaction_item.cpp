@@ -51,8 +51,8 @@ zoom_state_t advance_zoom(double initial_velocity, const std::vector<double>& el
 {
     zoom_state_t state{1.0, initial_velocity};
     for (double elapsed_step : elapsed_steps) {
-        state.scale *= plot::Plot_interaction_item::zoom_animation_scale_factor(state.velocity, elapsed_step);
-        state.velocity = plot::Plot_interaction_item::zoom_animation_velocity_after(state.velocity, elapsed_step);
+        state.scale    *= plot::Plot_interaction_item::zoom_animation_scale_factor(state.velocity, elapsed_step);
+        state.velocity  = plot::Plot_interaction_item::zoom_animation_velocity_after(state.velocity, elapsed_step);
     }
     return state;
 }
@@ -74,11 +74,11 @@ std::shared_ptr<plot::series_data_t> make_sample_series(
     };
 
     auto series = std::make_shared<plot::series_data_t>();
-    series->series_label = "indicator";
-    series->interpolation = interpolation;
+    series->series_label          = "indicator";
+    series->interpolation         = interpolation;
     series->empty_window_behavior = empty_window_behavior;
-    series->data_source = source;
-    series->access = access.erase();
+    series->data_source           = source;
+    series->access                = access.erase();
 
     return series;
 }
@@ -91,10 +91,10 @@ void configure_view(
     float                      vmax)
 {
     plot::Plot_view view;
-    view.t_range = std::pair<qint64, qint64>{tmin_ns, tmax_ns};
+    view.t_range           = std::pair<qint64, qint64>{tmin_ns, tmax_ns};
     view.t_available_range = std::pair<qint64, qint64>{tmin_ns, tmax_ns};
-    view.v_range = std::pair<float, float>{vmin, vmax};
-    view.v_auto = false;
+    view.v_range           = std::pair<float, float>{vmin, vmax};
+    view.v_auto            = false;
 
     widget.set_view(view);
 }

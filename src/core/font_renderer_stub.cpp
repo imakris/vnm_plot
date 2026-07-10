@@ -35,7 +35,7 @@ bool font_disk_cache_enabled()
 // Font Renderer (stub)
 // -----------------------------------------------------------------------------
 
-Font_renderer::Font_renderer() = default;
+Font_renderer::Font_renderer()  = default;
 Font_renderer::~Font_renderer() = default;
 
 void Font_renderer::initialize(Asset_loader&, int, bool)

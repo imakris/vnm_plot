@@ -194,9 +194,9 @@ public:
         last_query_semantics_key = query.semantics_key;
 
         plot::data_query_result_t<plot::sample_index_window_t> result;
-        result.status = query_status;
+        result.status   = query_status;
         result.sequence = query_sequence;
-        result.value = query_window;
+        result.value    = query_window;
         return result;
     }
 };
@@ -250,14 +250,14 @@ frame_context_t make_context(const frame_layout_result_t& layout, Plot_config& c
 {
     frame_context_t ctx{layout};
     // Timestamps are int64 ns. Tests use small ordinal indices for clarity.
-    ctx.t0 = 0;
-    ctx.t1 = 10;
+    ctx.t0              = 0;
+    ctx.t1              = 10;
     ctx.t_available_min = 0;
     ctx.t_available_max = 10;
-    ctx.win_w = 200;
-    ctx.win_h = 120;
-    ctx.dark_mode = config.dark_mode;
-    ctx.config = &config;
+    ctx.win_w           = 200;
+    ctx.win_h           = 120;
+    ctx.dark_mode       = config.dark_mode;
+    ctx.config          = &config;
     return ctx;
 }
 
@@ -286,17 +286,17 @@ plot::Series_view_plan plan_two_level_lod_width(
     double                                         width_px)
 {
     plot::detail::series_window_plan_request_t request;
-    request.planner_state = &state;
+    request.planner_state  = &state;
     request.snapshot_cache = &cache;
-    request.frame_id = frame_id;
-    request.data_source = &source;
-    request.access = &access;
-    request.scales = &scales;
-    request.t_min_ns = 0;
-    request.t_max_ns = 99;
-    request.t_origin_ns = 0;
-    request.width_px = width_px;
-    request.style = Display_style::LINE;
+    request.frame_id       = frame_id;
+    request.data_source    = &source;
+    request.access         = &access;
+    request.scales         = &scales;
+    request.t_min_ns       = 0;
+    request.t_max_ns       = 99;
+    request.t_origin_ns    = 0;
+    request.width_px       = width_px;
+    request.style          = Display_style::LINE;
     return plot::detail::plan_series_window(request);
 }
 
@@ -304,7 +304,7 @@ std::shared_ptr<Single_level_source> make_single_level_source(
     std::vector<std::int64_t>      timestamps,
     plot::Time_order               order)
 {
-    auto source = std::make_shared<Single_level_source>();
+    auto source   = std::make_shared<Single_level_source>();
     source->order = order;
     source->samples.resize(timestamps.size());
     for (std::size_t i = 0; i < timestamps.size(); ++i) {
@@ -345,27 +345,27 @@ std::shared_ptr<Direct_window_source> make_direct_window_source()
 std::shared_ptr<series_data_t> make_direct_window_series(
     const std::shared_ptr<Direct_window_source>& source)
 {
-    auto series = std::make_shared<series_data_t>();
-    series->style = Display_style::LINE;
+    auto series         = std::make_shared<series_data_t>();
+    series->style       = Display_style::LINE;
     series->data_source = source;
-    series->access = make_policy();
+    series->access      = make_policy();
     return series;
 }
 
 bool test_direct_time_window_query_drives_renderer_window()
 {
     auto source = make_direct_window_source();
-    source->query_window = {40, 3};
+    source->query_window   = {40, 3};
     source->query_sequence = source->sequence;
 
     frame_layout_result_t layout;
-    layout.usable_width = 200.0;
+    layout.usable_width  = 200.0;
     layout.usable_height = 80.0;
 
     Plot_config config;
     frame_context_t ctx = make_context(layout, config);
-    ctx.t0 = 40;
-    ctx.t1 = 42;
+    ctx.t0              = 40;
+    ctx.t1              = 42;
     ctx.t_available_min = 0;
     ctx.t_available_max = 127;
 
@@ -401,22 +401,22 @@ bool test_direct_time_window_query_drives_renderer_window()
 bool test_direct_time_window_query_receives_access_semantics()
 {
     auto source = make_direct_window_source();
-    source->query_window = {40, 3};
+    source->query_window   = {40, 3};
     source->query_sequence = source->sequence;
 
     frame_layout_result_t layout;
-    layout.usable_width = 200.0;
+    layout.usable_width  = 200.0;
     layout.usable_height = 80.0;
 
     Plot_config config;
     frame_context_t ctx = make_context(layout, config);
-    ctx.t0 = 40;
-    ctx.t1 = 42;
+    ctx.t0              = 40;
+    ctx.t1              = 42;
     ctx.t_available_min = 0;
     ctx.t_available_max = 127;
 
     {
-        auto series = make_direct_window_series(source);
+        auto series    = make_direct_window_series(source);
         series->access = make_direct_member_policy();
         const plot::sample_semantics_key_t expected_key =
             plot::detail::make_sample_semantics_key(&series->access);
@@ -470,21 +470,21 @@ bool test_direct_time_window_query_receives_access_semantics()
 bool test_direct_time_window_empty_falls_back_to_renderer_padding()
 {
     auto source = std::make_shared<Direct_window_source>();
-    source->samples = {
+    source->samples        = {
         { 0, 1.0f },
         { 10, 2.0f },
     };
-    source->query_status = plot::Data_query_status::EMPTY;
+    source->query_status   = plot::Data_query_status::EMPTY;
     source->query_sequence = source->sequence;
 
     frame_layout_result_t layout;
-    layout.usable_width = 200.0;
+    layout.usable_width  = 200.0;
     layout.usable_height = 80.0;
 
     Plot_config config;
     frame_context_t ctx = make_context(layout, config);
-    ctx.t0 = 5;
-    ctx.t1 = 6;
+    ctx.t0              = 5;
+    ctx.t1              = 6;
     ctx.t_available_min = 0;
     ctx.t_available_max = 127;
 
@@ -513,21 +513,21 @@ bool test_direct_time_window_empty_falls_back_to_renderer_padding()
 bool test_direct_time_window_single_match_expands_for_linear_segments()
 {
     auto source = std::make_shared<Direct_window_source>();
-    source->samples = {
+    source->samples        = {
         { 0, 1.0f },
         { 10, 2.0f },
     };
-    source->query_window = {1, 1};
+    source->query_window   = {1, 1};
     source->query_sequence = source->sequence;
 
     frame_layout_result_t layout;
-    layout.usable_width = 200.0;
+    layout.usable_width  = 200.0;
     layout.usable_height = 80.0;
 
     Plot_config config;
     frame_context_t ctx = make_context(layout, config);
-    ctx.t0 = 5;
-    ctx.t1 = 15;
+    ctx.t0              = 5;
+    ctx.t1              = 15;
     ctx.t_available_min = 0;
     ctx.t_available_max = 10;
 
@@ -556,21 +556,21 @@ bool test_direct_time_window_single_match_expands_for_linear_segments()
 bool test_direct_time_window_hold_forward_synthesizes_terminal_sample()
 {
     auto source = make_direct_window_source();
-    source->query_window = {2, 1};
+    source->query_window   = {2, 1};
     source->query_sequence = source->sequence;
 
     auto series = make_direct_window_series(source);
-    series->interpolation = plot::Series_interpolation::STEP_AFTER;
+    series->interpolation         = plot::Series_interpolation::STEP_AFTER;
     series->empty_window_behavior = Empty_window_behavior::HOLD_LAST_FORWARD;
 
     frame_layout_result_t layout;
-    layout.usable_width = 200.0;
+    layout.usable_width  = 200.0;
     layout.usable_height = 80.0;
 
     Plot_config config;
     frame_context_t ctx = make_context(layout, config);
-    ctx.t0 = 10;
-    ctx.t1 = 12;
+    ctx.t0              = 10;
+    ctx.t1              = 12;
     ctx.t_available_min = 0;
     ctx.t_available_max = 127;
 
@@ -605,17 +605,17 @@ bool test_direct_time_window_hold_forward_synthesizes_terminal_sample()
 bool test_direct_time_window_sequence_mismatch_falls_back_to_snapshot_scan()
 {
     auto source = make_direct_window_source();
-    source->query_window = {20, 5};
+    source->query_window   = {20, 5};
     source->query_sequence = source->sequence + 1;
 
     frame_layout_result_t layout;
-    layout.usable_width = 200.0;
+    layout.usable_width  = 200.0;
     layout.usable_height = 80.0;
 
     Plot_config config;
     frame_context_t ctx = make_context(layout, config);
-    ctx.t0 = 40;
-    ctx.t1 = 42;
+    ctx.t0              = 40;
+    ctx.t1              = 42;
     ctx.t_available_min = 0;
     ctx.t_available_max = 127;
 
@@ -648,18 +648,18 @@ bool test_direct_time_window_sequence_mismatch_falls_back_to_snapshot_scan()
 bool test_direct_time_window_failed_status_suppresses_snapshot_fallback()
 {
     auto source = make_direct_window_source();
-    source->query_window = {20, 5};
-    source->query_status = plot::Data_query_status::FAILED;
+    source->query_window   = {20, 5};
+    source->query_status   = plot::Data_query_status::FAILED;
     source->query_sequence = source->sequence;
 
     frame_layout_result_t layout;
-    layout.usable_width = 200.0;
+    layout.usable_width  = 200.0;
     layout.usable_height = 80.0;
 
     Plot_config config;
     frame_context_t ctx = make_context(layout, config);
-    ctx.t0 = 40;
-    ctx.t1 = 42;
+    ctx.t0              = 40;
+    ctx.t1              = 42;
     ctx.t_available_min = 0;
     ctx.t_available_max = 127;
 
@@ -690,18 +690,18 @@ bool test_direct_time_window_failed_status_suppresses_snapshot_fallback()
 bool test_direct_time_window_unsupported_falls_back_to_snapshot_scan()
 {
     auto source = make_direct_window_source();
-    source->query_window = {20, 5};
-    source->query_status = plot::Data_query_status::UNSUPPORTED;
+    source->query_window   = {20, 5};
+    source->query_status   = plot::Data_query_status::UNSUPPORTED;
     source->query_sequence = source->sequence;
 
     frame_layout_result_t layout;
-    layout.usable_width = 200.0;
+    layout.usable_width  = 200.0;
     layout.usable_height = 80.0;
 
     Plot_config config;
     frame_context_t ctx = make_context(layout, config);
-    ctx.t0 = 40;
-    ctx.t1 = 42;
+    ctx.t0              = 40;
+    ctx.t1              = 42;
     ctx.t_available_min = 0;
     ctx.t_available_max = 127;
 
@@ -737,13 +737,13 @@ bool test_ascending_time_order_skips_monotonicity_scan()
         { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 },
         plot::Time_order::ASCENDING);
 
-    auto series = std::make_shared<series_data_t>();
-    series->style = Display_style::LINE;
+    auto series         = std::make_shared<series_data_t>();
+    series->style       = Display_style::LINE;
     series->data_source = data_source;
-    series->access = make_policy();
+    series->access      = make_policy();
 
     frame_layout_result_t layout;
-    layout.usable_width = 200.0;
+    layout.usable_width  = 200.0;
     layout.usable_height = 80.0;
 
     Plot_config config;
@@ -779,13 +779,13 @@ bool run_defensive_time_order_scan_case(
 {
     auto data_source = make_single_level_source(timestamps, order);
 
-    auto series = std::make_shared<series_data_t>();
-    series->style = Display_style::LINE;
+    auto series         = std::make_shared<series_data_t>();
+    series->style       = Display_style::LINE;
     series->data_source = data_source;
-    series->access = make_policy();
+    series->access      = make_policy();
 
     frame_layout_result_t layout;
-    layout.usable_width = 200.0;
+    layout.usable_width  = 200.0;
     layout.usable_height = 80.0;
 
     Plot_config config;
@@ -838,13 +838,13 @@ bool test_descending_time_order_uses_linear_window_search()
         { 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0 },
         plot::Time_order::DESCENDING);
 
-    auto series = std::make_shared<series_data_t>();
-    series->style = Display_style::LINE;
+    auto series         = std::make_shared<series_data_t>();
+    series->style       = Display_style::LINE;
     series->data_source = data_source;
-    series->access = make_policy();
+    series->access      = make_policy();
 
     frame_layout_result_t layout;
-    layout.usable_width = 200.0;
+    layout.usable_width  = 200.0;
     layout.usable_height = 80.0;
 
     Plot_config config;
@@ -878,19 +878,19 @@ bool test_descending_time_order_does_not_hold_oldest_sample()
         plot::Time_order::DESCENDING);
 
     auto series = std::make_shared<series_data_t>();
-    series->style = Display_style::LINE;
-    series->data_source = data_source;
-    series->access = make_policy();
+    series->style                 = Display_style::LINE;
+    series->data_source           = data_source;
+    series->access                = make_policy();
     series->empty_window_behavior = Empty_window_behavior::HOLD_LAST_FORWARD;
 
     frame_layout_result_t layout;
-    layout.usable_width = 200.0;
+    layout.usable_width  = 200.0;
     layout.usable_height = 80.0;
 
     Plot_config config;
     frame_context_t ctx = make_context(layout, config);
-    ctx.t0 = 10;
-    ctx.t1 = 12;
+    ctx.t0              = 10;
+    ctx.t1              = 12;
     ctx.t_available_min = ctx.t0;
     ctx.t_available_max = ctx.t1;
 
@@ -918,13 +918,13 @@ bool test_renderer_uses_lod_scales_metadata()
         plot::Time_order::ASCENDING);
     data_source->scale_values = {0};
 
-    auto series = std::make_shared<series_data_t>();
-    series->style = Display_style::LINE;
+    auto series         = std::make_shared<series_data_t>();
+    series->style       = Display_style::LINE;
     series->data_source = data_source;
-    series->access = make_policy();
+    series->access      = make_policy();
 
     frame_layout_result_t layout;
-    layout.usable_width = 200.0;
+    layout.usable_width  = 200.0;
     layout.usable_height = 80.0;
 
     Plot_config config;
@@ -962,16 +962,16 @@ bool test_direct_member_policy_uses_member_dispatch_in_planner()
     };
 
     frame_layout_result_t layout;
-    layout.usable_width = 200.0;
+    layout.usable_width  = 200.0;
     layout.usable_height = 80.0;
 
     Plot_config config;
     frame_context_t ctx = make_context(layout, config);
 
-    auto direct_series = std::make_shared<series_data_t>();
-    direct_series->style = Display_style::LINE;
+    auto direct_series         = std::make_shared<series_data_t>();
+    direct_series->style       = Display_style::LINE;
     direct_series->data_source = make_source();
-    direct_series->access = make_direct_member_policy();
+    direct_series->access      = make_direct_member_policy();
 
     Series_renderer direct_renderer;
     Asset_loader direct_asset_loader;
@@ -989,8 +989,8 @@ bool test_direct_member_policy_uses_member_dispatch_in_planner()
         "direct member-pointer planner path should use member-pointer dispatch");
 
     Access_call_counts fallback_calls;
-    auto fallback_series = std::make_shared<series_data_t>();
-    fallback_series->style = Display_style::LINE;
+    auto fallback_series         = std::make_shared<series_data_t>();
+    fallback_series->style       = Display_style::LINE;
     fallback_series->data_source = make_source();
     fallback_series->access =
         make_fallback_policy_with_counted_public_accessors(fallback_calls);
@@ -1026,12 +1026,12 @@ bool test_access_policy_change_invalidates_planner_fast_path_cache()
 
     const int series_id = 63;
     auto      series    = std::make_shared<series_data_t>();
-    series->style = Display_style::LINE;
+    series->style       = Display_style::LINE;
     series->data_source = data_source;
-    series->access = make_direct_member_policy();
+    series->access      = make_direct_member_policy();
 
     frame_layout_result_t layout;
-    layout.usable_width = 200.0;
+    layout.usable_width  = 200.0;
     layout.usable_height = 80.0;
 
     Plot_config config;
@@ -1084,18 +1084,18 @@ bool test_frame_scoped_cache_reuse()
 
     const int series_id = 7;
     auto      series    = std::make_shared<series_data_t>();
-    series->style = Display_style::LINE;
+    series->style       = Display_style::LINE;
     series->data_source = data_source;
-    series->access = make_policy();
+    series->access      = make_policy();
 
     frame_layout_result_t layout;
-    layout.usable_width = 200.0;
+    layout.usable_width  = 200.0;
     layout.usable_height = 80.0;
 
     Plot_config config;
     config.preview_visibility = 1.0;
 
-    frame_context_t ctx = make_context(layout, config);
+    frame_context_t ctx         = make_context(layout, config);
     ctx.adjusted_preview_height = 20.0;
 
     Series_renderer renderer;
@@ -1123,31 +1123,31 @@ bool test_preview_uses_distinct_source_snapshot()
     main_source->samples.resize(8, Test_sample{});
     preview_source->samples.resize(8, Test_sample{});
     for (size_t i = 0; i < main_source->samples.size(); ++i) {
-        main_source->samples[i].t = static_cast<std::int64_t>(i);
-        main_source->samples[i].v = 1.0f + static_cast<float>(i);
+        main_source->samples[i].t    = static_cast<std::int64_t>(i);
+        main_source->samples[i].v    = 1.0f + static_cast<float>(i);
         preview_source->samples[i].t = static_cast<std::int64_t>(i);
         preview_source->samples[i].v = 2.0f + static_cast<float>(i);
     }
 
     const int series_id = 14;
     auto      series    = std::make_shared<series_data_t>();
-    series->style = Display_style::LINE;
+    series->style       = Display_style::LINE;
     series->data_source = main_source;
-    series->access = make_policy();
+    series->access      = make_policy();
 
     preview_config_t preview_cfg;
     preview_cfg.data_source = preview_source;
-    preview_cfg.access = make_policy();
-    series->preview_config = preview_cfg;
+    preview_cfg.access      = make_policy();
+    series->preview_config  = preview_cfg;
 
     frame_layout_result_t layout;
-    layout.usable_width = 200.0;
+    layout.usable_width  = 200.0;
     layout.usable_height = 80.0;
 
     Plot_config config;
     config.preview_visibility = 1.0;
 
-    frame_context_t ctx = make_context(layout, config);
+    frame_context_t ctx         = make_context(layout, config);
     ctx.adjusted_preview_height = 20.0;
 
     Series_renderer renderer;
@@ -1176,23 +1176,23 @@ bool test_preview_disabled_skips_preview_snapshot()
 
     const int series_id = 15;
     auto      series    = std::make_shared<series_data_t>();
-    series->style = Display_style::LINE;
+    series->style       = Display_style::LINE;
     series->data_source = main_source;
-    series->access = make_policy();
+    series->access      = make_policy();
 
     preview_config_t preview_cfg;
     preview_cfg.data_source = preview_source;
-    preview_cfg.access = make_policy();
-    series->preview_config = preview_cfg;
+    preview_cfg.access      = make_policy();
+    series->preview_config  = preview_cfg;
 
     frame_layout_result_t layout;
-    layout.usable_width = 200.0;
+    layout.usable_width  = 200.0;
     layout.usable_height = 80.0;
 
     Plot_config config;
     config.preview_visibility = 1.0;
 
-    frame_context_t ctx = make_context(layout, config);
+    frame_context_t ctx         = make_context(layout, config);
     ctx.adjusted_preview_height = 0.0;
 
     Series_renderer renderer;
@@ -1223,12 +1223,12 @@ bool test_frame_change_invalidates_snapshot_cache()
 
     const int series_id = 8;
     auto      series    = std::make_shared<series_data_t>();
-    series->style = Display_style::LINE;
+    series->style       = Display_style::LINE;
     series->data_source = data_source;
-    series->access = make_policy();
+    series->access      = make_policy();
 
     frame_layout_result_t layout;
-    layout.usable_width = 140.0;
+    layout.usable_width  = 140.0;
     layout.usable_height = 80.0;
 
     Plot_config config;
@@ -1262,13 +1262,13 @@ bool test_empty_window_behavior_invalidates_fast_path_cache()
 
     const int series_id = 18;
     auto      series    = std::make_shared<series_data_t>();
-    series->style = Display_style::LINE;
-    series->data_source = data_source;
-    series->access = make_policy();
+    series->style                 = Display_style::LINE;
+    series->data_source           = data_source;
+    series->access                = make_policy();
     series->empty_window_behavior = Empty_window_behavior::DRAW_NOTHING;
 
     frame_layout_result_t layout;
-    layout.usable_width = 180.0;
+    layout.usable_width  = 180.0;
     layout.usable_height = 80.0;
 
     Plot_config config;
@@ -1314,21 +1314,21 @@ bool test_preview_honors_hold_last_forward()
 
     const int series_id = 19;
     auto      series    = std::make_shared<series_data_t>();
-    series->style = Display_style::LINE;
-    series->data_source = data_source;
-    series->access = make_policy();
+    series->style                 = Display_style::LINE;
+    series->data_source           = data_source;
+    series->access                = make_policy();
     series->empty_window_behavior = Empty_window_behavior::HOLD_LAST_FORWARD;
 
     frame_layout_result_t layout;
-    layout.usable_width = 160.0;
+    layout.usable_width  = 160.0;
     layout.usable_height = 80.0;
 
     Plot_config config;
     config.preview_visibility = 1.0;
 
-    frame_context_t ctx = make_context(layout, config);
+    frame_context_t ctx         = make_context(layout, config);
     ctx.adjusted_preview_height = 24.0;
-    ctx.t_available_max = 40.0;
+    ctx.t_available_max         = 40.0;
 
     Series_renderer renderer;
     Asset_loader asset_loader;
@@ -1356,9 +1356,9 @@ bool test_lod_level_separation()
 
     const int series_id = 9;
     auto      series    = std::make_shared<series_data_t>();
-    series->style = Display_style::LINE;
+    series->style       = Display_style::LINE;
     series->data_source = data_source;
-    series->access = make_policy();
+    series->access      = make_policy();
 
     Plot_config config;
 
@@ -1370,11 +1370,11 @@ bool test_lod_level_separation()
     series_map[series_id] = series;
 
     frame_layout_result_t layout_wide;
-    layout_wide.usable_width = 100.0;
+    layout_wide.usable_width  = 100.0;
     layout_wide.usable_height = 80.0;
     frame_context_t ctx_wide = make_context(layout_wide, config);
-    ctx_wide.t0 = 0.0;
-    ctx_wide.t1 = 99.0;
+    ctx_wide.t0    = 0.0;
+    ctx_wide.t1    = 99.0;
     ctx_wide.win_w = 100;
 
     renderer.render(ctx_wide, series_map);
@@ -1385,11 +1385,11 @@ bool test_lod_level_separation()
                 "did not expect LOD1 snapshot at wide width");
 
     frame_layout_result_t layout_narrow;
-    layout_narrow.usable_width = 20.0;
+    layout_narrow.usable_width  = 20.0;
     layout_narrow.usable_height = 80.0;
     frame_context_t ctx_narrow = make_context(layout_narrow, config);
-    ctx_narrow.t0 = 0.0;
-    ctx_narrow.t1 = 99.0;
+    ctx_narrow.t0    = 0.0;
+    ctx_narrow.t1    = 99.0;
     ctx_narrow.win_w = 20;
 
     renderer.render(ctx_narrow, series_map);
@@ -1454,12 +1454,12 @@ bool test_snapshot_released_after_render()
 
     const int series_id = 3;
     auto      series    = std::make_shared<series_data_t>();
-    series->style = Display_style::LINE;
+    series->style       = Display_style::LINE;
     series->data_source = data_source;
-    series->access = make_policy();
+    series->access      = make_policy();
 
     frame_layout_result_t layout;
-    layout.usable_width = 160.0;
+    layout.usable_width  = 160.0;
     layout.usable_height = 80.0;
 
     Plot_config config;
@@ -1499,12 +1499,12 @@ bool test_upload_origin_records_per_view_origin()
 
     const int series_id = 41;
     auto      series    = std::make_shared<series_data_t>();
-    series->style = Display_style::LINE;
+    series->style       = Display_style::LINE;
     series->data_source = data_source;
-    series->access = make_policy();
+    series->access      = make_policy();
 
     frame_layout_result_t layout;
-    layout.usable_width = 200.0;
+    layout.usable_width  = 200.0;
     layout.usable_height = 80.0;
 
     Plot_config config;
@@ -1513,8 +1513,8 @@ bool test_upload_origin_records_per_view_origin()
     // Span = 1 ms + 1 ns is strictly greater than k_ns_per_ms, so
     // choose_snap_ns falls into the next bucket and returns 1 us. t0 is
     // an exact multiple of 1 us, so the snap-aligned origin equals t0.
-    ctx.t0 = 5'000'000LL;
-    ctx.t1 = 5'000'001LL + 1'000'000LL; // 1 ms + 1 ns
+    ctx.t0              = 5'000'000LL;
+    ctx.t1              = 5'000'001LL + 1'000'000LL; // 1 ms + 1 ns
     ctx.t_available_min = ctx.t0;
     ctx.t_available_max = ctx.t1;
 
@@ -1566,12 +1566,12 @@ bool test_upload_invalidates_when_origin_changes_across_snap_bucket()
 
     const int series_id = 42;
     auto      series    = std::make_shared<series_data_t>();
-    series->style = Display_style::LINE;
+    series->style       = Display_style::LINE;
     series->data_source = data_source;
-    series->access = make_policy();
+    series->access      = make_policy();
 
     frame_layout_result_t layout;
-    layout.usable_width = 200.0;
+    layout.usable_width  = 200.0;
     layout.usable_height = 80.0;
 
     Plot_config config;
@@ -1590,8 +1590,8 @@ bool test_upload_invalidates_when_origin_changes_across_snap_bucket()
     // origin change is part of the upload-invalidation key.
     auto run_frame = [&](std::int64_t t_min_ns, std::int64_t span_ns) {
         frame_context_t ctx = make_context(layout, config);
-        ctx.t0 = t_min_ns;
-        ctx.t1 = t_min_ns + span_ns;
+        ctx.t0              = t_min_ns;
+        ctx.t1              = t_min_ns + span_ns;
         ctx.t_available_min = ctx.t0;
         ctx.t_available_max = ctx.t1;
         renderer.render(ctx, series_map);
@@ -1674,7 +1674,7 @@ bool test_renderer_assigns_distinct_origins_to_main_and_preview()
     // renderer to find data within both windows without ballooning memory.
     constexpr std::int64_t k_ns_per_second = 1'000'000'000LL;
     constexpr std::int64_t k_ns_per_day    = 86'400LL * k_ns_per_second;
-    constexpr std::int64_t k_ns_per_hour   =  3'600LL * k_ns_per_second;
+    constexpr std::int64_t k_ns_per_hour   = 3'600LL * k_ns_per_second;
     constexpr int          k_num_samples   = 365 * 10;
     data_source->samples.resize(k_num_samples);
     for (int i = 0; i < k_num_samples; ++i) {
@@ -1684,12 +1684,12 @@ bool test_renderer_assigns_distinct_origins_to_main_and_preview()
 
     const int series_id = 43;
     auto      series    = std::make_shared<series_data_t>();
-    series->style = Display_style::LINE;
+    series->style       = Display_style::LINE;
     series->data_source = data_source;
-    series->access = make_policy();
+    series->access      = make_policy();
 
     frame_layout_result_t layout;
-    layout.usable_width = 200.0;
+    layout.usable_width  = 200.0;
     layout.usable_height = 80.0;
 
     Plot_config config;
@@ -1703,8 +1703,8 @@ bool test_renderer_assigns_distinct_origins_to_main_and_preview()
     ctx.t0 = main_t0;
     ctx.t1 = main_t0 + k_ns_per_hour;
     // Preview view: full 10-year range starting at 0.
-    ctx.t_available_min = 0LL;
-    ctx.t_available_max = 10LL * 365LL * k_ns_per_day;
+    ctx.t_available_min         = 0LL;
+    ctx.t_available_max         = 10LL * 365LL * k_ns_per_day;
     ctx.adjusted_preview_height = 20.0;
 
     Series_renderer renderer;
@@ -1764,20 +1764,20 @@ bool test_render_skips_invalid_series()
 
     const int disabled_id     = 12;
     auto      disabled_series = std::make_shared<series_data_t>();
-    disabled_series->enabled = false;
-    disabled_series->style = Display_style::LINE;
+    disabled_series->enabled     = false;
+    disabled_series->style       = Display_style::LINE;
     disabled_series->data_source = data_source;
-    disabled_series->access = make_policy();
+    disabled_series->access      = make_policy();
 
     const int null_source_id     = 13;
     auto      null_source_series = std::make_shared<series_data_t>();
-    null_source_series->enabled = true;
-    null_source_series->style = Display_style::LINE;
+    null_source_series->enabled  = true;
+    null_source_series->style    = Display_style::LINE;
     null_source_series->data_source.reset();
     null_source_series->access = make_policy();
 
     frame_layout_result_t layout;
-    layout.usable_width = 140.0;
+    layout.usable_width  = 140.0;
     layout.usable_height = 80.0;
 
     Plot_config config;
@@ -1789,9 +1789,9 @@ bool test_render_skips_invalid_series()
     renderer.initialize(asset_loader);
 
     std::map<int, std::shared_ptr<const series_data_t>> series_map;
-    series_map[disabled_id] = disabled_series;
+    series_map[disabled_id]    = disabled_series;
     series_map[null_source_id] = null_source_series;
-    series_map[99] = nullptr;
+    series_map[99]             = nullptr;
 
     renderer.render(ctx, series_map);
 

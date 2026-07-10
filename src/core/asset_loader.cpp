@@ -7,7 +7,7 @@
 
 namespace vnm::plot {
 
-Asset_loader::Asset_loader() = default;
+Asset_loader::Asset_loader()  = default;
 Asset_loader::~Asset_loader() = default;
 
 void Asset_loader::set_log_callback(Log_callback callback)

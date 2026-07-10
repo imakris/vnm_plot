@@ -81,10 +81,10 @@ public:
     ~Font_renderer();
 
     // Non-copyable and non-movable due to renderer resource ownership.
-    Font_renderer(const Font_renderer&) = delete;
+    Font_renderer(const Font_renderer&)            = delete;
     Font_renderer& operator=(const Font_renderer&) = delete;
-    Font_renderer(Font_renderer&&) = delete;
-    Font_renderer& operator=(Font_renderer&&) = delete;
+    Font_renderer(Font_renderer&&)                 = delete;
+    Font_renderer& operator=(Font_renderer&&)      = delete;
 
     // Initializes the font system and ensures text metrics are ready.
     // asset_loader: Provider for font and shader assets

@@ -31,7 +31,7 @@ struct Scoped_temp_dir
         std::filesystem::remove_all(path, ec);
     }
 
-    Scoped_temp_dir(const Scoped_temp_dir&) = delete;
+    Scoped_temp_dir(const Scoped_temp_dir&)            = delete;
     Scoped_temp_dir& operator=(const Scoped_temp_dir&) = delete;
 };
 

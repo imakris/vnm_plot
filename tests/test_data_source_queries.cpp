@@ -113,11 +113,11 @@ plot::data_query_context_t make_query(
     std::int64_t                       t_max)
 {
     plot::data_query_context_t query;
-    query.access = &access;
-    query.semantics_key.value = k_query_semantics_key;
-    query.semantics_key.revision = 1;
+    query.access                     = &access;
+    query.semantics_key.value        = k_query_semantics_key;
+    query.semantics_key.revision     = 1;
     query.semantics_key.conservative = false;
-    query.time_window = {t_min, t_max};
+    query.time_window                = {t_min, t_max};
     return query;
 }
 
@@ -127,7 +127,7 @@ plot::data_query_context_t make_hold_query(
     std::int64_t                       t_max)
 {
     plot::data_query_context_t query = make_query(access, t_min, t_max);
-    query.interpolation = plot::Series_interpolation::STEP_AFTER;
+    query.interpolation         = plot::Series_interpolation::STEP_AFTER;
     query.empty_window_behavior = plot::Empty_window_behavior::HOLD_LAST_FORWARD;
     return query;
 }
@@ -138,7 +138,7 @@ plot::data_query_context_t make_draw_query(
     std::int64_t                       t_max)
 {
     plot::data_query_context_t query = make_query(access, t_min, t_max);
-    query.empty_window_behavior = plot::Empty_window_behavior::DRAW_NOTHING;
+    query.empty_window_behavior      = plot::Empty_window_behavior::DRAW_NOTHING;
     return query;
 }
 

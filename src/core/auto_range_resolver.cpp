@@ -33,8 +33,8 @@ sample_draw_status_t include_sample_range(
     }
 
     if (!have_any) {
-        out_min = draw_value.y_min;
-        out_max = draw_value.y_max;
+        out_min  = draw_value.y_min;
+        out_max  = draw_value.y_max;
         have_any = true;
         return sample_draw_status_t::DRAWABLE;
     }
@@ -91,19 +91,19 @@ bool scan_series_range(
                 }
                 if (status == sample_draw_status_t::DRAWABLE) {
                     if (!have_held_candidate || t > held_timestamp_ns) {
-                        held_sample = sample;
-                        have_held_sample = true;
+                        held_sample         = sample;
+                        have_held_sample    = true;
                         have_held_candidate = true;
-                        held_timestamp_ns = t;
+                        held_timestamp_ns   = t;
                     }
                 }
                 else
                 if (nonfinite_policy == Nonfinite_sample_policy::BREAK_SEGMENT) {
                     if (!have_held_candidate || t > held_timestamp_ns) {
-                        held_sample = nullptr;
-                        have_held_sample = false;
+                        held_sample         = nullptr;
+                        have_held_sample    = false;
                         have_held_candidate = true;
-                        held_timestamp_ns = t;
+                        held_timestamp_ns   = t;
                     }
                 }
                 continue;
@@ -188,12 +188,12 @@ data_query_context_t make_query(
     Nonfinite_sample_policy            nonfinite_policy)
 {
     data_query_context_t query;
-    query.access = &access;
-    query.semantics_key = make_sample_semantics_key(&access);
-    query.time_window = time_window;
-    query.interpolation = interpolation;
+    query.access                = &access;
+    query.semantics_key         = make_sample_semantics_key(&access);
+    query.time_window           = time_window;
+    query.interpolation         = interpolation;
     query.empty_window_behavior = empty_window_behavior;
-    query.nonfinite_policy = nonfinite_policy;
+    query.nonfinite_policy      = nonfinite_policy;
     return query;
 }
 
@@ -238,23 +238,23 @@ auto_range_cache_entry_t make_cache_entry(
     auto_range_cache_entry_t entry;
     const erased_access_policy_t access_view =
         make_erased_access_policy_view(access);
-    entry.source_identity = source.identity();
-    entry.access_identity = &access;
-    entry.access_key = make_access_policy_cache_key(&access, access_view);
-    entry.layout_key = access.layout_key;
-    entry.semantics_value = query.semantics_key.value;
-    entry.semantics_revision = query.semantics_key.revision;
+    entry.source_identity        = source.identity();
+    entry.access_identity        = &access;
+    entry.access_key             = make_access_policy_cache_key(&access, access_view);
+    entry.layout_key             = access.layout_key;
+    entry.semantics_value        = query.semantics_key.value;
+    entry.semantics_revision     = query.semantics_key.revision;
     entry.semantics_conservative = query.semantics_key.conservative;
-    entry.lod_level = lod_level;
-    entry.t_min_ns = query.time_window.min_ns;
-    entry.t_max_ns = query.time_window.max_ns;
-    entry.interpolation = query.interpolation;
-    entry.empty_window_behavior = query.empty_window_behavior;
-    entry.nonfinite_policy = query.nonfinite_policy;
-    entry.sequence = sequence;
-    entry.range = range;
-    entry.status = status;
-    entry.valid = true;
+    entry.lod_level              = lod_level;
+    entry.t_min_ns               = query.time_window.min_ns;
+    entry.t_max_ns               = query.time_window.max_ns;
+    entry.interpolation          = query.interpolation;
+    entry.empty_window_behavior  = query.empty_window_behavior;
+    entry.nonfinite_policy       = query.nonfinite_policy;
+    entry.sequence               = sequence;
+    entry.range                  = range;
+    entry.status                 = status;
+    entry.valid                  = true;
     return entry;
 }
 
@@ -463,8 +463,8 @@ bool resolve_series_collection_range(
             continue;
         }
 
-        out_min = std::min(out_min, series_min);
-        out_max = std::max(out_max, series_max);
+        out_min  = std::min(out_min, series_min);
+        out_max  = std::max(out_max, series_max);
         have_any = true;
     }
 

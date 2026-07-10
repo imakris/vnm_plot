@@ -200,20 +200,20 @@ series_view_uniform_std140_t make_series_view_uniform(
     std::memcpy(uniform.pmv, glm::value_ptr(frame.pmv), sizeof(float) * 16);
 
     glm::vec4 draw_color = series.color;
-    draw_color.w *= window.window_alpha;
-    uniform.color[0] = draw_color.r;
-    uniform.color[1] = draw_color.g;
-    uniform.color[2] = draw_color.b;
-    uniform.color[3] = draw_color.a;
+    draw_color.w     *= window.window_alpha;
+    uniform.color[0]  = draw_color.r;
+    uniform.color[1]  = draw_color.g;
+    uniform.color[2]  = draw_color.b;
+    uniform.color[3]  = draw_color.a;
 
-    uniform.t_min = detail::to_view_seconds(window.t_min_ns, window.t_origin_ns);
-    uniform.t_max = detail::to_view_seconds(window.t_max_ns, window.t_origin_ns);
-    uniform.v_min = window.v_min;
-    uniform.v_max = window.v_max;
-    uniform.width = window.width_px;
-    uniform.height = window.height_px;
+    uniform.t_min    = detail::to_view_seconds(window.t_min_ns, window.t_origin_ns);
+    uniform.t_max    = detail::to_view_seconds(window.t_max_ns, window.t_origin_ns);
+    uniform.v_min    = window.v_min;
+    uniform.v_max    = window.v_max;
+    uniform.width    = window.width_px;
+    uniform.height   = window.height_px;
     uniform.y_offset = window.y_offset_px;
-    uniform.win_h = static_cast<float>(frame.win_h);
+    uniform.win_h    = static_cast<float>(frame.win_h);
     uniform.framebuffer_y_up =
         (frame.rhi && frame.rhi->isYUpInFramebuffer()) ? 1 : 0;
     return uniform;
@@ -264,7 +264,7 @@ Series_renderer::vbo_view_state_t::vbo_view_state_t()
 :
     planner(std::make_unique<detail::series_window_planner_state_t>())
 {}
-Series_renderer::vbo_view_state_t::~vbo_view_state_t() = default;
+Series_renderer::vbo_view_state_t::~vbo_view_state_t()                           = default;
 Series_renderer::vbo_view_state_t::vbo_view_state_t(vbo_view_state_t&&) noexcept = default;
 Series_renderer::vbo_view_state_t&
 Series_renderer::vbo_view_state_t::operator=(vbo_view_state_t&&) noexcept = default;
@@ -278,7 +278,7 @@ Series_renderer::vbo_state_t::vbo_state_t()
 :
     snapshot_cache(std::make_unique<detail::Series_window_snapshot_cache>())
 {}
-Series_renderer::vbo_state_t::~vbo_state_t() = default;
+Series_renderer::vbo_state_t::~vbo_state_t()                      = default;
 Series_renderer::vbo_state_t::vbo_state_t(vbo_state_t&&) noexcept = default;
 Series_renderer::vbo_state_t&
 Series_renderer::vbo_state_t::operator=(vbo_state_t&&) noexcept = default;
@@ -626,15 +626,15 @@ void Series_renderer::cleanup_resources()
     m_rhi_state->qrhi_layer_cache.clear();
     m_rhi_state->view_ubos.clear();
     m_rhi_state->prepared_draws.clear();
-    m_rhi_state->shaders_loaded = false;
-    m_rhi_state->cached_dot_vert = {};
-    m_rhi_state->cached_dot_frag = {};
+    m_rhi_state->shaders_loaded   = false;
+    m_rhi_state->cached_dot_vert  = {};
+    m_rhi_state->cached_dot_frag  = {};
     m_rhi_state->cached_line_vert = {};
     m_rhi_state->cached_line_frag = {};
     m_rhi_state->cached_area_vert = {};
     m_rhi_state->cached_area_frag = {};
-    m_rhi_state->last_rhi = nullptr;
-    m_rhi_state->pending_updates = nullptr;
+    m_rhi_state->last_rhi         = nullptr;
+    m_rhi_state->pending_updates  = nullptr;
     m_rhi_state->frame_draw_states.clear();
     m_rhi_state->prepared_draws.clear();
     m_rhi_state->frame_plan_ready = false;
@@ -714,7 +714,7 @@ void Series_renderer::prepare(
         m_rhi_state->prepared_draws.clear();
         m_last_qrhi_layer_cache_size = 0;
     }
-    m_rhi_state->last_rhi = rhi;
+    m_rhi_state->last_rhi        = rhi;
     m_rhi_state->pending_updates = rhi_updates;
 
     for (auto it = m_vbo_states.begin(); it != m_vbo_states.end(); ) {
@@ -801,12 +801,12 @@ void Series_renderer::prepare(
         bool has_preview_layer = false;
 
         if (preview_visible) {
-            preview_source = s->preview_source();
-            preview_access = &s->preview_access();
-            preview_style = s->effective_preview_style();
+            preview_source        = s->preview_source();
+            preview_access        = &s->preview_access();
+            preview_style         = s->effective_preview_style();
             preview_interpolation = s->effective_preview_interpolation();
-            preview_matches_main = s->preview_matches_main();
-            has_preview_layer = has_layer_for_view(Series_view_kind::PREVIEW);
+            preview_matches_main  = s->preview_matches_main();
+            has_preview_layer     = has_layer_for_view(Series_view_kind::PREVIEW);
 
             if (has_preview_config && !preview_source) {
                 log_error_once(Error_cat::PREVIEW_MISSING_SOURCE, id,
@@ -854,25 +854,25 @@ void Series_renderer::prepare(
                 detail::Snapshot_requirement snapshot_requirement)
         {
             detail::series_window_plan_request_t request;
-            request.series_id = id;
-            request.view_kind = view_kind;
-            request.planner_state = view_state.planner.get();
-            request.snapshot_cache = vbo_state.snapshot_cache.get();
-            request.frame_id = m_frame_id;
-            request.data_source = &data_source;
-            request.access = &access;
-            request.scales = &scales;
-            request.t_min_ns = t_min_ns;
-            request.t_max_ns = t_max_ns;
-            request.t_origin_ns = t_origin_ns;
-            request.width_px = width_px;
+            request.series_id             = id;
+            request.view_kind             = view_kind;
+            request.planner_state         = view_state.planner.get();
+            request.snapshot_cache        = vbo_state.snapshot_cache.get();
+            request.frame_id              = m_frame_id;
+            request.data_source           = &data_source;
+            request.access                = &access;
+            request.scales                = &scales;
+            request.t_min_ns              = t_min_ns;
+            request.t_max_ns              = t_max_ns;
+            request.t_origin_ns           = t_origin_ns;
+            request.width_px              = width_px;
             request.empty_window_behavior = s->empty_window_behavior;
-            request.nonfinite_policy = s->nonfinite_policy;
-            request.style = style;
-            request.interpolation = interpolation;
-            request.snapshot_requirement = snapshot_requirement;
-            request.has_uploaded_vbo = view_state.has_uploaded_vbo;
-            request.profiler = profiler;
+            request.nonfinite_policy      = s->nonfinite_policy;
+            request.style                 = style;
+            request.interpolation         = interpolation;
+            request.snapshot_requirement  = snapshot_requirement;
+            request.has_uploaded_vbo      = view_state.has_uploaded_vbo;
+            request.profiler              = profiler;
             return detail::plan_series_window(request);
         };
 
@@ -894,10 +894,10 @@ void Series_renderer::prepare(
             has_main_layer
                 ? detail::Snapshot_requirement::Frame_snapshot_required
                 : detail::Snapshot_requirement::Optional);
-        main_plan.v_min = ctx.v0;
-        main_plan.v_max = ctx.v1;
-        main_plan.height_px = static_cast<float>(layout.usable_height);
-        main_plan.y_offset_px = 0.0f;
+        main_plan.v_min        = ctx.v0;
+        main_plan.v_max        = ctx.v1;
+        main_plan.height_px    = static_cast<float>(layout.usable_height);
+        main_plan.y_offset_px  = 0.0f;
         main_plan.window_alpha = 1.0f;
         if (ctx.config && ctx.config->log_debug &&
             main_plan.gpu_count > 0 &&
@@ -910,14 +910,14 @@ void Series_renderer::prepare(
         }
 
         Series_view_plan preview_plan;
-        preview_plan.series_id = id;
-        preview_plan.view_kind = Series_view_kind::PREVIEW;
-        preview_plan.source = preview_source;
-        preview_plan.access = preview_access;
+        preview_plan.series_id             = id;
+        preview_plan.view_kind             = Series_view_kind::PREVIEW;
+        preview_plan.source                = preview_source;
+        preview_plan.access                = preview_access;
         preview_plan.empty_window_behavior = s->empty_window_behavior;
-        preview_plan.nonfinite_policy = s->nonfinite_policy;
-        preview_plan.style = preview_style;
-        preview_plan.interpolation = preview_interpolation;
+        preview_plan.nonfinite_policy      = s->nonfinite_policy;
+        preview_plan.style                 = preview_style;
+        preview_plan.interpolation         = preview_interpolation;
         if (preview_visible && preview_valid) {
             preview_plan = plan_series_view(
                 Series_view_kind::PREVIEW,
@@ -936,27 +936,27 @@ void Series_renderer::prepare(
                     : detail::Snapshot_requirement::Optional);
             const double preview_top =
                 double(ctx.win_h) - ctx.adjusted_preview_height;
-            preview_plan.v_min = ctx.preview_v0;
-            preview_plan.v_max = ctx.preview_v1;
-            preview_plan.height_px = static_cast<float>(ctx.adjusted_preview_height);
-            preview_plan.y_offset_px = static_cast<float>(preview_top);
+            preview_plan.v_min        = ctx.preview_v0;
+            preview_plan.v_max        = ctx.preview_v1;
+            preview_plan.height_px    = static_cast<float>(ctx.adjusted_preview_height);
+            preview_plan.y_offset_px  = static_cast<float>(preview_top);
             preview_plan.window_alpha = static_cast<float>(preview_visibility);
         }
 
         series_draw_state_t draw_state;
-        draw_state.id = id;
+        draw_state.id           = id;
         draw_state.series_order = next_series_order++;
-        draw_state.series = s;
-        draw_state.vbo_state = &vbo_state;
-        draw_state.main_plan = std::move(main_plan);
+        draw_state.series       = s;
+        draw_state.vbo_state    = &vbo_state;
+        draw_state.main_plan    = std::move(main_plan);
         draw_state.preview_plan = std::move(preview_plan);
-        draw_state.has_preview = preview_visible && preview_valid;
+        draw_state.has_preview  = preview_visible && preview_valid;
         draw_states.push_back(std::move(draw_state));
     }
 
     const auto invalidate_view_upload_state = [](vbo_view_state_t& view_state) {
-        view_state.has_uploaded_vbo = false;
-        view_state.last_sample_buffer = nullptr;
+        view_state.has_uploaded_vbo         = false;
+        view_state.last_sample_buffer       = nullptr;
         view_state.last_staged_sample_count = 0;
         view_state.last_sample_upload_bytes = 0;
         view_state.line_draw_spans.clear();
@@ -979,30 +979,30 @@ void Series_renderer::prepare(
 
     const auto make_window = [](const Series_view_plan& plan) {
         sample_window_t window;
-        window.view_kind = plan.view_kind;
-        window.snapshot = plan.snapshot.snapshot;
-        window.access = plan.access;
-        window.source_first = plan.source_first;
-        window.source_count = plan.source_count;
+        window.view_kind            = plan.view_kind;
+        window.snapshot             = plan.snapshot.snapshot;
+        window.access               = plan.access;
+        window.source_first         = plan.source_first;
+        window.source_count         = plan.source_count;
         window.synthetic_hold_count = plan.synthetic_hold_count;
-        window.gpu_count = plan.gpu_count;
-        window.drawable_spans = plan.drawable_spans;
-        window.lod_level = plan.lod_level;
-        window.pixels_per_sample = plan.pixels_per_sample;
-        window.sample_sequence = plan.snapshot.sequence;
-        window.interpolation = plan.interpolation;
-        window.nonfinite_policy = plan.nonfinite_policy;
-        window.t_min_ns = plan.t_min_ns;
-        window.t_max_ns = plan.t_max_ns;
-        window.t_origin_ns = plan.t_origin_ns;
-        window.hold_last_forward = plan.hold_last_forward;
-        window.hold_timestamp_ns = plan.hold_timestamp_ns;
-        window.v_min = plan.v_min;
-        window.v_max = plan.v_max;
-        window.width_px = plan.width_px;
-        window.height_px = plan.height_px;
-        window.y_offset_px = plan.y_offset_px;
-        window.window_alpha = plan.window_alpha;
+        window.gpu_count            = plan.gpu_count;
+        window.drawable_spans       = plan.drawable_spans;
+        window.lod_level            = plan.lod_level;
+        window.pixels_per_sample    = plan.pixels_per_sample;
+        window.sample_sequence      = plan.snapshot.sequence;
+        window.interpolation        = plan.interpolation;
+        window.nonfinite_policy     = plan.nonfinite_policy;
+        window.t_min_ns             = plan.t_min_ns;
+        window.t_max_ns             = plan.t_max_ns;
+        window.t_origin_ns          = plan.t_origin_ns;
+        window.hold_last_forward    = plan.hold_last_forward;
+        window.hold_timestamp_ns    = plan.hold_timestamp_ns;
+        window.v_min                = plan.v_min;
+        window.v_max                = plan.v_max;
+        window.width_px             = plan.width_px;
+        window.height_px            = plan.height_px;
+        window.y_offset_px          = plan.y_offset_px;
+        window.window_alpha         = plan.window_alpha;
         return window;
     };
 
@@ -1019,21 +1019,21 @@ void Series_renderer::prepare(
             return sample_buffer;
         }
 
-        sample_buffer.buffer = view_state.rhi->vbo.get();
-        sample_buffer.first_sample = 0;
-        sample_buffer.sample_count = window.gpu_count;
-        sample_buffer.source_first = window.source_first;
-        sample_buffer.source_count = window.source_count;
+        sample_buffer.buffer               = view_state.rhi->vbo.get();
+        sample_buffer.first_sample         = 0;
+        sample_buffer.sample_count         = window.gpu_count;
+        sample_buffer.source_first         = window.source_first;
+        sample_buffer.source_count         = window.source_count;
         sample_buffer.synthetic_hold_count = window.synthetic_hold_count;
-        sample_buffer.t_origin_ns = window.t_origin_ns;
-        sample_buffer.t_min_ns = window.t_min_ns;
-        sample_buffer.t_max_ns = window.t_max_ns;
-        sample_buffer.v_min = window.v_min;
-        sample_buffer.v_max = window.v_max;
-        sample_buffer.layout.stride_bytes = sizeof(gpu_sample_t);
+        sample_buffer.t_origin_ns          = window.t_origin_ns;
+        sample_buffer.t_min_ns             = window.t_min_ns;
+        sample_buffer.t_max_ns             = window.t_max_ns;
+        sample_buffer.v_min                = window.v_min;
+        sample_buffer.v_max                = window.v_max;
+        sample_buffer.layout.stride_bytes  = sizeof(gpu_sample_t);
         sample_buffer.layout.t_rel_seconds_offset =
             offsetof(gpu_sample_t, t_rel);
-        sample_buffer.layout.value_offset = offsetof(gpu_sample_t, y);
+        sample_buffer.layout.value_offset     = offsetof(gpu_sample_t, y);
         sample_buffer.layout.range_min_offset = offsetof(gpu_sample_t, y_min);
         sample_buffer.layout.range_max_offset = offsetof(gpu_sample_t, y_max);
         return sample_buffer;
@@ -1078,14 +1078,14 @@ void Series_renderer::prepare(
             const Series_view_plan& plan,
             vbo_view_state_t& view_state)
     {
-        view_state.last_sample_upload_count = 0;
-        view_state.last_primitive_prepare_count = 0;
-        view_state.last_line_window_sample_count = 0;
-        view_state.last_recorded_line_span_count = 0;
+        view_state.last_sample_upload_count         = 0;
+        view_state.last_primitive_prepare_count     = 0;
+        view_state.last_line_window_sample_count    = 0;
+        view_state.last_recorded_line_span_count    = 0;
         view_state.last_recorded_line_segment_count = 0;
-        view_state.last_recorded_area_span_count = 0;
+        view_state.last_recorded_area_span_count    = 0;
         view_state.last_recorded_area_segment_count = 0;
-        view_state.last_recorded_dot_sample_count = 0;
+        view_state.last_recorded_dot_sample_count   = 0;
         view_state.last_sample_access_dispatch_kind =
             detail::access_dispatch_kind_t::NONE;
         view_state.last_sample_buffer = nullptr;
@@ -1210,9 +1210,9 @@ void Series_renderer::prepare(
         const series_view_uniform_std140_t* view_uniform = nullptr;
         QRhiBuffer* view_ubo = nullptr;
         if (needs_view_ubo) {
-            uniform = make_series_view_uniform(ctx, *draw_state.series, window);
+            uniform      = make_series_view_uniform(ctx, *draw_state.series, window);
             view_uniform = &uniform;
-            view_ubo = ensure_view_ubo(
+            view_ubo     = ensure_view_ubo(
                 draw_state.id,
                 plan.view_kind,
                 *draw_state.series,
@@ -1251,15 +1251,15 @@ void Series_renderer::prepare(
                     rhi_state_t::prepared_draw_command_t command;
                     command.kind =
                         rhi_state_t::prepared_draw_command_t::kind_t::BUILTIN;
-                    command.z_order = planned_draw.z_order;
-                    command.series_id = draw_state.id;
-                    command.view_kind = plan.view_kind;
-                    command.series_order = draw_state.series_order;
+                    command.z_order         = planned_draw.z_order;
+                    command.series_id       = draw_state.id;
+                    command.view_kind       = plan.view_kind;
+                    command.series_order    = draw_state.series_order;
                     command.insertion_order = next_draw_insertion_order++;
-                    command.series = draw_state.series.get();
-                    command.window = window;
+                    command.series          = draw_state.series.get();
+                    command.window          = window;
                     command.primitive_style = planned_draw.primitive_style;
-                    command.view_state = &view_state;
+                    command.view_state      = &view_state;
                     command.builtin_segment_spans =
                         std::move(prepared_segment_spans);
                     m_rhi_state->prepared_draws.push_back(std::move(command));
@@ -1282,14 +1282,14 @@ void Series_renderer::prepare(
                     layer_access_view);
 
             rhi_state_t::qrhi_layer_program_key_t program_key;
-            program_key.series_id = draw_state.id;
-            program_key.view_kind = plan.view_kind;
-            program_key.layer_id = std::string(layer->id());
+            program_key.series_id      = draw_state.id;
+            program_key.view_kind      = plan.view_kind;
+            program_key.layer_id       = std::string(layer->id());
             program_key.layer_revision = layer->revision();
-            program_key.data_identity = plan.source ? plan.source->identity() : nullptr;
-            program_key.layout_key = plan.access ? plan.access->layout_key : 0;
-            program_key.access_key = layer_access_key;
-            program_key.rhi = rhi;
+            program_key.data_identity  = plan.source ? plan.source->identity() : nullptr;
+            program_key.layout_key     = plan.access ? plan.access->layout_key : 0;
+            program_key.access_key     = layer_access_key;
+            program_key.rhi            = rhi;
 
             if (!window.snapshot) {
                 for (auto& [cached_key, cache_entry] : m_rhi_state->qrhi_layer_cache) {
@@ -1311,18 +1311,18 @@ void Series_renderer::prepare(
             }
 
             rhi_state_t::qrhi_layer_data_key_t data_key;
-            data_key.lod_level = window.lod_level;
-            data_key.sample_sequence = window.sample_sequence;
-            data_key.t_origin_ns = window.t_origin_ns;
-            data_key.source_first = window.source_first;
-            data_key.source_count = window.source_count;
+            data_key.lod_level            = window.lod_level;
+            data_key.sample_sequence      = window.sample_sequence;
+            data_key.t_origin_ns          = window.t_origin_ns;
+            data_key.source_first         = window.source_first;
+            data_key.source_count         = window.source_count;
             data_key.synthetic_hold_count = window.synthetic_hold_count;
-            data_key.gpu_count = window.gpu_count;
-            data_key.hold_last_forward = window.hold_last_forward;
-            data_key.hold_timestamp_ns = window.hold_timestamp_ns;
-            data_key.interpolation = window.interpolation;
-            data_key.nonfinite_policy = window.nonfinite_policy;
-            data_key.drawable_span_count = window.drawable_spans.size();
+            data_key.gpu_count            = window.gpu_count;
+            data_key.hold_last_forward    = window.hold_last_forward;
+            data_key.hold_timestamp_ns    = window.hold_timestamp_ns;
+            data_key.interpolation        = window.interpolation;
+            data_key.nonfinite_policy     = window.nonfinite_policy;
+            data_key.drawable_span_count  = window.drawable_spans.size();
             data_key.drawable_spans_hash =
                 hash_drawable_spans(window.drawable_spans);
             data_key.access_key = layer_access_key;
@@ -1336,8 +1336,8 @@ void Series_renderer::prepare(
             if (!cache_entry.has_data_key || !(cache_entry.data_key == data_key)) {
                 resources_changed = true;
             }
-            cache_entry.data_key = data_key;
-            cache_entry.has_data_key = true;
+            cache_entry.data_key        = data_key;
+            cache_entry.has_data_key    = true;
             cache_entry.last_frame_used = m_frame_id;
 
             if (!cache_entry.state) {
@@ -1345,31 +1345,31 @@ void Series_renderer::prepare(
             }
 
             qrhi_series_prepare_context_t prepare_ctx;
-            prepare_ctx.rhi = rhi;
-            prepare_ctx.render_target = ctx.render_target;
-            prepare_ctx.updates = rhi_updates;
-            prepare_ctx.asset_loader = m_asset_loader;
-            prepare_ctx.frame = &ctx;
-            prepare_ctx.series = draw_state.series.get();
-            prepare_ctx.window = window;
-            prepare_ctx.view_uniform = view_uniform;
-            prepare_ctx.view_ubo = view_ubo;
-            prepare_ctx.sample_buffer = sample_buffer;
+            prepare_ctx.rhi               = rhi;
+            prepare_ctx.render_target     = ctx.render_target;
+            prepare_ctx.updates           = rhi_updates;
+            prepare_ctx.asset_loader      = m_asset_loader;
+            prepare_ctx.frame             = &ctx;
+            prepare_ctx.series            = draw_state.series.get();
+            prepare_ctx.window            = window;
+            prepare_ctx.view_uniform      = view_uniform;
+            prepare_ctx.view_ubo          = view_ubo;
+            prepare_ctx.sample_buffer     = sample_buffer;
             prepare_ctx.resources_changed = resources_changed;
 
             if (cache_entry.state->prepare(prepare_ctx)) {
                 rhi_state_t::prepared_draw_command_t command;
                 command.kind =
                     rhi_state_t::prepared_draw_command_t::kind_t::CUSTOM;
-                command.z_order = planned_draw.z_order;
-                command.series_id = draw_state.id;
-                command.view_kind = plan.view_kind;
-                command.series_order = draw_state.series_order;
+                command.z_order         = planned_draw.z_order;
+                command.series_id       = draw_state.id;
+                command.view_kind       = plan.view_kind;
+                command.series_order    = draw_state.series_order;
                 command.insertion_order = next_draw_insertion_order++;
-                command.state = cache_entry.state.get();
-                command.series = draw_state.series.get();
-                command.window = window;
-                command.view_ubo = view_ubo;
+                command.state           = cache_entry.state.get();
+                command.series          = draw_state.series.get();
+                command.window          = window;
+                command.view_ubo        = view_ubo;
                 m_rhi_state->prepared_draws.push_back(std::move(command));
             }
         }
@@ -1577,12 +1577,12 @@ void Series_renderer::render(
             continue;
         }
         qrhi_series_record_context_t record_ctx;
-        record_ctx.cb = ctx.cb;
+        record_ctx.cb            = ctx.cb;
         record_ctx.render_target = ctx.render_target;
-        record_ctx.frame = &ctx;
-        record_ctx.series = command.series;
-        record_ctx.window = command.window;
-        record_ctx.view_ubo = command.view_ubo;
+        record_ctx.frame         = &ctx;
+        record_ctx.series        = command.series;
+        record_ctx.window        = command.window;
+        record_ctx.view_ubo      = command.view_ubo;
         command.state->record(record_ctx);
     }
 
@@ -1609,13 +1609,13 @@ bool Series_renderer::rhi_prepare_series_view_samples(
         }
         view_state.staging.clear();
         view_state.line_draw_spans.clear();
-        view_state.last_staged_sample_count = 0;
-        view_state.last_sample_upload_bytes = 0;
+        view_state.last_staged_sample_count      = 0;
+        view_state.last_sample_upload_bytes      = 0;
         view_state.last_line_window_sample_count = 0;
-        view_state.last_prepared_t_min_ns = 0;
-        view_state.last_prepared_t_max_ns = 0;
-        view_state.last_prepared_width_px = 0.0;
-        view_state.last_sample_buffer = nullptr;
+        view_state.last_prepared_t_min_ns        = 0;
+        view_state.last_prepared_t_max_ns        = 0;
+        view_state.last_prepared_width_px        = 0.0;
+        view_state.last_sample_buffer            = nullptr;
     };
 
     if (window.gpu_count == 0) {
@@ -1731,7 +1731,7 @@ bool Series_renderer::rhi_prepare_series_view_samples(
                     return false;
                 }
                 dst.t_rel = detail::to_view_seconds(ts_ns, window.t_origin_ns);
-                dst.y = draw_value.y;
+                dst.y     = draw_value.y;
                 dst.y_min = draw_value.y_min;
                 dst.y_max = draw_value.y_max;
                 return true;
@@ -1807,7 +1807,7 @@ bool Series_renderer::rhi_prepare_series_view_samples(
     if (!view_state.rhi->vbo) {
         return false;
     }
-    view_state.last_sample_buffer = view_state.rhi->vbo.get();
+    view_state.last_sample_buffer     = view_state.rhi->vbo.get();
     view_state.last_prepared_t_min_ns = window.t_min_ns;
     view_state.last_prepared_t_max_ns = window.t_max_ns;
     view_state.last_prepared_width_px = window.width_px;
@@ -2017,8 +2017,8 @@ bool Series_renderer::rhi_prepare_series_primitive(
                 }
 
                 vbo_view_state_t::line_draw_span_t line_span;
-                line_span.gpu_first = span.gpu_first;
-                line_span.gpu_count = span.gpu_count;
+                line_span.gpu_first  = span.gpu_first;
+                line_span.gpu_count  = span.gpu_count;
                 line_span.line_first = write_idx;
                 line_span.line_count = span_window_count;
                 view_state.line_draw_spans.push_back(line_span);
@@ -2036,10 +2036,10 @@ bool Series_renderer::rhi_prepare_series_primitive(
                             view_state.staging[span.gpu_first + i - 1u];
                         const gpu_sample_t current =
                             view_state.staging[span.gpu_first + i];
-                        gpu_sample_t held = current;
-                        held.y = previous.y;
-                        held.y_min = previous.y_min;
-                        held.y_max = previous.y_max;
+                        gpu_sample_t held    = current;
+                        held.y               = previous.y;
+                        held.y_min           = previous.y_min;
+                        held.y_max           = previous.y_max;
                         padded[span_write++] = held;
                         padded[span_write++] = current;
                     }
@@ -2161,18 +2161,18 @@ bool Series_renderer::rhi_prepare_series_primitive(
         // rides vertex attributes instead of SSBOs so the D3D11 backend's
         // SM 5.0 vertex shader has zero UAVs.
         detail::alpha_blended_pipeline_desc_t desc;
-        desc.vert = cached.vert;
-        desc.frag = cached.frag;
-        desc.vlayout = vlayout;
-        desc.ubo_bytes = k_series_ubo_bytes;
+        desc.vert       = cached.vert;
+        desc.frag       = cached.frag;
+        desc.vlayout    = vlayout;
+        desc.ubo_bytes  = k_series_ubo_bytes;
         desc.ubo_stages = QRhiShaderResourceBinding::VertexStage
                         | QRhiShaderResourceBinding::FragmentStage;
-        desc.flags = QRhiGraphicsPipeline::UsesScissor;
+        desc.flags      = QRhiGraphicsPipeline::UsesScissor;
         cached.pipeline = detail::build_alpha_blended_pipeline(rhi, rt, desc);
         if (!cached.pipeline) {
             return false;
         }
-        cached.last_rpd = current_rpd;
+        cached.last_rpd          = current_rpd;
         cached.last_sample_count = current_samples;
     }
 
@@ -2220,22 +2220,22 @@ bool Series_renderer::rhi_prepare_series_primitive(
             draw_color.w *= area_fill_alpha;
         }
     }
-    draw_color.w *= window.window_alpha;
-    view_block.color[0] = draw_color.r;
-    view_block.color[1] = draw_color.g;
-    view_block.color[2] = draw_color.b;
-    view_block.color[3] = draw_color.a;
+    draw_color.w        *= window.window_alpha;
+    view_block.color[0]  = draw_color.r;
+    view_block.color[1]  = draw_color.g;
+    view_block.color[2]  = draw_color.b;
+    view_block.color[3]  = draw_color.a;
 
-    view_block.t_min = detail::to_view_seconds(
+    view_block.t_min    = detail::to_view_seconds(
         window.t_min_ns, window.t_origin_ns);
-    view_block.t_max = detail::to_view_seconds(
+    view_block.t_max    = detail::to_view_seconds(
         window.t_max_ns, window.t_origin_ns);
-    view_block.v_min = window.v_min;
-    view_block.v_max = window.v_max;
+    view_block.v_min    = window.v_min;
+    view_block.v_max    = window.v_max;
     view_block.y_offset = window.y_offset_px;
     view_block.width    = window.width_px;
     view_block.height   = window.height_px;
-    view_block.win_h = static_cast<float>(ctx.win_h);
+    view_block.win_h    = static_cast<float>(ctx.win_h);
     view_block.framebuffer_y_up =
         (ctx.rhi && ctx.rhi->isYUpInFramebuffer()) ? 1 : 0;
 
@@ -2263,7 +2263,7 @@ bool Series_renderer::rhi_prepare_series_primitive(
     }
     else {
         Line_block_std140 block{};
-        block.view = view_block;
+        block.view           = view_block;
         block.line_px        = line_width_px;
         block.snap_to_pixels = (ctx.config && ctx.config->snap_lines_to_pixels)
             ? 1 : 0;

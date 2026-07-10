@@ -241,11 +241,11 @@ struct Data_access_policy_typed
     Data_access_policy_typed& operator=(const Data_access_policy_typed& other)
     {
         if (this != &other) {
-            get_timestamp = other.get_timestamp;
-            get_value = other.get_value;
-            get_range = other.get_range;
-            layout_key = other.layout_key;
-            semantics_key = other.semantics_key;
+            get_timestamp   = other.get_timestamp;
+            get_value       = other.get_value;
+            get_range       = other.get_range;
+            layout_key      = other.layout_key;
+            semantics_key   = other.semantics_key;
             internal_access = other.internal_access;
             ++access_revision;
             bind_accessor_slots();
@@ -256,11 +256,11 @@ struct Data_access_policy_typed
     Data_access_policy_typed& operator=(Data_access_policy_typed&& other)
     {
         if (this != &other) {
-            get_timestamp = other.get_timestamp;
-            get_value = other.get_value;
-            get_range = other.get_range;
-            layout_key = other.layout_key;
-            semantics_key = other.semantics_key;
+            get_timestamp   = other.get_timestamp;
+            get_value       = other.get_value;
+            get_range       = other.get_range;
+            layout_key      = other.layout_key;
+            semantics_key   = other.semantics_key;
             internal_access = other.internal_access;
             ++access_revision;
             bind_accessor_slots();
@@ -308,7 +308,7 @@ struct Data_access_policy_typed
         if (get_range) {
             policy.get_range = erase_accessor(get_range);
         }
-        policy.layout_key = layout_key;
+        policy.layout_key    = layout_key;
         policy.semantics_key = semantics_key;
         policy.set_internal_access(internal_access);
         return policy;
@@ -415,20 +415,20 @@ inline Data_access_policy_typed<Sample> make_access_policy(
     internal_access.get_range =
         &detail::member_range_access<Range_min_member, Range_max_member>;
     internal_access.timestamp_offset = timestamp_offset;
-    internal_access.value_offset = value_offset;
+    internal_access.value_offset     = value_offset;
     internal_access.range_min_offset = range_min_offset;
     internal_access.range_max_offset = range_max_offset;
     internal_access.dispatch_kind =
         detail::access_dispatch_kind_t::MEMBER_POINTER;
     policy.set_internal_access(internal_access);
-    policy.layout_key = detail::compute_sample_layout_key(
+    policy.layout_key                 = detail::compute_sample_layout_key(
         sizeof(Sample),
         timestamp_offset,
         value_offset,
         true,
         range_min_offset,
         range_max_offset);
-    policy.semantics_key.value = detail::compute_sample_semantics_key(
+    policy.semantics_key.value        = detail::compute_sample_semantics_key(
         sizeof(Sample),
         timestamp_offset,
         detail::member_semantics_tag<Timestamp_member>(),
@@ -439,7 +439,7 @@ inline Data_access_policy_typed<Sample> make_access_policy(
         detail::member_semantics_tag<Range_min_member>(),
         range_max_offset,
         detail::member_semantics_tag<Range_max_member>());
-    policy.semantics_key.revision = 0;
+    policy.semantics_key.revision     = 0;
     policy.semantics_key.conservative = false;
     return policy;
 }
@@ -454,14 +454,14 @@ inline Data_access_policy_typed<Sample> make_access_policy(
     const std::size_t value_offset     = detail::member_offset(value_member);
 
     assign_standard_accessors(policy, timestamp_member, value_member);
-    policy.layout_key = detail::compute_sample_layout_key(
+    policy.layout_key                 = detail::compute_sample_layout_key(
         sizeof(Sample),
         timestamp_offset,
         value_offset,
         false,
         0,
         0);
-    policy.semantics_key.value = detail::compute_sample_semantics_key(
+    policy.semantics_key.value        = detail::compute_sample_semantics_key(
         sizeof(Sample),
         timestamp_offset,
         detail::member_semantics_tag<Timestamp_member>(),
@@ -472,7 +472,7 @@ inline Data_access_policy_typed<Sample> make_access_policy(
         0,
         0,
         0);
-    policy.semantics_key.revision = 0;
+    policy.semantics_key.revision     = 0;
     policy.semantics_key.conservative = false;
     return policy;
 }

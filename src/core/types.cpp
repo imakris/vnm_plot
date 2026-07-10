@@ -280,7 +280,7 @@ time_window_candidates_t ascending_candidates(
         return out;
     }
     if (wants_hold_forward(query) && out.match_first > 0) {
-        out.has_held = true;
+        out.has_held   = true;
         out.held_index = out.match_first - 1;
     }
     return out;
@@ -304,7 +304,7 @@ time_window_candidates_t descending_candidates(
         return out;
     }
     if (wants_hold_forward(query) && out.match_last_exclusive < snapshot.count) {
-        out.has_held = true;
+        out.has_held   = true;
         out.held_index = out.match_last_exclusive;
     }
     return out;
@@ -352,8 +352,8 @@ time_window_candidates_t linear_candidates(
         if (hold_forward && timestamp_ns < query.time_window.min_ns &&
             (!held_found || timestamp_ns > held_timestamp_ns))
         {
-            held_found = true;
-            held_index = index;
+            held_found        = true;
+            held_index        = index;
             held_timestamp_ns = timestamp_ns;
         }
     }
@@ -369,7 +369,7 @@ time_window_candidates_t linear_candidates(
             out.valid = false;
             return out;
         }
-        out.has_held = true;
+        out.has_held   = true;
         out.held_index = held_index;
     }
     return out;
@@ -463,25 +463,25 @@ bool scan_value_range(
         }
 
         if (scan_status == sample_scan_status::ACCEPTED) {
-            has_held_candidate = true;
-            has_held_value = true;
+            has_held_candidate    = true;
+            has_held_value        = true;
             held_candidate_failed = false;
-            held_timestamp_ns = timestamp_ns;
-            held_range = sample_range;
+            held_timestamp_ns     = timestamp_ns;
+            held_range            = sample_range;
         }
         else
         if (query.nonfinite_policy == Nonfinite_sample_policy::BREAK_SEGMENT) {
-            has_held_candidate = true;
-            has_held_value = false;
+            has_held_candidate    = true;
+            has_held_value        = false;
             held_candidate_failed = false;
-            held_timestamp_ns = timestamp_ns;
+            held_timestamp_ns     = timestamp_ns;
         }
         else
         if (scan_status == sample_scan_status::FAILED) {
-            has_held_candidate = true;
-            has_held_value = false;
+            has_held_candidate    = true;
+            has_held_value        = false;
             held_candidate_failed = true;
-            held_timestamp_ns = timestamp_ns;
+            held_timestamp_ns     = timestamp_ns;
         }
     }
 
@@ -581,9 +581,9 @@ bool select_held_sample_index(
                 index);
             if (status == sample_scan_status::ACCEPTED) {
                 if (!found || timestamp_ns > held_timestamp_ns) {
-                    found = true;
+                    found             = true;
                     held_timestamp_ns = timestamp_ns;
-                    out_index = index;
+                    out_index         = index;
                 }
                 continue;
             }
@@ -659,23 +659,23 @@ validated_time_window_t validated_time_window(
     }
 
     if (!has_match) {
-        out.first = held_index;
+        out.first          = held_index;
         out.last_exclusive = held_index + 1;
-        out.held_index = held_index;
-        out.has_held = true;
+        out.held_index     = held_index;
+        out.has_held       = true;
         return out;
     }
 
-    out.first = candidates.match_first;
-    out.last_exclusive = candidates.match_last_exclusive;
-    out.match_first = candidates.match_first;
+    out.first                = candidates.match_first;
+    out.last_exclusive       = candidates.match_last_exclusive;
+    out.match_first          = candidates.match_first;
     out.match_last_exclusive = candidates.match_last_exclusive;
-    out.has_match = true;
+    out.has_match            = true;
     if (held_accepted) {
-        out.first = std::min(out.first, held_index);
+        out.first          = std::min(out.first, held_index);
         out.last_exclusive = std::max(out.last_exclusive, held_index + 1);
-        out.held_index = held_index;
-        out.has_held = true;
+        out.held_index     = held_index;
+        out.has_held       = true;
     }
     return out;
 }
@@ -748,7 +748,7 @@ sample_draw_status_t read_sample_draw_value(
         std::swap(low, high);
     }
 
-    out.y = y;
+    out.y     = y;
     out.y_min = low;
     out.y_max = high;
     return sample_draw_status_t::DRAWABLE;
@@ -838,7 +838,7 @@ data_query_result_t<sample_index_window_t> Data_source::query_time_window(
     }
 
     result.status = Data_query_status::READY;
-    result.value = {window.first, window.last_exclusive - window.first};
+    result.value  = {window.first, window.last_exclusive - window.first};
     return result;
 }
 
@@ -890,7 +890,7 @@ data_query_result_t<value_range_t> Data_source::query_v_range(
         }
 
         result.status = Data_query_status::READY;
-        result.value = range;
+        result.value  = range;
         return result;
     }
 
@@ -944,7 +944,7 @@ data_query_result_t<value_range_t> Data_source::query_v_range(
     }
 
     result.status = Data_query_status::READY;
-    result.value = range;
+    result.value  = range;
     return result;
 }
 

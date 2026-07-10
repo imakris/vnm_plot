@@ -251,12 +251,12 @@ void Plot_interaction_item::mousePressEvent(QMouseEvent* event)
     const qreal ph = preview_height();
 
     if (x >= 0.0 && x <= uw && y >= 0.0 && y < uh) {
-        m_dragging = true;
+        m_dragging        = true;
         m_click_candidate = true;
-        m_press_x = x;
-        m_press_y = y;
-        m_drag_start_x = x;
-        m_drag_last_y = y;
+        m_press_x         = x;
+        m_press_y         = y;
+        m_drag_start_x    = x;
+        m_drag_last_y     = y;
         event->accept();
     }
     else
@@ -346,10 +346,10 @@ void Plot_interaction_item::mouseReleaseEvent(QMouseEvent* event)
         m_press_x >= 0.0 && m_press_x <= usable_width() &&
         m_press_y >= 0.0 && m_press_y < usable_height();
 
-    m_dragging = false;
-    m_dragging_preview = false;
-    m_click_candidate = false;
-    m_drag_start_x = 0;
+    m_dragging           = false;
+    m_dragging_preview   = false;
+    m_click_candidate    = false;
+    m_drag_start_x       = 0;
     m_drag_preview_start = 0;
 
     if (clicked) {

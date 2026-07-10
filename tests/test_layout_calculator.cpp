@@ -37,22 +37,22 @@ plot::Layout_calculator::parameters_t make_minimal_params(
     std::vector<Recorded_call>&    recorded_calls)
 {
     plot::Layout_calculator::parameters_t params;
-    params.v_min = 0.0f;
-    params.v_max = 1.0f;
-    params.t_min = t_min_ns;
-    params.t_max = t_max_ns;
-    params.usable_width  = 800.0;
-    params.usable_height = 480.0;
-    params.vbar_width    = 56.0;
-    params.label_visible_height = 480.0;
-    params.adjusted_font_size_in_pixels = 14.0;
+    params.v_min                         = 0.0f;
+    params.v_max                         = 1.0f;
+    params.t_min                         = t_min_ns;
+    params.t_max                         = t_max_ns;
+    params.usable_width                  = 800.0;
+    params.usable_height                 = 480.0;
+    params.vbar_width                    = 56.0;
+    params.label_visible_height          = 480.0;
+    params.adjusted_font_size_in_pixels  = 14.0;
     params.h_label_vertical_nudge_factor = 0.0f;
-    params.measure_text_cache_key = 0;
+    params.measure_text_cache_key        = 0;
     // Emulate a monospace font so the calculator does not need a
     // measure_text callback to estimate label widths.
     params.monospace_char_advance_px     = 8.0f;
     params.monospace_advance_is_reliable = true;
-    params.measure_text_func = [](const char* text) {
+    params.measure_text_func             = [](const char* text) {
         return static_cast<float>(std::strlen(text)) * 8.0f;
     };
     params.get_required_fixed_digits_func = [](double) { return 2; };
@@ -253,10 +253,10 @@ bool test_vertical_labels_keep_dense_level_when_glyphs_fit()
 {
     std::vector<Recorded_call> recorded;
     auto params = make_minimal_params(0LL, 60LL * k_ns_per_second, recorded);
-    params.v_min = -5000.0f;
-    params.v_max = 45000.0f;
-    params.usable_height = 140.0;
-    params.label_visible_height = params.usable_height;
+    params.v_min                        = -5000.0f;
+    params.v_max                        = 45000.0f;
+    params.usable_height                = 140.0;
+    params.label_visible_height         = params.usable_height;
     params.adjusted_font_size_in_pixels = 10.0;
 
     plot::Layout_calculator calc;

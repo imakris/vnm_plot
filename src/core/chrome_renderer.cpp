@@ -211,9 +211,9 @@ void Chrome_renderer::render_grid_and_backgrounds(
             }
             const float pos   = get_pos(label);
             const auto  props = match_level_properties(pos, main_levels);
-            ticks.spacing_px[ticks.count] = 1e6f;
-            ticks.start_px[ticks.count] = pos;
-            ticks.alpha[ticks.count] = props.first;
+            ticks.spacing_px[ticks.count]   = 1e6f;
+            ticks.start_px[ticks.count]     = pos;
+            ticks.alpha[ticks.count]        = props.first;
             ticks.thickness_px[ticks.count] = props.second;
             ++ticks.count;
         }
@@ -268,10 +268,10 @@ void Chrome_renderer::render_zero_line(
     const glm::vec2 main_origin = to_gl_origin(ctx, main_top_left, main_size);
 
     grid_layer_params_t zero_level;
-    zero_level.count = 1;
-    zero_level.spacing_px[0] = 1e6f;
-    zero_level.start_px[0] = zero_y_gl;
-    zero_level.alpha[0] = k_grid_line_alpha_base;
+    zero_level.count           = 1;
+    zero_level.spacing_px[0]   = 1e6f;
+    zero_level.start_px[0]     = zero_y_gl;
+    zero_level.alpha[0]        = k_grid_line_alpha_base;
     zero_level.thickness_px[0] = 1.2f;
 
     grid_layer_params_t empty_levels;

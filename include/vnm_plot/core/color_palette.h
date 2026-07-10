@@ -67,14 +67,14 @@ struct Color_palette
     static Color_palette light()
     {
         Color_palette p;
-        p.background                  = hex_to_vec4("ffffffff");
-        p.h_label_background          = hex_to_vec4("ffbadaef");
-        p.v_label_background          = hex_to_vec4("ff959595");
-        p.preview_background          = hex_to_vec4("ffeeeeee");
-        p.separator                   = hex_to_vec4("ff999999");
-        p.grid_line                   = hex_to_vec4("ff000000");
-        p.preview_cover               = hex_to_vec4("99707070");
-        p.preview_cover_secondary     = hex_to_vec4("85707070");
+        p.background              = hex_to_vec4("ffffffff");
+        p.h_label_background      = hex_to_vec4("ffbadaef");
+        p.v_label_background      = hex_to_vec4("ff959595");
+        p.preview_background      = hex_to_vec4("ffeeeeee");
+        p.separator               = hex_to_vec4("ff999999");
+        p.grid_line               = hex_to_vec4("ff000000");
+        p.preview_cover           = hex_to_vec4("99707070");
+        p.preview_cover_secondary = hex_to_vec4("85707070");
         return p;
     }
 

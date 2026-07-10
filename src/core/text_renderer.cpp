@@ -79,9 +79,9 @@ glm::vec4 text_color_for_theme(bool dark_mode)
 text_shadow_t text_shadow_for_background(const glm::vec4& background, double font_px)
 {
     text_shadow_t shadow;
-    shadow.color = background;
-    shadow.color.a *= k_text_shadow_alpha;
-    shadow.radius_px = std::clamp(
+    shadow.color      = background;
+    shadow.color.a   *= k_text_shadow_alpha;
+    shadow.radius_px  = std::clamp(
         static_cast<float>(font_px) * k_text_shadow_radius_factor,
         k_text_shadow_min_radius_px,
         k_text_shadow_max_radius_px);
@@ -103,7 +103,7 @@ text_lcd_t text_lcd_for_background(
     bool                   draw_lcd_eligible)
 {
     text_lcd_t lcd;
-    lcd.subpixel_order = draw_lcd_eligible
+    lcd.subpixel_order   = draw_lcd_eligible
         ? text_lcd_frame_order(ctx)
         : text_lcd_resolved_subpixel_order_t::NONE;
     lcd.background_color = background;
@@ -142,14 +142,14 @@ bool update_and_draw_faded_labels(
         auto it = tracker.states.find(key);
         if (it == tracker.states.end()) {
             Text_renderer::label_fade_state_t state;
-            state.alpha = 0.0f;
+            state.alpha     = 0.0f;
             state.direction = 1;
-            state.text = label.text;
+            state.text      = label.text;
             tracker.states.emplace(key, std::move(state));
         }
         else {
             auto& state = it->second;
-            state.text = label.text;
+            state.text  = label.text;
             if (state.direction < 0) {
                 state.direction = 1;
             }
@@ -176,7 +176,7 @@ bool update_and_draw_faded_labels(
         state.alpha = std::clamp(state.alpha, 0.0f, 1.0f);
 
         if (state.direction > 0 && state.alpha >= 1.0f - k_alpha_eps) {
-            state.alpha = 1.0f;
+            state.alpha     = 1.0f;
             state.direction = 0;
         }
         if (state.direction < 0 && state.alpha <= 0.0f + k_alpha_eps) {
@@ -362,9 +362,9 @@ bool Text_renderer::render_axis_labels(
         m_vertical_fade.states.clear();
         for (const auto& label : pl.v_labels) {
             label_fade_state_t state;
-            state.alpha = 1.0f;
+            state.alpha     = 1.0f;
             state.direction = 0;
-            state.text = label.text;
+            state.text      = label.text;
             m_vertical_fade.states.emplace(label.value, state);
             draw_label(label.value, state);
         }
@@ -468,9 +468,9 @@ bool Text_renderer::render_info_overlay(
         m_horizontal_fade.states.clear();
         for (const auto& label : pl.h_labels) {
             label_fade_state_t state;
-            state.alpha = 1.0f;
+            state.alpha     = 1.0f;
             state.direction = 0;
-            state.text = label.text;
+            state.text      = label.text;
             const std::int64_t key = label.value;
             m_horizontal_fade.states.emplace(key, state);
             draw_label(key, state);
@@ -497,7 +497,7 @@ bool Text_renderer::render_info_overlay(
         const auto format_info_value = [&](double value) {
             if (ctx.config && ctx.config->format_value) {
                 value_format_context_t context;
-                context.role = Value_format_role::INFO_OVERLAY;
+                context.role                   = Value_format_role::INFO_OVERLAY;
                 context.suggested_fixed_digits = k_value_decimals;
                 const std::string text = ctx.config->format_value(value, context);
                 if (!text.empty()) {
@@ -540,12 +540,12 @@ bool Text_renderer::render_info_overlay(
                 const auto format_ts = (ctx.config && ctx.config->format_timestamp)
                     ? ctx.config->format_timestamp
                     : default_format_timestamp;
-                m_cached_from_ts = format_ts(ctx.t0, 0);
-                m_cached_to_ts = format_ts(ctx.t1, 0);
-                m_last_t0 = ctx.t0;
-                m_last_t1 = ctx.t1;
+                m_cached_from_ts          = format_ts(ctx.t0, 0);
+                m_cached_to_ts            = format_ts(ctx.t1, 0);
+                m_last_t0                 = ctx.t0;
+                m_last_t1                 = ctx.t1;
                 m_last_timestamp_revision = timestamp_revision;
-                m_last_subsecond = pl.h_labels_subsecond;
+                m_last_subsecond          = pl.h_labels_subsecond;
             }
             m_fonts->batch_text(k_overlay_left_px + offset_from, llt, m_cached_from_ts.c_str());
 

@@ -522,8 +522,8 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
             bool used_seed = false;
             if (params.has_vertical_seed && params.vertical_seed_index >= 0) {
                 if (validate_seed(params.vertical_seed_step, params.vertical_seed_index)) {
-                    step = params.vertical_seed_step;
-                    i = params.vertical_seed_index;
+                    step      = params.vertical_seed_step;
+                    i         = params.vertical_seed_index;
                     used_seed = true;
                 }
             }
@@ -538,17 +538,17 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
             }
 
             initial_level_index = i;
-            initial_level_step = step;
-            px_per_unit = params.usable_height / v_span;
+            initial_level_step  = step;
+            px_per_unit         = params.usable_height / v_span;
 
             accepted_boxes.clear();
             level.clear();
             accepted_y.clear();
 
-            label_box_height_px = std::max(
+            label_box_height_px  = std::max(
                 1.0f,
                 static_cast<float>(params.adjusted_font_size_in_pixels));
-            label_gap_px = 10.0f;
+            label_gap_px         = 10.0f;
             min_label_spacing_px = label_box_height_px + label_gap_px;
             finest_step_accepted = step;
         }
@@ -571,10 +571,10 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
                     profiler,
                     "renderer.frame.calculate_layout.impl.cache_miss.pass1.vertical_axis.iter_prep");
                 level.clear();
-                shift = get_shift(step, double(params.v_min));
+                shift  = get_shift(step, double(params.v_min));
                 extend = step;
-                j_min = static_cast<int>(std::ceil((-extend - shift) / step - 1e-9));
-                j_max = static_cast<int>(std::floor((v_span + extend - shift) / step + 1e-9));
+                j_min  = static_cast<int>(std::ceil((-extend - shift) / step - 1e-9));
+                j_max  = static_cast<int>(std::floor((v_span + extend - shift) / step + 1e-9));
                 this_vals.clear();
                 this_vals.reserve(j_max - j_min + 1);
             }
@@ -675,8 +675,8 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
             VNM_PLOT_PROFILE_SCOPE(
                 profiler,
                 "renderer.frame.calculate_layout.impl.cache_miss.pass1.vertical_axis.finalize");
-            res.vertical_seed_index = initial_level_index;
-            res.vertical_seed_step  = initial_level_step;
+            res.vertical_seed_index  = initial_level_index;
+            res.vertical_seed_step   = initial_level_step;
             res.vertical_finest_step = finest_step_accepted;
         }
 
@@ -712,8 +712,8 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
                 profiler,
                 "renderer.frame.calculate_layout.impl.cache_miss.pass1.vertical_axis.label_prep");
             res.max_v_label_text_width = 0.f;
-            advance = std::max(params.monospace_char_advance_px, 0.f);
-            use_monospace = params.monospace_advance_is_reliable && advance > 0.f;
+            advance                    = std::max(params.monospace_char_advance_px, 0.f);
+            use_monospace              = params.monospace_advance_is_reliable && advance > 0.f;
         }
 
         {
@@ -722,7 +722,7 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
                 "renderer.frame.calculate_layout.impl.cache_miss.pass1.vertical_axis.measure_text");
             for (auto& e : res.v_labels) {
                 value_format_context_t context;
-                context.role = Value_format_role::AXIS_LABEL;
+                context.role                   = Value_format_role::AXIS_LABEL;
                 context.suggested_fixed_digits = res.v_label_fixed_digits;
 
                 std::string text = params.format_value_func
@@ -791,10 +791,10 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
             VNM_PLOT_PROFILE_SCOPE(
                 profiler,
                 "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis.prep");
-            px_per_t = params.usable_width / t_range;
-            advance = std::max(params.monospace_char_advance_px, 0.f);
+            px_per_t      = params.usable_width / t_range;
+            advance       = std::max(params.monospace_char_advance_px, 0.f);
             use_monospace = params.monospace_advance_is_reliable && advance > 0.f;
-            steps = build_time_steps_covering(t_range);
+            steps         = build_time_steps_covering(t_range);
         }
 
         const auto x_of_t = [&](double tt_seconds) -> float {
@@ -950,9 +950,9 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
                     // Account for text margin: visual right edge is at x + k_text_margin_px + width.
                     // Skip only when visual right edge is fully offscreen (< 0).
                     if (x + k_text_margin_px + skip_width <= 0.f) {
-                        const int skip = std::max(1, int(std::ceil(skip_width / pixel_step)));
-                        tick_index += skip;
-                        t = t_start + tick_index * step;
+                        const int skip  = std::max(1, int(std::ceil(skip_width / pixel_step)));
+                        tick_index     += skip;
+                        t               = t_start + tick_index * step;
                         continue;
                     }
 
@@ -965,9 +965,9 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
                     }
 
                     if (anchor_taken) {
-                        const int skip = std::max(1, int(std::ceil(min_gap / pixel_step)));
-                        tick_index += skip;
-                        t = t_start + tick_index * step;
+                        const int skip  = std::max(1, int(std::ceil(min_gap / pixel_step)));
+                        tick_index     += skip;
+                        t               = t_start + tick_index * step;
                         continue;
                     }
 
@@ -1034,9 +1034,9 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
                     // Account for text margin: visual right edge is at x + k_text_margin_px + w.
                     // Cull only when visual right edge is fully offscreen (< 0).
                     if (x + k_text_margin_px + w <= 0.f) {
-                        const int skip = std::max(1, int(std::ceil(w / pixel_step)));
-                        tick_index += skip;
-                        t = t_start + tick_index * step;
+                        const int skip  = std::max(1, int(std::ceil(w / pixel_step)));
+                        tick_index     += skip;
+                        t               = t_start + tick_index * step;
                         continue;
                     }
                     if (have_prev_candidate && x < prev_candidate_x1 + min_gap) {

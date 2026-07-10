@@ -10,8 +10,8 @@ namespace {
 value_range_plan_t make_value_range_plan(std::pair<float, float> range)
 {
     value_range_plan_t plan;
-    plan.min = range.first;
-    plan.max = range.second;
+    plan.min   = range.first;
+    plan.max   = range.second;
     plan.valid = std::isfinite(plan.min) && std::isfinite(plan.max) && plan.min <= plan.max;
     return plan;
 }

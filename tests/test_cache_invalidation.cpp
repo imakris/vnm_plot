@@ -89,9 +89,9 @@ public:
         last_query_lod = lod;
         last_query = query;
         data_query_result_t<value_range_t> result;
-        result.status = query_status;
+        result.status   = query_status;
         result.sequence = query_sequence;
-        result.value = query_range;
+        result.value    = query_range;
         return result;
     }
 
@@ -200,26 +200,26 @@ Data_access_policy make_value_only_policy()
 
 std::shared_ptr<series_data_t> make_series(const std::shared_ptr<Query_range_source>& source)
 {
-    auto series = std::make_shared<series_data_t>();
-    series->style = Display_style::LINE;
+    auto series         = std::make_shared<series_data_t>();
+    series->style       = Display_style::LINE;
     series->data_source = source;
-    series->access = make_policy();
+    series->access      = make_policy();
     return series;
 }
 
 std::shared_ptr<series_data_t> make_series(const std::shared_ptr<Snapshot_range_source>& source)
 {
-    auto series = std::make_shared<series_data_t>();
-    series->style = Display_style::LINE;
+    auto series         = std::make_shared<series_data_t>();
+    series->style       = Display_style::LINE;
     series->data_source = source;
-    series->access = make_policy();
+    series->access      = make_policy();
     return series;
 }
 
 std::shared_ptr<series_data_t> make_stable_series(
     const std::shared_ptr<Query_range_source>& source)
 {
-    auto series = make_series(source);
+    auto series    = make_series(source);
     series->access = make_stable_policy();
     return series;
 }
@@ -235,14 +235,14 @@ std::map<int, std::shared_ptr<const series_data_t>> make_series_map(
 data_config_t make_data_config()
 {
     data_config_t cfg;
-    cfg.t_min = 10;
-    cfg.t_max = 20;
+    cfg.t_min           = 10;
+    cfg.t_max           = 20;
     cfg.t_available_min = 0;
     cfg.t_available_max = 100;
-    cfg.v_min = -100.0f;
-    cfg.v_max = 100.0f;
-    cfg.v_manual_min = -10.0f;
-    cfg.v_manual_max = 10.0f;
+    cfg.v_min           = -100.0f;
+    cfg.v_max           = 100.0f;
+    cfg.v_manual_min    = -10.0f;
+    cfg.v_manual_max    = 10.0f;
     return cfg;
 }
 
@@ -250,10 +250,10 @@ bool test_visible_auto_range_uses_source_query_without_snapshot_fallback()
 {
     auto source = std::make_shared<Query_range_source>();
     source->query_status = Data_query_status::READY;
-    source->query_range = {2.0f, 5.0f};
+    source->query_range  = {2.0f, 5.0f};
 
     auto series = make_series(source);
-    series->interpolation = Series_interpolation::STEP_AFTER;
+    series->interpolation         = Series_interpolation::STEP_AFTER;
     series->empty_window_behavior = Empty_window_behavior::HOLD_LAST_FORWARD;
 
     Plot_config config;
@@ -295,9 +295,9 @@ bool test_member_pointer_query_uses_stable_semantics_key()
 {
     auto source = std::make_shared<Query_range_source>();
     source->query_status = Data_query_status::READY;
-    source->query_range = {2.0f, 5.0f};
+    source->query_range  = {2.0f, 5.0f};
 
-    auto series = make_series(source);
+    auto series    = make_series(source);
     series->access = make_member_pointer_policy();
 
     Plot_config config;
@@ -326,9 +326,9 @@ bool test_member_pointer_query_uses_stable_semantics_key()
 bool test_global_lod_auto_range_uses_query_when_no_legacy_range_exists()
 {
     auto source = std::make_shared<Query_range_source>();
-    source->levels = 2;
+    source->levels       = 2;
     source->query_status = Data_query_status::READY;
-    source->query_range = {-4.0f, 9.0f};
+    source->query_range  = {-4.0f, 9.0f};
 
     Plot_config config;
     config.auto_v_range_mode = Auto_v_range_mode::GLOBAL_LOD;
@@ -353,7 +353,7 @@ bool test_unsupported_query_falls_back_to_snapshot_scan()
 {
     auto source = std::make_shared<Query_range_source>();
     source->query_status = Data_query_status::UNSUPPORTED;
-    source->samples = {
+    source->samples      = {
         { 0,  6.0f  },
         { 5,  8.0f  },
         { 10, 12.0f },
@@ -383,11 +383,11 @@ bool test_ready_query_profiler_counts_query_without_scan()
     auto profiler = std::make_shared<Counting_profiler>();
     auto source   = std::make_shared<Query_range_source>();
     source->query_status = Data_query_status::READY;
-    source->query_range = {2.0f, 5.0f};
+    source->query_range  = {2.0f, 5.0f};
 
     Plot_config config;
     config.auto_v_range_mode = Auto_v_range_mode::GLOBAL;
-    config.profiler = profiler;
+    config.profiler          = profiler;
 
     const auto range = plot::detail::resolve_main_v_range(
         make_series_map(make_series(source)),
@@ -419,7 +419,7 @@ bool test_default_query_profiler_counts_snapshot_scan()
 
     Plot_config config;
     config.auto_v_range_mode = Auto_v_range_mode::GLOBAL;
-    config.profiler = profiler;
+    config.profiler          = profiler;
 
     const auto range = plot::detail::resolve_main_v_range(
         make_series_map(make_series(source)),
@@ -443,7 +443,7 @@ bool test_positive_auto_range_excludes_zero_by_default()
 {
     auto source = std::make_shared<Query_range_source>();
     source->query_status = Data_query_status::READY;
-    source->query_range = {2.0f, 8.0f};
+    source->query_range  = {2.0f, 8.0f};
 
     Plot_config config;
     config.auto_v_range_mode = Auto_v_range_mode::GLOBAL;
@@ -466,7 +466,7 @@ bool test_negative_auto_range_excludes_zero_by_default()
 {
     auto source = std::make_shared<Query_range_source>();
     source->query_status = Data_query_status::READY;
-    source->query_range = {-8.0f, -2.0f};
+    source->query_range  = {-8.0f, -2.0f};
 
     Plot_config config;
     config.auto_v_range_mode = Auto_v_range_mode::GLOBAL;
@@ -489,11 +489,11 @@ bool test_nonnegative_auto_range_floor_policy_includes_zero()
 {
     auto source = std::make_shared<Query_range_source>();
     source->query_status = Data_query_status::READY;
-    source->query_range = {1.0f, 3.0f};
+    source->query_range  = {1.0f, 3.0f};
 
     Plot_config config;
-    config.auto_v_range_mode = Auto_v_range_mode::GLOBAL;
-    config.auto_v_range_extra_scale = 2.0;
+    config.auto_v_range_mode                      = Auto_v_range_mode::GLOBAL;
+    config.auto_v_range_extra_scale               = 2.0;
     config.floor_nonnegative_auto_v_range_at_zero = true;
 
     const auto range = plot::detail::resolve_main_v_range(
@@ -512,14 +512,14 @@ bool test_visible_step_after_hold_forward_contributes_held_sample()
 {
     auto source = std::make_shared<Query_range_source>();
     source->query_status = Data_query_status::UNSUPPORTED;
-    source->samples = {
+    source->samples      = {
         { 5,  -4.0f  },
         { 15, 6.0f   },
         { 25, 100.0f },
     };
 
     auto series = make_series(source);
-    series->interpolation = Series_interpolation::STEP_AFTER;
+    series->interpolation         = Series_interpolation::STEP_AFTER;
     series->empty_window_behavior = Empty_window_behavior::HOLD_LAST_FORWARD;
 
     Plot_config config;
@@ -547,16 +547,16 @@ bool test_visible_step_after_skip_fallback_keeps_earlier_drawable_held_sample()
 
     auto source = std::make_shared<Query_range_source>();
     source->query_status = Data_query_status::UNSUPPORTED;
-    source->samples = {
+    source->samples      = {
         { 5,  -4.0f },
         { 9,  nan   },
         { 15, 6.0f  },
     };
 
     auto series = make_series(source);
-    series->interpolation = Series_interpolation::STEP_AFTER;
+    series->interpolation         = Series_interpolation::STEP_AFTER;
     series->empty_window_behavior = Empty_window_behavior::HOLD_LAST_FORWARD;
-    series->nonfinite_policy = plot::Nonfinite_sample_policy::SKIP;
+    series->nonfinite_policy      = plot::Nonfinite_sample_policy::SKIP;
 
     Plot_config config;
     config.auto_v_range_mode = Auto_v_range_mode::VISIBLE;
@@ -581,13 +581,13 @@ bool test_global_value_only_access_falls_back_to_snapshot_scan()
 {
     auto source = std::make_shared<Query_range_source>();
     source->query_status = Data_query_status::UNSUPPORTED;
-    source->samples = {
+    source->samples      = {
         { 0, -3.0f },
         { 0, 8.0f  },
         { 0, 2.0f  },
     };
 
-    auto series = make_series(source);
+    auto series    = make_series(source);
     series->access = make_value_only_policy();
 
     Plot_config config;
@@ -613,7 +613,7 @@ bool test_failed_query_does_not_fall_back_to_stale_scan()
 {
     auto source = std::make_shared<Query_range_source>();
     source->query_status = Data_query_status::FAILED;
-    source->samples = {
+    source->samples      = {
         { 0, 1.0f },
         { 5, 2.0f },
     };
@@ -641,9 +641,9 @@ bool test_failed_query_does_not_fall_back_to_stale_scan()
 bool test_ready_query_result_is_cached_by_current_sequence()
 {
     auto source = std::make_shared<Query_range_source>();
-    source->query_status = Data_query_status::READY;
-    source->query_range = {1.0f, 4.0f};
-    source->query_sequence = 5;
+    source->query_status           = Data_query_status::READY;
+    source->query_range            = {1.0f, 4.0f};
+    source->query_sequence         = 5;
     source->current_sequence_value = 5;
 
     auto series     = make_stable_series(source);
@@ -678,9 +678,9 @@ bool test_ready_query_result_is_cached_by_current_sequence()
 bool test_conservative_query_result_is_not_cached()
 {
     auto source = std::make_shared<Query_range_source>();
-    source->query_status = Data_query_status::READY;
-    source->query_range = {1.0f, 4.0f};
-    source->query_sequence = 5;
+    source->query_status           = Data_query_status::READY;
+    source->query_range            = {1.0f, 4.0f};
+    source->query_sequence         = 5;
     source->current_sequence_value = 5;
 
     auto series     = make_series(source);
@@ -713,8 +713,8 @@ bool test_conservative_query_result_is_not_cached()
 bool test_empty_query_result_is_cached_by_current_sequence()
 {
     auto source = std::make_shared<Query_range_source>();
-    source->query_status = Data_query_status::EMPTY;
-    source->query_sequence = 5;
+    source->query_status           = Data_query_status::EMPTY;
+    source->query_sequence         = 5;
     source->current_sequence_value = 5;
 
     auto series     = make_stable_series(source);
@@ -750,9 +750,9 @@ bool test_empty_query_result_is_cached_by_current_sequence()
 bool test_sequence_change_invalidates_auto_range_cache()
 {
     auto source = std::make_shared<Query_range_source>();
-    source->query_status = Data_query_status::READY;
-    source->query_range = {1.0f, 4.0f};
-    source->query_sequence = 5;
+    source->query_status           = Data_query_status::READY;
+    source->query_range            = {1.0f, 4.0f};
+    source->query_sequence         = 5;
     source->current_sequence_value = 5;
 
     auto series     = make_stable_series(source);
@@ -768,8 +768,8 @@ bool test_sequence_change_invalidates_auto_range_cache()
         true,
         &cache);
 
-    source->query_range = {-3.0f, 9.0f};
-    source->query_sequence = 6;
+    source->query_range            = {-3.0f, 9.0f};
+    source->query_sequence         = 6;
     source->current_sequence_value = 6;
     const auto range = plot::detail::resolve_main_v_range(
         series_map,
@@ -789,9 +789,9 @@ bool test_sequence_change_invalidates_auto_range_cache()
 bool test_visible_window_change_invalidates_auto_range_cache()
 {
     auto source = std::make_shared<Query_range_source>();
-    source->query_status = Data_query_status::READY;
-    source->query_range = {1.0f, 4.0f};
-    source->query_sequence = 5;
+    source->query_status           = Data_query_status::READY;
+    source->query_range            = {1.0f, 4.0f};
+    source->query_sequence         = 5;
     source->current_sequence_value = 5;
 
     auto series     = make_stable_series(source);
@@ -808,8 +808,8 @@ bool test_visible_window_change_invalidates_auto_range_cache()
         true,
         &cache);
 
-    cfg.t_min = 30;
-    cfg.t_max = 40;
+    cfg.t_min           = 30;
+    cfg.t_max           = 40;
     source->query_range = {-6.0f, -2.0f};
     const auto range = plot::detail::resolve_main_v_range(
         series_map,
@@ -829,9 +829,9 @@ bool test_visible_window_change_invalidates_auto_range_cache()
 bool test_access_policy_change_invalidates_auto_range_cache()
 {
     auto source = std::make_shared<Query_range_source>();
-    source->query_status = Data_query_status::READY;
-    source->query_range = {1.0f, 4.0f};
-    source->query_sequence = 5;
+    source->query_status           = Data_query_status::READY;
+    source->query_range            = {1.0f, 4.0f};
+    source->query_sequence         = 5;
     source->current_sequence_value = 5;
 
     auto series = make_stable_series(source);
@@ -867,9 +867,9 @@ bool test_access_policy_change_invalidates_auto_range_cache()
 bool test_semantics_revision_change_invalidates_auto_range_cache()
 {
     auto source = std::make_shared<Query_range_source>();
-    source->query_status = Data_query_status::READY;
-    source->query_range = {1.0f, 4.0f};
-    source->query_sequence = 5;
+    source->query_status           = Data_query_status::READY;
+    source->query_range            = {1.0f, 4.0f};
+    source->query_sequence         = 5;
     source->current_sequence_value = 5;
 
     auto series = make_stable_series(source);
@@ -904,9 +904,9 @@ bool test_semantics_revision_change_invalidates_auto_range_cache()
 bool test_removed_series_prunes_auto_range_cache()
 {
     auto source = std::make_shared<Query_range_source>();
-    source->query_status = Data_query_status::READY;
-    source->query_range = {1.0f, 4.0f};
-    source->query_sequence = 5;
+    source->query_status           = Data_query_status::READY;
+    source->query_range            = {1.0f, 4.0f};
+    source->query_sequence         = 5;
     source->current_sequence_value = 5;
 
     auto series = make_stable_series(source);
@@ -941,13 +941,13 @@ bool test_preview_auto_range_uses_preview_query_source()
     auto main_source    = std::make_shared<Query_range_source>();
     auto preview_source = std::make_shared<Query_range_source>();
     preview_source->query_status = Data_query_status::READY;
-    preview_source->query_range = {-2.0f, 11.0f};
+    preview_source->query_range  = {-2.0f, 11.0f};
 
     auto series = make_series(main_source);
     plot::preview_config_t preview;
-    preview.data_source = preview_source;
-    preview.access = make_policy();
-    preview.style = Display_style::AREA;
+    preview.data_source    = preview_source;
+    preview.access         = make_policy();
+    preview.style          = Display_style::AREA;
     series->preview_config = preview;
 
     Plot_config config;
@@ -973,22 +973,22 @@ bool test_preview_auto_range_uses_preview_query_source()
 bool test_frame_range_planner_populates_ranges_and_reuses_cache()
 {
     auto main_source = std::make_shared<Query_range_source>();
-    main_source->query_status = Data_query_status::READY;
-    main_source->query_range = {2.0f, 5.0f};
-    main_source->query_sequence = 8;
+    main_source->query_status           = Data_query_status::READY;
+    main_source->query_range            = {2.0f, 5.0f};
+    main_source->query_sequence         = 8;
     main_source->current_sequence_value = 8;
 
     auto preview_source = std::make_shared<Query_range_source>();
-    preview_source->query_status = Data_query_status::READY;
-    preview_source->query_range = {-2.0f, 11.0f};
-    preview_source->query_sequence = 9;
+    preview_source->query_status           = Data_query_status::READY;
+    preview_source->query_range            = {-2.0f, 11.0f};
+    preview_source->query_sequence         = 9;
     preview_source->current_sequence_value = 9;
 
     auto series = make_stable_series(main_source);
     plot::preview_config_t preview;
-    preview.data_source = preview_source;
-    preview.access = make_stable_policy();
-    preview.style = Display_style::AREA;
+    preview.data_source    = preview_source;
+    preview.access         = make_stable_policy();
+    preview.style          = Display_style::AREA;
     series->preview_config = preview;
 
     auto series_map = make_series_map(series);
@@ -1024,8 +1024,8 @@ bool test_frame_range_planner_populates_ranges_and_reuses_cache()
     TEST_ASSERT(preview_source->query_calls == 1,
                 "frame planner should preserve preview range cache reuse");
 
-    main_source->query_range = {-4.0f, 12.0f};
-    main_source->query_sequence = 10;
+    main_source->query_range            = {-4.0f, 12.0f};
+    main_source->query_sequence         = 10;
     main_source->current_sequence_value = 10;
     const auto after_sequence_change = planner.plan(
         series_map,
@@ -1049,16 +1049,16 @@ bool test_frame_range_planner_skips_preview_when_disabled()
 {
     auto main_source = std::make_shared<Query_range_source>();
     main_source->query_status = Data_query_status::READY;
-    main_source->query_range = {1.0f, 4.0f};
+    main_source->query_range  = {1.0f, 4.0f};
 
     auto preview_source = std::make_shared<Query_range_source>();
     preview_source->query_status = Data_query_status::READY;
-    preview_source->query_range = {-2.0f, 11.0f};
+    preview_source->query_range  = {-2.0f, 11.0f};
 
     auto series = make_series(main_source);
     plot::preview_config_t preview;
-    preview.data_source = preview_source;
-    preview.access = make_policy();
+    preview.data_source    = preview_source;
+    preview.access         = make_policy();
     series->preview_config = preview;
 
     plot::detail::Frame_range_planner planner;
@@ -1086,14 +1086,14 @@ bool test_frame_range_planner_preserves_step_after_visible_scan()
 {
     auto source = std::make_shared<Query_range_source>();
     source->query_status = Data_query_status::UNSUPPORTED;
-    source->samples = {
+    source->samples      = {
         { 5,  -3.0f  },
         { 15, 8.0f   },
         { 25, 100.0f },
     };
 
     auto series = make_series(source);
-    series->interpolation = Series_interpolation::STEP_AFTER;
+    series->interpolation         = Series_interpolation::STEP_AFTER;
     series->empty_window_behavior = Empty_window_behavior::HOLD_LAST_FORWARD;
 
     Plot_config config;
@@ -1121,7 +1121,7 @@ bool test_manual_range_skips_queries()
 {
     auto source = std::make_shared<Query_range_source>();
     source->query_status = Data_query_status::READY;
-    source->query_range = {-2.0f, 11.0f};
+    source->query_range  = {-2.0f, 11.0f};
 
     const data_config_t cfg = make_data_config();
     Plot_config config;

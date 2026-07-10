@@ -368,11 +368,11 @@ public:
         }
         auto buffer = std::make_shared<std::vector<sample_t>>(m_samples);
         plot::data_snapshot_t snapshot;
-        snapshot.data = buffer->data();
-        snapshot.count = buffer->size();
-        snapshot.stride = sizeof(sample_t);
+        snapshot.data     = buffer->data();
+        snapshot.count    = buffer->size();
+        snapshot.stride   = sizeof(sample_t);
         snapshot.sequence = m_sequence;
-        snapshot.hold = buffer;
+        snapshot.hold     = buffer;
         return {snapshot, plot::snapshot_result_t::Snapshot_status::READY};
     }
 

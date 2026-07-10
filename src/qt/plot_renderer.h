@@ -19,7 +19,7 @@ public:
     explicit Plot_renderer(const Plot_widget* owner);
     ~Plot_renderer() override;
 
-    Plot_renderer(const Plot_renderer&) = delete;
+    Plot_renderer(const Plot_renderer&)            = delete;
     Plot_renderer& operator=(const Plot_renderer&) = delete;
 
     void initialize(QRhiCommandBuffer* cb) override;

@@ -201,21 +201,21 @@ void Primitive_renderer::cleanup_resources()
     m_rhi_state->rect_calls.clear();
     m_rhi_state->grid_calls.clear();
     m_rhi_state->ops.clear();
-    m_rhi_state->rect_used = 0;
-    m_rhi_state->grid_used = 0;
+    m_rhi_state->rect_used             = 0;
+    m_rhi_state->grid_used             = 0;
     m_rhi_state->rect_pipeline.reset();
     m_rhi_state->grid_pipeline.reset();
-    m_rhi_state->rect_pipeline_rpd = nullptr;
+    m_rhi_state->rect_pipeline_rpd     = nullptr;
     m_rhi_state->rect_pipeline_samples = 0;
-    m_rhi_state->grid_pipeline_rpd = nullptr;
+    m_rhi_state->grid_pipeline_rpd     = nullptr;
     m_rhi_state->grid_pipeline_samples = 0;
     m_rhi_state->grid_quad_vbo.reset();
-    m_rhi_state->shaders_loaded = false;
-    m_rhi_state->rect_vert = {};
-    m_rhi_state->rect_frag = {};
-    m_rhi_state->grid_vert = {};
-    m_rhi_state->grid_frag = {};
-    m_rhi_state->last_rhi = nullptr;
+    m_rhi_state->shaders_loaded        = false;
+    m_rhi_state->rect_vert             = {};
+    m_rhi_state->rect_frag             = {};
+    m_rhi_state->grid_vert             = {};
+    m_rhi_state->grid_frag             = {};
+    m_rhi_state->last_rhi              = nullptr;
 }
 
 void Primitive_renderer::batch_rect(const glm::vec4& color, const glm::vec4& rect_coords)
@@ -259,16 +259,16 @@ bool Primitive_renderer::rhi_ensure_rect_pipeline(
     vlayout.setAttributes({a_color, a_rect});
 
     detail::alpha_blended_pipeline_desc_t desc;
-    desc.vert = rhi_state.rect_vert;
-    desc.frag = rhi_state.rect_frag;
-    desc.vlayout = vlayout;
-    desc.ubo_bytes = k_rect_ubo_bytes;
-    desc.ubo_stages = QRhiShaderResourceBinding::VertexStage;
+    desc.vert               = rhi_state.rect_vert;
+    desc.frag               = rhi_state.rect_frag;
+    desc.vlayout            = vlayout;
+    desc.ubo_bytes          = k_rect_ubo_bytes;
+    desc.ubo_stages         = QRhiShaderResourceBinding::VertexStage;
     rhi_state.rect_pipeline = detail::build_alpha_blended_pipeline(rhi, rt, desc);
     if (!rhi_state.rect_pipeline) {
         return false;
     }
-    rhi_state.rect_pipeline_rpd = rpd;
+    rhi_state.rect_pipeline_rpd     = rpd;
     rhi_state.rect_pipeline_samples = samples;
     return true;
 }
@@ -302,17 +302,17 @@ bool Primitive_renderer::rhi_ensure_grid_pipeline(
     // grid_quad.frag is the only stage that reads the UBO; the .vert just
     // forwards the unit-quad vertex through gl_Position.
     detail::alpha_blended_pipeline_desc_t desc;
-    desc.vert = rhi_state.grid_vert;
-    desc.frag = rhi_state.grid_frag;
-    desc.vlayout = vlayout;
-    desc.ubo_bytes = k_grid_ubo_bytes;
-    desc.ubo_stages = QRhiShaderResourceBinding::FragmentStage;
-    desc.flags = QRhiGraphicsPipeline::UsesScissor;
+    desc.vert               = rhi_state.grid_vert;
+    desc.frag               = rhi_state.grid_frag;
+    desc.vlayout            = vlayout;
+    desc.ubo_bytes          = k_grid_ubo_bytes;
+    desc.ubo_stages         = QRhiShaderResourceBinding::FragmentStage;
+    desc.flags              = QRhiGraphicsPipeline::UsesScissor;
     rhi_state.grid_pipeline = detail::build_alpha_blended_pipeline(rhi, rt, desc);
     if (!rhi_state.grid_pipeline) {
         return false;
     }
-    rhi_state.grid_pipeline_rpd = rpd;
+    rhi_state.grid_pipeline_rpd     = rpd;
     rhi_state.grid_pipeline_samples = samples;
     return true;
 }
@@ -352,8 +352,8 @@ bool Primitive_renderer::rhi_ensure_grid_quad_vbo(
 void Primitive_renderer::rhi_reset_frame_plan(rhi_state_t& rhi_state)
 {
     rhi_state.ops.clear();
-    rhi_state.rect_used = 0;
-    rhi_state.grid_used = 0;
+    rhi_state.rect_used     = 0;
+    rhi_state.grid_used     = 0;
     rhi_state.record_cursor = 0;
 }
 
@@ -392,10 +392,10 @@ void Primitive_renderer::flush_rects(const frame_context_t& ctx, const glm::mat4
         rhi_on_backend_change(*m_rhi_state, rhi);
 
         if (!m_rhi_state->shaders_loaded) {
-            m_rhi_state->rect_vert = load_qsb("generic_rect.vert.qsb");
-            m_rhi_state->rect_frag = load_qsb("generic_rect.frag.qsb");
-            m_rhi_state->grid_vert = load_qsb("grid_quad.vert.qsb");
-            m_rhi_state->grid_frag = load_qsb("grid_quad.frag.qsb");
+            m_rhi_state->rect_vert      = load_qsb("generic_rect.vert.qsb");
+            m_rhi_state->rect_frag      = load_qsb("generic_rect.frag.qsb");
+            m_rhi_state->grid_vert      = load_qsb("grid_quad.vert.qsb");
+            m_rhi_state->grid_frag      = load_qsb("grid_quad.frag.qsb");
             m_rhi_state->shaders_loaded = true;
         }
 
@@ -483,8 +483,8 @@ void Primitive_renderer::flush_rects(const frame_context_t& ctx, const glm::mat4
         updates->updateDynamicBuffer(call.ubo.get(), 0, sizeof(block), &block);
 
         rhi_state_t::draw_op_t op{};
-        op.kind = rhi_state_t::op_kind_t::RECT;
-        op.resource_index = slot;
+        op.kind                = rhi_state_t::op_kind_t::RECT;
+        op.resource_index      = slot;
         op.rect.instance_count = instance_count;
         m_rhi_state->ops.push_back(op);
 
@@ -520,10 +520,10 @@ void Primitive_renderer::draw_grid_shader(
         rhi_on_backend_change(*m_rhi_state, rhi);
 
         if (!m_rhi_state->shaders_loaded) {
-            m_rhi_state->rect_vert = load_qsb("generic_rect.vert.qsb");
-            m_rhi_state->rect_frag = load_qsb("generic_rect.frag.qsb");
-            m_rhi_state->grid_vert = load_qsb("grid_quad.vert.qsb");
-            m_rhi_state->grid_frag = load_qsb("grid_quad.frag.qsb");
+            m_rhi_state->rect_vert      = load_qsb("generic_rect.vert.qsb");
+            m_rhi_state->rect_frag      = load_qsb("generic_rect.frag.qsb");
+            m_rhi_state->grid_vert      = load_qsb("grid_quad.vert.qsb");
+            m_rhi_state->grid_frag      = load_qsb("grid_quad.frag.qsb");
             m_rhi_state->shaders_loaded = true;
         }
 
@@ -592,14 +592,14 @@ void Primitive_renderer::draw_grid_shader(
         block.region_origin_px[0] = origin.x;
         block.region_origin_px[1] =
             static_cast<float>(ctx.win_h) - (origin.y + size.y);
-        block.grid_color[0] = color.r;
-        block.grid_color[1] = color.g;
-        block.grid_color[2] = color.b;
-        block.grid_color[3] = color.a;
-        block.v_count = std::min(vertical_levels.count, grid_layer_params_t::k_max_levels);
-        block.t_count = std::min(horizontal_levels.count, grid_layer_params_t::k_max_levels);
+        block.grid_color[0]    = color.r;
+        block.grid_color[1]    = color.g;
+        block.grid_color[2]    = color.b;
+        block.grid_color[3]    = color.a;
+        block.v_count          = std::min(vertical_levels.count, grid_layer_params_t::k_max_levels);
+        block.t_count          = std::min(horizontal_levels.count, grid_layer_params_t::k_max_levels);
         block.framebuffer_y_up = rhi->isYUpInFramebuffer() ? 1 : 0;
-        block.win_h = static_cast<float>(ctx.win_h);
+        block.win_h            = static_cast<float>(ctx.win_h);
         for (int i = 0; i < block.v_count; ++i) {
             block.v_levels[i][0] = vertical_levels.spacing_px[i];
             block.v_levels[i][1] = size.y - vertical_levels.start_px[i];
@@ -616,12 +616,12 @@ void Primitive_renderer::draw_grid_shader(
         updates->updateDynamicBuffer(call.ubo.get(), 0, sizeof(block), &block);
 
         rhi_state_t::draw_op_t op{};
-        op.kind = rhi_state_t::op_kind_t::GRID;
+        op.kind           = rhi_state_t::op_kind_t::GRID;
         op.resource_index = slot;
-        op.grid.x = sx;
-        op.grid.y = sy;
-        op.grid.w = sw;
-        op.grid.h = sh;
+        op.grid.x         = sx;
+        op.grid.y         = sy;
+        op.grid.w         = sw;
+        op.grid.h         = sh;
         m_rhi_state->ops.push_back(op);
         return;
     }

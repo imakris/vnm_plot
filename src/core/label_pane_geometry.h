@@ -133,10 +133,10 @@ namespace vnm::plot::detail {
     }
 
     scissor.enabled = true;
-    scissor.x      = left;
-    scissor.y      = window_height - bottom;
-    scissor.width  = right - left;
-    scissor.height = bottom - top;
+    scissor.x       = left;
+    scissor.y       = window_height - bottom;
+    scissor.width   = right - left;
+    scissor.height  = bottom - top;
 
     const bool contained =
         scissor.x >= 0 &&

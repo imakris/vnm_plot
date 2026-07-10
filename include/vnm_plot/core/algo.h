@@ -556,8 +556,8 @@ visible_sample_aggregate_t aggregate_visible_sample_range(
                 aggregate = {dlow, dhigh, ts_ns, ts_ns, true};
                 return;
             }
-            aggregate.vmin = std::min(aggregate.vmin, dlow);
-            aggregate.vmax = std::max(aggregate.vmax, dhigh);
+            aggregate.vmin    = std::min(aggregate.vmin, dlow);
+            aggregate.vmax    = std::max(aggregate.vmax, dhigh);
             aggregate.tmin_ns = std::min(aggregate.tmin_ns, ts_ns);
             aggregate.tmax_ns = std::max(aggregate.tmax_ns, ts_ns);
         };
@@ -708,7 +708,7 @@ inline std::int64_t choose_snap_ns(std::int64_t span_ns)
     constexpr std::int64_t k_ns_per_us     = 1000LL;
     constexpr std::int64_t k_ns_per_ms     = 1000000LL;
     constexpr std::int64_t k_ns_per_second = 1000000000LL;
-    constexpr std::int64_t k_ns_per_hour   =  3600LL * k_ns_per_second;
+    constexpr std::int64_t k_ns_per_hour   = 3600LL * k_ns_per_second;
     constexpr std::int64_t k_ns_per_day    = 86400LL * k_ns_per_second;
     constexpr std::int64_t k_ns_per_year   = 365LL * k_ns_per_day;
 

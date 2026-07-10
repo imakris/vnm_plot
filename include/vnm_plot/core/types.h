@@ -223,8 +223,8 @@ private:
         sample_semantics_key_t*    semantics_key = nullptr) noexcept
     {
         m_internal_access = access;
-        m_revision = revision;
-        m_semantics_key = semantics_key;
+        m_revision        = revision;
+        m_semantics_key   = semantics_key;
     }
 
     void clear_internal_access() noexcept
@@ -252,8 +252,8 @@ inline sample_semantics_key_t make_explicit_sample_semantics_key(
 {
     sample_semantics_key_t key;
     if (value != 0) {
-        key.value = value;
-        key.revision = revision;
+        key.value        = value;
+        key.revision     = revision;
         key.conservative = false;
     }
     return key;
@@ -405,11 +405,11 @@ struct Data_access_policy
     Data_access_policy& operator=(const Data_access_policy& other)
     {
         if (this != &other) {
-            get_timestamp = other.get_timestamp;
-            get_value = other.get_value;
-            get_range = other.get_range;
-            layout_key = other.layout_key;
-            semantics_key = other.semantics_key;
+            get_timestamp   = other.get_timestamp;
+            get_value       = other.get_value;
+            get_range       = other.get_range;
+            layout_key      = other.layout_key;
+            semantics_key   = other.semantics_key;
             internal_access = other.internal_access;
             ++access_revision;
             bind_accessor_slots();
@@ -420,11 +420,11 @@ struct Data_access_policy
     Data_access_policy& operator=(Data_access_policy&& other)
     {
         if (this != &other) {
-            get_timestamp = other.get_timestamp;
-            get_value = other.get_value;
-            get_range = other.get_range;
-            layout_key = other.layout_key;
-            semantics_key = other.semantics_key;
+            get_timestamp   = other.get_timestamp;
+            get_value       = other.get_value;
+            get_range       = other.get_range;
+            layout_key      = other.layout_key;
+            semantics_key   = other.semantics_key;
             internal_access = other.internal_access;
             ++access_revision;
             bind_accessor_slots();
@@ -572,13 +572,13 @@ inline access_policy_cache_key_t make_access_policy_cache_key(
     const erased_access_policy_t&  view)
 {
     access_policy_cache_key_t key;
-    key.identity = policy;
-    key.layout_key = policy ? policy->layout_key : 0;
-    key.revision = policy ? policy->access_revision : 0;
+    key.identity      = policy;
+    key.layout_key    = policy ? policy->layout_key : 0;
+    key.revision      = policy ? policy->access_revision : 0;
     key.dispatch_kind = view.dispatch_kind;
     key.has_timestamp = view.has_timestamp();
-    key.has_value = view.has_value();
-    key.has_range = view.has_range();
+    key.has_value     = view.has_value();
+    key.has_range     = view.has_range();
     return key;
 }
 
@@ -891,8 +891,8 @@ public:
         {
             std::lock_guard<std::mutex> lock(m_mutex);
             new_payload->sequence = m_payload->sequence + 1;
-            old_payload = std::move(m_payload);
-            m_payload = std::move(new_payload);
+            old_payload           = std::move(m_payload);
+            m_payload             = std::move(new_payload);
         }
     }
 

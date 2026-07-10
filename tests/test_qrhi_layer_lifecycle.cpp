@@ -110,12 +110,12 @@ public:
             ++m_sequence;
         }
         plot::data_snapshot_t snapshot;
-        snapshot.data = m_samples.data();
-        snapshot.count = m_samples.size();
-        snapshot.stride = sizeof(test_sample_t);
+        snapshot.data     = m_samples.data();
+        snapshot.count    = m_samples.size();
+        snapshot.stride   = sizeof(test_sample_t);
         snapshot.sequence = m_sequence;
-        auto hold = std::make_shared<int>(17);
-        m_last_hold = hold;
+        auto hold     = std::make_shared<int>(17);
+        m_last_hold   = hold;
         snapshot.hold = hold;
         return {
             snapshot,
@@ -266,26 +266,26 @@ public:
     bool prepare(const plot::qrhi_series_prepare_context_t& ctx) override
     {
         layer_event_t event;
-        event.layer_id = m_layer_id;
-        event.action = "prepare";
-        event.resources_changed = ctx.resources_changed;
-        event.snapshot_valid = static_cast<bool>(ctx.window.snapshot);
-        event.snapshot_count = ctx.window.snapshot.count;
-        event.snapshot_sequence = ctx.window.snapshot.sequence;
-        event.view_kind = ctx.window.view_kind;
-        event.source_first = ctx.window.source_first;
-        event.source_count = ctx.window.source_count;
-        event.synthetic_hold_count = ctx.window.synthetic_hold_count;
-        event.gpu_count = ctx.window.gpu_count;
-        event.drawable_spans = ctx.window.drawable_spans;
-        event.sample_sequence = ctx.window.sample_sequence;
-        event.t_min_ns = ctx.window.t_min_ns;
-        event.t_max_ns = ctx.window.t_max_ns;
-        event.t_origin_ns = ctx.window.t_origin_ns;
-        event.v_min = ctx.window.v_min;
-        event.v_max = ctx.window.v_max;
-        event.nonfinite_policy = ctx.window.nonfinite_policy;
-        event.sample_buffer = ctx.sample_buffer.buffer;
+        event.layer_id                   = m_layer_id;
+        event.action                     = "prepare";
+        event.resources_changed          = ctx.resources_changed;
+        event.snapshot_valid             = static_cast<bool>(ctx.window.snapshot);
+        event.snapshot_count             = ctx.window.snapshot.count;
+        event.snapshot_sequence          = ctx.window.snapshot.sequence;
+        event.view_kind                  = ctx.window.view_kind;
+        event.source_first               = ctx.window.source_first;
+        event.source_count               = ctx.window.source_count;
+        event.synthetic_hold_count       = ctx.window.synthetic_hold_count;
+        event.gpu_count                  = ctx.window.gpu_count;
+        event.drawable_spans             = ctx.window.drawable_spans;
+        event.sample_sequence            = ctx.window.sample_sequence;
+        event.t_min_ns                   = ctx.window.t_min_ns;
+        event.t_max_ns                   = ctx.window.t_max_ns;
+        event.t_origin_ns                = ctx.window.t_origin_ns;
+        event.v_min                      = ctx.window.v_min;
+        event.v_max                      = ctx.window.v_max;
+        event.nonfinite_policy           = ctx.window.nonfinite_policy;
+        event.sample_buffer              = ctx.sample_buffer.buffer;
         event.sample_buffer_first_sample = ctx.sample_buffer.first_sample;
         event.sample_buffer_sample_count = ctx.sample_buffer.sample_count;
         event.sample_buffer_source_first = ctx.sample_buffer.source_first;
@@ -293,10 +293,10 @@ public:
         event.sample_buffer_synthetic_hold_count =
             ctx.sample_buffer.synthetic_hold_count;
         event.sample_buffer_t_origin_ns = ctx.sample_buffer.t_origin_ns;
-        event.sample_buffer_t_min_ns = ctx.sample_buffer.t_min_ns;
-        event.sample_buffer_t_max_ns = ctx.sample_buffer.t_max_ns;
-        event.sample_buffer_v_min = ctx.sample_buffer.v_min;
-        event.sample_buffer_v_max = ctx.sample_buffer.v_max;
+        event.sample_buffer_t_min_ns    = ctx.sample_buffer.t_min_ns;
+        event.sample_buffer_t_max_ns    = ctx.sample_buffer.t_max_ns;
+        event.sample_buffer_v_min       = ctx.sample_buffer.v_min;
+        event.sample_buffer_v_max       = ctx.sample_buffer.v_max;
         event.sample_buffer_stride_bytes =
             ctx.sample_buffer.layout.stride_bytes;
         event.sample_buffer_t_rel_seconds_offset =
@@ -314,22 +314,22 @@ public:
     void record(const plot::qrhi_series_record_context_t& ctx) override
     {
         layer_event_t event;
-        event.layer_id = m_layer_id;
-        event.action = "record";
-        event.snapshot_valid = static_cast<bool>(ctx.window.snapshot);
-        event.snapshot_count = ctx.window.snapshot.count;
-        event.snapshot_sequence = ctx.window.snapshot.sequence;
-        event.view_kind = ctx.window.view_kind;
-        event.source_first = ctx.window.source_first;
-        event.source_count = ctx.window.source_count;
+        event.layer_id             = m_layer_id;
+        event.action               = "record";
+        event.snapshot_valid       = static_cast<bool>(ctx.window.snapshot);
+        event.snapshot_count       = ctx.window.snapshot.count;
+        event.snapshot_sequence    = ctx.window.snapshot.sequence;
+        event.view_kind            = ctx.window.view_kind;
+        event.source_first         = ctx.window.source_first;
+        event.source_count         = ctx.window.source_count;
         event.synthetic_hold_count = ctx.window.synthetic_hold_count;
-        event.gpu_count = ctx.window.gpu_count;
-        event.drawable_spans = ctx.window.drawable_spans;
-        event.sample_sequence = ctx.window.sample_sequence;
-        event.t_min_ns = ctx.window.t_min_ns;
-        event.t_max_ns = ctx.window.t_max_ns;
-        event.t_origin_ns = ctx.window.t_origin_ns;
-        event.nonfinite_policy = ctx.window.nonfinite_policy;
+        event.gpu_count            = ctx.window.gpu_count;
+        event.drawable_spans       = ctx.window.drawable_spans;
+        event.sample_sequence      = ctx.window.sample_sequence;
+        event.t_min_ns             = ctx.window.t_min_ns;
+        event.t_max_ns             = ctx.window.t_max_ns;
+        event.t_origin_ns          = ctx.window.t_origin_ns;
+        event.nonfinite_policy     = ctx.window.nonfinite_policy;
         m_events.push_back(event);
     }
 
@@ -441,10 +441,10 @@ public:
         }
 
         QRhiResourceUpdateBatch* updates = m_rhi->nextResourceUpdateBatch();
-        ctx.rhi = m_rhi.get();
-        ctx.cb = command_buffer;
+        ctx.rhi           = m_rhi.get();
+        ctx.cb            = command_buffer;
         ctx.render_target = m_render_target.get();
-        ctx.rhi_updates = updates;
+        ctx.rhi_updates   = updates;
 
         renderer.prepare(ctx, series_map);
         events.push_back({"frame", "begin_pass"});
@@ -469,7 +469,7 @@ private:
 plot::frame_layout_result_t make_layout()
 {
     plot::frame_layout_result_t layout;
-    layout.usable_width = 240.0;
+    layout.usable_width  = 240.0;
     layout.usable_height = 120.0;
     return layout;
 }
@@ -479,15 +479,15 @@ plot::frame_context_t make_context(
     const plot::Plot_config&           config)
 {
     plot::frame_context_t ctx{layout};
-    ctx.t0 = 0;
-    ctx.t1 = 3'000'000'000LL;
+    ctx.t0              = 0;
+    ctx.t1              = 3'000'000'000LL;
     ctx.t_available_min = 0;
     ctx.t_available_max = 7'000'000'000LL;
-    ctx.v0 = 0.0f;
-    ctx.v1 = 10.0f;
-    ctx.win_w = 320;
-    ctx.win_h = 180;
-    ctx.config = &config;
+    ctx.v0              = 0.0f;
+    ctx.v1              = 10.0f;
+    ctx.win_w           = 320;
+    ctx.win_h           = 180;
+    ctx.config          = &config;
     return ctx;
 }
 
@@ -495,10 +495,10 @@ std::shared_ptr<plot::series_data_t> make_layer_only_series(
     std::shared_ptr<Test_source>                                   source,
     std::vector<std::shared_ptr<const plot::Qrhi_series_layer>>    layers)
 {
-    auto series = std::make_shared<plot::rhi_series_data_t>();
-    series->style = plot::Display_style::NONE;
+    auto series         = std::make_shared<plot::rhi_series_data_t>();
+    series->style       = plot::Display_style::NONE;
     series->data_source = source;
-    series->access = make_access_policy();
+    series->access      = make_access_policy();
     series->qrhi_layers = std::move(layers);
     return series;
 }
@@ -508,10 +508,10 @@ std::shared_ptr<plot::series_data_t> make_builtin_plus_layer_series(
     plot::Display_style                                            style,
     std::vector<std::shared_ptr<const plot::Qrhi_series_layer>>    layers)
 {
-    auto series = std::make_shared<plot::rhi_series_data_t>();
-    series->style = style;
+    auto series         = std::make_shared<plot::rhi_series_data_t>();
+    series->style       = style;
     series->data_source = source;
-    series->access = make_access_policy();
+    series->access      = make_access_policy();
     series->qrhi_layers = std::move(layers);
     return series;
 }
@@ -717,9 +717,9 @@ bool test_style_none_without_layers_does_not_upload_samples()
     std::vector<layer_event_t> events;
     auto source = std::make_shared<Test_source>();
     auto series = std::make_shared<plot::rhi_series_data_t>();
-    series->style = plot::Display_style::NONE;
+    series->style       = plot::Display_style::NONE;
     series->data_source = source;
-    series->access = make_access_policy();
+    series->access      = make_access_policy();
 
     std::map<int, std::shared_ptr<const plot::series_data_t>> series_map;
     const int series_id = 8;
@@ -780,9 +780,9 @@ bool test_custom_sample_buffer_not_reused_when_current_access_cannot_stage()
     TEST_ASSERT(first_prepare && first_prepare->sample_buffer,
         "initial custom-only prepare should expose a compact sample buffer");
 
-    auto value_only_series = make_layer_only_series(source, {layer});
+    auto value_only_series    = make_layer_only_series(source, {layer});
     value_only_series->access = make_value_only_access_policy();
-    series_map[series_id] = value_only_series;
+    series_map[series_id]     = value_only_series;
     events.clear();
 
     TEST_ASSERT(
@@ -848,10 +848,10 @@ bool test_builtin_upload_stages_visible_window_only()
     plot::Plot_config config;
     const plot::frame_layout_result_t layout = make_layout();
     plot::frame_context_t ctx = make_context(layout, config);
-    ctx.t0 = 40LL * k_second_ns;
-    ctx.t1 = 42LL * k_second_ns;
-    ctx.t_available_min = ctx.t0;
-    ctx.t_available_max = ctx.t1;
+    ctx.t0                                   = 40LL * k_second_ns;
+    ctx.t1                                   = 42LL * k_second_ns;
+    ctx.t_available_min                      = ctx.t0;
+    ctx.t_available_max                      = ctx.t1;
 
     TEST_ASSERT(
         rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
@@ -918,10 +918,10 @@ bool test_builtin_upload_reuses_vbo_capacity_headroom()
     plot::Plot_config config;
     const plot::frame_layout_result_t layout = make_layout();
     plot::frame_context_t ctx = make_context(layout, config);
-    ctx.t0 = 40LL * k_second_ns;
-    ctx.t1 = 41LL * k_second_ns;
-    ctx.t_available_min = ctx.t0;
-    ctx.t_available_max = ctx.t1;
+    ctx.t0                                   = 40LL * k_second_ns;
+    ctx.t1                                   = 41LL * k_second_ns;
+    ctx.t_available_min                      = ctx.t0;
+    ctx.t_available_max                      = ctx.t1;
 
     TEST_ASSERT(
         rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
@@ -943,7 +943,7 @@ bool test_builtin_upload_reuses_vbo_capacity_headroom()
         "first capacity test frame should allocate enough VBO bytes");
 
     events.clear();
-    ctx.t1 = 42LL * k_second_ns;
+    ctx.t1              = 42LL * k_second_ns;
     ctx.t_available_max = ctx.t1;
     TEST_ASSERT(
         rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
@@ -1004,10 +1004,10 @@ bool test_combined_builtin_uploads_samples_once_per_view()
     plot::Plot_config config;
     const plot::frame_layout_result_t layout = make_layout();
     plot::frame_context_t ctx = make_context(layout, config);
-    ctx.t0 = 40LL * k_second_ns;
-    ctx.t1 = 42LL * k_second_ns;
-    ctx.t_available_min = ctx.t0;
-    ctx.t_available_max = ctx.t1;
+    ctx.t0                                   = 40LL * k_second_ns;
+    ctx.t1                                   = 42LL * k_second_ns;
+    ctx.t_available_min                      = ctx.t0;
+    ctx.t_available_max                      = ctx.t1;
 
     TEST_ASSERT(
         rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
@@ -1079,14 +1079,14 @@ bool test_direct_member_policy_uses_member_dispatch_in_renderer_staging()
         return source;
     };
 
-    auto direct_series = std::make_shared<plot::series_data_t>();
-    direct_series->style = plot::Display_style::DOTS;
+    auto direct_series         = std::make_shared<plot::series_data_t>();
+    direct_series->style       = plot::Display_style::DOTS;
     direct_series->data_source = make_source();
-    direct_series->access = make_direct_member_access_policy();
+    direct_series->access      = make_direct_member_access_policy();
 
     access_call_counts_t fallback_calls;
-    auto fallback_series = std::make_shared<plot::series_data_t>();
-    fallback_series->style = plot::Display_style::DOTS;
+    auto fallback_series         = std::make_shared<plot::series_data_t>();
+    fallback_series->style       = plot::Display_style::DOTS;
     fallback_series->data_source = make_source();
     fallback_series->access =
         make_fallback_access_policy_with_counted_public_accessors(fallback_calls);
@@ -1109,10 +1109,10 @@ bool test_direct_member_policy_uses_member_dispatch_in_renderer_staging()
     plot::Plot_config config;
     const plot::frame_layout_result_t layout = make_layout();
     plot::frame_context_t ctx = make_context(layout, config);
-    ctx.t0 = 0;
-    ctx.t1 = 5LL * k_second_ns;
-    ctx.t_available_min = ctx.t0;
-    ctx.t_available_max = ctx.t1;
+    ctx.t0                                   = 0;
+    ctx.t1                                   = 5LL * k_second_ns;
+    ctx.t_available_min                      = ctx.t0;
+    ctx.t_available_max                      = ctx.t1;
 
     TEST_ASSERT(
         rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
@@ -1165,10 +1165,10 @@ bool test_access_policy_change_reuploads_builtin_samples()
     }
     source->set_samples(std::move(samples));
 
-    auto series = std::make_shared<plot::rhi_series_data_t>();
-    series->style = plot::Display_style::DOTS;
+    auto series         = std::make_shared<plot::rhi_series_data_t>();
+    series->style       = plot::Display_style::DOTS;
     series->data_source = source;
-    series->access = make_direct_member_access_policy();
+    series->access      = make_direct_member_access_policy();
 
     std::map<int, std::shared_ptr<const plot::series_data_t>> series_map;
     const int series_id = 53;
@@ -1186,10 +1186,10 @@ bool test_access_policy_change_reuploads_builtin_samples()
     plot::Plot_config config;
     const plot::frame_layout_result_t layout = make_layout();
     plot::frame_context_t ctx = make_context(layout, config);
-    ctx.t0 = 0;
-    ctx.t1 = 5LL * k_second_ns;
-    ctx.t_available_min = ctx.t0;
-    ctx.t_available_max = ctx.t1;
+    ctx.t0                                   = 0;
+    ctx.t1                                   = 5LL * k_second_ns;
+    ctx.t_available_min                      = ctx.t0;
+    ctx.t_available_max                      = ctx.t1;
 
     TEST_ASSERT(
         rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
@@ -1235,10 +1235,10 @@ bool test_builtin_staging_normalizes_finite_reversed_ranges()
         { 3LL * k_second_ns, 4.0f, 6.0f, 4.0f}
     });
 
-    auto series = std::make_shared<plot::series_data_t>();
-    series->style = plot::Display_style::DOTS;
+    auto series         = std::make_shared<plot::series_data_t>();
+    series->style       = plot::Display_style::DOTS;
     series->data_source = source;
-    series->access = make_direct_member_access_policy();
+    series->access      = make_direct_member_access_policy();
 
     std::map<int, std::shared_ptr<const plot::series_data_t>> series_map;
     const int series_id = 54;
@@ -1256,10 +1256,10 @@ bool test_builtin_staging_normalizes_finite_reversed_ranges()
     plot::Plot_config config;
     const plot::frame_layout_result_t layout = make_layout();
     plot::frame_context_t ctx = make_context(layout, config);
-    ctx.t0 = 0;
-    ctx.t1 = 3LL * k_second_ns;
-    ctx.t_available_min = ctx.t0;
-    ctx.t_available_max = ctx.t1;
+    ctx.t0                                   = 0;
+    ctx.t1                                   = 3LL * k_second_ns;
+    ctx.t_available_min                      = ctx.t0;
+    ctx.t_available_max                      = ctx.t1;
 
     TEST_ASSERT(
         rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
@@ -1341,10 +1341,10 @@ bool test_nonfinite_break_and_skip_split_drawable_spans()
         plot::Plot_config config;
         const plot::frame_layout_result_t layout = make_layout();
         plot::frame_context_t ctx = make_context(layout, config);
-        ctx.t0 = 0;
-        ctx.t1 = 4LL * k_second_ns;
-        ctx.t_available_min = ctx.t0;
-        ctx.t_available_max = ctx.t1;
+        ctx.t0                                   = 0;
+        ctx.t1                                   = 4LL * k_second_ns;
+        ctx.t_available_min                      = ctx.t0;
+        ctx.t_available_max                      = ctx.t1;
 
         TEST_ASSERT(
             rhi_fixture.render_layer_frame(
@@ -1456,10 +1456,10 @@ bool test_nonfinite_replace_with_zero_keeps_contiguous_span()
     plot::Plot_config config;
     const plot::frame_layout_result_t layout = make_layout();
     plot::frame_context_t ctx = make_context(layout, config);
-    ctx.t0 = 0;
-    ctx.t1 = 4LL * k_second_ns;
-    ctx.t_available_min = ctx.t0;
-    ctx.t_available_max = ctx.t1;
+    ctx.t0                                   = 0;
+    ctx.t1                                   = 4LL * k_second_ns;
+    ctx.t_available_min                      = ctx.t0;
+    ctx.t_available_max                      = ctx.t1;
 
     TEST_ASSERT(
         rhi_fixture.render_layer_frame(
@@ -1538,10 +1538,10 @@ bool test_nonfinite_reject_window_suppresses_drawable_upload()
     plot::Plot_config config;
     const plot::frame_layout_result_t layout = make_layout();
     plot::frame_context_t ctx = make_context(layout, config);
-    ctx.t0 = 0;
-    ctx.t1 = 3LL * k_second_ns;
-    ctx.t_available_min = ctx.t0;
-    ctx.t_available_max = ctx.t1;
+    ctx.t0                                   = 0;
+    ctx.t1                                   = 3LL * k_second_ns;
+    ctx.t_available_min                      = ctx.t0;
+    ctx.t_available_max                      = ctx.t1;
 
     TEST_ASSERT(
         rhi_fixture.render_layer_frame(
@@ -1576,10 +1576,10 @@ bool test_nonfinite_reject_window_invalidates_prior_upload_before_busy()
     });
 
     auto series = std::make_shared<plot::series_data_t>();
-    series->style = plot::Display_style::DOTS;
+    series->style            = plot::Display_style::DOTS;
     series->nonfinite_policy = plot::Nonfinite_sample_policy::REJECT_WINDOW;
-    series->data_source = source;
-    series->access = make_access_policy();
+    series->data_source      = source;
+    series->access           = make_access_policy();
 
     std::map<int, std::shared_ptr<const plot::series_data_t>> series_map;
     const int series_id = 104;
@@ -1597,10 +1597,10 @@ bool test_nonfinite_reject_window_invalidates_prior_upload_before_busy()
     plot::Plot_config config;
     const plot::frame_layout_result_t layout = make_layout();
     plot::frame_context_t ctx = make_context(layout, config);
-    ctx.t0 = 0;
-    ctx.t1 = 2LL * k_second_ns;
-    ctx.t_available_min = ctx.t0;
-    ctx.t_available_max = ctx.t1;
+    ctx.t0                                   = 0;
+    ctx.t1                                   = 2LL * k_second_ns;
+    ctx.t_available_min                      = ctx.t0;
+    ctx.t_available_max                      = ctx.t1;
 
     TEST_ASSERT(
         rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
@@ -1682,10 +1682,10 @@ bool test_custom_layer_zero_gpu_window_invalidates_prior_upload_before_busy()
     plot::Plot_config config;
     const plot::frame_layout_result_t layout = make_layout();
     plot::frame_context_t ctx = make_context(layout, config);
-    ctx.t0 = 0;
-    ctx.t1 = 2LL * k_second_ns;
-    ctx.t_available_min = ctx.t0;
-    ctx.t_available_max = ctx.t1;
+    ctx.t0                                   = 0;
+    ctx.t1                                   = 2LL * k_second_ns;
+    ctx.t_available_min                      = ctx.t0;
+    ctx.t_available_max                      = ctx.t1;
 
     TEST_ASSERT(
         rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
@@ -1742,10 +1742,10 @@ bool test_non_drawable_window_invalidates_prior_upload_before_fast_path()
         { 10LL * k_second_ns, 10.0f}
     });
 
-    auto series = std::make_shared<plot::series_data_t>();
-    series->style = plot::Display_style::DOTS;
+    auto series         = std::make_shared<plot::series_data_t>();
+    series->style       = plot::Display_style::DOTS;
     series->data_source = source;
-    series->access = make_access_policy();
+    series->access      = make_access_policy();
 
     std::map<int, std::shared_ptr<const plot::series_data_t>> series_map;
     const int series_id = 105;
@@ -1763,10 +1763,10 @@ bool test_non_drawable_window_invalidates_prior_upload_before_fast_path()
     plot::Plot_config config;
     const plot::frame_layout_result_t layout = make_layout();
     plot::frame_context_t ctx = make_context(layout, config);
-    ctx.t0 = 0;
-    ctx.t1 = 1LL * k_second_ns;
-    ctx.t_available_min = ctx.t0;
-    ctx.t_available_max = ctx.t1;
+    ctx.t0                                   = 0;
+    ctx.t1                                   = 1LL * k_second_ns;
+    ctx.t_available_min                      = ctx.t0;
+    ctx.t_available_max                      = ctx.t1;
 
     TEST_ASSERT(
         rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
@@ -1781,9 +1781,9 @@ bool test_non_drawable_window_invalidates_prior_upload_before_fast_path()
     source->set_samples({
         {10LL * k_second_ns, 10.0f}
     });
-    series->style = plot::Display_style::LINE;
-    ctx.t0 = 10LL * k_second_ns;
-    ctx.t1 = 11LL * k_second_ns;
+    series->style       = plot::Display_style::LINE;
+    ctx.t0              = 10LL * k_second_ns;
+    ctx.t1              = 11LL * k_second_ns;
     ctx.t_available_min = ctx.t0;
     ctx.t_available_max = ctx.t1;
     events.clear();
@@ -1822,10 +1822,10 @@ bool test_non_rhi_prepare_invalidates_prior_upload_before_fast_path()
         { 10LL * k_second_ns, 10.0f}
     });
 
-    auto series = std::make_shared<plot::series_data_t>();
-    series->style = plot::Display_style::DOTS;
+    auto series         = std::make_shared<plot::series_data_t>();
+    series->style       = plot::Display_style::DOTS;
     series->data_source = source;
-    series->access = make_access_policy();
+    series->access      = make_access_policy();
 
     std::map<int, std::shared_ptr<const plot::series_data_t>> series_map;
     const int series_id = 110;
@@ -1843,10 +1843,10 @@ bool test_non_rhi_prepare_invalidates_prior_upload_before_fast_path()
     plot::Plot_config config;
     const plot::frame_layout_result_t layout = make_layout();
     plot::frame_context_t ctx = make_context(layout, config);
-    ctx.t0 = 0;
-    ctx.t1 = 1LL * k_second_ns;
-    ctx.t_available_min = ctx.t0;
-    ctx.t_available_max = ctx.t1;
+    ctx.t0                                   = 0;
+    ctx.t1                                   = 1LL * k_second_ns;
+    ctx.t_available_min                      = ctx.t0;
+    ctx.t_available_max                      = ctx.t1;
 
     TEST_ASSERT(
         rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
@@ -1859,8 +1859,8 @@ bool test_non_rhi_prepare_invalidates_prior_upload_before_fast_path()
         "initial QRhi frame should upload multiple samples");
 
     plot::frame_context_t non_rhi_ctx = make_context(layout, config);
-    non_rhi_ctx.t0 = 10LL * k_second_ns;
-    non_rhi_ctx.t1 = 11LL * k_second_ns;
+    non_rhi_ctx.t0              = 10LL * k_second_ns;
+    non_rhi_ctx.t1              = 11LL * k_second_ns;
     non_rhi_ctx.t_available_min = non_rhi_ctx.t0;
     non_rhi_ctx.t_available_max = non_rhi_ctx.t1;
     renderer.prepare(non_rhi_ctx, series_map);
@@ -1942,10 +1942,10 @@ bool test_nonfinite_hold_forward_policy_controls_held_sample()
         plot::Plot_config config;
         const plot::frame_layout_result_t layout = make_layout();
         plot::frame_context_t ctx = make_context(layout, config);
-        ctx.t0 = 3LL * k_second_ns;
-        ctx.t1 = 4LL * k_second_ns;
-        ctx.t_available_min = ctx.t0;
-        ctx.t_available_max = ctx.t1;
+        ctx.t0                                   = 3LL * k_second_ns;
+        ctx.t1                                   = 4LL * k_second_ns;
+        ctx.t_available_min                      = ctx.t0;
+        ctx.t_available_max                      = ctx.t1;
 
         TEST_ASSERT(
             rhi_fixture.render_layer_frame(
@@ -2037,10 +2037,10 @@ bool test_nonfinite_skip_hold_forward_preserves_earlier_held_sample_with_visible
     plot::Plot_config config;
     const plot::frame_layout_result_t layout = make_layout();
     plot::frame_context_t ctx = make_context(layout, config);
-    ctx.t0 = 3LL * k_second_ns;
-    ctx.t1 = 6LL * k_second_ns;
-    ctx.t_available_min = ctx.t0;
-    ctx.t_available_max = ctx.t1;
+    ctx.t0                                   = 3LL * k_second_ns;
+    ctx.t1                                   = 6LL * k_second_ns;
+    ctx.t_available_min                      = ctx.t0;
+    ctx.t_available_max                      = ctx.t1;
 
     TEST_ASSERT(
         rhi_fixture.render_layer_frame(
@@ -2128,10 +2128,10 @@ bool test_nonfinite_skip_hold_forward_ignores_future_padding_without_visible_dat
     plot::Plot_config config;
     const plot::frame_layout_result_t layout = make_layout();
     plot::frame_context_t ctx = make_context(layout, config);
-    ctx.t0 = 3LL * k_second_ns;
-    ctx.t1 = 4LL * k_second_ns;
-    ctx.t_available_min = ctx.t0;
-    ctx.t_available_max = ctx.t1;
+    ctx.t0                                   = 3LL * k_second_ns;
+    ctx.t1                                   = 4LL * k_second_ns;
+    ctx.t_available_min                      = ctx.t0;
+    ctx.t_available_max                      = ctx.t1;
 
     TEST_ASSERT(
         rhi_fixture.render_layer_frame(
@@ -2218,10 +2218,10 @@ bool test_global_draw_order_sorts_builtins_across_series_and_custom_layers()
     plot::Plot_config config;
     const plot::frame_layout_result_t layout = make_layout();
     plot::frame_context_t ctx = make_context(layout, config);
-    ctx.t0 = 10LL * k_second_ns;
-    ctx.t1 = 12LL * k_second_ns;
-    ctx.t_available_min = ctx.t0;
-    ctx.t_available_max = ctx.t1;
+    ctx.t0                                   = 10LL * k_second_ns;
+    ctx.t1                                   = 12LL * k_second_ns;
+    ctx.t_available_min                      = ctx.t0;
+    ctx.t_available_max                      = ctx.t1;
 
     TEST_ASSERT(
         rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
@@ -2311,10 +2311,10 @@ bool test_builtin_draw_commands_sort_relative_to_custom_layers()
     plot::Plot_config config;
     const plot::frame_layout_result_t layout = make_layout();
     plot::frame_context_t ctx = make_context(layout, config);
-    ctx.t0 = 10LL * k_second_ns;
-    ctx.t1 = 12LL * k_second_ns;
-    ctx.t_available_min = ctx.t0;
-    ctx.t_available_max = ctx.t1;
+    ctx.t0                                   = 10LL * k_second_ns;
+    ctx.t1                                   = 12LL * k_second_ns;
+    ctx.t_available_min                      = ctx.t0;
+    ctx.t_available_max                      = ctx.t1;
 
     TEST_ASSERT(
         rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
@@ -2387,10 +2387,10 @@ bool test_builtins_do_not_use_qrhi_layer_cache()
     plot::Plot_config config;
     const plot::frame_layout_result_t layout = make_layout();
     plot::frame_context_t ctx = make_context(layout, config);
-    ctx.t0 = 10LL * k_second_ns;
-    ctx.t1 = 12LL * k_second_ns;
-    ctx.t_available_min = ctx.t0;
-    ctx.t_available_max = ctx.t1;
+    ctx.t0                                   = 10LL * k_second_ns;
+    ctx.t1                                   = 12LL * k_second_ns;
+    ctx.t_available_min                      = ctx.t0;
+    ctx.t_available_max                      = ctx.t1;
 
     TEST_ASSERT(
         rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
@@ -2471,10 +2471,10 @@ bool test_builtin_upload_stages_visible_windows_for_dots_and_area()
         plot::Plot_config config;
         const plot::frame_layout_result_t layout = make_layout();
         plot::frame_context_t ctx = make_context(layout, config);
-        ctx.t0 = 40LL * k_second_ns;
-        ctx.t1 = 42LL * k_second_ns;
-        ctx.t_available_min = ctx.t0;
-        ctx.t_available_max = ctx.t1;
+        ctx.t0                                   = 40LL * k_second_ns;
+        ctx.t1                                   = 42LL * k_second_ns;
+        ctx.t_available_min                      = ctx.t0;
+        ctx.t_available_max                      = ctx.t1;
 
         TEST_ASSERT(
             rhi_fixture.render_layer_frame(
@@ -2524,12 +2524,12 @@ bool test_builtin_upload_stages_single_synthetic_hold_sample()
     });
 
     auto series = std::make_shared<plot::rhi_series_data_t>();
-    series->style = plot::Display_style::LINE;
-    series->interpolation = plot::Series_interpolation::STEP_AFTER;
+    series->style                 = plot::Display_style::LINE;
+    series->interpolation         = plot::Series_interpolation::STEP_AFTER;
     series->empty_window_behavior = plot::Empty_window_behavior::HOLD_LAST_FORWARD;
-    series->data_source = source;
-    series->access = make_access_policy();
-    series->qrhi_layers = {layer};
+    series->data_source           = source;
+    series->access                = make_access_policy();
+    series->qrhi_layers           = {layer};
 
     std::map<int, std::shared_ptr<const plot::series_data_t>> series_map;
     const int series_id = 32;
@@ -2546,10 +2546,10 @@ bool test_builtin_upload_stages_single_synthetic_hold_sample()
     plot::Plot_config config;
     const plot::frame_layout_result_t layout = make_layout();
     plot::frame_context_t ctx = make_context(layout, config);
-    ctx.t0 = 10LL * k_second_ns;
-    ctx.t1 = 12LL * k_second_ns;
-    ctx.t_available_min = ctx.t0;
-    ctx.t_available_max = ctx.t1;
+    ctx.t0                                   = 10LL * k_second_ns;
+    ctx.t1                                   = 12LL * k_second_ns;
+    ctx.t_available_min                      = ctx.t0;
+    ctx.t_available_max                      = ctx.t1;
 
     TEST_ASSERT(
         rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
@@ -2607,12 +2607,12 @@ bool test_builtin_upload_stages_hold_windows_for_dots_and_area()
         });
 
         auto series = std::make_shared<plot::rhi_series_data_t>();
-        series->style = test_case.style;
+        series->style         = test_case.style;
         series->interpolation = plot::Series_interpolation::STEP_AFTER;
         series->empty_window_behavior =
             plot::Empty_window_behavior::HOLD_LAST_FORWARD;
         series->data_source = source;
-        series->access = make_access_policy();
+        series->access      = make_access_policy();
         series->qrhi_layers = {layer};
 
         std::map<int, std::shared_ptr<const plot::series_data_t>> series_map;
@@ -2629,10 +2629,10 @@ bool test_builtin_upload_stages_hold_windows_for_dots_and_area()
         plot::Plot_config config;
         const plot::frame_layout_result_t layout = make_layout();
         plot::frame_context_t ctx = make_context(layout, config);
-        ctx.t0 = 10LL * k_second_ns;
-        ctx.t1 = 12LL * k_second_ns;
-        ctx.t_available_min = ctx.t0;
-        ctx.t_available_max = ctx.t1;
+        ctx.t0                                   = 10LL * k_second_ns;
+        ctx.t1                                   = 12LL * k_second_ns;
+        ctx.t_available_min                      = ctx.t0;
+        ctx.t_available_max                      = ctx.t1;
 
         TEST_ASSERT(
             rhi_fixture.render_layer_frame(
@@ -2756,12 +2756,12 @@ bool test_resources_changed_tracks_hold_timestamp_changes()
     });
 
     auto series = std::make_shared<plot::rhi_series_data_t>();
-    series->style = plot::Display_style::LINE;
+    series->style         = plot::Display_style::LINE;
     series->interpolation = plot::Series_interpolation::STEP_AFTER;
     series->empty_window_behavior =
         plot::Empty_window_behavior::HOLD_LAST_FORWARD;
     series->data_source = source;
-    series->access = make_access_policy();
+    series->access      = make_access_policy();
     series->qrhi_layers = {layer};
 
     std::map<int, std::shared_ptr<const plot::series_data_t>> series_map;
@@ -2778,10 +2778,10 @@ bool test_resources_changed_tracks_hold_timestamp_changes()
     plot::Plot_config config;
     const plot::frame_layout_result_t layout = make_layout();
     plot::frame_context_t ctx = make_context(layout, config);
-    ctx.t0 = 10LL * k_second_ns;
-    ctx.t1 = 12LL * k_second_ns;
-    ctx.t_available_min = ctx.t0;
-    ctx.t_available_max = ctx.t1;
+    ctx.t0                                   = 10LL * k_second_ns;
+    ctx.t1                                   = 12LL * k_second_ns;
+    ctx.t_available_min                      = ctx.t0;
+    ctx.t_available_max                      = ctx.t1;
 
     TEST_ASSERT(
         rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
@@ -2799,7 +2799,7 @@ bool test_resources_changed_tracks_hold_timestamp_changes()
     const std::int64_t  first_origin = first.t_origin_ns;
 
     events.clear();
-    ctx.t1 = 13LL * k_second_ns;
+    ctx.t1              = 13LL * k_second_ns;
     ctx.t_available_max = ctx.t1;
     TEST_ASSERT(
         rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
@@ -2903,11 +2903,11 @@ bool test_busy_stale_fallback_rejects_changed_request_shape()
         });
 
         auto series = std::make_shared<plot::series_data_t>();
-        series->style = plot::Display_style::LINE;
-        series->interpolation = test_case.interpolation;
+        series->style                 = plot::Display_style::LINE;
+        series->interpolation         = test_case.interpolation;
         series->empty_window_behavior = test_case.empty_behavior;
-        series->data_source = source;
-        series->access = make_access_policy();
+        series->data_source           = source;
+        series->access                = make_access_policy();
 
         std::map<int, std::shared_ptr<const plot::series_data_t>> series_map;
         series_map[series_id] = series;
@@ -2924,8 +2924,8 @@ bool test_busy_stale_fallback_rejects_changed_request_shape()
         plot::frame_layout_result_t layout = make_layout();
         layout.usable_width = test_case.initial_width;
         plot::frame_context_t ctx = make_context(layout, config);
-        ctx.t0 = test_case.initial_t0;
-        ctx.t1 = test_case.initial_t1;
+        ctx.t0              = test_case.initial_t0;
+        ctx.t1              = test_case.initial_t1;
         ctx.t_available_min = ctx.t0;
         ctx.t_available_max = ctx.t1;
 
@@ -2954,8 +2954,8 @@ bool test_busy_stale_fallback_rejects_changed_request_shape()
         plot::frame_layout_result_t busy_layout = make_layout();
         busy_layout.usable_width = test_case.busy_width;
         plot::frame_context_t busy_ctx = make_context(busy_layout, config);
-        busy_ctx.t0 = test_case.busy_t0;
-        busy_ctx.t1 = test_case.busy_t1;
+        busy_ctx.t0              = test_case.busy_t0;
+        busy_ctx.t1              = test_case.busy_t1;
         busy_ctx.t_available_min = busy_ctx.t0;
         busy_ctx.t_available_max = busy_ctx.t1;
         TEST_ASSERT(
@@ -2992,12 +2992,12 @@ bool test_busy_hold_forward_does_not_prepare_stale_tmax()
     });
 
     auto series = std::make_shared<plot::series_data_t>();
-    series->style = plot::Display_style::LINE;
+    series->style         = plot::Display_style::LINE;
     series->interpolation = plot::Series_interpolation::STEP_AFTER;
     series->empty_window_behavior =
         plot::Empty_window_behavior::HOLD_LAST_FORWARD;
     series->data_source = source;
-    series->access = make_access_policy();
+    series->access      = make_access_policy();
 
     std::map<int, std::shared_ptr<const plot::series_data_t>> series_map;
     const int series_id = 39;
@@ -3014,10 +3014,10 @@ bool test_busy_hold_forward_does_not_prepare_stale_tmax()
     plot::Plot_config config;
     const plot::frame_layout_result_t layout = make_layout();
     plot::frame_context_t ctx = make_context(layout, config);
-    ctx.t0 = 10LL * k_second_ns;
-    ctx.t1 = 12LL * k_second_ns;
-    ctx.t_available_min = ctx.t0;
-    ctx.t_available_max = ctx.t1;
+    ctx.t0                                   = 10LL * k_second_ns;
+    ctx.t1                                   = 12LL * k_second_ns;
+    ctx.t_available_min                      = ctx.t0;
+    ctx.t_available_max                      = ctx.t1;
 
     TEST_ASSERT(
         rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
@@ -3034,7 +3034,7 @@ bool test_busy_hold_forward_does_not_prepare_stale_tmax()
     const std::int64_t prepared_t_max = initial_view_state.last_prepared_t_max_ns;
     const std::size_t  vbo_generation = initial_view_state.last_vbo_generation;
     source->return_busy_once();
-    ctx.t1 = 13LL * k_second_ns;
+    ctx.t1              = 13LL * k_second_ns;
     ctx.t_available_max = ctx.t1;
     TEST_ASSERT(
         rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
@@ -3062,12 +3062,12 @@ bool test_busy_hold_forward_does_not_reuse_non_hold_window()
     });
 
     auto series = std::make_shared<plot::series_data_t>();
-    series->style = plot::Display_style::LINE;
+    series->style         = plot::Display_style::LINE;
     series->interpolation = plot::Series_interpolation::STEP_AFTER;
     series->empty_window_behavior =
         plot::Empty_window_behavior::HOLD_LAST_FORWARD;
     series->data_source = source;
-    series->access = make_access_policy();
+    series->access      = make_access_policy();
 
     std::map<int, std::shared_ptr<const plot::series_data_t>> series_map;
     const int series_id = 40;
@@ -3084,10 +3084,10 @@ bool test_busy_hold_forward_does_not_reuse_non_hold_window()
     plot::Plot_config config;
     const plot::frame_layout_result_t layout = make_layout();
     plot::frame_context_t ctx = make_context(layout, config);
-    ctx.t0 = 0;
-    ctx.t1 = 2LL * k_second_ns;
-    ctx.t_available_min = ctx.t0;
-    ctx.t_available_max = ctx.t1;
+    ctx.t0                                   = 0;
+    ctx.t1                                   = 2LL * k_second_ns;
+    ctx.t_available_min                      = ctx.t0;
+    ctx.t_available_max                      = ctx.t1;
 
     TEST_ASSERT(
         rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
@@ -3106,7 +3106,7 @@ bool test_busy_hold_forward_does_not_reuse_non_hold_window()
     const std::size_t vbo_generation =
         initial_view_state.last_vbo_generation;
     source->return_busy_once();
-    ctx.t1 = 3LL * k_second_ns;
+    ctx.t1              = 3LL * k_second_ns;
     ctx.t_available_max = ctx.t1;
     TEST_ASSERT(
         rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
@@ -3397,10 +3397,10 @@ bool test_range_only_access_skips_builtin_value_styles()
     plot::Plot_config config;
     const plot::frame_layout_result_t layout = make_layout();
     plot::frame_context_t ctx = make_context(layout, config);
-    ctx.t0 = 0;
-    ctx.t1 = 3LL * k_second_ns;
-    ctx.t_available_min = ctx.t0;
-    ctx.t_available_max = ctx.t1;
+    ctx.t0                                   = 0;
+    ctx.t1                                   = 3LL * k_second_ns;
+    ctx.t_available_min                      = ctx.t0;
+    ctx.t_available_max                      = ctx.t1;
 
     std::vector<layer_event_t> events;
     TEST_ASSERT(

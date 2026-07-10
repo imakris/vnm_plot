@@ -47,7 +47,7 @@ struct Scoped_temp_dir
         std::filesystem::remove_all(path, ec);
     }
 
-    Scoped_temp_dir(const Scoped_temp_dir&) = delete;
+    Scoped_temp_dir(const Scoped_temp_dir&)            = delete;
     Scoped_temp_dir& operator=(const Scoped_temp_dir&) = delete;
 };
 
@@ -193,7 +193,7 @@ bool test_corrupt_glyph_count_is_rejected()
     Scoped_temp_dir tmp;
     const auto digest = make_digest(0x20u);
     cache_file_options_t options;
-    options.digest = digest;
+    options.digest      = digest;
     options.glyph_count = std::numeric_limits<std::uint32_t>::max();
 
     const auto path = tmp.path / "corrupt_glyph_count.bin";
@@ -208,8 +208,8 @@ bool test_corrupt_kerning_count_is_rejected()
     Scoped_temp_dir tmp;
     const auto digest = make_digest(0x30u);
     cache_file_options_t options;
-    options.digest = digest;
-    options.glyph_count = 1u;
+    options.digest        = digest;
+    options.glyph_count   = 1u;
     options.kerning_count = 2u;
 
     const auto path = tmp.path / "corrupt_kerning_count.bin";
@@ -225,7 +225,7 @@ bool test_corrupt_atlas_size_and_bytes_are_rejected()
     const auto digest = make_digest(0x40u);
 
     cache_file_options_t bad_size;
-    bad_size.digest = digest;
+    bad_size.digest     = digest;
     bad_size.atlas_size = k_atlas_texture_size / 2u;
     const auto bad_size_path = tmp.path / "corrupt_atlas_size.bin";
     TEST_ASSERT(write_cache_file(bad_size_path, bad_size),
@@ -234,7 +234,7 @@ bool test_corrupt_atlas_size_and_bytes_are_rejected()
         "atlas size different from the renderer texture size must be rejected");
 
     cache_file_options_t bad_bytes;
-    bad_bytes.digest = digest;
+    bad_bytes.digest      = digest;
     bad_bytes.atlas_bytes = k_expected_atlas_bytes - 4u;
     const auto bad_bytes_path = tmp.path / "corrupt_atlas_bytes.bin";
     TEST_ASSERT(write_cache_file(bad_bytes_path, bad_bytes),
@@ -252,7 +252,7 @@ bool test_same_height_changed_digest_does_not_reuse_old_cache()
     const auto changed_digest = make_digest(0x90u);
 
     cache_file_options_t options;
-    options.digest = old_digest;
+    options.digest              = old_digest;
     options.write_atlas_payload = true;
 
     const auto path = tmp.path / "old_digest_same_height.bin";
@@ -270,8 +270,8 @@ bool test_previous_cache_version_is_rejected()
     const auto digest = make_digest(0x60u);
 
     cache_file_options_t options;
-    options.digest = digest;
-    options.cache_version = k_previous_cache_version;
+    options.digest              = digest;
+    options.cache_version       = k_previous_cache_version;
     options.write_atlas_payload = true;
 
     const auto path = tmp.path / "previous_cache_version.bin";

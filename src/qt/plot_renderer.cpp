@@ -89,22 +89,22 @@ Layout_calculator::parameters_t build_layout_params(
     const Font_renderer*   fonts)
 {
     Layout_calculator::parameters_t params;
-    params.v_min = v_min;
-    params.v_max = v_max;
-    params.t_min = t_min_ns;
-    params.t_max = t_max_ns;
-    params.usable_width = std::max(0.0, double(win_w) - vbar_width);
-    params.usable_height = usable_height;
-    params.vbar_width = vbar_width;
-    params.label_visible_height = usable_height + preview_height;
-    params.adjusted_font_size_in_pixels = font_px;
+    params.v_min                         = v_min;
+    params.v_max                         = v_max;
+    params.t_min                         = t_min_ns;
+    params.t_max                         = t_max_ns;
+    params.usable_width                  = std::max(0.0, double(win_w) - vbar_width);
+    params.usable_height                 = usable_height;
+    params.vbar_width                    = vbar_width;
+    params.label_visible_height          = usable_height + preview_height;
+    params.adjusted_font_size_in_pixels  = font_px;
     params.h_label_vertical_nudge_factor = detail::k_h_label_vertical_nudge_px;
 
     if (fonts) {
-        params.monospace_char_advance_px = fonts->monospace_advance_px();
+        params.monospace_char_advance_px     = fonts->monospace_advance_px();
         params.monospace_advance_is_reliable = fonts->monospace_advance_is_reliable();
-        params.measure_text_cache_key = fonts->text_measure_cache_key();
-        params.measure_text_func = [fonts](const char* text) {
+        params.measure_text_cache_key        = fonts->text_measure_cache_key();
+        params.measure_text_func             = [fonts](const char* text) {
             return fonts->measure_text_px(text);
         };
     }
@@ -125,7 +125,7 @@ Layout_calculator::parameters_t build_layout_params(
         return {};
     };
     params.format_value_revision = config.format_value_revision;
-    params.profiler = config.profiler.get();
+    params.profiler              = config.profiler.get();
     return params;
 }
 
@@ -191,7 +191,7 @@ void Plot_renderer::initialize(QRhiCommandBuffer* /*cb*/)
 #if defined(VNM_PLOT_ENABLE_TEXT)
     if (!m_impl->fonts) {
         m_impl->fonts = std::make_unique<Font_renderer>();
-        m_impl->text = std::make_unique<Text_renderer>(m_impl->fonts.get());
+        m_impl->text  = std::make_unique<Text_renderer>(m_impl->fonts.get());
     }
 #endif
 }
@@ -218,10 +218,10 @@ void Plot_renderer::synchronize(QQuickRhiItem* item)
     m_impl->snapshot.v_auto = widget->m_v_auto.load(std::memory_order_acquire);
     m_impl->snapshot.visible_info_flags =
         widget->m_visible_info_flags.load(std::memory_order_acquire);
-    m_impl->snapshot.adjusted_font_px = widget->m_adjusted_font_size;
-    m_impl->snapshot.base_label_height_px = widget->m_base_label_height;
+    m_impl->snapshot.adjusted_font_px        = widget->m_adjusted_font_size;
+    m_impl->snapshot.base_label_height_px    = widget->m_base_label_height;
     m_impl->snapshot.adjusted_preview_height = widget->m_adjusted_preview_height;
-    m_impl->snapshot.vbar_width_pixels = widget->vbar_width_pixels();
+    m_impl->snapshot.vbar_width_pixels       = widget->vbar_width_pixels();
     if (QQuickWindow* window = widget->window()) {
         m_impl->snapshot.window_background = qcolor_to_vec4(window->color());
     }
@@ -337,19 +337,19 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
 
     const auto make_cache_key = [&](double width_px) {
         layout_cache_key_t key;
-        key.v0 = v_min;
-        key.v1 = v_max;
-        key.t0 = snapshot.data_cfg.t_min;
-        key.t1 = snapshot.data_cfg.t_max;
-        key.viewport_size = Size_2i{win_w, win_h};
-        key.adjusted_reserved_height = reserved_h;
-        key.adjusted_preview_height = snapshot.adjusted_preview_height;
+        key.v0                           = v_min;
+        key.v1                           = v_max;
+        key.t0                           = snapshot.data_cfg.t_min;
+        key.t1                           = snapshot.data_cfg.t_max;
+        key.viewport_size                = Size_2i{win_w, win_h};
+        key.adjusted_reserved_height     = reserved_h;
+        key.adjusted_preview_height      = snapshot.adjusted_preview_height;
         key.adjusted_font_size_in_pixels = snapshot.adjusted_font_px;
-        key.vbar_width_pixels = width_px;
-        key.font_metrics_key = layout_fonts ? layout_fonts->text_measure_cache_key() : 0;
-        key.config_revision = snapshot.config_revision;
-        key.format_timestamp_revision = config.format_timestamp_revision;
-        key.format_value_revision = config.format_value_revision;
+        key.vbar_width_pixels            = width_px;
+        key.font_metrics_key             = layout_fonts ? layout_fonts->text_measure_cache_key() : 0;
+        key.config_revision              = snapshot.config_revision;
+        key.format_timestamp_revision    = config.format_timestamp_revision;
+        key.format_value_revision        = config.format_value_revision;
         return key;
     };
 
@@ -424,8 +424,8 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
     }
 
     frame_context_t ctx{*layout_ptr};
-    ctx.v0 = v_min;
-    ctx.v1 = v_max;
+    ctx.v0         = v_min;
+    ctx.v1         = v_max;
     ctx.preview_v0 = preview_v_min;
     ctx.preview_v1 = preview_v_max;
     if (m_impl->owner) {
@@ -438,8 +438,8 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
     }
     ctx.t_available_min = snapshot.data_cfg.t_available_min;
     ctx.t_available_max = snapshot.data_cfg.t_available_max;
-    ctx.win_w = win_w;
-    ctx.win_h = win_h;
+    ctx.win_w           = win_w;
+    ctx.win_h           = win_h;
     // Pixel-space ortho with origin at top-left. QRhi's correction matrix
     // adapts it to the active backend's clip-space conventions.
     const glm::mat4 pixel_ortho = glm::ortho(
@@ -449,21 +449,21 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
         0.0f,
         -1.0f,
         1.0f);
-    ctx.pmv = rhi_ptr
+    ctx.pmv                      = rhi_ptr
         ? to_glm_mat4(rhi_ptr->clipSpaceCorrMatrix()) * pixel_ortho
         : pixel_ortho;
-    ctx.adjusted_font_px = snapshot.adjusted_font_px;
-    ctx.base_label_height_px = snapshot.base_label_height_px;
+    ctx.adjusted_font_px         = snapshot.adjusted_font_px;
+    ctx.base_label_height_px     = snapshot.base_label_height_px;
     ctx.adjusted_reserved_height = reserved_h;
-    ctx.adjusted_preview_height = snapshot.adjusted_preview_height;
-    ctx.visible_info_flags = snapshot.visible_info_flags;
-    ctx.dark_mode = config.dark_mode;
-    ctx.plot_body_background = plot_body_background;
-    ctx.text_lcd_subpixel_order = snapshot.auto_text_lcd_subpixel_order;
-    ctx.config = &config;
-    ctx.rhi = rhi_ptr;
-    ctx.cb = cb;
-    ctx.render_target = rt;
+    ctx.adjusted_preview_height  = snapshot.adjusted_preview_height;
+    ctx.visible_info_flags       = snapshot.visible_info_flags;
+    ctx.dark_mode                = config.dark_mode;
+    ctx.plot_body_background     = plot_body_background;
+    ctx.text_lcd_subpixel_order  = snapshot.auto_text_lcd_subpixel_order;
+    ctx.config                   = &config;
+    ctx.rhi                      = rhi_ptr;
+    ctx.cb                       = cb;
+    ctx.render_target            = rt;
 
     // Open the resource-update batch BEFORE the render pass. Both series and
     // primitives fill it (series via prepare(), primitives via flush_rects /

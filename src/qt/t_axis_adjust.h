@@ -396,16 +396,16 @@ public:
             return {};
         }
 
-        qint64 new_t_min = m_t_min;
-        qint64 new_t_max = m_t_max;
+        qint64 new_t_min           = m_t_min;
+        qint64 new_t_max           = m_t_max;
         bool new_t_min_initialized = m_t_min_initialized;
         bool new_t_max_initialized = m_t_max_initialized;
-        const bool view_unset = !m_t_min_initialized && !m_t_max_initialized;
+        const bool view_unset      = !m_t_min_initialized && !m_t_max_initialized;
         if (view_unset) {
             // A fully unset view adopts the first complete available range so
             // subsequent interactions have a real window to operate on.
-            new_t_min = t_available_min_ns;
-            new_t_max = t_available_max_ns;
+            new_t_min             = t_available_min_ns;
+            new_t_max             = t_available_max_ns;
             new_t_min_initialized = true;
             new_t_max_initialized = true;
         }
@@ -570,12 +570,12 @@ private:
             m_t_available_max_initialized != t_available_max_initialized;
 
         if (changed) {
-            m_t_min = t_min_ns;
-            m_t_max = t_max_ns;
-            m_t_available_min = t_available_min_ns;
-            m_t_available_max = t_available_max_ns;
-            m_t_min_initialized = t_min_initialized;
-            m_t_max_initialized = t_max_initialized;
+            m_t_min                       = t_min_ns;
+            m_t_max                       = t_max_ns;
+            m_t_available_min             = t_available_min_ns;
+            m_t_available_max             = t_available_max_ns;
+            m_t_min_initialized           = t_min_initialized;
+            m_t_max_initialized           = t_max_initialized;
             m_t_available_min_initialized = t_available_min_initialized;
             m_t_available_max_initialized = t_available_max_initialized;
         }

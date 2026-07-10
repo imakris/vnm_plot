@@ -51,7 +51,7 @@ public:
     Series_renderer();
     ~Series_renderer();
 
-    Series_renderer(const Series_renderer&) = delete;
+    Series_renderer(const Series_renderer&)            = delete;
     Series_renderer& operator=(const Series_renderer&) = delete;
 
     // Keep parity with the rest of the renderer initialization path. QSB
@@ -140,7 +140,7 @@ private:
 
         vbo_view_state_t();
         ~vbo_view_state_t();
-        vbo_view_state_t(const vbo_view_state_t&) = delete;
+        vbo_view_state_t(const vbo_view_state_t&)            = delete;
         vbo_view_state_t& operator=(const vbo_view_state_t&) = delete;
         vbo_view_state_t(vbo_view_state_t&&) noexcept;
         vbo_view_state_t& operator=(vbo_view_state_t&&) noexcept;
@@ -157,7 +157,7 @@ private:
 
         vbo_state_t();
         ~vbo_state_t();
-        vbo_state_t(const vbo_state_t&) = delete;
+        vbo_state_t(const vbo_state_t&)            = delete;
         vbo_state_t& operator=(const vbo_state_t&) = delete;
         vbo_state_t(vbo_state_t&&) noexcept;
         vbo_state_t& operator=(vbo_state_t&&) noexcept;

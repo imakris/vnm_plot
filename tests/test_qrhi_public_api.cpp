@@ -351,8 +351,8 @@ bool test_core_plan_types_are_usable()
 {
     plot::value_range_plan_t range;
     TEST_ASSERT(!range.valid, "value_range_plan_t should default to invalid");
-    range.min = -4.0f;
-    range.max = 11.0f;
+    range.min   = -4.0f;
+    range.max   = 11.0f;
     range.valid = true;
 
     plot::Planned_snapshot planned_snapshot;
@@ -362,39 +362,39 @@ bool test_core_plan_types_are_usable()
     plot::drawable_sample_span_t span;
     span.source_first = 2;
     span.source_count = 5;
-    span.gpu_first = 0;
-    span.gpu_count = span.source_count;
+    span.gpu_first    = 0;
+    span.gpu_count    = span.source_count;
 
     plot::Series_view_plan view_plan;
-    view_plan.series_id = 9;
-    view_plan.view_kind = plot::Series_view_kind::PREVIEW;
-    view_plan.lod_level = 2;
-    view_plan.lod_scale = 4;
-    view_plan.snapshot = planned_snapshot;
-    view_plan.source_first = span.source_first;
-    view_plan.source_count = span.source_count;
+    view_plan.series_id            = 9;
+    view_plan.view_kind            = plot::Series_view_kind::PREVIEW;
+    view_plan.lod_level            = 2;
+    view_plan.lod_scale            = 4;
+    view_plan.snapshot             = planned_snapshot;
+    view_plan.source_first         = span.source_first;
+    view_plan.source_count         = span.source_count;
     view_plan.synthetic_hold_count = 1;
     view_plan.gpu_count =
         view_plan.source_count + view_plan.synthetic_hold_count;
     view_plan.drawable_spans.push_back(span);
-    view_plan.t_min_ns = 1'000;
-    view_plan.t_max_ns = 5'000;
-    view_plan.t_origin_ns = 1'000;
-    view_plan.hold_last_forward = true;
-    view_plan.hold_timestamp_ns = view_plan.t_max_ns;
-    view_plan.interpolation = plot::Series_interpolation::STEP_AFTER;
+    view_plan.t_min_ns              = 1'000;
+    view_plan.t_max_ns              = 5'000;
+    view_plan.t_origin_ns           = 1'000;
+    view_plan.hold_last_forward     = true;
+    view_plan.hold_timestamp_ns     = view_plan.t_max_ns;
+    view_plan.interpolation         = plot::Series_interpolation::STEP_AFTER;
     view_plan.empty_window_behavior = plot::Empty_window_behavior::HOLD_LAST_FORWARD;
-    view_plan.style = plot::Display_style::LINE;
-    view_plan.v_min = range.min;
-    view_plan.v_max = range.max;
-    view_plan.width_px = 320.0f;
-    view_plan.height_px = 64.0f;
-    view_plan.y_offset_px = 12.0f;
-    view_plan.window_alpha = 0.75f;
-    view_plan.pixels_per_sample = 2.5;
+    view_plan.style                 = plot::Display_style::LINE;
+    view_plan.v_min                 = range.min;
+    view_plan.v_max                 = range.max;
+    view_plan.width_px              = 320.0f;
+    view_plan.height_px             = 64.0f;
+    view_plan.y_offset_px           = 12.0f;
+    view_plan.window_alpha          = 0.75f;
+    view_plan.pixels_per_sample     = 2.5;
 
     plot::Frame_range_plan frame_plan;
-    frame_plan.main_v_range = range;
+    frame_plan.main_v_range    = range;
     frame_plan.preview_v_range = range;
 
     TEST_ASSERT(frame_plan.main_v_range.valid, "main range validity mismatch");
@@ -433,14 +433,14 @@ bool test_make_series_view_uniform_values()
     series.color = glm::vec4(0.2f, 0.4f, 0.6f, 0.8f);
 
     plot::sample_window_t window;
-    window.t_origin_ns = 1'000'000'000LL;
-    window.t_min_ns = 2'500'000'000LL;
-    window.t_max_ns = 5'000'000'000LL;
-    window.v_min = -3.0f;
-    window.v_max =  9.0f;
-    window.width_px = 640.0f;
-    window.height_px = 120.0f;
-    window.y_offset_px = 24.0f;
+    window.t_origin_ns  = 1'000'000'000LL;
+    window.t_min_ns     = 2'500'000'000LL;
+    window.t_max_ns     = 5'000'000'000LL;
+    window.v_min        = -3.0f;
+    window.v_max        = 9.0f;
+    window.width_px     = 640.0f;
+    window.height_px    = 120.0f;
+    window.y_offset_px  = 24.0f;
     window.window_alpha = 0.5f;
 
     const plot::series_view_uniform_std140_t uniform =

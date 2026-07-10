@@ -39,7 +39,7 @@ public:
     ~Primitive_renderer();
 
     // Non-copyable (owns GPU resources)
-    Primitive_renderer(const Primitive_renderer&) = delete;
+    Primitive_renderer(const Primitive_renderer&)            = delete;
     Primitive_renderer& operator=(const Primitive_renderer&) = delete;
 
     void cleanup_resources();

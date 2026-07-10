@@ -89,7 +89,7 @@ drawable_window_result_t build_drawable_window(
         {
             drawable_sample_span_t span;
             span.source_first = source_index;
-            span.gpu_first = result.gpu_count;
+            span.gpu_first    = result.gpu_count;
             result.spans.push_back(span);
         }
 
@@ -183,15 +183,15 @@ bool select_hold_source_index(
 Series_view_plan plan_series_window(const series_window_plan_request_t& request)
 {
     Series_view_plan plan;
-    plan.series_id = request.series_id;
-    plan.view_kind = request.view_kind;
-    plan.source = request.data_source;
-    plan.access = request.access;
-    plan.lod_scale = 1;
-    plan.interpolation = request.interpolation;
+    plan.series_id             = request.series_id;
+    plan.view_kind             = request.view_kind;
+    plan.source                = request.data_source;
+    plan.access                = request.access;
+    plan.lod_scale             = 1;
+    plan.interpolation         = request.interpolation;
     plan.empty_window_behavior = request.empty_window_behavior;
-    plan.nonfinite_policy = request.nonfinite_policy;
-    plan.style = request.style;
+    plan.nonfinite_policy      = request.nonfinite_policy;
+    plan.style                 = request.style;
 
     if (!request.planner_state ||
         !request.snapshot_cache ||
@@ -253,30 +253,30 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
             snapshot_cache.cached_snapshot)
         {
             snapshot_result.snapshot = snapshot_cache.cached_snapshot;
-            snapshot_result.status = snapshot_result_t::Snapshot_status::READY;
+            snapshot_result.status   = snapshot_result_t::Snapshot_status::READY;
             return snapshot_result;
         }
 
         snapshot_result = data_source.try_snapshot(level);
         if (snapshot_result) {
             snapshot_cache.cached_snapshot_frame_id = request.frame_id;
-            snapshot_cache.cached_snapshot_level = level;
-            snapshot_cache.cached_snapshot_source = &data_source;
-            snapshot_cache.cached_snapshot = snapshot_result.snapshot;
-            snapshot_cache.cached_snapshot_hold = snapshot_result.snapshot.hold;
+            snapshot_cache.cached_snapshot_level    = level;
+            snapshot_cache.cached_snapshot_source   = &data_source;
+            snapshot_cache.cached_snapshot          = snapshot_result.snapshot;
+            snapshot_cache.cached_snapshot_hold     = snapshot_result.snapshot.hold;
         }
         return snapshot_result;
     };
 
     const auto make_query_context = [&]() {
         data_query_context_t query;
-        query.access = &access;
-        query.profiler = request.profiler;
-        query.semantics_key = make_sample_semantics_key(&access);
-        query.time_window = {request.t_min_ns, request.t_max_ns};
-        query.interpolation = request.interpolation;
+        query.access                = &access;
+        query.profiler              = request.profiler;
+        query.semantics_key         = make_sample_semantics_key(&access);
+        query.time_window           = {request.t_min_ns, request.t_max_ns};
+        query.interpolation         = request.interpolation;
         query.empty_window_behavior = request.empty_window_behavior;
-        query.nonfinite_policy = request.nonfinite_policy;
+        query.nonfinite_policy      = request.nonfinite_policy;
         return query;
     };
 
@@ -288,7 +288,7 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
         VNM_PLOT_PROFILE_SCOPE(
             request.profiler,
             "process_view.query_time_window");
-        query.result = data_source.query_time_window(level, make_query_context());
+        query.result    = data_source.query_time_window(level, make_query_context());
         query.attempted = true;
         return query;
     };
@@ -303,23 +303,23 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
     };
 
     const auto load_cached_plan = [&](Series_view_plan& p, std::size_t level) {
-        p.source_first = state.last_first;
-        p.source_count = state.last_source_count;
+        p.source_first         = state.last_first;
+        p.source_count         = state.last_source_count;
         p.synthetic_hold_count = state.last_synthetic_hold_count;
-        p.gpu_count = state.last_count;
-        p.drawable_spans = state.last_drawable_spans;
-        p.lod_level = level;
-        p.lod_scale = level < scales.size() ? scales[level] : std::size_t{1};
-        p.pixels_per_sample = state.last_applied_pps;
-        p.snapshot.sequence = state.last_sequence;
-        p.t_min_ns = request.t_min_ns;
-        p.t_max_ns = request.t_max_ns;
-        p.t_origin_ns = request.t_origin_ns;
-        p.hold_last_forward = state.last_hold_last_forward;
-        p.hold_timestamp_ns = state.last_hold_last_forward ? request.t_max_ns : 0;
-        p.width_px = static_cast<float>(request.width_px);
-        p.interpolation = request.interpolation;
-        p.nonfinite_policy = request.nonfinite_policy;
+        p.gpu_count            = state.last_count;
+        p.drawable_spans       = state.last_drawable_spans;
+        p.lod_level            = level;
+        p.lod_scale            = level < scales.size() ? scales[level] : std::size_t{1};
+        p.pixels_per_sample    = state.last_applied_pps;
+        p.snapshot.sequence    = state.last_sequence;
+        p.t_min_ns             = request.t_min_ns;
+        p.t_max_ns             = request.t_max_ns;
+        p.t_origin_ns          = request.t_origin_ns;
+        p.hold_last_forward    = state.last_hold_last_forward;
+        p.hold_timestamp_ns    = state.last_hold_last_forward ? request.t_max_ns : 0;
+        p.width_px             = static_cast<float>(request.width_px);
+        p.interpolation        = request.interpolation;
+        p.nonfinite_policy     = request.nonfinite_policy;
     };
 
     const auto try_stale_fallback =
@@ -452,8 +452,8 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
                     last_exclusive <= snapshot.count)
                 {
                     have_direct_time_window = true;
-                    direct_first_idx = first;
-                    direct_last_idx = last_exclusive;
+                    direct_first_idx        = first;
+                    direct_last_idx         = last_exclusive;
                     if (access_view.has_timestamp()) {
                         bool has_match_in_requested_window = false;
                         bool direct_window_valid           = true;
@@ -557,8 +557,8 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
 
         bool timestamps_monotonic = true;
         state.last_timestamp_order_scan_performed = false;
-        state.last_timestamp_order_scan_samples = 0;
-        state.last_timestamp_window_search = Timestamp_window_search::NONE;
+        state.last_timestamp_order_scan_samples   = 0;
+        state.last_timestamp_window_search        = Timestamp_window_search::NONE;
         if (direct_time_window_failed) {
             state.last_timestamp_window_search =
                 Timestamp_window_search::QUERY;
@@ -573,19 +573,19 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
             const void*      current_identity = data_source.identity();
             const Time_order source_order     = data_source.time_order(applied_level);
             if (source_order == Time_order::ASCENDING) {
-                state.last_timestamp_order_sequence = snapshot.sequence;
-                state.last_timestamp_order_identity = current_identity;
+                state.last_timestamp_order_sequence   = snapshot.sequence;
+                state.last_timestamp_order_identity   = current_identity;
                 state.last_timestamp_order_access_key = access_key;
-                state.last_timestamp_source_order = source_order;
-                state.last_timestamps_monotonic = true;
+                state.last_timestamp_source_order     = source_order;
+                state.last_timestamps_monotonic       = true;
             }
             else
             if (source_order == Time_order::DESCENDING) {
-                state.last_timestamp_order_sequence = snapshot.sequence;
-                state.last_timestamp_order_identity = current_identity;
+                state.last_timestamp_order_sequence   = snapshot.sequence;
+                state.last_timestamp_order_identity   = current_identity;
                 state.last_timestamp_order_access_key = access_key;
-                state.last_timestamp_source_order = source_order;
-                state.last_timestamps_monotonic = false;
+                state.last_timestamp_source_order     = source_order;
+                state.last_timestamps_monotonic       = false;
             }
             else {
                 const bool need_monotonicity_scan =
@@ -618,11 +618,11 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
                             prev_ts = ts;
                         }
                     }
-                    state.last_timestamp_order_sequence = snapshot.sequence;
-                    state.last_timestamp_order_identity = current_identity;
+                    state.last_timestamp_order_sequence   = snapshot.sequence;
+                    state.last_timestamp_order_identity   = current_identity;
                     state.last_timestamp_order_access_key = access_key;
-                    state.last_timestamp_source_order = source_order;
-                    state.last_timestamps_monotonic = is_monotonic;
+                    state.last_timestamp_source_order     = source_order;
+                    state.last_timestamps_monotonic       = is_monotonic;
                     if (request.profiler) {
                         request.profiler->record_counter(
                             "renderer.series_window.monotonicity_scan_count");
@@ -642,8 +642,8 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
                 last_idx = snapshot.count;
             }
             else {
-                first_idx = direct_first_idx;
-                last_idx = direct_last_idx;
+                first_idx         = direct_first_idx;
+                last_idx          = direct_last_idx;
                 hold_last_forward = direct_hold_last_forward;
             }
         }
@@ -710,8 +710,8 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
                         hold_source_index,
                         hold_failed))
                 {
-                    first_idx = hold_source_index;
-                    last_idx = hold_source_index + 1u;
+                    first_idx         = hold_source_index;
+                    last_idx          = hold_source_index + 1u;
                     hold_last_forward = true;
                 }
                 else
@@ -797,8 +797,8 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
                         first_idx = std::min(first_idx, hold_source_index);
                     }
                     else {
-                        first_idx = hold_source_index;
-                        last_idx = hold_source_index + 1u;
+                        first_idx         = hold_source_index;
+                        last_idx          = hold_source_index + 1u;
                         hold_last_forward = true;
                     }
                 }
@@ -837,8 +837,8 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
                     hold_source_index,
                     hold_failed))
             {
-                first_idx = hold_source_index;
-                last_idx = hold_source_index + 1u;
+                first_idx       = hold_source_index;
+                last_idx        = hold_source_index + 1u;
                 drawable_window = build_drawable_window(
                     snapshot,
                     access_view,
@@ -887,22 +887,22 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
             state.cached_data_identity == data_source.identity() &&
             state.last_lod_level != applied_level;
 
-        state.last_sequence = snapshot.sequence;
-        state.cached_data_identity = data_source.identity();
-        state.last_access_key = access_key;
-        state.uploaded_t_origin_ns = request.t_origin_ns;
+        state.last_sequence          = snapshot.sequence;
+        state.cached_data_identity   = data_source.identity();
+        state.last_access_key        = access_key;
+        state.uploaded_t_origin_ns   = request.t_origin_ns;
         state.last_snapshot_elements = snapshot.count;
-        state.last_first = first_idx;
-        state.last_count = drawable_window.gpu_count;
+        state.last_first             = first_idx;
+        state.last_count             = drawable_window.gpu_count;
 
-        state.last_lod_level = applied_level;
-        state.has_last_lod_level = true;
-        state.last_t_min = request.t_min_ns;
-        state.last_t_max = request.t_max_ns;
-        state.last_width_px = request.width_px;
+        state.last_lod_level             = applied_level;
+        state.has_last_lod_level         = true;
+        state.last_t_min                 = request.t_min_ns;
+        state.last_t_max                 = request.t_max_ns;
+        state.last_width_px              = request.width_px;
         state.last_empty_window_behavior = request.empty_window_behavior;
-        state.last_nonfinite_policy = request.nonfinite_policy;
-        state.last_interpolation = request.interpolation;
+        state.last_nonfinite_policy      = request.nonfinite_policy;
+        state.last_interpolation         = request.interpolation;
         if (lod_switched && request.profiler) {
             request.profiler->record_counter(
                 "renderer.series_window.lod_switch_count");
@@ -911,31 +911,31 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
         const bool effective_hold_last_forward =
             drawable_window.synthetic_hold_count > 0;
 
-        plan.source_first = state.last_first;
-        plan.source_count = drawable_window.source_count;
-        plan.synthetic_hold_count = drawable_window.synthetic_hold_count;
-        plan.gpu_count = drawable_window.gpu_count;
-        plan.drawable_spans = drawable_window.spans;
-        plan.lod_level = applied_level;
-        plan.lod_scale = applied_scale;
-        plan.pixels_per_sample = base_pps * static_cast<double>(applied_scale);
-        state.last_applied_pps = plan.pixels_per_sample;
+        plan.source_first            = state.last_first;
+        plan.source_count            = drawable_window.source_count;
+        plan.synthetic_hold_count    = drawable_window.synthetic_hold_count;
+        plan.gpu_count               = drawable_window.gpu_count;
+        plan.drawable_spans          = drawable_window.spans;
+        plan.lod_level               = applied_level;
+        plan.lod_scale               = applied_scale;
+        plan.pixels_per_sample       = base_pps * static_cast<double>(applied_scale);
+        state.last_applied_pps       = plan.pixels_per_sample;
         state.last_hold_last_forward = effective_hold_last_forward;
-        plan.snapshot.snapshot = snapshot;
-        plan.snapshot.sequence = snapshot.sequence;
-        plan.t_min_ns = request.t_min_ns;
-        plan.t_max_ns = request.t_max_ns;
-        plan.t_origin_ns = request.t_origin_ns;
-        plan.hold_last_forward = effective_hold_last_forward;
-        plan.hold_timestamp_ns = effective_hold_last_forward
+        plan.snapshot.snapshot       = snapshot;
+        plan.snapshot.sequence       = snapshot.sequence;
+        plan.t_min_ns                = request.t_min_ns;
+        plan.t_max_ns                = request.t_max_ns;
+        plan.t_origin_ns             = request.t_origin_ns;
+        plan.hold_last_forward       = effective_hold_last_forward;
+        plan.hold_timestamp_ns       = effective_hold_last_forward
             ? request.t_max_ns
             : 0;
-        plan.width_px = static_cast<float>(request.width_px);
-        plan.interpolation = request.interpolation;
+        plan.width_px                = static_cast<float>(request.width_px);
+        plan.interpolation           = request.interpolation;
 
-        state.last_source_count = plan.source_count;
+        state.last_source_count         = plan.source_count;
         state.last_synthetic_hold_count = plan.synthetic_hold_count;
-        state.last_drawable_spans = plan.drawable_spans;
+        state.last_drawable_spans       = plan.drawable_spans;
         break;
     }
 

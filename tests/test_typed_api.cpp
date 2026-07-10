@@ -180,8 +180,8 @@ bool test_make_access_policy_and_erase()
     // single literal stands for what the previous double-keyed test wrote
     // as 12.5.
     constexpr std::int64_t k_test_ts_ns = 12'500'000'000;
-    s.t = k_test_ts_ns;
-    s.v = 3.5f;
+    s.t     = k_test_ts_ns;
+    s.v     = 3.5f;
     s.v_min = 1.0f;
     s.v_max = 6.0f;
 
@@ -304,8 +304,8 @@ bool test_erased_access_view_uses_direct_member_accessors()
 
     sample_t s{};
     constexpr std::int64_t k_sample_timestamp_ns = 15'000'000'000;
-    s.t = k_sample_timestamp_ns;
-    s.v = 3.5f;
+    s.t     = k_sample_timestamp_ns;
+    s.v     = 3.5f;
     s.v_min = 1.25f;
     s.v_max = 5.5f;
 
@@ -391,7 +391,7 @@ bool test_erased_access_view_uses_direct_member_accessors()
 
     plot::Data_access_policy slot_assigned = erased;
     slot_assigned.get_timestamp = slot_source.get_timestamp;
-    slot_assigned.get_value = slot_source.get_value;
+    slot_assigned.get_value     = slot_source.get_value;
     const auto slot_assigned_view =
         plot::detail::make_erased_access_policy_view(slot_assigned);
     TEST_ASSERT(
@@ -481,7 +481,7 @@ bool test_erased_access_view_uses_direct_member_accessors()
     TEST_ASSERT(revision_key_before != revision_key_after,
         "access policy cache key should change after accessor mutation");
 
-    auto semantic_mutated = policy;
+    auto semantic_mutated      = policy;
     semantic_mutated.get_value = [](const sample_t&) {
         return 13.0f;
     };
@@ -521,7 +521,7 @@ bool test_typed_api_floating_point_timestamp_member()
 
     fp_sample_t s{};
     s.t_seconds = 12.5;
-    s.v = 3.5f;
+    s.v         = 3.5f;
 
     // Forward direction: seconds -> int64 ns.
     constexpr std::int64_t k_expected_ns = 12'500'000'000;
@@ -544,9 +544,9 @@ bool test_series_builder_preview_config()
     auto policy = plot::make_access_policy<sample_t>(&sample_t::t, &sample_t::v, &sample_t::v_min, &sample_t::v_max);
 
     plot::preview_config_t preview_cfg;
-    preview_cfg.data_source = preview_source;
-    preview_cfg.access = policy.erase();
-    preview_cfg.style = plot::Display_style::AREA;
+    preview_cfg.data_source   = preview_source;
+    preview_cfg.access        = policy.erase();
+    preview_cfg.style         = plot::Display_style::AREA;
     preview_cfg.interpolation = plot::Series_interpolation::LINEAR;
 
     auto series = plot::Series_builder()

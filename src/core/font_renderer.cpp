@@ -213,10 +213,10 @@ void store_cached_font(const std::shared_ptr<cached_font_data_t>& font)
 vnm::msdf_text::options_t atlas_options()
 {
     vnm::msdf_text::options_t options;
-    options.atlas_size = k_atlas_texture_size;
+    options.atlas_size          = k_atlas_texture_size;
     options.min_atlas_font_size = k_min_atlas_font_size;
-    options.atlas_px_range = k_atlas_px_range;
-    options.sharpness_bias = k_sharpness_bias;
+    options.atlas_px_range      = k_atlas_px_range;
+    options.sharpness_bias      = k_sharpness_bias;
     options.build_kerning_table = true;
     return options;
 }
@@ -506,7 +506,7 @@ std::shared_ptr<cached_font_data_t> load_cached_font_from_disk(
 
     auto font = std::make_shared<cached_font_data_t>();
     font->draw_pixel_height = pixel_height;
-    font->font_digest = digest;
+    font->font_digest       = digest;
 
     std::uint32_t atlas_size = 0;
     if (!read(atlas_size))                                              { return nullptr; }
@@ -695,7 +695,7 @@ std::shared_ptr<cached_font_data_t> build_font_cache(
     const std::function<void(const std::string&)>& log_debug)
 {
     auto font = std::make_shared<cached_font_data_t>();
-    font->font_digest = font_digest;
+    font->font_digest       = font_digest;
     font->draw_pixel_height = pixel_height;
 
     auto result = vnm::msdf_text::build_font_atlas(
@@ -712,7 +712,7 @@ std::shared_ptr<cached_font_data_t> build_font_cache(
         return nullptr;
     }
 
-    font->atlas = std::move(result.atlas);
+    font->atlas       = std::move(result.atlas);
     font->cache_epoch = s_next_cache_epoch.fetch_add(1, std::memory_order_relaxed);
 
     return font;
@@ -954,11 +954,11 @@ void Font_renderer::initialize(Asset_loader& asset_loader, int pixel_height, boo
         return;
     }
 
-    const auto& cached = *m_impl->m_font_cache;
+    const auto& cached       = *m_impl->m_font_cache;
     resources.m_pixel_height = pixel_height;
-    resources.m_cache_epoch = cached.cache_epoch;
-    resources.m_atlas = cached.atlas;
-    m_impl->m_resources = &resources;
+    resources.m_cache_epoch  = cached.cache_epoch;
+    resources.m_atlas        = cached.atlas;
+    m_impl->m_resources      = &resources;
 }
 
 void Font_renderer::initialize_metrics(
@@ -982,7 +982,7 @@ void Font_renderer::initialize_metrics(
         return;
     }
 
-    m_impl->m_font_cache = std::move(cached);
+    m_impl->m_font_cache          = std::move(cached);
     m_impl->m_metric_pixel_height = pixel_height;
 }
 
@@ -1226,8 +1226,8 @@ void Font_renderer::rhi_queue_draw(
     }
 
     if (!rhi_state.shaders_loaded) {
-        rhi_state.vert = load_qsb("msdf_text.vert.qsb");
-        rhi_state.frag = load_qsb("msdf_text.frag.qsb");
+        rhi_state.vert           = load_qsb("msdf_text.vert.qsb");
+        rhi_state.frag           = load_qsb("msdf_text.frag.qsb");
         rhi_state.shaders_loaded = true;
     }
 
@@ -1252,7 +1252,7 @@ void Font_renderer::rhi_queue_draw(
             cached.atlas.atlas_size * 4,
             QImage::Format_RGBA8888);
         updates->uploadTexture(rhi_state.atlas_texture.get(), image);
-        rhi_state.atlas_size = cached.atlas.atlas_size;
+        rhi_state.atlas_size           = cached.atlas.atlas_size;
         rhi_state.uploaded_cache_epoch = cached.cache_epoch;
         for (auto& call : rhi_state.calls) {
             call.srb.reset();
@@ -1411,7 +1411,7 @@ void Font_renderer::rhi_queue_draw(
         rhi_state.pipeline->setTopology(QRhiGraphicsPipeline::Triangles);
 
         QRhiGraphicsPipeline::TargetBlend blend;
-        blend.enable = true;
+        blend.enable   = true;
         blend.srcColor = QRhiGraphicsPipeline::SrcAlpha;
         blend.dstColor = QRhiGraphicsPipeline::OneMinusSrcAlpha;
         blend.srcAlpha = QRhiGraphicsPipeline::One;
@@ -1427,7 +1427,7 @@ void Font_renderer::rhi_queue_draw(
             m_impl->m_rhi_index_data.clear();
             return;
         }
-        rhi_state.pipeline_rpd = current_rpd;
+        rhi_state.pipeline_rpd     = current_rpd;
         rhi_state.pipeline_samples = current_samples;
     }
 
@@ -1439,19 +1439,19 @@ void Font_renderer::rhi_queue_draw(
 
         Text_block_std140 block{};
         std::memcpy(block.pmv, glm::value_ptr(pmv), sizeof(block.pmv));
-        block.color[0] = draw_color.r;
-        block.color[1] = draw_color.g;
-        block.color[2] = draw_color.b;
-        block.color[3] = draw_color.a;
+        block.color[0]        = draw_color.r;
+        block.color[1]        = draw_color.g;
+        block.color[2]        = draw_color.b;
+        block.color[3]        = draw_color.a;
         block.shadow_color[0] = draw_shadow.color.r;
         block.shadow_color[1] = draw_shadow.color.g;
         block.shadow_color[2] = draw_shadow.color.b;
         block.shadow_color[3] = draw_shadow.color.a;
-        block.px_range = vnm::msdf_text::px_range_for_pixel_height(
+        block.px_range        = vnm::msdf_text::px_range_for_pixel_height(
             cached.atlas, cached.draw_pixel_height);
-        block.target_width = static_cast<float>(std::max(1, ctx.win_w));
-        block.target_height = static_cast<float>(std::max(1, ctx.win_h));
-        block.shadow_radius = draw_shadow.radius_px;
+        block.target_width    = static_cast<float>(std::max(1, ctx.win_w));
+        block.target_height   = static_cast<float>(std::max(1, ctx.win_h));
+        block.shadow_radius   = draw_shadow.radius_px;
         block.lcd_subpixel_order =
             vnm::msdf_text::lcd::shader_uniform_value(effective_lcd.subpixel_order);
         block.framebuffer_y_up =
@@ -1473,7 +1473,7 @@ void Font_renderer::rhi_queue_draw(
 
     if (has_shadow) {
         glm::vec4 transparent_text = color;
-        transparent_text.a = 0.0f;
+        transparent_text.a         = 0.0f;
         queue_text_pass(
             shadow_call_index,
             transparent_text,

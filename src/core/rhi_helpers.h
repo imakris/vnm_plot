@@ -263,7 +263,7 @@ inline std::unique_ptr<QRhiGraphicsPipeline> build_alpha_blended_pipeline(
     pipeline->setTopology(QRhiGraphicsPipeline::TriangleStrip);
 
     QRhiGraphicsPipeline::TargetBlend blend;
-    blend.enable = true;
+    blend.enable   = true;
     blend.srcColor = QRhiGraphicsPipeline::SrcAlpha;
     blend.dstColor = QRhiGraphicsPipeline::OneMinusSrcAlpha;
     blend.srcAlpha = QRhiGraphicsPipeline::One;

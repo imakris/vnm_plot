@@ -82,7 +82,7 @@ public:
         }
     }
 
-    Profile_scope(const Profile_scope&) = delete;
+    Profile_scope(const Profile_scope&)            = delete;
     Profile_scope& operator=(const Profile_scope&) = delete;
 
 private:

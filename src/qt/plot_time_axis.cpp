@@ -474,8 +474,8 @@ void Plot_time_axis::set_indicator_state(QObject* owner, bool active, qint64 t_m
         bool owner_changed = false;
         if (m_indicator_owner != owner) {
             m_indicator_owner = owner;
-            owner_changed = true;
-            changed = true;
+            owner_changed     = true;
+            changed           = true;
         }
         if (!m_indicator_active) {
             m_indicator_active = true;
@@ -504,10 +504,10 @@ void Plot_time_axis::set_indicator_state(QObject* owner, bool active, qint64 t_m
     }
     else {
         if (m_indicator_owner == owner && (m_indicator_active || m_indicator_x_norm_valid)) {
-            m_indicator_owner = nullptr;
-            m_indicator_active = false;
+            m_indicator_owner        = nullptr;
+            m_indicator_active       = false;
             m_indicator_x_norm_valid = false;
-            changed = true;
+            changed                  = true;
         }
     }
 
@@ -573,12 +573,12 @@ bool Plot_time_axis::apply_time_axis_limits_if_changed(
         return false;
     }
 
-    m_t_min = t_min_ns;
-    m_t_max = t_max_ns;
-    m_t_available_min = t_available_min_ns;
-    m_t_available_max = t_available_max_ns;
-    m_t_min_initialized = t_min_initialized;
-    m_t_max_initialized = t_max_initialized;
+    m_t_min                       = t_min_ns;
+    m_t_max                       = t_max_ns;
+    m_t_available_min             = t_available_min_ns;
+    m_t_available_max             = t_available_max_ns;
+    m_t_min_initialized           = t_min_initialized;
+    m_t_max_initialized           = t_max_initialized;
     m_t_available_min_initialized = t_available_min_initialized;
     m_t_available_max_initialized = t_available_max_initialized;
     emit t_limits_changed();

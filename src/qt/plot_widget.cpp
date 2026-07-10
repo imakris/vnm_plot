@@ -115,11 +115,11 @@ Plot_widget::Plot_widget()
 {
     vnm_plot_init_qt_resources();
 
-    m_relative_preview_height = 0.3f;
-    m_preview_height_min = 30.0;
-    m_preview_height_max = 150.0;
+    m_relative_preview_height                     = 0.3f;
+    m_preview_height_min                          = 30.0;
+    m_preview_height_max                          = 150.0;
     m_show_if_calculated_preview_height_below_min = false;
-    m_preview_height_steps = 2;
+    m_preview_height_steps                        = 2;
 
     update_dpi_scaling_factor();
 
@@ -155,9 +155,9 @@ Plot_widget::~Plot_widget()
             m_time_axis->set_indicator_state(this, false, 0.0);
         }
         QObject::disconnect(m_time_axis, nullptr, this, nullptr);
-        m_time_axis_connection = {};
+        m_time_axis_connection           = {};
         m_time_axis_destroyed_connection = {};
-        m_time_axis_vbar_connection = {};
+        m_time_axis_vbar_connection      = {};
         m_time_axis_sync_vbar_connection = {};
         m_sync_vbar_width_active.store(false, std::memory_order_release);
         m_time_axis = nullptr;
@@ -225,10 +225,10 @@ void Plot_widget::set_config(const Plot_config& config)
         const double prev_grid_visibility    = m_config.grid_visibility;
         const double prev_preview_visibility = m_config.preview_visibility;
         const double prev_line_width_px      = m_config.line_width_px;
-        m_config = config;
-        m_config.grid_visibility = prev_grid_visibility;      // Preserve QML-controlled setting
-        m_config.preview_visibility = prev_preview_visibility; // Preserve QML-controlled setting
-        m_config.line_width_px = prev_line_width_px;          // Preserve QML-controlled setting
+        m_config                             = config;
+        m_config.grid_visibility             = prev_grid_visibility;    // Preserve QML-controlled setting
+        m_config.preview_visibility          = prev_preview_visibility; // Preserve QML-controlled setting
+        m_config.line_width_px               = prev_line_width_px;      // Preserve QML-controlled setting
         m_config_revision.fetch_add(1, std::memory_order_relaxed);
         effective_config = m_config;
     }
@@ -456,11 +456,11 @@ void Plot_widget::set_view(const Plot_view& view)
 
     if (view.v_range && v_range_valid(*view.v_range)) {
         std::unique_lock lock(m_data_cfg_mutex);
-        m_data_cfg.v_min = view.v_range->first;
-        m_data_cfg.v_max = view.v_range->second;
+        m_data_cfg.v_min        = view.v_range->first;
+        m_data_cfg.v_max        = view.v_range->second;
         m_data_cfg.v_manual_min = view.v_range->first;
         m_data_cfg.v_manual_max = view.v_range->second;
-        v_changed = true;
+        v_changed               = true;
     }
 
     bool v_auto_changed_flag = false;
@@ -500,9 +500,9 @@ void Plot_widget::set_time_axis(Plot_time_axis* axis)
             m_time_axis->clear_shared_vbar_width(this);
         }
         QObject::disconnect(m_time_axis, nullptr, this, nullptr);
-        m_time_axis_connection = {};
+        m_time_axis_connection           = {};
         m_time_axis_destroyed_connection = {};
-        m_time_axis_vbar_connection = {};
+        m_time_axis_vbar_connection      = {};
         m_time_axis_sync_vbar_connection = {};
         m_sync_vbar_width_active.store(false, std::memory_order_release);
     }
@@ -513,7 +513,7 @@ void Plot_widget::set_time_axis(Plot_time_axis* axis)
         m_sync_vbar_width_active.store(
             m_time_axis->sync_vbar_width(),
             std::memory_order_release);
-        m_time_axis_connection = QObject::connect(
+        m_time_axis_connection           = QObject::connect(
             m_time_axis,
             &Plot_time_axis::t_limits_changed,
             this,
@@ -523,7 +523,7 @@ void Plot_widget::set_time_axis(Plot_time_axis* axis)
             &QObject::destroyed,
             this,
             [this]() { clear_time_axis(); });
-        m_time_axis_vbar_connection = QObject::connect(
+        m_time_axis_vbar_connection      = QObject::connect(
             m_time_axis,
             &Plot_time_axis::shared_vbar_width_changed,
             this,
@@ -647,8 +647,8 @@ void Plot_widget::set_v_range(float v_min, float v_max)
     }
     {
         std::unique_lock lock(m_data_cfg_mutex);
-        m_data_cfg.v_min = v_min;
-        m_data_cfg.v_max = v_max;
+        m_data_cfg.v_min        = v_min;
+        m_data_cfg.v_max        = v_max;
         m_data_cfg.v_manual_min = v_min;
         m_data_cfg.v_manual_max = v_max;
     }
@@ -1025,16 +1025,16 @@ void Plot_widget::adjust_v_to_target(float target_vmin, float target_vmax)
     const float min_span = min_v_span_for(target_vmin, target_vmax);
     if (target_vmax - target_vmin < min_span) {
         const float mid = 0.5f * (target_vmax + target_vmin);
-        target_vmin = mid - 0.5f * min_span;
-        target_vmax = mid + 0.5f * min_span;
+        target_vmin     = mid - 0.5f * min_span;
+        target_vmax     = mid + 0.5f * min_span;
     }
 
     {
         std::unique_lock lock(m_data_cfg_mutex);
         m_data_cfg.v_manual_min = target_vmin;
         m_data_cfg.v_manual_max = target_vmax;
-        m_data_cfg.v_min = target_vmin;
-        m_data_cfg.v_max = target_vmax;
+        m_data_cfg.v_min        = target_vmin;
+        m_data_cfg.v_max        = target_vmax;
     }
 
     set_v_auto(false);
@@ -1082,8 +1082,8 @@ void Plot_widget::auto_adjust_view(bool adjust_t, double extra_v_scale, bool anc
             have_any = true;
             return;
         }
-        agg.vmin = std::min(agg.vmin, series_agg.vmin);
-        agg.vmax = std::max(agg.vmax, series_agg.vmax);
+        agg.vmin    = std::min(agg.vmin, series_agg.vmin);
+        agg.vmax    = std::max(agg.vmax, series_agg.vmax);
         agg.tmin_ns = std::min(agg.tmin_ns, series_agg.tmin_ns);
         agg.tmax_ns = std::max(agg.tmax_ns, series_agg.tmax_ns);
     };
@@ -1183,8 +1183,8 @@ void Plot_widget::auto_adjust_view(bool adjust_t, double extra_v_scale, bool anc
         std::unique_lock lock(m_data_cfg_mutex);
         m_data_cfg.v_manual_min = static_cast<float>(new_vmin);
         m_data_cfg.v_manual_max = static_cast<float>(new_vmax);
-        m_data_cfg.v_min = static_cast<float>(new_vmin);
-        m_data_cfg.v_max = static_cast<float>(new_vmax);
+        m_data_cfg.v_min        = static_cast<float>(new_vmin);
+        m_data_cfg.v_max        = static_cast<float>(new_vmax);
     }
 
     if (adjust_t && has_time_axis) {
@@ -1388,14 +1388,14 @@ QVariantList Plot_widget::get_samples_for_time(
         entry["y"] = y;
         if (value_formatter) {
             value_format_context_t context;
-            context.role = Value_format_role::INDICATOR;
+            context.role                   = Value_format_role::INDICATOR;
             context.suggested_fixed_digits = 3;
-            context.series_label = series->series_label;
-            entry["y_text"] = QString::fromStdString(value_formatter(y, context));
+            context.series_label           = series->series_label;
+            entry["y_text"]                = QString::fromStdString(value_formatter(y, context));
         }
-        entry["px"] = px;
-        entry["py"] = py;
-        entry["color"] = color;
+        entry["px"]           = px;
+        entry["py"]           = py;
+        entry["color"]        = color;
         entry["series_label"] = QString::fromStdString(series->series_label);
         result.append(entry);
     }
@@ -1475,10 +1475,10 @@ void Plot_widget::sync_time_axis_state()
 
 void Plot_widget::clear_time_axis()
 {
-    m_time_axis = nullptr;
-    m_time_axis_connection = {};
+    m_time_axis                      = nullptr;
+    m_time_axis_connection           = {};
     m_time_axis_destroyed_connection = {};
-    m_time_axis_vbar_connection = {};
+    m_time_axis_vbar_connection      = {};
     m_time_axis_sync_vbar_connection = {};
     m_sync_vbar_width_active.store(false, std::memory_order_release);
     emit time_axis_changed();
@@ -1636,8 +1636,8 @@ void Plot_widget::recalculate_preview_height()
 
     if (!m_preview_height_initialized) {
         m_preview_height_initialized = true;
-        m_preview_height = new_dp;
-        m_adjusted_preview_height = new_adjusted;
+        m_preview_height             = new_dp;
+        m_adjusted_preview_height    = new_adjusted;
         emit preview_height_changed();
     }
 
