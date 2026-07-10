@@ -24,16 +24,21 @@ Claude was unavailable for the stated 85-minute review window. Three Codex worke
 
 The architecture review records **19 failed or terminated executions** in [Observed failures and current gate status](VNM_PLOT_ARCHITECTURE_AND_STACKING_REVIEW.md#observed-failures-and-current-gate-status). Plan authoring added one failed `apply_patch` verification: a combined patch expected text that no longer exactly matched the staged draft. Codex `/root` owned the authoring error and recovered by rereading the file and applying smaller exact hunks, bringing the total to **20** before implementation began.
 
-Batch 1B then added two failed style executions, bringing the running total to **22**:
+Batch 1B then added seven failed or terminated style executions, bringing the running total to **27**:
 
 1. The aggregate `style_pipeline.py --write` invocation against the three originally named files advanced beyond the 14 switch fixes and attempted 737 insertions/826 deletions. Review caught `fix_hanging_indent.py` deleting a ternary expression's `?`, true arm, and `:` in `sample_statement_for_offset()` before commit. Codex `/root` owned the unsafe invocation, rejected the output, and restored all generated changes through `apply_patch`; no corrupting change was retained.
 2. After applying only the authorized 14 switch fixes, the canonical no-write pipeline passed its first stage and failed at stage two on four previously hidden `else if` layout violations. A read-only audit then showed 22 of 27 rule groups red; those counts are diagnostic/provisional because earlier ordered fixes can affect later checks.
+3. A worker's isolated formatter replay used the live repository as its effective working directory and reapplied scratch output there. The worker and Codex `/root` owned the scope error, compared the tree to the intended checkpoint, and restored the exact intended state before further work.
+4. The prototype-block formatter's first retry terminated with `PermissionError` while an unrelated concurrent build held source files open. No formatter output was retained; Codex `/root` waited for the build to release the files and reran the same bounded checkpoint successfully.
+5. One initialized build/test wrapper exited before execution because its PowerShell quoting was malformed. Codex `/root` corrected the invocation and retained the successful initialized Release build and CTest result rather than suppressing the failed command.
+6. One read-only aggregate-inventory wrapper exited because its diagnostic parser expected the wrong message shape. No source was changed; Codex `/root` corrected the parser and retained the resulting all-rule inventory.
+7. One canonical no-write pipeline invocation exceeded a 30-second wrapper timeout and ended with a downstream broken-pipe error. No source was changed; subsequent canonical runs use a recorded timeout long enough for the complete pipeline.
 
 Preserve all ledgers rather than replacing them with later green results.
 
 | Current state | Owning batch |
 |---|---|
-| Dependency Windows workflow failed before creating jobs | Startup failure recovered by `vnm_msdf_text@b9c216a`; real Windows jobs were created. At the 2026-07-10 execution-record update, Linux/macOS/FreeBSD and the normal Windows job were green while Windows full export was still running in [run 29090524058](https://github.com/imakris/vnm_msdf_text/actions/runs/29090524058). Retain the original failure and close Batch 1A only after the terminal four-platform result is recorded. |
+| Dependency Windows workflow failed before creating jobs | Recovered and closed by `vnm_msdf_text@b9c216a`: Linux, macOS, FreeBSD, normal Windows, and Windows full export all passed in [run 29090524058](https://github.com/imakris/vnm_msdf_text/actions/runs/29090524058). Dependent `vnm_plot@2d94f01` text-OFF/text-ON CI also passed on all four platforms. Retain the original startup failure as closed evidence. |
 | Style baseline | The original 14 switch violations are recovered in local checkpoint `3fe78e6`. The short-circuiting pipeline exposed broader pre-existing governed debt and an unsafe `fix_hanging_indent.py` rewrite; expanded Batch 1B remains open. |
 | Benchmark cold dynamic timeout unresolved | Codex `/root` performance-harness owner; Batch 2 instruments it and the ledger stays open after Batch 2 if cause remains unresolved |
 | `vnm_plot` eight first-attempt CI failures | Recovered on attempt 2; retain as closed evidence |
@@ -114,7 +119,7 @@ Execution status recorded 2026-07-10:
 
 - the smallest workflow-only fix landed on dependency `master` as `vnm_msdf_text@b9c216a`;
 - the invalid job-level `runner.temp` use was replaced by step-level `RUNNER_TEMP` initialization exported through `GITHUB_ENV`;
-- dependency Linux, macOS, and FreeBSD passed at `b9c216a`; Windows created both real jobs and its normal job passed, while its full-export job remained in progress in run `29090524058` at the time of this record;
+- dependency Linux, macOS, FreeBSD, normal Windows, and Windows full export passed at `b9c216a` in run `29090524058`;
 - all eight dependent `vnm_plot@2d94f01` text-OFF/text-ON jobs passed on attempt 2;
 - `actionlint` is not installed locally; retain its versioned bootstrap/validation as environment evidence rather than treating it as a missing project definition.
 
@@ -170,7 +175,7 @@ Process exactly one canonical style rule at a time in pipeline order:
 
 1. retain the no-write checker's enumerated findings and external standards identity;
 2. run only that rule's fixer against its enumerated files, never the aggregate pipeline `--write`;
-3. require a lexical C/C++ token-equivalence check for every formatting rewrite before build/test; any intended token change requires an explicit plan amendment and leaves this batch;
+3. require a lexical C/C++ token-equivalence check for every formatting rewrite before build/test; any intended token change requires an explicit plan amendment and leaves this batch for the named Batch 1C checkpoint;
 4. inspect and retain the complete diff, then rerun all preceding rules plus the active rule;
 5. run `git diff --check`, the initialized Release build, and CTest 21/21;
 6. obtain the iterative three-worker and Claude Fable review required for the batch, feeding findings into the next remediation/review round;
@@ -189,11 +194,23 @@ Record standards repository base `f5edc8b` and `style_pipeline.py` SHA-256 `8715
 
 Gate:
 
-- governed style pipeline passes from its first stage;
+- every token-preserving rule checker passes individually; only the explicitly routed Batch 1C naming findings may remain before that checkpoint;
 - initialized Release build passes;
 - CTest passes 21/21.
 
-Parallel rule: Batch 1A remains a final-merge gate, but it does not block local Batch 1B/2 work while dependent `vnm_plot` CI and local product gates are green. Batch 1B must pass before semantic `vnm_plot` changes are pushed for review.
+Batch 1A is closed and no longer blocks local or merge work. The combined Batch 1B/1C canonical pipeline gate must pass before semantic `vnm_plot` changes are pushed for review.
+
+### Batch 1C — Explicit non-behavioral style-gate token repairs
+
+Batch 1B remains formatting-only. If the ordered no-write checks still report governed naming findings that cannot be satisfied without changing tokens, isolate only the checker-enumerated private identifiers here. The initially known scope is the `_pad0`, `_pad1`, and `_pad2` members in `src/core/series_renderer.cpp`; rename them to the checker-approved private names without changing declaration order, field types, initialization values, buffer packing, public headers, or exported symbols. Do not use this checkpoint for unrelated cleanup.
+
+Gate:
+
+- retain the exact naming-checker findings before the change and prove that no old identifier use remains;
+- inspect the complete token-changing diff and preserve the existing uniform-layout `static_assert` coverage;
+- initialized Release build and CTest pass 21/21;
+- complete canonical style pipeline passes without `--write`;
+- the same iterative three-worker and Claude Fable review covers Batch 1B and 1C before either is merged.
 
 ## Stage 2 — Establish evidence, then remove unchanged-frame work
 
@@ -573,4 +590,4 @@ Before the feature merge/release is considered complete:
 
 ## Recommended immediate next action
 
-The Batch 1A startup repair has landed; monitor its remaining Windows full-export job and record the terminal four-platform result. Locally, start with Batch 1B, then Batch 2; do not touch product stack code before the evidence and contract stages pass. Review branches may be pushed, but no batch is merged while Batch 1A remains red or incomplete. This is the shortest path that produces trustworthy evidence without idling local work.
+Batch 1A is closed with all dependency and dependent-consumer jobs green. Complete the ordered Batch 1B formatting checkpoints and the narrowly scoped Batch 1C naming repair, then run their joint canonical style/build/test/review gate before starting Batch 2. This is the shortest path that produces trustworthy evidence without idling local work.
