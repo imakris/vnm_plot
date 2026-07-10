@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <iostream>
 #include <limits>
+#include <vector>
 
 namespace plot = vnm::plot;
 
@@ -101,6 +102,43 @@ bool test_qrhi_buffer_offset_checks_scaled_offsets()
     return true;
 }
 
+bool test_embedded_shaders_retain_desktop_glsl_330_and_410()
+{
+    std::vector<const char*> shaders = {
+        "generic_rect.vert.qsb",
+        "generic_rect.frag.qsb",
+        "grid_quad.vert.qsb",
+        "grid_quad.frag.qsb",
+        "plot_line.vert.qsb",
+        "plot_line.frag.qsb",
+        "plot_dot_quad.vert.qsb",
+        "plot_dot_quad.frag.qsb",
+        "plot_area.vert.qsb",
+        "plot_area.frag.qsb",
+    };
+#if defined(VNM_PLOT_ENABLE_TEXT)
+    shaders.push_back("msdf_text.vert.qsb");
+    shaders.push_back("msdf_text.frag.qsb");
+#endif
+
+    for (const char* path : shaders) {
+        const QShader shader = plot::detail::load_qsb(path);
+        TEST_ASSERT(shader.isValid(), "embedded QSB shader must deserialize");
+        bool has_glsl_330 = false;
+        bool has_glsl_410 = false;
+        for (const QShaderKey& key : shader.availableShaders()) {
+            if (key.source() != QShader::GlslShader) {
+                continue;
+            }
+            has_glsl_330 = has_glsl_330 || key.sourceVersion().version() == 330;
+            has_glsl_410 = has_glsl_410 || key.sourceVersion().version() == 410;
+        }
+        TEST_ASSERT(has_glsl_330, "embedded QSB shader must retain desktop GLSL 330");
+        TEST_ASSERT(has_glsl_410, "embedded QSB shader must retain desktop GLSL 410");
+    }
+    return true;
+}
+
 } // namespace
 
 int main()
@@ -115,6 +153,7 @@ int main()
     RUN_TEST(test_qrhi_byte_size_rejects_size_t_product_overflow);
     RUN_TEST(test_qrhi_grown_capacity_bytes_checks_headroom_overflow);
     RUN_TEST(test_qrhi_buffer_offset_checks_scaled_offsets);
+    RUN_TEST(test_embedded_shaders_retain_desktop_glsl_330_and_410);
 
     std::cout << "Passed: " << passed << ", Failed: " << failed << std::endl;
     return failed == 0 ? 0 : 1;

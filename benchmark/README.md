@@ -64,7 +64,8 @@ The fixed protocol performs two calibration sets. Each set has two complete
 untimed warm-up runs followed by seven measured runs. Every run itself has two
 runner warm-up frames followed by 120 measured, GPU-finished frames at 1200x720
 with a 4x offscreen render buffer and text enabled. The fallback/context surface
-is single-sample because it is not the measured render target. `GALLIUM_DRIVER`
+requests desktop GL 3.3 and is single-sample because it is not the measured
+render target; both desktop GLSL 330 and 410 variants are baked. `GALLIUM_DRIVER`
 and `LP_NUM_THREADS` are recorded as part of the fingerprint when Mesa software
 rendering is used. Across six scenarios this is
 24 warm-up plus 84 measured

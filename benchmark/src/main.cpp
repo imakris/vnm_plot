@@ -604,11 +604,14 @@ int main(int argc, char* argv[])
 
     // Set the requested presentation format before QApplication. Qt Quick's
     // QRhi render loop maps swapInterval(0) to QRhiSwapChain::NoVSync.
+    const bool offscreen_rhi = config.backend == "qrhi-offscreen";
+    const int context_major_version = offscreen_rhi ? 3 : 4;
+    const int context_minor_version = 3;
     QSurfaceFormat format;
-    format.setVersion(4, 3);
+    format.setVersion(context_major_version, context_minor_version);
     format.setProfile(QSurfaceFormat::CoreProfile);
     format.setDepthBufferSize(24);
-    const int context_sample_count = config.backend == "qrhi-offscreen"
+    const int context_sample_count = offscreen_rhi
         ? 1
         : static_cast<int>(config.sample_count);
     format.setSamples(context_sample_count);
@@ -673,6 +676,10 @@ int main(int argc, char* argv[])
             : config.capture_pixel_checksum ? "forced-by-pixel-readback" : "disabled";
         meta.reproduction["framebuffer"] = std::to_string(config.framebuffer_width) + "x" +
             std::to_string(config.framebuffer_height);
+        meta.reproduction["context_profile_request"] = "core";
+        meta.reproduction["context_version_request"] =
+            std::to_string(context_major_version) + "." +
+            std::to_string(context_minor_version);
         meta.reproduction["context_sample_count"] = std::to_string(context_sample_count);
         const std::string mesa_thread_limit = bytes_to_string(qgetenv("LP_NUM_THREADS"));
         meta.reproduction["env.LP_NUM_THREADS"] = mesa_thread_limit.empty()

@@ -517,10 +517,9 @@ if(VNM_PLOT_ENABLE_TEXT)
 endif()
 
 # Each input shader yields :/vnm_plot/shaders/qsb/<name>.<ext>.qsb.
-# GLSL profile is desktop 410 only; mobile GL ES is out of scope for
-# the RHI shaders. They use storage buffers that are unavailable below
-# ES 3.1, so emitting a 300 ES artifact would compile-fail at runtime
-# on a real ES 3.0 driver.
+# The RHI shaders use vertex attributes and std140 uniform blocks, so retain
+# desktop GLSL 330 for GL 3.3 contexts and GLSL 410 for existing GL 4 paths.
+# Mobile GL ES remains out of scope for this desktop renderer.
 foreach(_vnm_plot_qsb_shader IN LISTS VNM_PLOT_QSB_SHADERS)
     get_filename_component(_vnm_plot_qsb_output_dir
         "${CMAKE_CURRENT_BINARY_DIR}/.qsb/${_vnm_plot_qsb_shader}"
@@ -533,7 +532,7 @@ unset(_vnm_plot_qsb_shader)
 qt_add_shaders(vnm_plot_rhi "vnm_plot_qsb_shaders"
     PREFIX "/vnm_plot"
     BASE   "${CMAKE_CURRENT_SOURCE_DIR}"
-    GLSL   "410"
+    GLSL   "330,410"
     HLSL   "50"
     MSL    "12,21"
     OUTPUT_TARGETS VNM_PLOT_RHI_RESOURCE_TARGETS

@@ -13,7 +13,8 @@ defaults:
 env:
   CMAKE_BUILD_TYPE: Release
   # Hosted Xvfb uses Mesa's CPU renderer. Bound its worker count to the job
-  # memory limit without selecting a graphics API or a different shader path.
+  # memory limit and use its GL 3.3 rasterizer without selecting a QRhi API.
+  GALLIUM_DRIVER: softpipe
   LP_NUM_THREADS: "1"
   LINUX_SYSTEM_DEPS: >-
     libgl-dev libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev

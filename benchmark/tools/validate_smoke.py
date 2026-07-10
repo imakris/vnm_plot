@@ -67,7 +67,9 @@ def validate(
     if payload.get("invocation_args") != expected_command:
         raise RuntimeError("structured smoke invocation mismatch")
     expected_metadata = {
+        "context_profile_request": "core",
         "context_sample_count": "1",
+        "context_version_request": "3.3",
         "data_type": "Bars",
         "finish_state": "enabled",
         "framebuffer": "1200x720",
