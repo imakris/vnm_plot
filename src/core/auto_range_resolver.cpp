@@ -385,18 +385,19 @@ bool query_or_scan_series_range(
         if (profiler) {
             profiler->record_counter("renderer.auto_range.range_scan_count");
         }
-        return scan_series_range(
-            source,
-            access,
-            level,
-            interpolation,
-            empty_window_behavior,
-            nonfinite_policy,
-            visible_only,
-            time_window.min_ns,
-            time_window.max_ns,
-            out_min,
-            out_max);
+        return
+            scan_series_range(
+                source,
+                access,
+                level,
+                interpolation,
+                empty_window_behavior,
+                nonfinite_policy,
+                visible_only,
+                time_window.min_ns,
+                time_window.max_ns,
+                out_min,
+                out_max);
     }
 
     return false;

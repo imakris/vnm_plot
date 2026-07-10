@@ -593,8 +593,9 @@ bool test_time_unit_helpers_handle_edges()
     TEST_ASSERT(plot::midpoint_ns(k_min, k_max) == -1,
         "midpoint should avoid overflow for full int64 range");
 
-    const plot::time_range_t full_centered =
-        plot::centered_time_range_ns(-1, std::numeric_limits<std::uint64_t>::max());
+    const plot::time_range_t full_centered = plot::centered_time_range_ns(
+        -1,
+        std::numeric_limits<std::uint64_t>::max());
     TEST_ASSERT(full_centered.min_ns == k_min && full_centered.max_ns == k_max,
         "centered full-range construction should preserve both int64 endpoints");
 

@@ -250,15 +250,16 @@ public:
             if (m_t_max_initialized && !(v < m_t_max)) {
                 return {};
             }
-            return set_limits_if_changed(
-                v,
-                m_t_max,
-                m_t_available_min,
-                m_t_available_max,
-                true,
-                m_t_max_initialized,
-                m_t_available_min_initialized,
-                m_t_available_max_initialized);
+            return
+                set_limits_if_changed(
+                    v,
+                    m_t_max,
+                    m_t_available_min,
+                    m_t_available_max,
+                    true,
+                    m_t_max_initialized,
+                    m_t_available_min_initialized,
+                    m_t_available_max_initialized);
         }
 
         qint64 new_min = v;
@@ -274,15 +275,16 @@ public:
             }
         }
 
-        return set_limits_if_changed(
-            new_min,
-            new_max,
-            m_t_available_min,
-            m_t_available_max,
-            true,
-            true,
-            m_t_available_min_initialized,
-            m_t_available_max_initialized);
+        return
+            set_limits_if_changed(
+                new_min,
+                new_max,
+                m_t_available_min,
+                m_t_available_max,
+                true,
+                true,
+                m_t_available_min_initialized,
+                m_t_available_max_initialized);
     }
 
     time_axis_update_result_t set_t_max(qint64 v)
@@ -296,15 +298,16 @@ public:
             if (m_t_min_initialized && !(v > m_t_min)) {
                 return {};
             }
-            return set_limits_if_changed(
-                m_t_min,
-                v,
-                m_t_available_min,
-                m_t_available_max,
-                m_t_min_initialized,
-                true,
-                m_t_available_min_initialized,
-                m_t_available_max_initialized);
+            return
+                set_limits_if_changed(
+                    m_t_min,
+                    v,
+                    m_t_available_min,
+                    m_t_available_max,
+                    m_t_min_initialized,
+                    true,
+                    m_t_available_min_initialized,
+                    m_t_available_max_initialized);
         }
 
         qint64 new_min = m_t_min;
@@ -320,15 +323,16 @@ public:
             }
         }
 
-        return set_limits_if_changed(
-            new_min,
-            new_max,
-            m_t_available_min,
-            m_t_available_max,
-            true,
-            true,
-            m_t_available_min_initialized,
-            m_t_available_max_initialized);
+        return
+            set_limits_if_changed(
+                new_min,
+                new_max,
+                m_t_available_min,
+                m_t_available_max,
+                true,
+                true,
+                m_t_available_min_initialized,
+                m_t_available_max_initialized);
     }
 
     time_axis_update_result_t set_t_range(qint64 t_min_ns, qint64 t_max_ns)
@@ -337,15 +341,16 @@ public:
             return {};
         }
 
-        return set_limits_if_changed(
-            t_min_ns,
-            t_max_ns,
-            m_t_available_min,
-            m_t_available_max,
-            true,
-            true,
-            m_t_available_min_initialized,
-            m_t_available_max_initialized);
+        return
+            set_limits_if_changed(
+                t_min_ns,
+                t_max_ns,
+                m_t_available_min,
+                m_t_available_max,
+                true,
+                true,
+                m_t_available_min_initialized,
+                m_t_available_max_initialized);
     }
 
     time_axis_update_result_t set_t_available_min(qint64 v)
@@ -354,15 +359,16 @@ public:
             if (m_t_available_min_initialized && v == m_t_available_min) {
                 return {true, false};
             }
-            return set_limits_if_changed(
-                m_t_min,
-                m_t_max,
-                v,
-                m_t_available_max,
-                m_t_min_initialized,
-                m_t_max_initialized,
-                true,
-                false);
+            return
+                set_limits_if_changed(
+                    m_t_min,
+                    m_t_max,
+                    v,
+                    m_t_available_max,
+                    m_t_min_initialized,
+                    m_t_max_initialized,
+                    true,
+                    false);
         }
 
         return set_available_t_range(v, m_t_available_max);
@@ -374,15 +380,16 @@ public:
             if (m_t_available_max_initialized && v == m_t_available_max) {
                 return {true, false};
             }
-            return set_limits_if_changed(
-                m_t_min,
-                m_t_max,
-                m_t_available_min,
-                v,
-                m_t_min_initialized,
-                m_t_max_initialized,
-                false,
-                true);
+            return
+                set_limits_if_changed(
+                    m_t_min,
+                    m_t_max,
+                    m_t_available_min,
+                    v,
+                    m_t_min_initialized,
+                    m_t_max_initialized,
+                    false,
+                    true);
         }
 
         return set_available_t_range(m_t_available_min, v);
@@ -426,15 +433,16 @@ public:
             }
         }
 
-        return set_limits_if_changed(
-            new_t_min,
-            new_t_max,
-            t_available_min_ns,
-            t_available_max_ns,
-            new_t_min_initialized,
-            new_t_max_initialized,
-            true,
-            true);
+        return
+            set_limits_if_changed(
+                new_t_min,
+                new_t_max,
+                t_available_min_ns,
+                t_available_max_ns,
+                new_t_min_initialized,
+                new_t_max_initialized,
+                true,
+                true);
     }
 
     time_axis_update_result_t adjust_t_to_target(
@@ -456,15 +464,16 @@ public:
             target = *clamped;
         }
 
-        return set_limits_if_changed(
-            target.min_ns,
-            target.max_ns,
-            m_t_available_min,
-            m_t_available_max,
-            true,
-            true,
-            m_t_available_min_initialized,
-            m_t_available_max_initialized);
+        return
+            set_limits_if_changed(
+                target.min_ns,
+                target.max_ns,
+                m_t_available_min,
+                m_t_available_max,
+                true,
+                true,
+                m_t_available_min_initialized,
+                m_t_available_max_initialized);
     }
 
     time_axis_update_result_t adjust_t_from_mouse_diff(

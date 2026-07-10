@@ -1455,8 +1455,9 @@ void Series_renderer::prepare(
             }
             const detail::erased_access_policy_t access_view =
                 detail::make_erased_access_policy_view(*access);
-            const detail::access_policy_cache_key_t access_key =
-                detail::make_access_policy_cache_key(access, access_view);
+            const detail::access_policy_cache_key_t access_key = detail::make_access_policy_cache_key(
+                access,
+                access_view);
             if (key.access_key != access_key) {
                 return false;
             }

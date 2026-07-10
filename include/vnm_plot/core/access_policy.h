@@ -113,11 +113,10 @@ std::pair<float, float> member_range_access(
 {
     using range_min_t = std::decay_t<Range_min_member>;
     using range_max_t = std::decay_t<Range_max_member>;
-    return std::make_pair(
-        static_cast<float>(
-            member_at_offset<range_min_t>(sample, access.range_min_offset)),
-        static_cast<float>(
-            member_at_offset<range_max_t>(sample, access.range_max_offset)));
+    return
+        std::make_pair(
+            static_cast<float>(member_at_offset<range_min_t>(sample, access.range_min_offset)),
+            static_cast<float>(member_at_offset<range_max_t>(sample, access.range_max_offset)));
 }
 
 // Produces a stable cache key from the byte-level identity of a Sample type's

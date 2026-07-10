@@ -42,11 +42,12 @@ glm::mat4 to_glm_mat4(const QMatrix4x4& matrix)
 
 glm::vec4 qcolor_to_vec4(const QColor& color)
 {
-    return glm::vec4(
-        static_cast<float>(color.redF()),
-        static_cast<float>(color.greenF()),
-        static_cast<float>(color.blueF()),
-        static_cast<float>(color.alphaF()));
+    return
+        glm::vec4(
+            static_cast<float>(color.redF()),
+            static_cast<float>(color.greenF()),
+            static_cast<float>(color.blueF()),
+            static_cast<float>(color.alphaF()));
 }
 
 struct label_pane_opacity_t
@@ -250,9 +251,9 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
     vnm::plot::Profiler* profiler     = config.profiler.get();
     const auto           callback_now = std::chrono::steady_clock::now();
     if (profiler && m_impl->last_render_callback.time_since_epoch().count() != 0) {
-        const double elapsed_ms =
-            std::chrono::duration<double, std::milli>(
-                callback_now - m_impl->last_render_callback).count();
+        const double elapsed_ms = std::chrono::duration<double, std::milli>(
+            callback_now - m_impl->last_render_callback
+        ).count();
         profiler->record_observation("qrhi.renderer.callback_interval", elapsed_ms);
     }
     m_impl->last_render_callback = callback_now;

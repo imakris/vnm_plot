@@ -235,8 +235,8 @@ inline std::unique_ptr<QRhiGraphicsPipeline> build_alpha_blended_pipeline(
         return nullptr;
     }
 
-    auto layout_ubo = std::unique_ptr<QRhiBuffer>(rhi->newBuffer(
-        QRhiBuffer::Dynamic, QRhiBuffer::UniformBuffer, desc.ubo_bytes));
+    auto layout_ubo = std::unique_ptr<QRhiBuffer>(
+        rhi->newBuffer(QRhiBuffer::Dynamic, QRhiBuffer::UniformBuffer, desc.ubo_bytes));
     if (!layout_ubo || !layout_ubo->create()) {
         return nullptr;
     }

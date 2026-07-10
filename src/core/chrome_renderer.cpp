@@ -156,7 +156,10 @@ void Chrome_renderer::render_grid_and_backgrounds(
     const glm::vec2 main_origin = to_gl_origin(ctx, main_top_left, main_size);
 
     const grid_layer_params_t vertical_levels = calculate_grid_params(
-        double(ctx.v0), double(ctx.v1), pl.usable_height, ctx.adjusted_font_px);
+        double(ctx.v0),
+        double(ctx.v1),
+        pl.usable_height,
+        ctx.adjusted_font_px);
     // Grid spacing math runs in fp64 seconds; the shift origin is the
     // (rebased) seconds-domain t_min that the axis uniforms already use.
     constexpr double k_seconds_per_ns          = 1.0e-9;
@@ -320,10 +323,11 @@ void Chrome_renderer::render_preview_overlay(
 
     // CPU calculations
     const double x0 = static_cast<double>(
-        static_cast<long double>(ctx.win_w) *
-        span_ns_as_long_double(ctx.t_available_min, ctx.t0) / t_avail_span);
+        static_cast<long double>(ctx.win_w)                 *
+        span_ns_as_long_double(ctx.t_available_min, ctx.t0) /
+        t_avail_span                                      );
     const double x1 = static_cast<double>(
-        static_cast<long double>(ctx.win_w) *
+         static_cast<long double>(ctx.win_w) *
         (1.0L - span_ns_as_long_double(ctx.t1, ctx.t_available_max) / t_avail_span));
 
     const double dd    = x1 - x0;

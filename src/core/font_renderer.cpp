@@ -426,9 +426,11 @@ std::array<std::uint8_t, 32> compute_font_digest()
 
 std::string digest_to_hex(const std::array<std::uint8_t, 32>& digest)
 {
-    return QByteArray(
-        reinterpret_cast<const char*>(digest.data()),
-        static_cast<qsizetype>(digest.size())).toHex().toStdString();
+    return
+        QByteArray(
+            reinterpret_cast<const char*>(digest.data()),
+            static_cast<qsizetype>(digest.size())
+        ).toHex().toStdString();
 }
 
 std::filesystem::path cache_file_path(

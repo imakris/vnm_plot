@@ -1736,8 +1736,9 @@ bool test_renderer_assigns_distinct_origins_to_main_and_preview()
         ctx.t_available_max);
     const std::int64_t expected_main_origin =
         plot::detail::choose_origin_ns(ctx.t0, expected_main_span);
-    const std::int64_t expected_preview_origin =
-        plot::detail::choose_origin_ns(ctx.t_available_min, expected_preview_span);
+    const std::int64_t expected_preview_origin = plot::detail::choose_origin_ns(
+        ctx.t_available_min,
+        expected_preview_span);
 
     TEST_ASSERT(main_origin == expected_main_origin,
         std::string("main view must record its own per-view origin; got ") +

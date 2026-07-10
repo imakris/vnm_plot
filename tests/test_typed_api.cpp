@@ -99,7 +99,10 @@ bool test_layout_key_distinguishes_sample_types()
     };
 
     const auto policy_a = plot::make_access_policy<sample_t>(
-        &sample_t::t, &sample_t::v, &sample_t::v_min, &sample_t::v_max);
+        &sample_t::t,
+        &sample_t::v,
+        &sample_t::v_min,
+        &sample_t::v_max);
     const auto policy_b = plot::make_access_policy<other_sample_t>(
         &other_sample_t::t, &other_sample_t::v);
 
@@ -109,7 +112,10 @@ bool test_layout_key_distinguishes_sample_types()
         "layout_key should differ for differently shaped sample types");
 
     const auto policy_a2 = plot::make_access_policy<sample_t>(
-        &sample_t::t, &sample_t::v, &sample_t::v_min, &sample_t::v_max);
+        &sample_t::t,
+        &sample_t::v,
+        &sample_t::v_min,
+        &sample_t::v_max);
     TEST_ASSERT(policy_a.layout_key == policy_a2.layout_key,
         "layout_key should be deterministic for the same sample shape");
 
@@ -487,8 +493,8 @@ bool test_erased_access_view_uses_direct_member_accessors()
         "mutating a typed member-pointer policy should clear stable semantics");
     const plot::Data_access_policy erased_semantic_mutated =
         semantic_mutated.erase();
-    const plot::sample_semantics_key_t semantic_mutated_key =
-        plot::detail::make_sample_semantics_key(&erased_semantic_mutated);
+    const plot::sample_semantics_key_t semantic_mutated_key = plot::detail::make_sample_semantics_key(
+        &erased_semantic_mutated);
     TEST_ASSERT(semantic_mutated_key.conservative,
         "erasing a mutated typed policy should expose conservative semantics");
 

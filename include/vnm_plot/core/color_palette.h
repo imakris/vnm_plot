@@ -35,11 +35,12 @@ constexpr glm::vec4 hex_to_vec4(const char* str)
 inline glm::vec4 rgba_u8(std::uint8_t r, std::uint8_t g, std::uint8_t b, std::uint8_t a = 255)
 {
     constexpr float k_inv_255 = 1.0f / 255.0f;
-    return glm::vec4(
-        static_cast<float>(r) * k_inv_255,
-        static_cast<float>(g) * k_inv_255,
-        static_cast<float>(b) * k_inv_255,
-        static_cast<float>(a) * k_inv_255);
+    return
+        glm::vec4(
+            static_cast<float>(r) * k_inv_255,
+            static_cast<float>(g) * k_inv_255,
+            static_cast<float>(b) * k_inv_255,
+            static_cast<float>(a) * k_inv_255);
 }
 
 // -----------------------------------------------------------------------------
