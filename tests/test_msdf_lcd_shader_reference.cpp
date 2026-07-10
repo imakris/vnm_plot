@@ -230,10 +230,12 @@ std::string sample_statement_for_offset(float offset)
 {
     const std::string sample_name = sample_name_for_offset(offset);
     const std::string expression  = sample_expression_for_offset(offset);
-    return expression.empty()
-        ? std::string{}
-        : "float " + sample_name + " = glyph_alpha_at_ratio(" +
-            expression + ", uv_min, uv_max);";
+    if (expression.empty()) {
+        return {};
+    }
+
+    return "float " + sample_name + " = glyph_alpha_at_ratio(" +
+        expression + ", uv_min, uv_max);";
 }
 
 std::string filter_weight_statement(std::string_view name, std::string_view literal)
