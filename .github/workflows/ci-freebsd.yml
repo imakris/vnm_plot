@@ -48,6 +48,7 @@ jobs:
             pkg install -y git cmake pkgconf python311 qt6-base qt6-declarative qt6-shadertools xauth xorg-vfbserver
           run: |
             ci_status=success
+            git config --global --add safe.directory "$(pwd)"
             mkdir -p build
             cmake -S . -B build \
               -DCMAKE_BUILD_TYPE=Release \
