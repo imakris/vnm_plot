@@ -22,6 +22,7 @@ benchmark_phase_trace.jsonl
 # Claude workspace metadata
 .claude/
 /repo/
+__pycache__/
 
 # Windows artifacts
 /nul

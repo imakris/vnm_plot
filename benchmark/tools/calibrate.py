@@ -33,8 +33,16 @@ DEFAULT_METRICS = (
     "renderer.frame.upload.uniform_bytes",
     "renderer.frame.upload.known_custom_bytes",
     "renderer.frame.upload.total_bytes",
-    "renderer.frame.output_count",
+    "benchmark.frame.output_count",
 )
+
+ZERO_WHEN_ABSENT = {
+    "benchmark.producer.lock_wait_ns",
+    "renderer.series_window.monotonicity_scan_samples",
+    "renderer.frame.buffer_allocation_bytes",
+}
+
+REQUIRED_OBSERVATIONS = set(DEFAULT_METRICS) - ZERO_WHEN_ABSENT
 
 
 def parse_args() -> argparse.Namespace:
@@ -53,6 +61,11 @@ def parse_args() -> argparse.Namespace:
         "--manifest-only",
         action="store_true",
         help="Write the generated scenario manifest without executing runs.",
+    )
+    parser.add_argument(
+        "--allow-dirty-source",
+        action="store_true",
+        help="Permit calibration artifacts built from a dirty source tree.",
     )
     return parser.parse_args()
 
@@ -102,6 +115,45 @@ def scenario_manifest(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
+def validate_artifact(
+    args: argparse.Namespace,
+    scenario: dict[str, Any],
+    artifact: Path,
+) -> dict[str, Any]:
+    payload = json.loads(artifact.read_text(encoding="utf-8"))
+    metadata = payload["metadata"]
+    if metadata["actual_graphics_backend"].lower() == "null":
+        raise RuntimeError(f"{scenario['id']} unexpectedly used Null QRhi")
+    expectations = {
+        "data_type": scenario["data_type"].capitalize(),
+        "finish_state": "enabled",
+        "framebuffer": f"{args.width}x{args.height}",
+        "requested_graphics_backend": args.graphics_backend,
+        "scenario": scenario["id"],
+        "series_count": str(scenario["series_count"]),
+        "warmup_frames": str(args.warmup_frames),
+    }
+    for name, expected in expectations.items():
+        if metadata.get(name) != expected:
+            raise RuntimeError(
+                f"{scenario['id']} metadata {name}={metadata.get(name)!r}, "
+                f"expected {expected!r}"
+            )
+    if not args.allow_dirty_source and metadata.get("source_dirty") != "false":
+        raise RuntimeError(f"{scenario['id']} was built from a dirty source tree")
+    if int(metadata["measured_frames"]) != args.frames:
+        raise RuntimeError(f"{scenario['id']} measured the wrong frame count")
+    output_count = payload["observations"]["benchmark.frame.output_count"]["count"]
+    if output_count != args.frames:
+        raise RuntimeError(f"{scenario['id']} retained the wrong output count")
+    missing = REQUIRED_OBSERVATIONS - payload["observations"].keys()
+    if missing:
+        raise RuntimeError(
+            f"{scenario['id']} is missing required observations: {sorted(missing)}"
+        )
+    return payload
+
+
 def run_one(
     args: argparse.Namespace,
     scenario: dict[str, Any],
@@ -117,9 +169,14 @@ def run_one(
         if path.name != "invocation.json"
     ]
     if len(existing) == 1:
-        payload = json.loads(existing[0].read_text(encoding="utf-8"))
-        if int(payload["metadata"]["measured_frames"]) == args.frames:
+        try:
+            validate_artifact(args, scenario, existing[0])
             return existing[0]
+        except (KeyError, TypeError, ValueError, RuntimeError) as exc:
+            raise RuntimeError(
+                f"{scenario['id']} {run_id} has an incompatible retained artifact; "
+                "choose a new output directory"
+            ) from exc
     command = [
         str(args.executable.resolve()),
         "--backend",
@@ -208,20 +265,13 @@ def run_one(
             f"{scenario['id']} {run_id} produced {len(artifacts)} raw artifacts"
         )
     artifact = artifacts[0]
-    payload = json.loads(artifact.read_text(encoding="utf-8"))
-    metadata = payload["metadata"]
-    if metadata["actual_graphics_backend"].lower() == "null":
-        raise RuntimeError(f"{scenario['id']} {run_id} unexpectedly used Null QRhi")
-    if int(metadata["measured_frames"]) != args.frames:
-        raise RuntimeError(f"{scenario['id']} {run_id} measured the wrong frame count")
-    output_count = payload["observations"]["benchmark.frame.output_count"]["count"]
-    if output_count != args.frames:
-        raise RuntimeError(f"{scenario['id']} {run_id} retained the wrong output count")
+    validate_artifact(args, scenario, artifact)
     return artifact
 
 
-def metric_value(observation: dict[str, Any]) -> float | None:
-    value = observation.get("p50")
+def metric_value(metric: str, observation: dict[str, Any]) -> float | None:
+    aggregate_total = metric.endswith(".count") or metric.endswith("_count")
+    value = observation.get("total" if aggregate_total else "p50")
     if value is None:
         value = observation.get("mean")
     if isinstance(value, (int, float)) and math.isfinite(value):
@@ -274,26 +324,39 @@ def calculate_margins(
         "status": "proposed-owner-approval-required",
         "scenario_manifest": "scenario_manifest.json",
         "method": {
-            "run_value": "retained per-run p50, falling back to mean",
+            "run_value": (
+                "per-run total for count metrics; retained p50 otherwise, "
+                "falling back to mean"
+            ),
             "relative": "max(floor, 4*MAD/center, 2*set-drift/center)",
             "absolute": "max(resolution floor, 4*MAD, 2*set-drift)",
         },
         "scenarios": {},
     }
+    source_commits: set[str] = set()
+    source_trees: set[str] = set()
+    actual_backends: set[str] = set()
     for scenario in manifest["scenarios"]:
         scenario_id = scenario["id"]
         loaded_sets = [
             [json.loads(path.read_text(encoding="utf-8")) for path in calibration_set]
             for calibration_set in artifacts[scenario_id]
         ]
+        for calibration_set in loaded_sets:
+            for run in calibration_set:
+                source_commits.add(run["metadata"]["source_commit"])
+                source_trees.add(run["metadata"]["source_tree"])
+                actual_backends.add(run["metadata"]["actual_graphics_backend"])
         scenario_proposal: dict[str, Any] = {}
         for metric in DEFAULT_METRICS:
             metric_sets: list[list[float]] = []
             for calibration_set in loaded_sets:
                 values = [
-                    metric_value(run["observations"][metric])
+                    0.0
+                    if metric not in run["observations"] and metric in ZERO_WHEN_ABSENT
+                    else metric_value(metric, run["observations"][metric])
                     for run in calibration_set
-                    if metric in run["observations"]
+                    if metric in run["observations"] or metric in ZERO_WHEN_ABSENT
                 ]
                 retained = [value for value in values if value is not None]
                 if retained:
@@ -301,6 +364,15 @@ def calculate_margins(
             if len(metric_sets) == len(loaded_sets):
                 scenario_proposal[metric] = propose_margin(metric, metric_sets)
         proposal["scenarios"][scenario_id] = scenario_proposal
+    if len(source_commits) != 1 or len(source_trees) != 1 or len(actual_backends) != 1:
+        raise RuntimeError(
+            "calibration artifacts mix source commits, source trees, or graphics backends"
+        )
+    proposal["provenance"] = {
+        "actual_graphics_backend": next(iter(actual_backends)),
+        "source_commit": next(iter(source_commits)),
+        "source_tree": next(iter(source_trees)),
+    }
     return proposal
 
 
