@@ -32,14 +32,14 @@ public:
 
 struct zoom_state_t
 {
-    double scale = 1.0;
-    double velocity = 0.0;
+    double         scale    = 1.0;
+    double         velocity = 0.0;
 };
 
 struct indicator_sample_t
 {
-    std::int64_t t_ns = 0;
-    float value = 0.0f;
+    std::int64_t   t_ns  = 0;
+    float          value = 0.0f;
 };
 
 bool nearly_equal(double a, double b, double epsilon = 1e-12)

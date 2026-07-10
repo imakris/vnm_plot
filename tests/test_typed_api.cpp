@@ -21,17 +21,17 @@ namespace {
 struct sample_t
 {
     // Timestamps are int64 nanoseconds (API convention).
-    std::int64_t t;
-    float v;
-    std::int32_t pad;
-    float v_min;
-    float v_max;
+    std::int64_t   t;
+    float          v;
+    std::int32_t   pad;
+    float          v_min;
+    float          v_max;
 };
 
 struct default_member_initializer_sample_t
 {
-    std::int64_t t = 0;
-    float        v = 0.0f;
+    std::int64_t   t = 0;
+    float          v = 0.0f;
 };
 
 struct Non_trivial_sample
@@ -42,18 +42,18 @@ struct Non_trivial_sample
         v(0.0f)
     {}
 
-    std::int64_t t;
-    float        v;
+    std::int64_t   t;
+    float          v;
 };
 
 struct sample_base_t
 {
-    std::int64_t t;
+    std::int64_t   t;
 };
 
 struct Non_standard_layout_sample : sample_base_t
 {
-    float v;
+    float          v;
 };
 
 static_assert(plot::detail::supports_member_pointer_access_v<sample_t>,
@@ -94,8 +94,8 @@ bool test_layout_key_distinguishes_sample_types()
     // keys so the renderer's caches do not collide across types.
     struct other_sample_t
     {
-        std::int64_t t;
-        float v;
+        std::int64_t   t;
+        float          v;
     };
 
     const auto policy_a = plot::make_access_policy<sample_t>(
@@ -120,14 +120,14 @@ bool test_member_pointer_semantics_key_is_distinct_from_layout_key()
 {
     struct int_timestamp_sample_t
     {
-        std::int64_t t;
-        float        v;
+        std::int64_t   t;
+        float          v;
     };
 
     struct fp_timestamp_sample_t
     {
-        double t_seconds;
-        float  v;
+        double         t_seconds;
+        float          v;
     };
 
     const auto int_policy = plot::make_access_policy<int_timestamp_sample_t>(

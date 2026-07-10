@@ -17,8 +17,8 @@ namespace {
 
 struct sample_t
 {
-    std::int64_t t = 0;
-    float        v = 0.0f;
+    std::int64_t   t = 0;
+    float          v = 0.0f;
 };
 
 constexpr std::uint64_t k_query_semantics_key = 0x5155455259;
@@ -65,13 +65,13 @@ public:
     int snapshot_calls() const { return m_snapshot_calls; }
 
 private:
-    std::vector<sample_t> m_samples;
-    std::vector<std::size_t> m_scales = {1};
+    std::vector<sample_t>      m_samples;
+    std::vector<std::size_t>   m_scales = {1};
     plot::snapshot_result_t::Snapshot_status m_status =
         plot::snapshot_result_t::Snapshot_status::READY;
-    plot::Time_order m_time_order = plot::Time_order::UNKNOWN;
-    std::uint64_t m_sequence = 11;
-    int m_snapshot_calls = 0;
+    plot::Time_order           m_time_order     = plot::Time_order::UNKNOWN;
+    std::uint64_t              m_sequence       = 11;
+    int                        m_snapshot_calls = 0;
 };
 
 plot::Data_access_policy make_value_access(

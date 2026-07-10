@@ -12,7 +12,7 @@ struct text_lcd_resolver_probes_t
 {
     using probe_t = std::function<text_lcd_resolved_subpixel_order_t()>;
 
-    probe_t qt_probe = nullptr;
+    probe_t qt_probe      = nullptr;
     probe_t windows_probe = nullptr;
 };
 

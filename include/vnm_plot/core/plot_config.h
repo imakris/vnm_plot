@@ -28,9 +28,9 @@ enum class Value_format_role
 
 struct value_format_context_t
 {
-    Value_format_role role = Value_format_role::AXIS_LABEL;
-    int suggested_fixed_digits = 0;
-    std::string_view series_label;
+    Value_format_role  role                   = Value_format_role::AXIS_LABEL;
+    int                suggested_fixed_digits = 0;
+    std::string_view   series_label;
 };
 
 // -----------------------------------------------------------------------------
@@ -105,12 +105,12 @@ private:
 struct Plot_config
 {
     // --- Theme ---
-    bool dark_mode = false;
-    bool show_text = true;
-    double grid_visibility = 1.0;     // 0..1 alpha; 0 = hidden (skipped), 1 = fully visible
-    double preview_visibility = 1.0;  // 0..1 alpha; 0 = hidden (skipped), 1 = fully visible
-    Color_palette dark_color_palette = Color_palette::dark();
-    Color_palette light_color_palette = Color_palette::light();
+    bool                                       dark_mode           = false;
+    bool                                       show_text           = true;
+    double                                     grid_visibility     = 1.0; // 0..1 alpha; 0 = hidden (skipped), 1 = fully visible
+    double                                     preview_visibility  = 1.0; // 0..1 alpha; 0 = hidden (skipped), 1 = fully visible
+    Color_palette                              dark_color_palette  = Color_palette::dark();
+    Color_palette                              light_color_palette = Color_palette::light();
 
     // --- Timestamp Formatting ---
     // Callback to format timestamps for axis labels.
@@ -123,7 +123,7 @@ struct Plot_config
     // Revision for formatter behavior. Caller contract: increment when the
     // effective output of format_timestamp changes without replacing the
     // callback identity (e.g. captured/stateful data updates).
-    std::uint64_t format_timestamp_revision = 0;
+    std::uint64_t                              format_timestamp_revision = 0;
     // Generic value formatter for Y-axis labels, indicator values, and info
     // overlay values. Applications own units, locale, and domain-specific
     // precision. If null, vnm_plot uses its neutral numeric defaults.
@@ -132,46 +132,46 @@ struct Plot_config
 
     // --- Profiling (optional) ---
     // If provided, profiling scopes will be recorded.
-    std::shared_ptr<Profiler> profiler;
+    std::shared_ptr<Profiler>                  profiler;
 
     // --- Font Configuration ---
-    double font_size_px = 10.0;
-    double base_label_height_px = 14.0;
+    double                                     font_size_px         = 10.0;
+    double                                     base_label_height_px = 14.0;
 
     // --- Logging (optional) ---
     // Hook for debug messages (e.g., LOD selection).
-    std::function<void(const std::string&)> log_debug;
-    std::function<void(const std::string&)> log_error;
+    std::function<void(const std::string&)>    log_debug;
+    std::function<void(const std::string&)>    log_error;
 
     // --- Preview Bar ---
-    double preview_height_px = 0.0;  // 0 = auto, >0 = fixed height
+    double                                     preview_height_px = 0.0; // 0 = auto, >0 = fixed height
 
     // --- Clear Behavior ---
     // When true, clear to transparent so QML controls the background.
-    bool clear_to_transparent = false;
+    bool                                       clear_to_transparent = false;
 
     // --- Line Rendering ---
     // When true, snap line vertices to pixel centers (can look jagged on
     // diagonals; default is false for smoother lines).
-    bool snap_lines_to_pixels = false;
+    bool                                       snap_lines_to_pixels = false;
     // Line width in pixels (may be clamped by the driver).
-    double line_width_px = 1.0;
+    double                                     line_width_px = 1.0;
     // Dot diameter in pixels for DOTS rendering. The shader floors at 1 px,
     // so values below 1.0 still render as a 1-pixel dot.
-    double point_diameter_px = 1.0;
+    double                                     point_diameter_px = 1.0;
     // Area fill alpha multiplier (0..1).
-    double area_fill_alpha = 0.3;
+    double                                     area_fill_alpha = 0.3;
 
     // --- Auto V-Range ---
     // Default is GLOBAL.
-    Auto_v_range_mode auto_v_range_mode = Auto_v_range_mode::GLOBAL;
+    Auto_v_range_mode                          auto_v_range_mode = Auto_v_range_mode::GLOBAL;
     // Extra scale applied to auto v-range (0 = no padding).
-    double auto_v_range_extra_scale = 0.0;
+    double                                     auto_v_range_extra_scale = 0.0;
     // When true, padding cannot pull a nonnegative auto-computed range below zero.
-    bool floor_nonnegative_auto_v_range_at_zero = false;
+    bool                                       floor_nonnegative_auto_v_range_at_zero = false;
 
     // --- Text LCD ---
-    text_lcd_request_t text_lcd_request = text_lcd_auto_request();
+    text_lcd_request_t                         text_lcd_request = text_lcd_auto_request();
 };
 
 inline Color_palette resolved_color_palette(const Plot_config* config, bool dark_mode)

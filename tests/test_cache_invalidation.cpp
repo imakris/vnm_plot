@@ -39,8 +39,8 @@ namespace {
 
 struct Test_sample
 {
-    std::int64_t t;
-    float v;
+    std::int64_t   t;
+    float          v;
 };
 
 constexpr std::uint64_t k_stable_policy_semantics = 0x535441424C45;
@@ -48,17 +48,17 @@ constexpr std::uint64_t k_stable_policy_semantics = 0x535441424C45;
 class Query_range_source final : public Data_source
 {
 public:
-    std::vector<Test_sample> samples;
-    Data_query_status query_status = Data_query_status::UNSUPPORTED;
-    value_range_t query_range{0.0f, 0.0f};
-    std::uint64_t query_sequence = 1;
-    std::uint64_t current_sequence_value = 1;
-    std::uint64_t snapshot_sequence = 1;
-    std::size_t levels = 1;
-    int query_calls = 0;
-    int snapshot_calls = 0;
-    std::size_t last_query_lod = 0;
-    data_query_context_t last_query;
+    std::vector<Test_sample>   samples;
+    Data_query_status          query_status           = Data_query_status::UNSUPPORTED;
+    value_range_t              query_range{0.0f, 0.0f};
+    std::uint64_t              query_sequence         = 1;
+    std::uint64_t              current_sequence_value = 1;
+    std::uint64_t              snapshot_sequence      = 1;
+    std::size_t                levels                 = 1;
+    int                        query_calls            = 0;
+    int                        snapshot_calls         = 0;
+    std::size_t                last_query_lod         = 0;
+    data_query_context_t       last_query;
 
     snapshot_result_t try_snapshot(std::size_t lod_level) override
     {
@@ -108,10 +108,10 @@ public:
 class Snapshot_range_source final : public Data_source
 {
 public:
-    std::vector<Test_sample> samples;
-    std::uint64_t snapshot_sequence = 1;
-    std::uint64_t current_sequence_value = 1;
-    int snapshot_calls = 0;
+    std::vector<Test_sample>   samples;
+    std::uint64_t              snapshot_sequence      = 1;
+    std::uint64_t              current_sequence_value = 1;
+    int                        snapshot_calls         = 0;
 
     snapshot_result_t try_snapshot(std::size_t /*lod_level*/) override
     {

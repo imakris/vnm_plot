@@ -94,8 +94,8 @@ private:
     {
         struct line_draw_span_t
         {
-            std::size_t gpu_first = 0;
-            std::size_t gpu_count = 0;
+            std::size_t gpu_first  = 0;
+            std::size_t gpu_count  = 0;
             std::size_t line_first = 0;
             std::size_t line_count = 0;
         };
@@ -106,26 +106,26 @@ private:
         // Renderer-owned scratch buffer for VBO uploads. Holds the planned
         // visible gpu_sample_t values rebased against the active origin.
         // Reused across uploads to avoid reallocation.
-        std::vector<gpu_sample_t> staging;
-        std::size_t last_staged_sample_count = 0;
-        std::size_t last_sample_upload_bytes = 0;
-        std::size_t last_sample_upload_count = 0;
-        std::size_t last_primitive_prepare_count = 0;
-        std::size_t last_line_window_sample_count = 0;
-        std::size_t last_recorded_line_span_count = 0;
-        std::size_t last_recorded_line_segment_count = 0;
-        std::size_t last_recorded_area_span_count = 0;
-        std::size_t last_recorded_area_segment_count = 0;
-        std::size_t last_recorded_dot_sample_count = 0;
-        std::int64_t last_prepared_t_min_ns = 0;
-        std::int64_t last_prepared_t_max_ns = 0;
-        double last_prepared_width_px = 0.0;
-        std::size_t last_vbo_generation = 0;
-        QRhiBuffer* last_sample_buffer = nullptr;
+        std::vector<gpu_sample_t>      staging;
+        std::size_t                    last_staged_sample_count         = 0;
+        std::size_t                    last_sample_upload_bytes         = 0;
+        std::size_t                    last_sample_upload_count         = 0;
+        std::size_t                    last_primitive_prepare_count     = 0;
+        std::size_t                    last_line_window_sample_count    = 0;
+        std::size_t                    last_recorded_line_span_count    = 0;
+        std::size_t                    last_recorded_line_segment_count = 0;
+        std::size_t                    last_recorded_area_span_count    = 0;
+        std::size_t                    last_recorded_area_segment_count = 0;
+        std::size_t                    last_recorded_dot_sample_count   = 0;
+        std::int64_t                   last_prepared_t_min_ns           = 0;
+        std::int64_t                   last_prepared_t_max_ns           = 0;
+        double                         last_prepared_width_px           = 0.0;
+        std::size_t                    last_vbo_generation              = 0;
+        QRhiBuffer*                    last_sample_buffer               = nullptr;
         detail::access_dispatch_kind_t last_sample_access_dispatch_kind =
             detail::access_dispatch_kind_t::NONE;
-        std::vector<gpu_sample_t> line_window_staging;
-        std::vector<line_draw_span_t> line_draw_spans;
+        std::vector<gpu_sample_t>      line_window_staging;
+        std::vector<line_draw_span_t>  line_draw_spans;
 
         // Per-view RHI resources. Defined out-of-line in series_renderer.cpp
         // where QRhiBuffer is complete; the public header only sees the
@@ -135,8 +135,8 @@ private:
         struct rhi_buffers_t;
         std::unique_ptr<rhi_buffers_t> rhi;
 
-        std::size_t  rhi_vbo_capacity_bytes              = 0;
-        std::size_t  rhi_line_window_vbo_capacity_bytes  = 0;
+        std::size_t    rhi_vbo_capacity_bytes             = 0;
+        std::size_t    rhi_line_window_vbo_capacity_bytes = 0;
 
         vbo_view_state_t();
         ~vbo_view_state_t();
@@ -150,9 +150,10 @@ private:
 
     struct vbo_state_t
     {
-        vbo_view_state_t main_view;
-        vbo_view_state_t preview_view;
-        std::unique_ptr<detail::Series_window_snapshot_cache> snapshot_cache;
+        vbo_view_state_t   main_view;
+        vbo_view_state_t   preview_view;
+        std::unique_ptr<detail::Series_window_snapshot_cache>
+                           snapshot_cache;
 
         vbo_state_t();
         ~vbo_state_t();
@@ -168,33 +169,34 @@ private:
     // own state (vbo_state) is owned by m_vbo_states.
     struct series_draw_state_t
     {
-        int id = 0;
-        std::size_t series_order = 0;
-        std::shared_ptr<const series_data_t> series;
-        vbo_state_t* vbo_state = nullptr;
-        Series_view_plan main_plan;
-        Series_view_plan preview_plan;
-        bool has_preview = false;
+        int                id           = 0;
+        std::size_t        series_order = 0;
+        std::shared_ptr<const series_data_t>
+                           series;
+        vbo_state_t*       vbo_state    = nullptr;
+        Series_view_plan   main_plan;
+        Series_view_plan   preview_plan;
+        bool               has_preview  = false;
     };
 
-    Asset_loader* m_asset_loader = nullptr;
-    std::unordered_map<int, vbo_state_t> m_vbo_states;
+    Asset_loader*                          m_asset_loader = nullptr;
+    std::unordered_map<int, vbo_state_t>   m_vbo_states;
     // Consolidated once-per-series error log deduplication.
     // Key encodes (series_id, error_category) as uint64_t.
-    std::unordered_set<uint64_t> m_logged_errors;
+    std::unordered_set<uint64_t>           m_logged_errors;
     // Private test instrumentation for the QRhi prepare/render split.
-    std::vector<int> m_last_recorded_draw_z_orders;
-    std::vector<Display_style> m_last_recorded_draw_styles;
-    std::vector<int> m_last_recorded_draw_series_ids;
-    std::vector<Series_view_kind> m_last_recorded_draw_view_kinds;
-    std::size_t m_last_qrhi_layer_cache_size = 0;
+    std::vector<int>                       m_last_recorded_draw_z_orders;
+    std::vector<Display_style>             m_last_recorded_draw_styles;
+    std::vector<int>                       m_last_recorded_draw_series_ids;
+    std::vector<Series_view_kind>          m_last_recorded_draw_view_kinds;
+    std::size_t                            m_last_qrhi_layer_cache_size = 0;
 
     // The full implementation sits in series_renderer.cpp where the QRhi
     // types are complete.
     struct rhi_state_t;
-    std::unique_ptr<rhi_state_t> m_rhi_state;
+    std::unique_ptr<rhi_state_t>           m_rhi_state;
 
-    uint64_t m_frame_id = 0;  // Monotonic frame counter for snapshot caching
+    uint64_t m_frame_id = 0; // Monotonic frame counter for snapshot caching
 
     void clear_frame_snapshot_caches();
 

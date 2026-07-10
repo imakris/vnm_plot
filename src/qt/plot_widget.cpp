@@ -1059,10 +1059,10 @@ void Plot_widget::auto_adjust_view(bool adjust_t, double extra_v_scale, bool anc
 
     struct aggregated_range_t
     {
-        double       vmin;
-        double       vmax;
-        std::int64_t tmin_ns;
-        std::int64_t tmax_ns;
+        double         vmin;
+        double         vmax;
+        std::int64_t   tmin_ns;
+        std::int64_t   tmax_ns;
     };
 
     bool have_any = false;

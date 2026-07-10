@@ -140,36 +140,37 @@ struct Plot_renderer::impl_t
     {
         Plot_config    config;
         data_config_t  data_cfg;
-        std::map<int, std::shared_ptr<const series_data_t>> series;
-        bool           v_auto = true;
-        int            visible_info_flags = k_visible_info_none;
-        double         adjusted_font_px = 10.0;
-        double         base_label_height_px = 14.0;
+        std::map<int, std::shared_ptr<const series_data_t>>
+                       series;
+        bool           v_auto                  = true;
+        int            visible_info_flags      = k_visible_info_none;
+        double         adjusted_font_px        = 10.0;
+        double         base_label_height_px    = 14.0;
         double         adjusted_preview_height = 0.0;
-        double         vbar_width_pixels = 0.0;
-        glm::vec4      window_background = glm::vec4(0.f, 0.f, 0.f, 1.f);
+        double         vbar_width_pixels       = 0.0;
+        glm::vec4      window_background       = glm::vec4(0.f, 0.f, 0.f, 1.f);
         text_lcd_resolved_subpixel_order_t auto_text_lcd_subpixel_order =
             text_lcd_resolved_subpixel_order_t::NONE;
         std::uint64_t  config_revision = 0;
     };
 
-    const Plot_widget* owner = nullptr;
-    render_snapshot_t  snapshot;
+    const Plot_widget*             owner                  = nullptr;
+    render_snapshot_t              snapshot;
 
-    Asset_loader        asset_loader;
-    Series_renderer     series;
-    Primitive_renderer  primitives;
-    Chrome_renderer     chrome;
-    Layout_calculator   layout_calc;
-    Layout_cache        layout_cache;
-    detail::Frame_range_planner frame_range_planner;
-    double              last_vbar_width_pixels = detail::k_vbar_min_width_px_d;
+    Asset_loader                   asset_loader;
+    Series_renderer                series;
+    Primitive_renderer             primitives;
+    Chrome_renderer                chrome;
+    Layout_calculator              layout_calc;
+    Layout_cache                   layout_cache;
+    detail::Frame_range_planner    frame_range_planner;
+    double                         last_vbar_width_pixels = detail::k_vbar_min_width_px_d;
 #if defined(VNM_PLOT_ENABLE_TEXT)
     std::unique_ptr<Font_renderer> fonts;
     std::unique_ptr<Text_renderer> text;
 #endif
     std::chrono::steady_clock::time_point last_render_callback;
-    bool                series_initialized   = false;
+    bool series_initialized = false;
 };
 
 Plot_renderer::Plot_renderer(const Plot_widget* owner)

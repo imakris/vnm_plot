@@ -53,14 +53,14 @@ struct Scoped_temp_dir
 
 struct cache_file_options_t
 {
-    digest_t digest{};
-    std::uint32_t cache_version = k_cache_version;
-    std::uint32_t pixel_height = k_pixel_height;
-    std::uint32_t atlas_size = k_atlas_texture_size;
-    std::uint32_t glyph_count = 0;
-    std::uint32_t kerning_count = 0;
-    std::uint32_t atlas_bytes = k_expected_atlas_bytes;
-    bool write_atlas_payload = false;
+    digest_t       digest{};
+    std::uint32_t  cache_version       = k_cache_version;
+    std::uint32_t  pixel_height        = k_pixel_height;
+    std::uint32_t  atlas_size          = k_atlas_texture_size;
+    std::uint32_t  glyph_count         = 0;
+    std::uint32_t  kerning_count       = 0;
+    std::uint32_t  atlas_bytes         = k_expected_atlas_bytes;
+    bool           write_atlas_payload = false;
 };
 
 digest_t make_digest(std::uint8_t seed)

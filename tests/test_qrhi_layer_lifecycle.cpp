@@ -31,50 +31,51 @@ namespace {
 
 struct test_sample_t
 {
-    std::int64_t timestamp_ns;
-    float value;
-    float range_min;
-    float range_max;
+    std::int64_t           timestamp_ns;
+    float                  value;
+    float                  range_min;
+    float                  range_max;
 };
 
 struct layer_event_t
 {
-    std::string layer_id;
-    std::string action;
-    bool resources_changed = false;
-    bool snapshot_valid = false;
-    std::size_t snapshot_count = 0;
-    plot::Series_view_kind view_kind = plot::Series_view_kind::MAIN;
-    std::size_t source_first = 0;
-    std::size_t source_count = 0;
-    std::size_t synthetic_hold_count = 0;
-    std::size_t gpu_count = 0;
-    std::vector<plot::drawable_sample_span_t> drawable_spans;
-    std::uint64_t sample_sequence = 0;
-    std::uint64_t snapshot_sequence = 0;
-    std::int64_t t_min_ns = 0;
-    std::int64_t t_max_ns = 0;
-    std::int64_t t_origin_ns = 0;
-    float v_min = 0.0f;
-    float v_max = 0.0f;
+    std::string            layer_id;
+    std::string            action;
+    bool                   resources_changed    = false;
+    bool                   snapshot_valid       = false;
+    std::size_t            snapshot_count       = 0;
+    plot::Series_view_kind view_kind            = plot::Series_view_kind::MAIN;
+    std::size_t            source_first         = 0;
+    std::size_t            source_count         = 0;
+    std::size_t            synthetic_hold_count = 0;
+    std::size_t            gpu_count            = 0;
+    std::vector<plot::drawable_sample_span_t>
+                           drawable_spans;
+    std::uint64_t          sample_sequence      = 0;
+    std::uint64_t          snapshot_sequence    = 0;
+    std::int64_t           t_min_ns             = 0;
+    std::int64_t           t_max_ns             = 0;
+    std::int64_t           t_origin_ns          = 0;
+    float                  v_min                = 0.0f;
+    float                  v_max                = 0.0f;
     plot::Nonfinite_sample_policy nonfinite_policy =
         plot::Nonfinite_sample_policy::BREAK_SEGMENT;
-    QRhiBuffer* sample_buffer = nullptr;
-    std::size_t sample_buffer_first_sample = 0;
-    std::size_t sample_buffer_sample_count = 0;
-    std::size_t sample_buffer_source_first = 0;
-    std::size_t sample_buffer_source_count = 0;
-    std::size_t sample_buffer_synthetic_hold_count = 0;
-    std::int64_t sample_buffer_t_origin_ns = 0;
-    std::int64_t sample_buffer_t_min_ns = 0;
-    std::int64_t sample_buffer_t_max_ns = 0;
-    float sample_buffer_v_min = 0.0f;
-    float sample_buffer_v_max = 0.0f;
-    std::size_t sample_buffer_stride_bytes = 0;
-    std::size_t sample_buffer_t_rel_seconds_offset = 0;
-    std::size_t sample_buffer_value_offset = 0;
-    std::size_t sample_buffer_range_min_offset = 0;
-    std::size_t sample_buffer_range_max_offset = 0;
+    QRhiBuffer*            sample_buffer                      = nullptr;
+    std::size_t            sample_buffer_first_sample         = 0;
+    std::size_t            sample_buffer_sample_count         = 0;
+    std::size_t            sample_buffer_source_first         = 0;
+    std::size_t            sample_buffer_source_count         = 0;
+    std::size_t            sample_buffer_synthetic_hold_count = 0;
+    std::int64_t           sample_buffer_t_origin_ns          = 0;
+    std::int64_t           sample_buffer_t_min_ns             = 0;
+    std::int64_t           sample_buffer_t_max_ns             = 0;
+    float                  sample_buffer_v_min                = 0.0f;
+    float                  sample_buffer_v_max                = 0.0f;
+    std::size_t            sample_buffer_stride_bytes         = 0;
+    std::size_t            sample_buffer_t_rel_seconds_offset = 0;
+    std::size_t            sample_buffer_value_offset         = 0;
+    std::size_t            sample_buffer_range_min_offset     = 0;
+    std::size_t            sample_buffer_range_max_offset     = 0;
 };
 
 class Test_source final : public plot::Data_source
@@ -154,12 +155,12 @@ public:
 
 private:
     std::vector<test_sample_t> m_samples;
-    std::weak_ptr<void> m_last_hold;
-    const void* m_identity = this;
-    std::uint64_t m_sequence = 0;
-    int m_snapshot_calls = 0;
-    int m_busy_snapshots_remaining = 0;
-    bool m_advance_during_next_snapshot = false;
+    std::weak_ptr<void>        m_last_hold;
+    const void*                m_identity                     = this;
+    std::uint64_t              m_sequence                     = 0;
+    int                        m_snapshot_calls               = 0;
+    int                        m_busy_snapshots_remaining     = 0;
+    bool                       m_advance_during_next_snapshot = false;
 };
 
 plot::Data_access_policy make_access_policy()
@@ -212,8 +213,8 @@ plot::Data_access_policy make_range_only_access_policy()
 struct access_call_counts_t
 {
     int timestamp = 0;
-    int value = 0;
-    int range = 0;
+    int value     = 0;
+    int range     = 0;
 };
 
 plot::Data_access_policy make_direct_member_access_policy()
@@ -375,11 +376,12 @@ public:
     void set_revision(std::uint64_t revision) { m_revision = revision; }
 
 private:
-    std::string m_id;
-    std::uint64_t m_revision = 0;
-    int m_z_order = 0;
-    std::vector<layer_event_t>& m_events;
-    int& m_create_count;
+    std::string    m_id;
+    std::uint64_t  m_revision = 0;
+    int            m_z_order  = 0;
+    std::vector<layer_event_t>&
+                   m_events;
+    int&           m_create_count;
 };
 
 class Offscreen_rhi_fixture
@@ -1296,8 +1298,8 @@ bool test_nonfinite_break_and_skip_split_drawable_spans()
     {
         plot::Nonfinite_sample_policy policy =
             plot::Nonfinite_sample_policy::BREAK_SEGMENT;
-        std::string_view layer_id;
-        int series_id = 0;
+        std::string_view   layer_id;
+        int                series_id = 0;
     };
 
     const policy_case_t cases[] = {
@@ -1892,11 +1894,11 @@ bool test_nonfinite_hold_forward_policy_controls_held_sample()
     {
         plot::Nonfinite_sample_policy policy =
             plot::Nonfinite_sample_policy::BREAK_SEGMENT;
-        std::string_view layer_id;
-        int series_id = 0;
-        bool expect_prepare = false;
-        std::size_t expected_source_first = 0;
-        float expected_value = 0.0f;
+        std::string_view   layer_id;
+        int                series_id             = 0;
+        bool               expect_prepare        = false;
+        std::size_t        expected_source_first = 0;
+        float              expected_value        = 0.0f;
     };
 
     const hold_case_t cases[] = {
@@ -2425,9 +2427,9 @@ bool test_builtin_upload_stages_visible_windows_for_dots_and_area()
 
     struct upload_case_t
     {
-        plot::Display_style style = plot::Display_style::DOTS;
-        std::string_view layer_id;
-        int series_id = 0;
+        plot::Display_style    style     = plot::Display_style::DOTS;
+        std::string_view       layer_id;
+        int                    series_id = 0;
     };
 
     const upload_case_t cases[] = {
@@ -2582,9 +2584,9 @@ bool test_builtin_upload_stages_hold_windows_for_dots_and_area()
 
     struct upload_case_t
     {
-        plot::Display_style style = plot::Display_style::DOTS;
-        std::string_view layer_id;
-        int series_id = 0;
+        plot::Display_style    style     = plot::Display_style::DOTS;
+        std::string_view       layer_id;
+        int                    series_id = 0;
     };
 
     const upload_case_t cases[] = {
@@ -2825,17 +2827,17 @@ bool test_busy_stale_fallback_rejects_changed_request_shape()
 
     struct stale_case_t
     {
-        std::string label;
+        std::string    label;
         plot::Empty_window_behavior empty_behavior =
             plot::Empty_window_behavior::DRAW_NOTHING;
         plot::Series_interpolation interpolation =
             plot::Series_interpolation::LINEAR;
-        std::int64_t initial_t0 = 0;
-        std::int64_t initial_t1 = 0;
-        std::int64_t busy_t0 = 0;
-        std::int64_t busy_t1 = 0;
-        double initial_width = 240.0;
-        double busy_width = 240.0;
+        std::int64_t   initial_t0    = 0;
+        std::int64_t   initial_t1    = 0;
+        std::int64_t   busy_t0       = 0;
+        std::int64_t   busy_t1       = 0;
+        double         initial_width = 240.0;
+        double         busy_width    = 240.0;
     };
 
     const std::vector<stale_case_t> cases = {

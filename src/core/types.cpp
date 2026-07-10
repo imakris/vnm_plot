@@ -22,23 +22,23 @@ enum class sample_scan_status
 
 struct validated_time_window_t
 {
-    std::size_t first = 0;
-    std::size_t last_exclusive = 0;
-    std::size_t match_first = 0;
-    std::size_t match_last_exclusive = 0;
-    std::size_t held_index = 0;
-    bool        has_match = false;
-    bool        has_held = false;
-    bool        valid = true;
+    std::size_t    first                = 0;
+    std::size_t    last_exclusive       = 0;
+    std::size_t    match_first          = 0;
+    std::size_t    match_last_exclusive = 0;
+    std::size_t    held_index           = 0;
+    bool           has_match            = false;
+    bool           has_held             = false;
+    bool           valid                = true;
 };
 
 struct time_window_candidates_t
 {
-    std::size_t match_first = 0;
-    std::size_t match_last_exclusive = 0;
-    std::size_t held_index = 0;
-    bool        has_held = false;
-    bool        valid = true;
+    std::size_t    match_first          = 0;
+    std::size_t    match_last_exclusive = 0;
+    std::size_t    held_index           = 0;
+    bool           has_held             = false;
+    bool           valid                = true;
 };
 
 Data_query_status status_from_snapshot(snapshot_result_t::Snapshot_status status)

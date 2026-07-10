@@ -273,49 +273,50 @@ private:
     // Prefer holding only one lock at a time.
 
     // Configuration
-    Plot_config m_config;
-    std::atomic<std::uint64_t> m_config_revision{0};
-    mutable std::shared_mutex m_config_mutex;
+    Plot_config                    m_config;
+    std::atomic<std::uint64_t>     m_config_revision{0};
+    mutable std::shared_mutex      m_config_mutex;
 
     // Data configuration
-    data_config_t m_data_cfg;
-    mutable std::shared_mutex m_data_cfg_mutex;
+    data_config_t                  m_data_cfg;
+    mutable std::shared_mutex      m_data_cfg_mutex;
 
     // Series data
-    std::map<int, std::shared_ptr<const series_data_t>> m_series;
-    mutable std::shared_mutex m_series_mutex;
+    std::map<int, std::shared_ptr<const series_data_t>>
+                                   m_series;
+    mutable std::shared_mutex      m_series_mutex;
 
     // UI state
-    std::atomic<bool> m_v_auto{true};
-    std::atomic<int> m_visible_info_flags{k_visible_info_all};
-    std::atomic<bool> m_view_state_reset_requested{false};
-    mutable std::atomic<float> m_rendered_v_min{0.0f};
-    mutable std::atomic<float> m_rendered_v_max{1.0f};
-    mutable std::atomic<bool> m_rendered_v_range_valid{false};
+    std::atomic<bool>              m_v_auto{true};
+    std::atomic<int>               m_visible_info_flags{k_visible_info_all};
+    std::atomic<bool>              m_view_state_reset_requested{false};
+    mutable std::atomic<float>     m_rendered_v_min{0.0f};
+    mutable std::atomic<float>     m_rendered_v_max{1.0f};
+    mutable std::atomic<bool>      m_rendered_v_range_valid{false};
     // Rendered time range cached for QML/tooltips, in int64 nanoseconds.
-    mutable std::atomic<qint64> m_rendered_t_min{0};
-    mutable std::atomic<qint64> m_rendered_t_max{1};
-    mutable std::atomic<bool> m_rendered_t_range_valid{false};
-    std::atomic<double> m_vbar_width_px{0.0};
-    QBasicTimer m_vbar_width_timer;
-    QElapsedTimer m_vbar_width_anim_elapsed;
-    double m_vbar_width_anim_start_px = 0.0;
-    double m_vbar_width_anim_target_px = 0.0;
-    std::atomic<bool> m_sync_vbar_width_active{false};
+    mutable std::atomic<qint64>    m_rendered_t_min{0};
+    mutable std::atomic<qint64>    m_rendered_t_max{1};
+    mutable std::atomic<bool>      m_rendered_t_range_valid{false};
+    std::atomic<double>            m_vbar_width_px{0.0};
+    QBasicTimer                    m_vbar_width_timer;
+    QElapsedTimer                  m_vbar_width_anim_elapsed;
+    double                         m_vbar_width_anim_start_px                    = 0.0;
+    double                         m_vbar_width_anim_target_px                   = 0.0;
+    std::atomic<bool>              m_sync_vbar_width_active{false};
 
-    double m_preview_height = 0.0;
-    double m_preview_height_target = 0.0;
-    double m_adjusted_preview_height = 0.0;
-    bool m_preview_height_initialized = false;
-    float m_relative_preview_height = 0.0f;
-    double m_preview_height_min = 0.0;
-    double m_preview_height_max = 0.0;
-    bool m_show_if_calculated_preview_height_below_min = true;
-    int m_preview_height_steps = 0;
+    double                         m_preview_height                              = 0.0;
+    double                         m_preview_height_target                       = 0.0;
+    double                         m_adjusted_preview_height                     = 0.0;
+    bool                           m_preview_height_initialized                  = false;
+    float                          m_relative_preview_height                     = 0.0f;
+    double                         m_preview_height_min                          = 0.0;
+    double                         m_preview_height_max                          = 0.0;
+    bool                           m_show_if_calculated_preview_height_below_min = true;
+    int                            m_preview_height_steps                        = 0;
 
-    double m_adjusted_font_size = 12.0;
-    double m_base_label_height = 14.0;
-    double m_scaling_factor = 1.0;
+    double                         m_adjusted_font_size                          = 12.0;
+    double                         m_base_label_height                           = 14.0;
+    double                         m_scaling_factor                              = 1.0;
 
     void recalculate_preview_height();
     double compute_preview_height_px(double widget_height_px) const;
@@ -351,12 +352,12 @@ private:
     void apply_vbar_width_target(double px, bool publish_shared = false);
     void publish_measured_vbar_width(double px) const;
 
-    QPointer<Plot_time_axis> m_time_axis;
-    QMetaObject::Connection m_time_axis_connection;
-    QMetaObject::Connection m_time_axis_destroyed_connection;
-    QMetaObject::Connection m_time_axis_vbar_connection;
-    QMetaObject::Connection m_time_axis_sync_vbar_connection;
-    QMetaObject::Connection m_window_screen_connection;
+    QPointer<Plot_time_axis>       m_time_axis;
+    QMetaObject::Connection        m_time_axis_connection;
+    QMetaObject::Connection        m_time_axis_destroyed_connection;
+    QMetaObject::Connection        m_time_axis_vbar_connection;
+    QMetaObject::Connection        m_time_axis_sync_vbar_connection;
+    QMetaObject::Connection        m_window_screen_connection;
 };
 
 } // namespace vnm::plot

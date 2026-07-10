@@ -30,10 +30,10 @@ namespace {
 
 struct sample_t
 {
-    std::int64_t timestamp_ns = 0;
-    float value = 0.0f;
-    float range_min = 0.0f;
-    float range_max = 0.0f;
+    std::int64_t   timestamp_ns = 0;
+    float          value        = 0.0f;
+    float          range_min    = 0.0f;
+    float          range_max    = 0.0f;
 };
 
 template<typename T, typename = void>
@@ -189,8 +189,8 @@ public:
         last_record_context = ctx;
     }
 
-    plot::qrhi_series_prepare_context_t last_prepare_context;
-    plot::qrhi_series_record_context_t last_record_context;
+    plot::qrhi_series_prepare_context_t    last_prepare_context;
+    plot::qrhi_series_record_context_t     last_record_context;
 };
 
 class Test_layer final : public plot::Qrhi_series_layer
@@ -219,9 +219,9 @@ public:
     }
 
 private:
-    std::string m_id;
-    std::uint64_t m_revision = 0;
-    int m_z_order = 0;
+    std::string    m_id;
+    std::uint64_t  m_revision = 0;
+    int            m_z_order  = 0;
 };
 
 bool nearly_equal(float a, float b)

@@ -230,15 +230,15 @@ series_view_uniform_std140_t make_series_view_uniform(
 // longer match and the SRB is rebuilt before the next draw.
 struct Series_renderer::vbo_view_state_t::rhi_buffers_t
 {
-    std::unique_ptr<QRhiBuffer> vbo;
-    std::unique_ptr<QRhiBuffer> ubo;
+    std::unique_ptr<QRhiBuffer>    vbo;
+    std::unique_ptr<QRhiBuffer>    ubo;
     // LINE-specific per-frame buffer that holds the active sample window
     // padded with leading and trailing duplicates. Bound four times as a
     // vertex buffer at consecutive gpu_sample_t offsets with per-instance
     // stepping, so the vertex shader receives prev/p0/p1/next as plain
     // attributes. This side-steps the SM 5.0 UAV restriction that blocks
     // SSBOs in the D3D11 vertex stage.
-    std::unique_ptr<QRhiBuffer> line_window_vbo;
+    std::unique_ptr<QRhiBuffer>    line_window_vbo;
 
     // Per-(view, primitive_style) UBO + SRB cache. Each drawable primitive
     // needs an independent UBO because every resource update is submitted
@@ -247,14 +247,16 @@ struct Series_renderer::vbo_view_state_t::rhi_buffers_t
     // matching draw records.
     struct srb_entry_t
     {
-        std::unique_ptr<QRhiBuffer> ubo;
-        std::unique_ptr<QRhiShaderResourceBindings> srb;
-        QRhiBuffer* last_ubo = nullptr;
-        std::size_t ubo_capacity_bytes = 0;
+        std::unique_ptr<QRhiBuffer>
+                       ubo;
+        std::unique_ptr<QRhiShaderResourceBindings>
+                       srb;
+        QRhiBuffer*    last_ubo           = nullptr;
+        std::size_t    ubo_capacity_bytes = 0;
     };
-    srb_entry_t dots_srb;
-    srb_entry_t line_srb;
-    srb_entry_t area_fill_srb;
+    srb_entry_t                    dots_srb;
+    srb_entry_t                    line_srb;
+    srb_entry_t                    area_fill_srb;
 
 };
 
@@ -321,21 +323,21 @@ struct Series_renderer::rhi_state_t
 
     struct rhi_pipeline_t
     {
-        std::unique_ptr<QRhiGraphicsPipeline> pipeline;
-        QShader vert;
-        QShader frag;
+        std::unique_ptr<QRhiGraphicsPipeline>  pipeline;
+        QShader                                vert;
+        QShader                                frag;
         // Render-pass descriptor captured at pipeline creation. If the host's
         // current render target carries a different descriptor (e.g. resize
         // recreated the FBO with a different color format or sample count),
         // the cached pipeline is no longer compatible and is rebuilt.
-        QRhiRenderPassDescriptor* last_rpd = nullptr;
-        int                       last_sample_count = 1;
+        QRhiRenderPassDescriptor*              last_rpd          = nullptr;
+        int                                    last_sample_count = 1;
     };
 
     struct view_ubo_key_t
     {
-        int series_id = 0;
-        Series_view_kind view_kind = Series_view_kind::MAIN;
+        int                series_id = 0;
+        Series_view_kind   view_kind = Series_view_kind::MAIN;
 
         bool operator==(const view_ubo_key_t& o) const noexcept
         {
@@ -360,14 +362,15 @@ struct Series_renderer::rhi_state_t
 
     struct qrhi_layer_program_key_t
     {
-        int series_id = 0;
-        Series_view_kind view_kind = Series_view_kind::MAIN;
-        std::string layer_id;
-        std::uint64_t layer_revision = 0;
-        const void* data_identity = nullptr;
-        std::uint64_t layout_key = 0;
-        detail::access_policy_cache_key_t access_key;
-        QRhi* rhi = nullptr;
+        int                series_id      = 0;
+        Series_view_kind   view_kind      = Series_view_kind::MAIN;
+        std::string        layer_id;
+        std::uint64_t      layer_revision = 0;
+        const void*        data_identity  = nullptr;
+        std::uint64_t      layout_key     = 0;
+        detail::access_policy_cache_key_t
+                           access_key;
+        QRhi*              rhi            = nullptr;
 
         bool operator==(const qrhi_layer_program_key_t& o) const noexcept
         {
@@ -400,21 +403,22 @@ struct Series_renderer::rhi_state_t
 
     struct qrhi_layer_data_key_t
     {
-        std::size_t lod_level = 0;
-        std::uint64_t sample_sequence = 0;
-        std::int64_t t_origin_ns = 0;
-        std::size_t source_first = 0;
-        std::size_t source_count = 0;
-        std::size_t synthetic_hold_count = 0;
-        std::size_t gpu_count = 0;
-        bool hold_last_forward = false;
-        std::int64_t hold_timestamp_ns = 0;
-        Series_interpolation interpolation = Series_interpolation::LINEAR;
+        std::size_t                lod_level            = 0;
+        std::uint64_t              sample_sequence      = 0;
+        std::int64_t               t_origin_ns          = 0;
+        std::size_t                source_first         = 0;
+        std::size_t                source_count         = 0;
+        std::size_t                synthetic_hold_count = 0;
+        std::size_t                gpu_count            = 0;
+        bool                       hold_last_forward    = false;
+        std::int64_t               hold_timestamp_ns    = 0;
+        Series_interpolation       interpolation        = Series_interpolation::LINEAR;
         Nonfinite_sample_policy nonfinite_policy =
             Nonfinite_sample_policy::BREAK_SEGMENT;
-        std::size_t drawable_span_count = 0;
-        std::size_t drawable_spans_hash = 0;
-        detail::access_policy_cache_key_t access_key;
+        std::size_t                drawable_span_count = 0;
+        std::size_t                drawable_spans_hash = 0;
+        detail::access_policy_cache_key_t
+                                   access_key;
 
         bool operator==(const qrhi_layer_data_key_t& o) const noexcept
         {
@@ -437,10 +441,11 @@ struct Series_renderer::rhi_state_t
 
     struct qrhi_layer_cache_entry_t
     {
-        std::unique_ptr<Qrhi_series_layer_state> state;
-        qrhi_layer_data_key_t data_key;
-        bool has_data_key = false;
-        std::uint64_t last_frame_used = 0;
+        std::unique_ptr<Qrhi_series_layer_state>
+                                   state;
+        qrhi_layer_data_key_t      data_key;
+        bool                       has_data_key    = false;
+        std::uint64_t              last_frame_used = 0;
     };
 
     struct prepared_draw_command_t
@@ -451,40 +456,41 @@ struct Series_renderer::rhi_state_t
             CUSTOM
         };
 
-        kind_t kind = kind_t::CUSTOM;
-        int z_order = 0;
-        int series_id = 0;
-        Series_view_kind view_kind = Series_view_kind::MAIN;
-        std::size_t series_order = 0;
-        std::size_t insertion_order = 0;
-        Qrhi_series_layer_state* state = nullptr;
-        const series_data_t* series = nullptr;
-        sample_window_t window;
-        QRhiBuffer* view_ubo = nullptr;
-        Display_style primitive_style = Display_style::LINE;
-        vbo_view_state_t* view_state = nullptr;
+        kind_t                     kind            = kind_t::CUSTOM;
+        int                        z_order         = 0;
+        int                        series_id       = 0;
+        Series_view_kind           view_kind       = Series_view_kind::MAIN;
+        std::size_t                series_order    = 0;
+        std::size_t                insertion_order = 0;
+        Qrhi_series_layer_state*   state           = nullptr;
+        const series_data_t*       series          = nullptr;
+        sample_window_t            window;
+        QRhiBuffer*                view_ubo        = nullptr;
+        Display_style              primitive_style = Display_style::LINE;
+        vbo_view_state_t*          view_state      = nullptr;
         // Built-in LINE/AREA strips, computed once in prepare and reused by the
         // record pass instead of recomputing from window. Empty for DOTS.
-        std::vector<detail::builtin_segment_span_t> builtin_segment_spans;
+        std::vector<detail::builtin_segment_span_t>
+                                   builtin_segment_spans;
     };
 
-    std::unordered_map<pipeline_key_t, rhi_pipeline_t, pipeline_key_hash_t> pipelines;
-    std::unordered_map<view_ubo_key_t, view_ubo_state_t, view_ubo_key_hash_t> view_ubos;
+    std::unordered_map<pipeline_key_t, rhi_pipeline_t, pipeline_key_hash_t>    pipelines;
+    std::unordered_map<view_ubo_key_t, view_ubo_state_t, view_ubo_key_hash_t>  view_ubos;
     std::unordered_map<
         qrhi_layer_program_key_t,
         qrhi_layer_cache_entry_t,
         qrhi_layer_program_key_hash_t> qrhi_layer_cache;
-    std::vector<prepared_draw_command_t> prepared_draws;
-    QShader cached_dot_vert;
-    QShader cached_dot_frag;
-    QShader cached_line_vert;
-    QShader cached_line_frag;
-    QShader cached_area_vert;
-    QShader cached_area_frag;
-    bool    shaders_loaded = false;
+    std::vector<prepared_draw_command_t>                                       prepared_draws;
+    QShader                                                                    cached_dot_vert;
+    QShader                                                                    cached_dot_frag;
+    QShader                                                                    cached_line_vert;
+    QShader                                                                    cached_line_frag;
+    QShader                                                                    cached_area_vert;
+    QShader                                                                    cached_area_frag;
+    bool                                                                       shaders_loaded = false;
 
-    QRhi*                last_rhi             = nullptr;
-    QRhiResourceUpdateBatch* pending_updates  = nullptr;
+    QRhi*                                                                      last_rhi = nullptr;
+    QRhiResourceUpdateBatch*                                                   pending_updates = nullptr;
 
     // Per-frame draw plan computed in prepare() and replayed in render().
     // The vector lives on the renderer rather than in a stack
@@ -493,11 +499,11 @@ struct Series_renderer::rhi_state_t
     // origins computed in prepare() ride inside the per-view UBO/staging
     // bytes already submitted to the resource-update batch, so they do
     // not need to be cached here for render() to read back.
-    std::vector<series_draw_state_t> frame_draw_states;
-    bool         frame_preview_visible   = false;
+    std::vector<series_draw_state_t>                                           frame_draw_states;
+    bool                                                                       frame_preview_visible = false;
     // True if prepare() filled this plan. Reset after render() consumes it
     // so a stray render() without a matching prepare() is a no-op.
-    bool         frame_plan_ready        = false;
+    bool                                                                       frame_plan_ready = false;
 };
 
 // -----------------------------------------------------------------------------
@@ -545,11 +551,12 @@ struct Series_renderer::rhi_state_t
 // vec4-aligned trailing element rule std140 enforces on the GLSL block.
 struct Line_block_std140
 {
-    series_view_uniform_std140_t view;           // offset 0
-    float                       line_px;         // offset 128
-    int                         snap_to_pixels;  // offset 132
-    float                       _pad0;           // offset 136
-    float                       _pad1;           // offset 140
+    series_view_uniform_std140_t
+           view;           // offset 0
+    float  line_px;        // offset 128
+    int    snap_to_pixels; // offset 132
+    float  _pad0;          // offset 136
+    float  _pad1;          // offset 140
 };
 static_assert(sizeof(Line_block_std140) == 144, "Line_block_std140 must be a multiple of 16");
 static_assert(offsetof(Line_block_std140, line_px)        == 128, "Line_block line_px offset");
@@ -559,11 +566,12 @@ static_assert(offsetof(Line_block_std140, snap_to_pixels) == 132, "Line_block sn
 // Padded out to 144 bytes for the same reason as Line_block_std140.
 struct Dot_block_std140
 {
-    series_view_uniform_std140_t view;               // offset 0
-    float                       point_diameter_px;   // offset 128
-    float                       _pad0;               // offset 132
-    float                       _pad1;               // offset 136
-    float                       _pad2;               // offset 140
+    series_view_uniform_std140_t
+           view;              // offset 0
+    float  point_diameter_px; // offset 128
+    float  _pad0;             // offset 132
+    float  _pad1;             // offset 136
+    float  _pad2;             // offset 140
 };
 static_assert(sizeof(Dot_block_std140) == 144, "Dot_block_std140 must be a multiple of 16");
 static_assert(offsetof(Dot_block_std140, point_diameter_px) == 128, "Dot_block point_diameter_px offset");
@@ -572,11 +580,12 @@ static_assert(offsetof(Dot_block_std140, point_diameter_px) == 128, "Dot_block p
 // 16-byte multiple.
 struct Area_block_std140
 {
-    series_view_uniform_std140_t view;           // offset 0
-    int                         interpolation;   // offset 128
-    int                         _pad0;           // offset 132
-    int                         _pad1;           // offset 136
-    int                         _pad2;           // offset 140
+    series_view_uniform_std140_t
+           view;          // offset 0
+    int    interpolation; // offset 128
+    int    _pad0;         // offset 132
+    int    _pad1;         // offset 136
+    int    _pad2;         // offset 140
 };
 static_assert(sizeof(Area_block_std140) == 144, "Area_block_std140 must be a multiple of 16");
 static_assert(offsetof(Area_block_std140, interpolation) == 128, "Area_block interpolation offset");
@@ -1091,10 +1100,11 @@ void Series_renderer::prepare(
 
         struct planned_draw_t
         {
-            std::shared_ptr<const Qrhi_series_layer> layer;
-            bool is_builtin = false;
-            Display_style primitive_style = Display_style::NONE;
-            int z_order = 0;
+            std::shared_ptr<const Qrhi_series_layer>
+                           layer;
+            bool           is_builtin      = false;
+            Display_style  primitive_style = Display_style::NONE;
+            int            z_order         = 0;
         };
 
         // Built-in LINE/DOTS/AREA all read the primary value lane. A range-only

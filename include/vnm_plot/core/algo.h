@@ -448,18 +448,18 @@ std::size_t upper_bound_timestamp(
 
 struct timestamp_bracket_t
 {
-    std::size_t i0 = 0;
-    std::size_t i1 = 0;
-    bool valid = false;
+    std::size_t    i0    = 0;
+    std::size_t    i1    = 0;
+    bool           valid = false;
 
     explicit operator bool() const noexcept { return valid; }
 };
 
 struct visible_sample_window_t
 {
-    std::size_t first = 0;
-    std::size_t last_exclusive = 0;
-    bool valid = false;
+    std::size_t    first          = 0;
+    std::size_t    last_exclusive = 0;
+    bool           valid          = false;
 
     explicit operator bool() const noexcept { return valid; }
 };
@@ -521,11 +521,11 @@ visible_sample_window_t select_visible_sample_window(
 
 struct visible_sample_aggregate_t
 {
-    double vmin = 0.0;
-    double vmax = 0.0;
-    std::int64_t tmin_ns = 0;
-    std::int64_t tmax_ns = 0;
-    bool valid = false;
+    double         vmin    = 0.0;
+    double         vmax    = 0.0;
+    std::int64_t   tmin_ns = 0;
+    std::int64_t   tmax_ns = 0;
+    bool           valid   = false;
 
     explicit operator bool() const noexcept { return valid; }
 };

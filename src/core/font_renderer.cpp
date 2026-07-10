@@ -74,7 +74,7 @@ namespace {
 struct vertex_buffer_t
 {
     // 10 floats per vertex: position, tex bounds, local glyph frame rect
-    std::vector<float> vertex_data;
+    std::vector<float>         vertex_data;
     std::vector<std::uint32_t> index_data;
 };
 
@@ -87,15 +87,15 @@ constexpr std::size_t k_text_vertex_float_count = 10u;
 
 struct rhi_text_vertex_t
 {
-    float x = 0.f;
-    float y = 0.f;
-    float s_min = 0.f;
-    float t_min = 0.f;
-    float s_max = 0.f;
-    float t_max = 0.f;
-    float frame_x = 0.f;
-    float frame_y = 0.f;
-    float frame_width = 0.f;
+    float x            = 0.f;
+    float y            = 0.f;
+    float s_min        = 0.f;
+    float t_min        = 0.f;
+    float s_max        = 0.f;
+    float t_max        = 0.f;
+    float frame_x      = 0.f;
+    float frame_y      = 0.f;
+    float frame_width  = 0.f;
     float frame_height = 0.f;
 };
 
@@ -137,10 +137,10 @@ static std::mutex s_font_storage_mutex;
 
 struct thread_local_font_resources_t
 {
-    vertex_buffer_t* m_buffer = nullptr;
-    int m_pixel_height = 0;
-    std::uint64_t m_cache_epoch = 0;
-    msdf_atlas_t m_atlas;
+    vertex_buffer_t*   m_buffer       = nullptr;
+    int                m_pixel_height = 0;
+    std::uint64_t      m_cache_epoch  = 0;
+    msdf_atlas_t       m_atlas;
 
     ~thread_local_font_resources_t()
     {
@@ -166,13 +166,13 @@ std::atomic<std::uint64_t> s_next_cache_epoch{1};
 
 struct cached_font_data_t
 {
-    msdf_atlas_t atlas;
+    msdf_atlas_t                   atlas;
     // The requested draw pixel height this cache entry was built for. The atlas
     // is baked at a (possibly larger) bucket, so this is tracked separately from
     // atlas.baked_pixel_height and is the cache-map key and disk-file height.
-    int draw_pixel_height = 0;
-    std::uint64_t cache_epoch = 0;
-    std::array<std::uint8_t, 32> font_digest{};
+    int                            draw_pixel_height = 0;
+    std::uint64_t                  cache_epoch       = 0;
+    std::array<std::uint8_t, 32>   font_digest{};
 };
 
 static std::mutex s_cached_fonts_mutex;
@@ -790,17 +790,17 @@ using detail::load_qsb;
 
 struct Text_block_std140
 {
-    float pmv[16] = {};
-    float color[4] = {};
-    float shadow_color[4] = {};
-    float px_range = 0.f;
-    float target_width = 0.f;
-    float target_height = 0.f;
-    float shadow_radius = 0.f;
-    float lcd_subpixel_order = 0.f;
-    std::int32_t framebuffer_y_up = 0;
-    float padding[2] = {};
-    float background_color[4] = {};
+    float          pmv[16]             = {};
+    float          color[4]            = {};
+    float          shadow_color[4]     = {};
+    float          px_range            = 0.f;
+    float          target_width        = 0.f;
+    float          target_height       = 0.f;
+    float          shadow_radius       = 0.f;
+    float          lcd_subpixel_order  = 0.f;
+    std::int32_t   framebuffer_y_up    = 0;
+    float          padding[2]          = {};
+    float          background_color[4] = {};
 };
 
 static_assert(offsetof(Text_block_std140, pmv)              ==  0, "Text UBO pmv offset");
@@ -819,11 +819,13 @@ constexpr std::uint32_t k_text_ubo_bytes = sizeof(Text_block_std140);
 
 struct rhi_text_call_t
 {
-    std::unique_ptr<QRhiBuffer> ubo;
-    std::unique_ptr<QRhiShaderResourceBindings> srb;
-    QRhiBuffer*      srb_last_ubo     = nullptr;
-    QRhiTexture*     srb_last_texture = nullptr;
-    QRhiSampler*     srb_last_sampler = nullptr;
+    std::unique_ptr<QRhiBuffer>
+                   ubo;
+    std::unique_ptr<QRhiShaderResourceBindings>
+                   srb;
+    QRhiBuffer*    srb_last_ubo       = nullptr;
+    QRhiTexture*   srb_last_texture   = nullptr;
+    QRhiSampler*   srb_last_sampler   = nullptr;
 };
 
 enum class rhi_text_pass_t : std::uint8_t
@@ -834,38 +836,39 @@ enum class rhi_text_pass_t : std::uint8_t
 
 struct rhi_text_draw_op_t
 {
-    std::size_t call_index  = 0;
-    quint32     index_start = 0;
-    quint32     index_count = 0;
-    text_scissor_t scissor;
-    rhi_text_pass_t pass = rhi_text_pass_t::FOREGROUND;
+    std::size_t                        call_index  = 0;
+    quint32                            index_start = 0;
+    quint32                            index_count = 0;
+    text_scissor_t                     scissor;
+    rhi_text_pass_t                    pass        = rhi_text_pass_t::FOREGROUND;
 };
 
 struct rhi_text_state_t
 {
-    QRhi* last_rhi = nullptr;
+    QRhi*                              last_rhi    = nullptr;
 
-    std::unique_ptr<QRhiTexture> atlas_texture;
-    std::unique_ptr<QRhiSampler> sampler;
-    int atlas_size = 0;
-    std::uint64_t uploaded_cache_epoch = 0;
+    std::unique_ptr<QRhiTexture>       atlas_texture;
+    std::unique_ptr<QRhiSampler>       sampler;
+    int                                atlas_size = 0;
+    std::uint64_t                      uploaded_cache_epoch = 0;
 
-    std::unique_ptr<QRhiBuffer> vbo;
-    std::unique_ptr<QRhiBuffer> ibo;
-    std::size_t vbo_capacity_bytes = 0;
-    std::size_t ibo_capacity_bytes = 0;
+    std::unique_ptr<QRhiBuffer>        vbo;
+    std::unique_ptr<QRhiBuffer>        ibo;
+    std::size_t                        vbo_capacity_bytes = 0;
+    std::size_t                        ibo_capacity_bytes = 0;
 
-    std::vector<rhi_text_call_t> calls;
-    std::vector<rhi_text_draw_op_t> ops;
-    std::size_t call_used = 0;
+    std::vector<rhi_text_call_t>       calls;
+    std::vector<rhi_text_draw_op_t>    ops;
+    std::size_t                        call_used = 0;
 
-    std::unique_ptr<QRhiGraphicsPipeline> pipeline;
-    QRhiRenderPassDescriptor* pipeline_rpd = nullptr;
-    int pipeline_samples = 0;
+    std::unique_ptr<QRhiGraphicsPipeline>
+                                       pipeline;
+    QRhiRenderPassDescriptor*          pipeline_rpd = nullptr;
+    int                                pipeline_samples = 0;
 
-    QShader vert;
-    QShader frag;
-    bool shaders_loaded = false;
+    QShader                            vert;
+    QShader                            frag;
+    bool                               shaders_loaded = false;
 };
 
 } // anonymous namespace
@@ -873,16 +876,16 @@ struct rhi_text_state_t
 // --- PIMPL Definition ---
 struct Font_renderer::impl_t
 {
-    thread_local_font_resources_t* m_resources = nullptr;
-    std::shared_ptr<cached_font_data_t> m_font_cache;
-    int m_metric_pixel_height = 0;
-    std::function<void(const std::string&)> m_log_error;
-    std::function<void(const std::string&)> m_log_debug;
-    bool m_rhi_batch_active = false;
-    std::vector<float> m_rhi_vertex_data;
-    std::vector<std::uint32_t> m_rhi_index_data;
-    std::vector<float> m_rhi_frame_vertex_data;
-    std::vector<std::uint32_t> m_rhi_frame_index_data;
+    thread_local_font_resources_t*             m_resources           = nullptr;
+    std::shared_ptr<cached_font_data_t>        m_font_cache;
+    int                                        m_metric_pixel_height = 0;
+    std::function<void(const std::string&)>    m_log_error;
+    std::function<void(const std::string&)>    m_log_debug;
+    bool                                       m_rhi_batch_active    = false;
+    std::vector<float>                         m_rhi_vertex_data;
+    std::vector<std::uint32_t>                 m_rhi_index_data;
+    std::vector<float>                         m_rhi_frame_vertex_data;
+    std::vector<std::uint32_t>                 m_rhi_frame_index_data;
 
     rhi_text_state_t m_rhi;
 

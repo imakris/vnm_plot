@@ -38,18 +38,20 @@ bool checked_size_product(std::size_t lhs, std::size_t rhs, std::size_t& out)
 
 struct drawable_window_result_t
 {
-    std::size_t source_first = 0;
-    std::size_t source_count = 0;
-    std::size_t synthetic_hold_count = 0;
-    std::size_t gpu_count = 0;
-    std::vector<drawable_sample_span_t> spans;
-    bool valid = true;
+    std::size_t    source_first         = 0;
+    std::size_t    source_count         = 0;
+    std::size_t    synthetic_hold_count = 0;
+    std::size_t    gpu_count            = 0;
+    std::vector<drawable_sample_span_t>
+                   spans;
+    bool           valid                = true;
 };
 
 struct direct_time_window_query_t
 {
-    data_query_result_t<sample_index_window_t> result;
-    bool attempted = false;
+    data_query_result_t<sample_index_window_t>
+                   result;
+    bool           attempted            = false;
 };
 
 drawable_window_result_t build_drawable_window(

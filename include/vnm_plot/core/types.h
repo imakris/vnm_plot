@@ -27,9 +27,9 @@ struct Data_access_policy_typed;
 
 struct sample_semantics_key_t
 {
-    std::uint64_t value = 0;
-    std::uint64_t revision = 0;
-    bool          conservative = true;
+    std::uint64_t  value        = 0;
+    std::uint64_t  revision     = 0;
+    bool           conservative = true;
 };
 
 namespace detail {
@@ -51,16 +51,16 @@ struct erased_access_policy_t
     using range_fn_t =
         std::pair<float, float> (*)(const erased_access_policy_t&, const void*);
 
-    const void* ctx = nullptr;
-    timestamp_fn_t get_timestamp = nullptr;
-    value_fn_t get_value = nullptr;
-    range_fn_t get_range = nullptr;
+    const void*            ctx              = nullptr;
+    timestamp_fn_t         get_timestamp    = nullptr;
+    value_fn_t             get_value        = nullptr;
+    range_fn_t             get_range        = nullptr;
 
-    access_dispatch_kind_t dispatch_kind = access_dispatch_kind_t::NONE;
-    std::size_t timestamp_offset = 0;
-    std::size_t value_offset = 0;
-    std::size_t range_min_offset = 0;
-    std::size_t range_max_offset = 0;
+    access_dispatch_kind_t dispatch_kind    = access_dispatch_kind_t::NONE;
+    std::size_t            timestamp_offset = 0;
+    std::size_t            value_offset     = 0;
+    std::size_t            range_min_offset = 0;
+    std::size_t            range_max_offset = 0;
 
     [[nodiscard]] bool has_timestamp() const noexcept
     {
@@ -101,13 +101,13 @@ struct erased_access_policy_t
 
 struct access_policy_cache_key_t
 {
-    const Data_access_policy* identity = nullptr;
-    std::uint64_t layout_key = 0;
-    std::uint64_t revision = 0;
-    access_dispatch_kind_t dispatch_kind = access_dispatch_kind_t::NONE;
-    bool has_timestamp = false;
-    bool has_value = false;
-    bool has_range = false;
+    const Data_access_policy*  identity      = nullptr;
+    std::uint64_t              layout_key    = 0;
+    std::uint64_t              revision      = 0;
+    access_dispatch_kind_t     dispatch_kind = access_dispatch_kind_t::NONE;
+    bool                       has_timestamp = false;
+    bool                       has_value     = false;
+    bool                       has_range     = false;
 
     [[nodiscard]] bool operator==(
         const access_policy_cache_key_t& other) const noexcept
@@ -240,10 +240,10 @@ private:
         }
     }
 
-    function_t m_function;
-    erased_access_policy_t* m_internal_access = nullptr;
-    std::uint64_t* m_revision = nullptr;
-    sample_semantics_key_t* m_semantics_key = nullptr;
+    function_t                 m_function;
+    erased_access_policy_t*    m_internal_access = nullptr;
+    std::uint64_t*             m_revision        = nullptr;
+    sample_semantics_key_t*    m_semantics_key   = nullptr;
 };
 
 inline sample_semantics_key_t make_explicit_sample_semantics_key(
@@ -311,13 +311,13 @@ using Byte_view = std::string_view;
 //   snapshot unless they also retain `hold`.
 struct data_snapshot_t
 {
-    const void* data     = nullptr;  ///< Pointer to first sample
-    size_t      count    = 0;        ///< Number of samples
-    size_t      stride   = 0;        ///< Bytes between consecutive samples
-    uint64_t    sequence = 0;        ///< Change counter for cache invalidation
-    const void* data2    = nullptr;  ///< Optional second segment (wrap)
-    size_t      count2   = 0;        ///< Samples in second segment
-    std::shared_ptr<void> hold;      ///< Optional ownership/lock guard
+    const void*            data     = nullptr; ///< Pointer to first sample
+    size_t                 count    = 0;       ///< Number of samples
+    size_t                 stride   = 0;       ///< Bytes between consecutive samples
+    uint64_t               sequence = 0;       ///< Change counter for cache invalidation
+    const void*            data2    = nullptr; ///< Optional second segment (wrap)
+    size_t                 count2   = 0;       ///< Samples in second segment
+    std::shared_ptr<void>  hold;               ///< Optional ownership/lock guard
 
     explicit operator bool() const { return is_valid(); }
 
@@ -437,13 +437,13 @@ struct Data_access_policy
     // the bias inside the accessor so the remaining dynamic range survives.
     // Timestamps are int64_t nanoseconds (by API convention; the unit is the
     // accessor's contract with vnm_plot).
-    timestamp_accessor_t get_timestamp;  ///< Extract timestamp (ns)
-    value_accessor_t     get_value;      ///< Extract primary value
-    range_accessor_t     get_range;      ///< Extract min/max range
+    timestamp_accessor_t   get_timestamp; ///< Extract timestamp (ns)
+    value_accessor_t       get_value;     ///< Extract primary value
+    range_accessor_t       get_range;     ///< Extract min/max range
 
     ///< Byte-layout cache key for renderer-internal caches. It is not a
     ///< unique sample type identity and does not describe accessor semantics.
-    uint64_t layout_key = 0;
+    uint64_t               layout_key = 0;
 
     ///< Accessor-transform identity for source query caches. Member-pointer
     ///< typed policies populate a stable key; callable policies stay
@@ -501,7 +501,7 @@ private:
             &semantics_key);
     }
 
-    detail::erased_access_policy_t internal_access;  ///< Renderer/planner fast-path view
+    detail::erased_access_policy_t internal_access; ///< Renderer/planner fast-path view
     std::uint64_t access_revision = 1;
 };
 
@@ -655,14 +655,14 @@ enum class Data_query_status
 
 struct sample_index_window_t
 {
-    std::size_t first = 0;
-    std::size_t count = 0;
+    std::size_t    first = 0;
+    std::size_t    count = 0;
 };
 
 struct value_range_t
 {
-    float min = 0.0f;
-    float max = 0.0f;
+    float          min = 0.0f;
+    float          max = 0.0f;
 };
 
 namespace detail {
@@ -676,7 +676,7 @@ enum class sample_draw_status_t
 
 struct sample_draw_value_t
 {
-    float y = 0.0f;
+    float y     = 0.0f;
     float y_min = 0.0f;
     float y_max = 0.0f;
 };
@@ -698,21 +698,21 @@ sample_draw_status_t read_sample_draw_value(
 template<typename T>
 struct data_query_result_t
 {
-    Data_query_status status = Data_query_status::UNSUPPORTED;
+    Data_query_status          status                = Data_query_status::UNSUPPORTED;
     T                 value{};
-    std::uint64_t     sequence = 0;
+    std::uint64_t              sequence              = 0;
 };
 
 struct data_query_context_t
 {
-    const Data_access_policy* access = nullptr;
+    const Data_access_policy*  access                = nullptr;
     // Optional caller-owned profiler for query-internal work such as fallback scans.
-    Profiler*                 profiler = nullptr;
-    sample_semantics_key_t    semantics_key;
-    time_range_t              time_window{};
-    Series_interpolation      interpolation = Series_interpolation::LINEAR;
-    Empty_window_behavior     empty_window_behavior = Empty_window_behavior::HOLD_LAST_FORWARD;
-    Nonfinite_sample_policy   nonfinite_policy = Nonfinite_sample_policy::BREAK_SEGMENT;
+    Profiler*                  profiler              = nullptr;
+    sample_semantics_key_t     semantics_key;
+    time_range_t               time_window{};
+    Series_interpolation       interpolation         = Series_interpolation::LINEAR;
+    Empty_window_behavior      empty_window_behavior = Empty_window_behavior::HOLD_LAST_FORWARD;
+    Nonfinite_sample_policy    nonfinite_policy      = Nonfinite_sample_policy::BREAK_SEGMENT;
 };
 
 // -----------------------------------------------------------------------------
@@ -911,8 +911,8 @@ private:
         std::uint64_t  sequence = 0;
     };
 
-    mutable std::mutex       m_mutex;
-    std::shared_ptr<Payload> m_payload;
+    mutable std::mutex         m_mutex;
+    std::shared_ptr<Payload>   m_payload;
 };
 
 // -----------------------------------------------------------------------------
@@ -955,10 +955,12 @@ constexpr int k_visible_info_all         = k_visible_info_value_range | k_visibl
 // -----------------------------------------------------------------------------
 struct preview_config_t
 {
-    Data_source_ref data_source;              // required when preview_config is set
-    Data_access_policy access;                  // optional; if invalid, fall back to main access
-    std::optional<Display_style> style;         // nullopt means use main style
-    std::optional<Series_interpolation> interpolation;  // nullopt means use main interpolation
+    Data_source_ref    data_source;   // required when preview_config is set
+    Data_access_policy access;        // optional; if invalid, fall back to main access
+    std::optional<Display_style>
+                       style;         // nullopt means use main style
+    std::optional<Series_interpolation>
+                       interpolation; // nullopt means use main interpolation
 };
 
 // -----------------------------------------------------------------------------
@@ -966,10 +968,10 @@ struct preview_config_t
 // -----------------------------------------------------------------------------
 struct data_config_t
 {
-    float  v_min           = -1.f;
-    float  v_max           = 1.f;
-    float  v_manual_min    = 0.f;
-    float  v_manual_max    = 5.f;
+    float          v_min        = -1.f;
+    float          v_max        = 1.f;
+    float          v_manual_min = 0.f;
+    float          v_manual_max = 5.f;
 
     // Timestamps are int64_t nanoseconds (API convention). The defaults
     // describe a 10-second view starting at 0 ns; every Plot_widget user
@@ -978,12 +980,12 @@ struct data_config_t
     // sane 10-second window instead of a 5-microsecond one. The previous
     // 5000 / 10000 / 0 / 10000 literals were carried over from a pre-int64
     // era when the unit was seconds and described a 10000-second view.
-    std::int64_t t_min           = 0;
-    std::int64_t t_max           = std::int64_t{10} * 1'000'000'000;
-    std::int64_t t_available_min = 0;
-    std::int64_t t_available_max = std::int64_t{10} * 1'000'000'000;
+    std::int64_t   t_min           = 0;
+    std::int64_t   t_max           = std::int64_t{10} * 1'000'000'000;
+    std::int64_t   t_available_min = 0;
+    std::int64_t   t_available_max = std::int64_t{10} * 1'000'000'000;
 
-    double vbar_width      = 150.;
+    double vbar_width = 150.;
 };
 
 // -----------------------------------------------------------------------------
@@ -993,19 +995,19 @@ struct series_data_t
 {
     virtual ~series_data_t() = default;
 
-    bool enabled = true;
-    Display_style style = Display_style::LINE;
-    Series_interpolation interpolation = Series_interpolation::LINEAR;
-    Empty_window_behavior empty_window_behavior = Empty_window_behavior::DRAW_NOTHING;
-    Nonfinite_sample_policy nonfinite_policy = Nonfinite_sample_policy::BREAK_SEGMENT;
-    glm::vec4 color = glm::vec4(0.16f, 0.45f, 0.64f, 1.0f);
-    std::string series_label;
+    bool                               enabled               = true;
+    Display_style                      style                 = Display_style::LINE;
+    Series_interpolation               interpolation         = Series_interpolation::LINEAR;
+    Empty_window_behavior              empty_window_behavior = Empty_window_behavior::DRAW_NOTHING;
+    Nonfinite_sample_policy            nonfinite_policy      = Nonfinite_sample_policy::BREAK_SEGMENT;
+    glm::vec4                          color                 = glm::vec4(0.16f, 0.45f, 0.64f, 1.0f);
+    std::string                        series_label;
 
-    Data_source_ref data_source;
-    Data_access_policy access;
+    Data_source_ref                    data_source;
+    Data_access_policy                 access;
     // Optional per-series preview configuration. When set, preview rendering can
     // use a distinct data source, access policy, and style.
-    std::optional<preview_config_t> preview_config;
+    std::optional<preview_config_t>    preview_config;
 
     [[nodiscard]] virtual std::shared_ptr<series_data_t> clone() const
     {
@@ -1106,69 +1108,69 @@ struct series_data_t
 // -----------------------------------------------------------------------------
 struct grid_layer_params_t
 {
-    static constexpr int k_max_levels = 32;
-    int   count = 0;
-    float spacing_px[k_max_levels]   = {};
-    float start_px[k_max_levels]     = {};
-    float alpha[k_max_levels]        = {};
-    float thickness_px[k_max_levels] = {};
+    static constexpr int   k_max_levels               = 32;
+    int                    count                      = 0;
+    float                  spacing_px[k_max_levels]   = {};
+    float                  start_px[k_max_levels]     = {};
+    float                  alpha[k_max_levels]        = {};
+    float                  thickness_px[k_max_levels] = {};
 };
 
 /// Vertical axis label (value bar on the right side of plot)
 struct v_label_t
 {
-    double      value;  ///< Data value this label represents
-    float       y;      ///< Y position in pixels (from bottom)
-    std::string text;   ///< Formatted label text
+    double         value; ///< Data value this label represents
+    float          y;     ///< Y position in pixels (from bottom)
+    std::string    text;  ///< Formatted label text
 };
 
 /// Horizontal axis label (time bar below plot)
 struct h_label_t
 {
-    std::int64_t value;     ///< Timestamp this label represents (nanoseconds)
-    glm::vec2    position;  ///< Position in pixels (x, y from bottom-left)
-    std::string  text;      ///< Formatted label text
+    std::int64_t   value;    ///< Timestamp this label represents (nanoseconds)
+    glm::vec2      position; ///< Position in pixels (x, y from bottom-left)
+    std::string    text;     ///< Formatted label text
 };
 
 /// Result of layout calculation for a single frame.
 /// Contains computed dimensions and pre-positioned labels.
 struct frame_layout_result_t
 {
-    double usable_width            = 0.0;  ///< Plot area width in pixels
-    double usable_height           = 0.0;  ///< Plot area height in pixels
-    double v_bar_width             = 0.0;
-    double h_bar_height            = 0.0;
-    float  max_v_label_text_width  = 0.f;
+    double                 usable_width = 0.0;  ///< Plot area width in pixels
+    double                 usable_height = 0.0; ///< Plot area height in pixels
+    double                 v_bar_width = 0.0;
+    double                 h_bar_height = 0.0;
+    float                  max_v_label_text_width = 0.f;
 
     std::vector<h_label_t> h_labels;
     std::vector<v_label_t> v_labels;
 
-    int    v_label_fixed_digits    = 0;
-    bool   h_labels_subsecond      = false;
+    int                    v_label_fixed_digits = 0;
+    bool                   h_labels_subsecond = false;
 
-    int    vertical_seed_index     = -1;
-    double vertical_seed_step      = 0.0;
-    double vertical_finest_step    = 0.0;
-    int    horizontal_seed_index   = -1;
-    double horizontal_seed_step    = 0.0;
+    int                    vertical_seed_index = -1;
+    double                 vertical_seed_step = 0.0;
+    double                 vertical_finest_step = 0.0;
+    int                    horizontal_seed_index = -1;
+    double                 horizontal_seed_step = 0.0;
 };
 
 /// Key for layout caching. Layout is recomputed only when this key changes.
 struct layout_cache_key_t
 {
-    float        v0                           = 0.0f;
-    float        v1                           = 0.0f;
-    std::int64_t t0                           = 0;  // nanoseconds
-    std::int64_t t1                           = 0;  // nanoseconds
-    Size_2i    viewport_size;
-    double    adjusted_reserved_height     = 0.0;
-    double    adjusted_preview_height      = 0.0;
-    double    adjusted_font_size_in_pixels = 0.0;
-    double    vbar_width_pixels            = 0.0;
-    uint64_t  font_metrics_key             = 0;
-    uint64_t  config_revision              = 0;
-    uint64_t  format_timestamp_revision    = 0;
-    uint64_t  format_value_revision        = 0;
+    float          v0                           = 0.0f;
+    float          v1                           = 0.0f;
+    std::int64_t   t0                           = 0; // nanoseconds
+    std::int64_t   t1                           = 0; // nanoseconds
+    Size_2i        viewport_size;
+    double         adjusted_reserved_height     = 0.0;
+    double         adjusted_preview_height      = 0.0;
+    double         adjusted_font_size_in_pixels = 0.0;
+    double         vbar_width_pixels            = 0.0;
+    uint64_t       font_metrics_key             = 0;
+    uint64_t       config_revision              = 0;
+    uint64_t       format_timestamp_revision    = 0;
+    uint64_t       format_value_revision        = 0;
 
     [[nodiscard]] bool operator==(const layout_cache_key_t& other) const noexcept
     {

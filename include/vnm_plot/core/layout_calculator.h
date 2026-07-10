@@ -29,24 +29,24 @@ public:
     struct parameters_t
     {
         // Data ranges
-        float        v_min;
-        float        v_max;
+        float                                                     v_min;
+        float                                                     v_max;
         // Timestamps are int64_t nanoseconds (API convention).
-        std::int64_t t_min;
-        std::int64_t t_max;
+        std::int64_t                                              t_min;
+        std::int64_t                                              t_max;
 
         // Viewport dimensions
-        double usable_width;
-        double usable_height;
-        double vbar_width;
-        double label_visible_height;
+        double                                                    usable_width;
+        double                                                    usable_height;
+        double                                                    vbar_width;
+        double                                                    label_visible_height;
 
         // Font metrics
-        double    adjusted_font_size_in_pixels;
-        float     h_label_vertical_nudge_factor = 0.0f;
-        uint64_t  measure_text_cache_key        = 0;
-        float     monospace_char_advance_px     = 0.f;
-        bool      monospace_advance_is_reliable = false;
+        double                                                    adjusted_font_size_in_pixels;
+        float                                                     h_label_vertical_nudge_factor = 0.0f;
+        uint64_t                                                  measure_text_cache_key = 0;
+        float                                                     monospace_char_advance_px = 0.f;
+        bool                                                      monospace_advance_is_reliable = false;
 
         // Callbacks for metrics and formatting
         std::function<int(double)>                                get_required_fixed_digits_func;
@@ -54,21 +54,21 @@ public:
         std::function<std::string(std::int64_t, std::int64_t)>    format_timestamp_func;
         std::uint64_t                                             format_timestamp_revision = 0;
         std::function<std::string(double, const value_format_context_t&)>
-                                                                 format_value_func;
+                                                                  format_value_func;
         std::uint64_t                                             format_value_revision = 0;
         std::function<float(const char*)>                         measure_text_func;
 
         // Optional profiler (from Plot_config)
-        vnm::plot::Profiler* profiler = nullptr;
+        vnm::plot::Profiler*                                      profiler = nullptr;
 
         // Seed hints for incremental computation
-        bool   has_vertical_seed      = false;
-        int    vertical_seed_index    = -1;
-        double vertical_seed_step     = 0.0;
+        bool                                                      has_vertical_seed = false;
+        int                                                       vertical_seed_index = -1;
+        double                                                    vertical_seed_step = 0.0;
 
-        bool   has_horizontal_seed    = false;
-        int    horizontal_seed_index  = -1;
-        double horizontal_seed_step   = 0.0;
+        bool                                                      has_horizontal_seed = false;
+        int                                                       horizontal_seed_index = -1;
+        double                                                    horizontal_seed_step = 0.0;
     };
 
     // Calculation result
@@ -77,15 +77,15 @@ public:
         std::vector<v_label_t> v_labels;
         std::vector<h_label_t> h_labels;
 
-        int    v_label_fixed_digits   = 1;
-        bool   h_labels_subsecond     = false;
-        float  max_v_label_text_width = 0.f;
+        int                    v_label_fixed_digits   = 1;
+        bool                   h_labels_subsecond     = false;
+        float                  max_v_label_text_width = 0.f;
 
-        int    vertical_seed_index    = -1;
-        double vertical_seed_step     = 0.0;
-        double vertical_finest_step   = 0.0;
-        int    horizontal_seed_index  = -1;
-        double horizontal_seed_step   = 0.0;
+        int                    vertical_seed_index   = -1;
+        double                 vertical_seed_step    = 0.0;
+        double                 vertical_finest_step  = 0.0;
+        int                    horizontal_seed_index = -1;
+        double                 horizontal_seed_step  = 0.0;
     };
 
     Layout_calculator() = default;
@@ -101,11 +101,11 @@ private:
         float                                          min_gap) const;
 
     // Scratch buffers (reused to avoid allocations)
-    mutable std::vector<std::pair<double, float>> m_scratch_vals;
-    mutable std::vector<std::pair<float, float>>  m_scratch_level;
-    mutable std::vector<std::pair<float, float>>  m_scratch_accepted_boxes;
-    mutable std::vector<float>                    m_scratch_accepted_y;
-    mutable std::vector<double>                   m_scratch_vals_d;
+    mutable std::vector<std::pair<double, float>>  m_scratch_vals;
+    mutable std::vector<std::pair<float, float>>   m_scratch_level;
+    mutable std::vector<std::pair<float, float>>   m_scratch_accepted_boxes;
+    mutable std::vector<float>                     m_scratch_accepted_y;
+    mutable std::vector<double>                    m_scratch_vals_d;
 };
 
 } // namespace vnm::plot

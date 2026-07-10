@@ -49,8 +49,8 @@ private:
     bool load_file(std::string_view path, Byte_buffer& out) const;
     void log_error(const std::string& message) const;
 
-    Log_callback m_log_callback;
-    std::string m_override_dir;
+    Log_callback   m_log_callback;
+    std::string    m_override_dir;
 
     // Map from asset name to embedded data view
     std::unordered_map<std::string, std::string_view> m_embedded;

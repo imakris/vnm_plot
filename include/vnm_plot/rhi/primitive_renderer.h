@@ -91,20 +91,21 @@ public:
 private:
     struct rect_vertex_t
     {
-        glm::vec4 color;
-        glm::vec4 rect_coords;  // x0, y0, x1, y1
+        glm::vec4  color;
+        glm::vec4  rect_coords; // x0, y0, x1, y1
     };
 
     std::vector<rect_vertex_t> m_cpu_buffer;
-    vnm::plot::Profiler*       m_profiler    = nullptr;
-    std::function<void(const std::string&)> m_log_error;
+    vnm::plot::Profiler*       m_profiler = nullptr;
+    std::function<void(const std::string&)>
+                               m_log_error;
 
     // RHI-side state. Pipelines, UBO ring buffer, vertex buffer for rects,
     // a static unit-quad VBO for grid, and the per-frame draw-op plan. Lives
     // out-of-line in primitive_renderer.cpp so the public header stays free
     // of QRhi includes.
     struct rhi_state_t;
-    std::unique_ptr<rhi_state_t> m_rhi_state;
+    std::unique_ptr<rhi_state_t>   m_rhi_state;
 
     // RHI pipeline and resource builders. Defined out-of-line in the .cpp so
     // they can touch QRhi types without dragging them into the public header.
@@ -134,7 +135,7 @@ private:
     static void rhi_reset_frame_plan(
         rhi_state_t&               rhi_state);
 
-    static constexpr int k_rect_initial_quads = 256;
+    static constexpr int       k_rect_initial_quads = 256;
 };
 
 } // namespace vnm::plot

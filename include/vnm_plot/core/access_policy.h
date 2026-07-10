@@ -269,11 +269,11 @@ struct Data_access_policy_typed
     }
 
     // Timestamps are int64_t nanoseconds (API convention).
-    timestamp_accessor_t get_timestamp;
-    value_accessor_t get_value;
-    range_accessor_t get_range;
+    timestamp_accessor_t   get_timestamp;
+    value_accessor_t       get_value;
+    range_accessor_t       get_range;
 
-    uint64_t layout_key = 0;
+    uint64_t               layout_key = 0;
     sample_semantics_key_t semantics_key;
 
     bool is_valid() const

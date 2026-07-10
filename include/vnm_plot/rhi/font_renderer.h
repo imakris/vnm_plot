@@ -24,24 +24,24 @@ class Asset_loader;
 
 struct text_scissor_t
 {
-    bool enabled = false;
-    int  x       = 0;
-    int  y       = 0;
-    int  width   = 0;
-    int  height  = 0;
+    bool       enabled = false;
+    int        x       = 0;
+    int        y       = 0;
+    int        width   = 0;
+    int        height  = 0;
 };
 
 struct text_shadow_t
 {
-    glm::vec4 color     = glm::vec4(0.f);
-    float     radius_px = 0.0f;
+    glm::vec4  color     = glm::vec4(0.f);
+    float      radius_px = 0.0f;
 };
 
 struct text_lcd_t
 {
     text_lcd_resolved_subpixel_order_t subpixel_order =
         text_lcd_resolved_subpixel_order_t::NONE;
-    glm::vec4 background_color = glm::vec4(0.f);
+    glm::vec4  background_color = glm::vec4(0.f);
 };
 
 // -----------------------------------------------------------------------------

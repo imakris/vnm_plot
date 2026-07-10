@@ -211,13 +211,13 @@ inline bool ensure_dynamic_ubo(
 // distinct binding+attribute set.
 struct alpha_blended_pipeline_desc_t
 {
-    QShader vert;
-    QShader frag;
-    QRhiVertexInputLayout vlayout;
-    quint32 ubo_bytes = 0;
+    QShader                vert;
+    QShader                frag;
+    QRhiVertexInputLayout  vlayout;
+    quint32                ubo_bytes = 0;
     QRhiShaderResourceBinding::StageFlags ubo_stages =
         QRhiShaderResourceBinding::VertexStage;
-    QRhiGraphicsPipeline::Flags flags = {};
+    QRhiGraphicsPipeline::Flags    flags = {};
 };
 
 // Builds a graphics pipeline with the standard vnm_plot alpha blend and a

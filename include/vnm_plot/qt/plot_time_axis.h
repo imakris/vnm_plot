@@ -137,25 +137,26 @@ private:
         bool           t_available_min_initialized,
         bool           t_available_max_initialized);
 
-    qint64 m_t_min = 0;
-    qint64 m_t_max = 0;
-    qint64 m_t_available_min = 0;
-    qint64 m_t_available_max = 0;
+    qint64     m_t_min = 0;
+    qint64     m_t_max = 0;
+    qint64     m_t_available_min = 0;
+    qint64     m_t_available_max = 0;
 
-    bool m_t_min_initialized = false;
-    bool m_t_max_initialized = false;
-    bool m_t_available_min_initialized = false;
-    bool m_t_available_max_initialized = false;
+    bool       m_t_min_initialized = false;
+    bool       m_t_max_initialized = false;
+    bool       m_t_available_min_initialized = false;
+    bool       m_t_available_max_initialized = false;
 
-    bool m_sync_vbar_width = false;
-    std::unordered_map<const QObject*, double> m_vbar_width_by_owner;
-    double m_shared_vbar_width_px = 0.0;
+    bool       m_sync_vbar_width = false;
+    std::unordered_map<const QObject*, double>
+               m_vbar_width_by_owner;
+    double     m_shared_vbar_width_px = 0.0;
 
-    QObject* m_indicator_owner = nullptr;
-    bool m_indicator_active = false;
-    qint64 m_indicator_t = 0;
-    bool m_indicator_x_norm_valid = false;
-    double m_indicator_x_norm = 0.0;
+    QObject*   m_indicator_owner        = nullptr;
+    bool       m_indicator_active       = false;
+    qint64     m_indicator_t            = 0;
+    bool       m_indicator_x_norm_valid = false;
+    double     m_indicator_x_norm       = 0.0;
 };
 
 } // namespace vnm::plot

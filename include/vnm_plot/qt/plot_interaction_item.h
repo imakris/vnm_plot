@@ -77,33 +77,34 @@ private:
     void apply_zoom_step(std::chrono::steady_clock::time_point now);
     Plot_widget* time_target_widget() const;
 
-    Plot_widget* m_plot_widget = nullptr;
-    Plot_widget* m_time_plot_widget = nullptr;
-    bool m_interaction_enabled = true;
-    bool m_pin_time_pivot_to_right = false;
+    Plot_widget*           m_plot_widget = nullptr;
+    Plot_widget*           m_time_plot_widget = nullptr;
+    bool                   m_interaction_enabled = true;
+    bool                   m_pin_time_pivot_to_right = false;
 
-    bool m_dragging = false;
-    bool m_dragging_preview = false;
-    bool m_click_candidate = false;
-    qreal m_press_x = 0;
-    qreal m_press_y = 0;
-    qreal m_drag_start_x = 0;
-    qreal m_drag_last_y = 0;
-    qreal m_drag_preview_start = 0;
+    bool                   m_dragging = false;
+    bool                   m_dragging_preview = false;
+    bool                   m_click_candidate = false;
+    qreal                  m_press_x = 0;
+    qreal                  m_press_y = 0;
+    qreal                  m_drag_start_x = 0;
+    qreal                  m_drag_last_y = 0;
+    qreal                  m_drag_preview_start = 0;
 
-    qreal m_zoom_vel_t = 0.0;
-    qreal m_zoom_vel_v = 0.0;
-    qreal m_last_pivot_x = 0.5;
-    qreal m_last_pivot_y = 0.5;
-    QBasicTimer m_zoom_timer;
-    std::chrono::steady_clock::time_point m_last_zoom_step_time;
+    qreal                  m_zoom_vel_t = 0.0;
+    qreal                  m_zoom_vel_v = 0.0;
+    qreal                  m_last_pivot_x = 0.5;
+    qreal                  m_last_pivot_y = 0.5;
+    QBasicTimer            m_zoom_timer;
+    std::chrono::steady_clock::time_point
+                           m_last_zoom_step_time;
 
-    static constexpr qreal k_zoom_friction = 0.75;
-    static constexpr qreal k_zoom_impulse_per_step = 1.0;
-    static constexpr qreal k_zoom_max_vel = 5.0;
-    static constexpr qreal k_zoom_per_notch = 1.05;
+    static constexpr qreal k_zoom_friction           = 0.75;
+    static constexpr qreal k_zoom_impulse_per_step   = 1.0;
+    static constexpr qreal k_zoom_max_vel            = 5.0;
+    static constexpr qreal k_zoom_per_notch          = 1.05;
     static constexpr qreal k_click_move_tolerance_px = 4.0;
-    static constexpr int k_zoom_timer_interval_ms = 16;
+    static constexpr int   k_zoom_timer_interval_ms  = 16;
 };
 
 } // namespace vnm::plot

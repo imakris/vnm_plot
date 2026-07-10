@@ -48,8 +48,8 @@ namespace {
 struct sample_t
 {
     // Timestamps are int64 nanoseconds (API convention).
-    std::int64_t t = 0;
-    float v = 0.0f;
+    std::int64_t   t = 0;
+    float          v = 0.0f;
 };
 
 class Lod_source final : public plot::Data_source

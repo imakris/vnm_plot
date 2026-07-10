@@ -49,21 +49,21 @@ const plot::detail::series_window_planner_state_t& planner_state(
 struct Test_sample
 {
     // Timestamps are int64 nanoseconds (API convention).
-    std::int64_t t;
-    float v;
+    std::int64_t   t;
+    float          v;
 };
 
 class Single_level_source final : public Data_source
 {
 public:
-    std::vector<Test_sample> samples;
-    int snapshot_calls = 0;
-    mutable int lod_scales_calls = 0;
-    mutable int lod_scale_calls = 0;
-    uint64_t sequence = 1;
-    std::weak_ptr<void> last_hold;
-    std::vector<std::size_t> scale_values = {1};
-    plot::Time_order order = plot::Time_order::UNKNOWN;
+    std::vector<Test_sample>   samples;
+    int                        snapshot_calls   = 0;
+    mutable int                lod_scales_calls = 0;
+    mutable int                lod_scale_calls  = 0;
+    uint64_t                   sequence         = 1;
+    std::weak_ptr<void>        last_hold;
+    std::vector<std::size_t>   scale_values     = {1};
+    plot::Time_order           order            = plot::Time_order::UNKNOWN;
 
     snapshot_result_t try_snapshot(size_t lod_level) override
     {
@@ -107,10 +107,10 @@ public:
 class Two_level_source final : public Data_source
 {
 public:
-    std::vector<Test_sample> lod0;
-    std::vector<Test_sample> lod1;
-    std::array<int, 2> snapshot_calls{{0, 0}};
-    std::array<uint64_t, 2> sequences{{1, 1}};
+    std::vector<Test_sample>   lod0;
+    std::vector<Test_sample>   lod1;
+    std::array<int, 2>         snapshot_calls{{0, 0}};
+    std::array<uint64_t, 2>    sequences{{1, 1}};
 
     snapshot_result_t try_snapshot(size_t lod_level) override
     {
@@ -144,15 +144,15 @@ public:
 class Direct_window_source final : public Data_source
 {
 public:
-    std::vector<Test_sample> samples;
-    plot::sample_index_window_t query_window{};
-    plot::Data_query_status query_status = plot::Data_query_status::READY;
-    uint64_t sequence = 77;
-    uint64_t query_sequence = 77;
-    int snapshot_calls = 0;
-    int query_calls = 0;
-    plot::time_range_t last_query_time_window{};
-    plot::sample_semantics_key_t last_query_semantics_key{};
+    std::vector<Test_sample>       samples;
+    plot::sample_index_window_t    query_window{};
+    plot::Data_query_status        query_status   = plot::Data_query_status::READY;
+    uint64_t                       sequence       = 77;
+    uint64_t                       query_sequence = 77;
+    int                            snapshot_calls = 0;
+    int                            query_calls    = 0;
+    plot::time_range_t             last_query_time_window{};
+    plot::sample_semantics_key_t   last_query_semantics_key{};
 
     snapshot_result_t try_snapshot(size_t lod_level) override
     {
@@ -220,7 +220,7 @@ Data_access_policy make_policy()
 struct Access_call_counts
 {
     int timestamp = 0;
-    int value = 0;
+    int value     = 0;
 };
 
 Data_access_policy make_direct_member_policy()

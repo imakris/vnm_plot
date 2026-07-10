@@ -19,22 +19,23 @@ namespace {
 
 struct sample_t
 {
-    double t = 0.0;
-    float v = 0.0f;
+    double             t = 0.0;
+    float              v = 0.0f;
 };
 
 struct Blocking_publication_probe
 {
-    std::atomic<bool> block_next_destroy{false};
-    std::atomic<bool> destroy_entered{false};
-    std::atomic<bool> release_destroy{false};
+    std::atomic<bool>  block_next_destroy{false};
+    std::atomic<bool>  destroy_entered{false};
+    std::atomic<bool>  release_destroy{false};
 };
 
 struct Blocking_sample
 {
     double t = 0.0;
-    float v = 0.0f;
-    std::shared_ptr<Blocking_publication_probe> probe;
+    float  v = 0.0f;
+    std::shared_ptr<Blocking_publication_probe>
+           probe;
 
     ~Blocking_sample()
     {
@@ -390,9 +391,9 @@ public:
     }
 
 private:
-    mutable std::mutex m_mutex;
-    std::vector<sample_t> m_samples;
-    std::uint64_t m_sequence = 0;
+    mutable std::mutex     m_mutex;
+    std::vector<sample_t>  m_samples;
+    std::uint64_t          m_sequence = 0;
 };
 
 bool test_ring_source_snapshots_are_consistent_under_concurrent_writes()

@@ -56,15 +56,15 @@ static_assert(sizeof(Rect_block_std140) == 64,
 // Verified against `qsb --dump shaders/qsb/grid_quad.frag.qsb`.
 struct Grid_block_std140
 {
-    float    plot_size_px[2];      // offset   0
-    float    region_origin_px[2];  // offset   8
-    float    grid_color[4];        // offset  16
-    int32_t  v_count;              // offset  32
-    int32_t  t_count;              // offset  36
-    int32_t  framebuffer_y_up;     // offset  40
-    float    win_h;                // offset  44
-    float    v_levels[32][4];      // offset  48 (32 * 16 = 512 bytes)
-    float    t_levels[32][4];      // offset 560 (32 * 16 = 512 bytes)
+    float      plot_size_px[2];     // offset   0
+    float      region_origin_px[2]; // offset   8
+    float      grid_color[4];       // offset  16
+    int32_t    v_count;             // offset  32
+    int32_t    t_count;             // offset  36
+    int32_t    framebuffer_y_up;    // offset  40
+    float      win_h;               // offset  44
+    float      v_levels[32][4];     // offset  48 (32 * 16 = 512 bytes)
+    float      t_levels[32][4];     // offset 560 (32 * 16 = 512 bytes)
 };
 static_assert(offsetof(Grid_block_std140, plot_size_px)     ==    0, "plot_size_px offset");
 static_assert(offsetof(Grid_block_std140, region_origin_px) ==    8, "region_origin_px offset");
@@ -116,20 +116,20 @@ struct Primitive_renderer::rhi_state_t
 
     struct grid_call_t
     {
-        std::unique_ptr<QRhiBuffer>                 ubo;
-        std::unique_ptr<QRhiShaderResourceBindings> srb;
-        QRhiBuffer*                                 srb_last_ubo = nullptr;
+        std::unique_ptr<QRhiBuffer>                    ubo;
+        std::unique_ptr<QRhiShaderResourceBindings>    srb;
+        QRhiBuffer*                                    srb_last_ubo = nullptr;
     };
 
-    enum class op_kind_t : uint8_t { RECT, GRID };
+    enum class op_kind_t :                 uint8_t{ RECT, GRID };
 
     struct draw_op_t
     {
-        op_kind_t  kind;
+        op_kind_t      kind;
         // Index into rect_calls / grid_calls depending on kind. Stored as
         // size_t because each op references exactly one preallocated call
         // resource; the indices are stable for the duration of the frame.
-        std::size_t resource_index;
+        std::size_t    resource_index;
         // For RECT: number of instances (== quads) in vbo.
         // For GRID: scissor rectangle in QRhi's bottom-left coordinates.
         union
@@ -145,42 +145,42 @@ struct Primitive_renderer::rhi_state_t
         };
     };
 
-    std::vector<rect_call_t> rect_calls;
-    std::vector<grid_call_t> grid_calls;
-    std::vector<draw_op_t>   ops;
-    std::size_t              rect_used = 0;
-    std::size_t              grid_used = 0;
+    std::vector<rect_call_t>               rect_calls;
+    std::vector<grid_call_t>               grid_calls;
+    std::vector<draw_op_t>                 ops;
+    std::size_t                            rect_used = 0;
+    std::size_t                            grid_used = 0;
     // Position in `ops` where the next record_draws() call should start
     // playback. Lets the host interleave multiple record_draws() invocations
     // around a series.render() call so chrome paints both behind and in
     // front of the data series in a single frame.
-    std::size_t              record_cursor = 0;
+    std::size_t                            record_cursor = 0;
 
     // Cached pipelines keyed only by primitive kind: the descriptor depends
     // on shader stages, vertex layout, blend, and sample count. Per-call
     // buffer handles ride the SRB on each draw.
-    std::unique_ptr<QRhiGraphicsPipeline> rect_pipeline;
-    std::unique_ptr<QRhiGraphicsPipeline> grid_pipeline;
-    QRhiRenderPassDescriptor* rect_pipeline_rpd = nullptr;
-    int                       rect_pipeline_samples = 0;
-    QRhiRenderPassDescriptor* grid_pipeline_rpd = nullptr;
-    int                       grid_pipeline_samples = 0;
+    std::unique_ptr<QRhiGraphicsPipeline>  rect_pipeline;
+    std::unique_ptr<QRhiGraphicsPipeline>  grid_pipeline;
+    QRhiRenderPassDescriptor*              rect_pipeline_rpd     = nullptr;
+    int                                    rect_pipeline_samples = 0;
+    QRhiRenderPassDescriptor*              grid_pipeline_rpd     = nullptr;
+    int                                    grid_pipeline_samples = 0;
 
     // Static unit-quad VBO consumed by the grid pipeline. Allocated once on
     // first prepare and reused forever; the same four vertices feed every
     // grid draw (the fragment shader resolves region clipping itself).
-    std::unique_ptr<QRhiBuffer> grid_quad_vbo;
+    std::unique_ptr<QRhiBuffer>            grid_quad_vbo;
 
-    QShader rect_vert;
-    QShader rect_frag;
-    QShader grid_vert;
-    QShader grid_frag;
-    bool    shaders_loaded = false;
+    QShader                                rect_vert;
+    QShader                                rect_frag;
+    QShader                                grid_vert;
+    QShader                                grid_frag;
+    bool                                   shaders_loaded = false;
 
     // Last QRhi seen on the prepare path. A backend swap (rare; tests / host
     // teardown) invalidates every cached buffer and pipeline because they
     // belong to the previous QRhi instance.
-    QRhi*   last_rhi = nullptr;
+    QRhi*                                  last_rhi = nullptr;
 };
 
 Primitive_renderer::Primitive_renderer()

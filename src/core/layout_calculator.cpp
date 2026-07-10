@@ -90,8 +90,8 @@ std::int64_t saturating_seconds_to_ns(double seconds) noexcept
 
 struct Cached_label
 {
-    std::string bytes;
-    float       width = 0.0f;
+    std::string    bytes;
+    float          width = 0.0f;
 };
 
 // Thread-local timestamp label cache
@@ -180,13 +180,13 @@ public:
 private:
     struct Context_key
     {
-        uint64_t step_bits          = 0;
-        uint64_t range_bits         = 0;
-        uint32_t monospace_bits     = 0;
-        uint8_t  monospace_reliable = 0;
-        uint64_t measure_key        = 0;
-        uint64_t font_size_bits     = 0;
-        size_t   format_signature   = 0;
+        uint64_t   step_bits          = 0;
+        uint64_t   range_bits         = 0;
+        uint32_t   monospace_bits     = 0;
+        uint8_t    monospace_reliable = 0;
+        uint64_t   measure_key        = 0;
+        uint64_t   font_size_bits     = 0;
+        size_t     format_signature   = 0;
 
         friend bool operator==(const Context_key& lhs, const Context_key& rhs) noexcept
         {
@@ -224,12 +224,12 @@ private:
         std::unordered_map<uint64_t, Cached_label> labels;
     };
 
-    static constexpr size_t k_max_entries  = 4096;
-    static constexpr size_t k_max_contexts = 8;
+    static constexpr size_t                                         k_max_entries  = 4096;
+    static constexpr size_t                                         k_max_contexts = 8;
 
     std::unordered_map<Context_key, Context_data, Context_key_hash> m_contexts;
     std::vector<Context_key>                                        m_lru;
-    Context_data*                                                   m_active = nullptr;
+    Context_data*                                                   m_active       = nullptr;
 };
 
 // Format signature cache
@@ -289,11 +289,11 @@ public:
 private:
     struct Key
     {
-        uint64_t  step_bits           = 0;
-        uint32_t  coverage_bucket     = 0;
-        uintptr_t formatter_identity  = 0;
-        size_t    formatter_type_hash = 0;
-        uint64_t  formatter_revision  = 0;
+        uint64_t   step_bits           = 0;
+        uint32_t   coverage_bucket     = 0;
+        uintptr_t  formatter_identity  = 0;
+        size_t     formatter_type_hash = 0;
+        uint64_t   formatter_revision  = 0;
 
         friend bool operator==(const Key& lhs, const Key& rhs) noexcept
         {
@@ -855,10 +855,10 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
 
             struct cand
             {
-                double      t;
-                float       x0;
-                float       x1;
-                float       x_anchor;
+                double t;
+                float  x0;
+                float  x1;
+                float  x_anchor;
             };
             std::vector<cand> candidates;
             float right_vis = 0.0f;

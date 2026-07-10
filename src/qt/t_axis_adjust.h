@@ -16,16 +16,16 @@ namespace vnm::plot::detail {
 // data_config_t in Plot_widget, plain members in Plot_time_axis).
 struct t_view_snapshot_t
 {
-    qint64 t_min = 0;
-    qint64 t_max = 0;
+    qint64 t_min           = 0;
+    qint64 t_max           = 0;
     qint64 t_available_min = 0;
     qint64 t_available_max = 0;
 };
 
 struct time_axis_update_result_t
 {
-    bool accepted = false;
-    bool changed  = false;
+    bool   accepted = false;
+    bool   changed  = false;
 };
 
 // Translate the view by `diff` pixels of horizontal motion expressed
@@ -583,15 +583,15 @@ private:
         return {true, changed};
     }
 
-    qint64 m_t_min = 0;
-    qint64 m_t_max = 0;
-    qint64 m_t_available_min = 0;
-    qint64 m_t_available_max = 0;
+    qint64 m_t_min                       = 0;
+    qint64 m_t_max                       = 0;
+    qint64 m_t_available_min             = 0;
+    qint64 m_t_available_max             = 0;
 
-    bool m_t_min_initialized = false;
-    bool m_t_max_initialized = false;
-    bool m_t_available_min_initialized = false;
-    bool m_t_available_max_initialized = false;
+    bool   m_t_min_initialized           = false;
+    bool   m_t_max_initialized           = false;
+    bool   m_t_available_min_initialized = false;
+    bool   m_t_available_max_initialized = false;
 };
 
 } // namespace vnm::plot::detail

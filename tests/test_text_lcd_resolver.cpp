@@ -14,7 +14,7 @@ using resolved_t = plot::text_lcd_resolved_subpixel_order_t;
 
 struct explicit_request_case_t
 {
-    request_t request;
+    request_t  request;
     resolved_t expected;
 };
 
