@@ -557,8 +557,8 @@ struct Line_block_std140
            view;           // offset 0
     float  line_px;        // offset 128
     int    snap_to_pixels; // offset 132
-    float  _pad0;          // offset 136
-    float  _pad1;          // offset 140
+    float  pad0;           // offset 136
+    float  pad1;           // offset 140
 };
 static_assert(sizeof(Line_block_std140) == 144, "Line_block_std140 must be a multiple of 16");
 static_assert(offsetof(Line_block_std140, line_px)        == 128, "Line_block line_px offset");
@@ -571,9 +571,9 @@ struct Dot_block_std140
     series_view_uniform_std140_t
            view;              // offset 0
     float  point_diameter_px; // offset 128
-    float  _pad0;             // offset 132
-    float  _pad1;             // offset 136
-    float  _pad2;             // offset 140
+    float  pad0;              // offset 132
+    float  pad1;              // offset 136
+    float  pad2;              // offset 140
 };
 static_assert(sizeof(Dot_block_std140) == 144, "Dot_block_std140 must be a multiple of 16");
 static_assert(offsetof(Dot_block_std140, point_diameter_px) == 128, "Dot_block point_diameter_px offset");
@@ -585,9 +585,9 @@ struct Area_block_std140
     series_view_uniform_std140_t
            view;          // offset 0
     int    interpolation; // offset 128
-    int    _pad0;         // offset 132
-    int    _pad1;         // offset 136
-    int    _pad2;         // offset 140
+    int    pad0;          // offset 132
+    int    pad1;          // offset 136
+    int    pad2;          // offset 140
 };
 static_assert(sizeof(Area_block_std140) == 144, "Area_block_std140 must be a multiple of 16");
 static_assert(offsetof(Area_block_std140, interpolation) == 128, "Area_block interpolation offset");
