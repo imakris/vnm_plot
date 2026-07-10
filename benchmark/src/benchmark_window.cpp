@@ -963,7 +963,7 @@ bool Benchmark_rhi_offscreen_runner::initialize_rhi(std::string& error_message)
     m_graphics_info = graphics_device_info_from_rhi(*m_rhi);
 
     const QSize size(m_config.framebuffer_width, m_config.framebuffer_height);
-    const int sample_count = 4;
+    const int sample_count = static_cast<int>(m_config.sample_count);
     m_color_buffer.reset(m_rhi->newRenderBuffer(
         QRhiRenderBuffer::Color,
         size,

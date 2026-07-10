@@ -72,6 +72,7 @@ def validate(
         "rate": "1000.000000",
         "render_style": "Line",
         "requested_graphics_backend": args.graphics_backend,
+        "sample_count": "4",
         "scenario": f"ci-{args.graphics_backend}-smoke",
         "seed": "12345",
         "series_count": "1",

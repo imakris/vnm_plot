@@ -321,6 +321,7 @@ def preflight(
             "GITHUB_REPOSITORY",
             "GITHUB_RUN_ATTEMPT",
             "GITHUB_RUN_ID",
+            "LP_NUM_THREADS",
             "QT_QPA_PLATFORM",
             "QSG_RHI_BACKEND",
             "VULKAN_SDK",

@@ -74,6 +74,7 @@ struct Benchmark_config {
     bool finish = false;  // Wait for GPU completion after offscreen frames
     int framebuffer_width = 1200;
     int framebuffer_height = 720;
+    std::size_t sample_count = 4;
     std::size_t warmup_frames = 2;
     // Zero keeps duration-based execution. Nonzero runs exactly this many
     // measured frames after warmup and is preferred for calibration/CI.

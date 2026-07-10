@@ -666,6 +666,10 @@ int main(int argc, char* argv[])
             : config.capture_pixel_checksum ? "forced-by-pixel-readback" : "disabled";
         meta.reproduction["framebuffer"] = std::to_string(config.framebuffer_width) + "x" +
             std::to_string(config.framebuffer_height);
+        const std::string mesa_thread_limit = bytes_to_string(qgetenv("LP_NUM_THREADS"));
+        meta.reproduction["env.LP_NUM_THREADS"] = mesa_thread_limit.empty()
+            ? "unset"
+            : mesa_thread_limit;
         meta.reproduction["invocation"] = invocation;
         meta.reproduction["measured_frames"] =
             std::to_string(benchmark.measured_frame_count());
@@ -678,6 +682,7 @@ int main(int argc, char* argv[])
         meta.reproduction["machine_id_sha256"] = machine_id_sha256;
         meta.reproduction["requested_graphics_backend"] = config.graphics_backend;
         meta.reproduction["scenario"] = config.scenario;
+        meta.reproduction["sample_count"] = std::to_string(config.sample_count);
         meta.reproduction["seed"] = std::to_string(config.seed);
         meta.reproduction["series_count"] = std::to_string(config.series_count);
         meta.reproduction["show_text"] = config.show_text ? "true" : "false";

@@ -127,6 +127,7 @@ class CalibrationProtocolTests(unittest.TestCase):
         self.assertEqual(protocol["calibration_sets"], 2)
         self.assertEqual(protocol["warmup_runs_per_set"], 2)
         self.assertEqual(protocol["measured_runs_per_set"], 7)
+        self.assertEqual(protocol["sample_count"], 4)
         self.assertEqual(len(manifest["scenarios"]), 6)
         self.assertEqual(
             {scenario["rate"] for scenario in manifest["scenarios"]},
