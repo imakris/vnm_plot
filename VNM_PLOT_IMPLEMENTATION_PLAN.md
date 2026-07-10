@@ -2,7 +2,7 @@
 
 Plan date: 2026-07-10
 
-Execution record updated: 2026-07-10
+Execution record updated: 2026-07-11
 
 Source review: `VNM_PLOT_ARCHITECTURE_AND_STACKING_REVIEW.md` at `vnm_plot@2d94f01`
 
@@ -18,7 +18,16 @@ Proceed in five gated stages:
 
 The product stack implementation does not begin until Stages 2–4 pass and the owner accepts the complete stack contract. The separately authorized dependency Windows repair may run in parallel with local `vnm_plot` work once dependent consumer CI and local product gates are green, but it remains a final-merge gate.
 
-Claude was unavailable for the stated 85-minute review window. Three Codex workers provided cross-worker review; under governance this is not different-model independence. On 2026-07-10 the owner reported that Fable was quota-exhausted and explicitly directed the executor not to invoke it or wait for it. The active review loop therefore uses three xhigh Codex reviewers iteratively until all three return green. Fable remains excluded unless the owner later reauthorizes it; the repository owner/human remains the independent approval boundary. Local commits and review branches may be pushed and PRs may be opened to run CI and gather review. No batch is merged to `master` until its independent approval and executable gate close. Each batch receives two review rounds plus its executable gate; require a third round when round two finds a material issue or the remediation materially changes the reviewed behavior.
+The initial 2026-07-10 review window used three Codex workers while Fable was
+temporarily quota-exhausted. The owner later reauthorized Fable for concrete
+ambiguity and the 2026-07-11 architecture follow-up converged. Subsequent work
+uses delegated implementation: Codex `/root` orchestrates, a worker implements
+each plan step, and three high-reasoning reviewers iteratively review the exact
+result until all three are clean. At least one reviewer in every loop audits
+architecture/contracts/ownership/missing primitives. Fable is used only when
+that loop exposes genuine ambiguity. Local commits and review branches may be
+pushed and PRs opened, but no batch merges to `master` until its executable gate
+and review closure pass.
 
 ## Failure ledger
 
@@ -100,7 +109,7 @@ Preserve all ledgers rather than replacing them with later green results.
 - No stack-only metadata, planner, shader, public API, counter, or report field lands unused.
 - Performance decisions require full-frame evidence on a real recorded QRhi backend; microbenchmarks and Null QRhi are diagnostic only.
 - Every failed or terminated gate remains visible with cause, recovery, and owner even if a later rerun passes.
-- Every batch is reviewed in two rounds, with a third round after a material round-two finding/remediation, independently approved by the owner/human or a different model, and passes its named gate before merge.
+- Every delegated plan step receives three independent high-reasoning reviews of the exact result, including one explicit architecture/contracts/ownership/missing-primitives audit. Findings return to the implementer and the three-reviewer loop repeats until all three are clean; Fable is reserved for concrete ambiguity. The owning gate also passes before merge.
 - The implementation agent is authorized to create local commits, push in-scope review branches, and open PRs. Prefer PR review over direct `master` pushes; do not force-push shared branches or rewrite published history.
 - The approved removals of `Data_source_ref`, its raw-reference builders/setters, and ambiguous `Data_source::snapshot()` are intentional breaking API changes. Do not add compatibility aliases or no-op-deleter bridges; provide migration notes and consumer-smoke evidence in the owning batch.
 
@@ -110,11 +119,11 @@ These assignments apply unless the owner changes them before a batch starts.
 
 | Batches | Implementation executor | Decision approver / independent reviewer | Gate recorder | Failure-remediation owner |
 |---|---|---|---|---|
-| 1A | Codex `/root`, only after sibling-repository authorization | Repository owner/human; Fable only if later reauthorized | Codex `/root` | Batch 1A executor |
-| 1B, 2 | Codex `/root` | Repository owner/human; Fable only if later reauthorized | Codex `/root` | Active batch executor |
-| 3A–3D | Codex `/root` | Repository owner for API/oracle decisions; human review before each merge; Fable only if later reauthorized | Codex `/root` | Active batch executor |
-| 4A–4B | Codex `/root` for decision record/prototype | Repository owner chooses contract and A/B winner; independent review verifies evidence | Codex `/root` | Batch 4 executor |
-| 5 | Codex `/root` | Repository owner plus independent human review; Fable only if later reauthorized | Codex `/root` | Batch 5 executor |
+| Closed 1A–1C and implemented Batch 2 history | Historical executor recorded in commits/ledger | Historical owner/reviewer evidence | Codex `/root` | Historical executor |
+| Remaining Checkpoint 2.1 and 2.2 steps | Delegated implementation worker | Three iterative high-reasoning reviewers; owner for proposal-hash approval | Codex `/root` orchestrator | Implementing worker |
+| 3A–3D | Delegated implementation worker per step | Three iterative high-reasoning reviewers, including architecture lens; owner for new product choices | Codex `/root` orchestrator | Implementing worker |
+| 4A–4B | Delegated implementation/prototype worker per step | Three iterative reviewers; owner chooses D4 winner from exact evidence hash | Codex `/root` orchestrator | Implementing worker |
+| 5 | Delegated implementation worker per step | Three iterative reviewers plus final owner/human approval | Codex `/root` orchestrator | Implementing worker |
 
 ### Recorded owner authorization
 
@@ -126,6 +135,22 @@ The owner also approved:
 - the intentional removal of `Data_source_ref`, the raw-reference API, and ambiguous `Data_source::snapshot()` without compatibility aliases;
 - automatic generation of the fixed benchmark scenarios and numeric noise-margin proposal after baseline calibration, followed by owner review of the generated manifest before Checkpoint 2.2.
 
+On 2026-07-11 the owner approved the converged architecture follow-up: new
+decisions D11-D15 and the amended D2, D6, D7, D8, and D9 contracts below. These
+replace conflicting review proposals for `Published_state`, a
+`Frame_orchestrator` component, snapshot capability/batch APIs, registry
+incarnations, `geometry_revision`, and the split v1 GPU layout. D4 remains the
+only intentionally unresolved architecture decision.
+
+The owner also directed that subsequent implementation be orchestrated rather
+than written by the primary agent. Each completed plan step is delegated to an
+implementation worker, then reviewed by three separate high-reasoning workers
+until all three are clean. Every loop assigns at least one reviewer an explicit
+architecture/contracts/ownership/missing-primitives lens. Findings return to
+the implementing worker before the exact revised result is re-reviewed. Claude
+Fable is consulted only when the worker/review evidence exposes genuine
+ambiguity; it is not a routine fourth vote.
+
 ## Decisions required
 
 The owner-approved decisions below are product oracle subject to their executable evidence gates. D4 alone remains unresolved until the Stage 4 A/B experiment and visual review.
@@ -133,15 +158,38 @@ The owner-approved decisions below are product oracle subject to their executabl
 | ID | Decision | Approved contract | Status and remaining evidence |
 |---|---|---|---|
 | D1 | Negative values | Algebraic cumulative stacking; a negative component descends from the previous cumulative value, preserving `h=f+g`. | **Approved 2026-07-10.** Retain visible cancellation/negative verification. |
-| D2 | Defined domain | Intersection of all enabled component domains; no left extrapolation; right extension only through explicit hold-forward. | **Approved 2026-07-10.** Retain overlap, disjoint, and hold verification. |
+| D2 | Defined domain | Process each member in logical source order; collapse equal timestamps under D8; apply the nonfinite policy; construct its piecewise function and defined interval set; apply explicit right hold; intersect member interval sets; compose each resulting interval without bridging gaps. If mandatory interval endpoints exceed the bounded candidate representation, the complete group/view reports `FRAGMENTATION_BUDGET` and emits no geometry. | **Amended and approved 2026-07-11.** Retain overlap, disjoint, hold, fragmentation, and no-gap-bridging verification. |
 | D3 | Group topology | Optional `stack_group_id` on ordinary series; ascending series ID is order; callers use `apply_series_updates` when topology must change atomically. Individual add/remove may render intermediate membership. | **Approved 2026-07-10.** Caller-disciplined atomicity is the product contract. |
 | D4 | Sampling strategy | Unresolved between bounded exact event union and bounded shared grid. Ship exactly one, not both. | **Open.** Stage 4 A/B native-backend and visual evidence; owner selects the winner. |
 | D5 | Scalar/style contract | Contribution always uses scalar `get_value`; at least two enabled members; individual `NONE` members contribute invisibly; all-NONE and custom-layer groups fail explicitly. | **Approved 2026-07-10.** Retain the status-table tests. |
-| D6 | Busy/failure contract | BUSY reuses only a prior complete structurally matching group wholesale; FAILED suppresses/diagnoses; EMPTY is empty; generations never mix. | **Approved 2026-07-10.** Retain streaming/counter verification. |
-| D7 | Floating timestamp API | Require integral nanoseconds in the member-pointer hot path and provide checked floating-to-ns conversion at ingestion. | **Approved 2026-07-10.** Typed/erased UBSan and performance verification remain required before Batch 3B closes. |
-| D8 | Duplicate timestamps | Highest physical source index wins regardless of traversal direction. | **Approved 2026-07-10.** Retain ascending/descending duplicate tests. |
-| D9 | Pixel-parity indicators | Renderer evaluates cursor time from the held published frame and returns immutable values with one-frame latency. | **Approved 2026-07-10.** Retain published-frame identity tests. |
+| D6 | Busy/failure contract | BUSY may reuse only the last complete group/view for the identical full structural key. All members, range, and indicator values come from that retained complete content; fresh and stale generations never mix. The frame result reports `STALE_BUSY` and the retained sequences/content key. Reuse may continue until READY, EMPTY, FAILED, a budget failure, or structural-key change replaces or suppresses it; it never masquerades as READY. | **Amended and approved 2026-07-11.** Retain whole-group streaming, indefinite-stale observability, and no-generation-mixing verification. |
+| D7 | Floating timestamp API | Integral nanoseconds remain the member-pointer hot path. Floating input is seconds; `checked_seconds_to_ns(double) -> optional<int64_t>` returns the nearest integral nanosecond to the mathematical input value multiplied by `1e9`, with exact halfway cases away from zero. Nonfinite input or a rounded result outside signed 64-bit range returns `nullopt`; there is no clamp or sentinel. | **Amended and approved 2026-07-11.** Typed/erased boundary, negative-half, UBSan, and performance verification remain required before Batch 3B closes. |
+| D8 | Duplicate timestamps | Treat both `data_snapshot_t` segments as one logical `at(i)` sequence. Among equal timestamps, greatest logical `i` wins before nonfinite, interpolation, and hold processing. If the winner is nonfinite, apply the nonfinite policy without reconsidering an earlier duplicate. | **Amended and approved 2026-07-11.** Retain ascending/descending, wrapped-segment, and nonfinite-winner tests. |
+| D9 | Pixel-parity indicators and frame result | Batch 3B defines the canonical evaluator and value result. Batch 3C's single production frame entry creates a snapshot-free immutable frame plan and, after renderer/RHI disposition is known, one immutable frame result. The result copies frame/config/view identities from the plan and contains per-series status, sequence, selected LOD, actual disposition, rendered range, and value-only indicators tagged with cursor request ID. The GUI discards a result whose request ID is not current. No independent indicator snapshot path exists; Batch 3D may optimize copying/publication but may not add a second producer. | **Amended and approved 2026-07-11.** Retain plan/result construction, one-frame latency, disposition, and stale-request rejection tests. |
 | D10 | Unchanged-frame reuse | Stable nonzero `current_sequence()` plus stable/non-conservative access semantics authorizes reuse; zero/unstable/conservative inputs rebuild and report why. | **Approved 2026-07-10.** The existing second-frame upload oracle may change after Checkpoint 2.1 retains its baseline. |
+| D11 | Widget threading and render-input publication | `Plot_widget` configuration, registry, and public API reads and mutations are Qt-GUI-thread-only; cross-thread callers use queued invocation. `QQuickRhiItemRenderer::synchronize()` copies the complete render input while the GUI thread is blocked, after which item and renderer share no mutable widget state. `Data_source` contents are separate and support concurrent producer, GUI-query, and render access through the source's own synchronization. | **Approved 2026-07-11.** Public thread-contract, synchronization, and migrated Qt tests gate Batch 3A/3D. |
+| D12 | Source acquisition domain and hold lifetime | Each `Data_source` object is one acquisition domain. On one thread, no snapshot-taking or query-taking method begins while any hold from that object remains live. A source sharing a non-recursive acquisition lock across objects must make their public acquisitions independent. The frame pipeline acquires each selected `(source,LOD)` once, shares it among consumers of that observation, releases rejected attempts immediately, derives all later-needed owned values/custom prepared state, and destroys every hold before another LOD/query on the source and before render-pass recording. Final plans, results, cross-frame caches, and record contexts own no snapshot. Contention returns BUSY rather than waiting for lock ownership; this is a progress rule, not permission for recursive acquisition. | **Approved 2026-07-11.** Lock-backed same-source/main-preview and teardown evidence gates Batch 3A/3C. |
+| D13 | Registration-slot lifecycle | Renderer-owned per-series state belongs to the registration slot. A prepared frame that observes the series ID absent destroys the slot; re-add after observed absence starts cold. Remove/re-add not observed by a prepared frame is an update. Explicit reset changes a structural key input such as source object, access-semantic revision, or custom-layer revision. No registry incarnation, geometry revision, or series-instance token is introduced. The primary-content revision remains a renderer-owned derived-artifact version, not registration identity. | **Approved 2026-07-11.** Observed/unobserved removal and explicit-reset tests gate Batch 3C/3D. |
+| D14 | Source identity | Batch 3A removes `Data_source::identity()`. Source lifetime/object identity are the descriptor `shared_ptr` owner control block plus aliased object pointer; content identity is the stable nonzero per-LOD sequence; access meaning is the access-semantic key/revision; registration lifecycle is D13. No user-defined logical identity authorizes reuse across source objects. In-place backing changes advance sequence; in-place interpretation changes advance semantic revision. | **Approved 2026-07-11.** All current identity cache consumers migrate atomically in Batch 3A. |
+| D15 | Stack frame resources and result authority | Stack composition is all-or-nothing per group/view. The frame planner considers groups by ascending lowest enabled series ID and admits them deterministically against hard total work, visit, and upload budgets; a group that cannot fit emits no geometry and reports `FRAME_BUDGET`. RHI separately caps renderer-owned live CPU vector and QRhi stack-buffer allocation capacity, retires non-current cached resources before prepare, and reports `RESIDENT_BUDGET` if admitted current-frame work cannot fit. This bounds renderer-owned resources, not opaque driver physical residency. Every expected failure, suppression, and stale reuse appears in the immutable frame result; numeric defaults are evidence-set configuration, not alternate semantics. | **Approved 2026-07-11.** Core status/admission gates precede decision-grade D4 evidence; RHI allocation/retirement and public-result gates precede Stage 5 exposure. |
+
+### Architecture-document convergence gate
+
+The decision table above is the only normative architecture register. The plan
+body owns execution/evidence steps that cite those decisions; the architecture
+review owns findings and rationale. Before Batch 3 public implementation:
+
+- the documentation-only convergence commit contains no production code,
+  dormant API, alternate implementation, or new public type;
+- no active text prescribes retained frame snapshots, a second range/indicator
+  producer, `Data_source::identity()`, registry/geometry/instance revisions, a
+  split v1 GPU layout/formula, `Published_state`, `Frame_orchestrator`, a
+  snapshot capability hierarchy, batch snapshots, or a separate 3P phase;
+- every Batch 3/4/5 action and gate follows D2/D6-D15, and D4 is the sole open
+  decision;
+- governed Markdown/style, `actionlint`, and `git diff --check` pass, and the
+  exact documentation commit receives the delegated three-reviewer closure
+  required above before Batch 3 coding.
 
 ## Execution automation contract
 
@@ -151,11 +199,11 @@ The implementation should make each batch reproducible through one gate runner a
 2. **Gate result:** emit a versioned manifest containing batch/checkpoint, start/end time, command, exit status, phase, inputs, artifact hashes, CI run/job URLs, and recovery relationship. Failed or terminated attempts are append-only; a green rerun never overwrites them.
 3. **Artifacts:** write raw local evidence below the active build tree's `gate-artifacts/<batch>/<source-identity>/<timestamp>/` directory and upload the same bundle from CI/PR runs. Do not commit raw timing output to the source tree.
 4. **Delivery:** local commits and review-branch pushes are allowed before gates close so CI and reviewers can inspect them. Merge to `master` is the protected event and requires the named batch gate and independent approval.
-5. **Review rounds:** run two review/remediation rounds. Run a third when the second round identifies a material correctness, API, cache, performance, or evidence defect, or when its remediation materially changes reviewed behavior.
+5. **Delegated implementation and review closure:** the primary agent orchestrates and does not implement subsequent plan steps. After each delegated step completes, run three independent high-reasoning reviews of the exact result; at least one review explicitly audits architecture, contracts, ownership, and missing primitives. Return all findings to the implementing worker and repeat the three-reviewer loop until all three are clean. Use Claude Fable only to resolve a concrete ambiguity exposed by that loop. Record worker/reviewer identities, exact source hash, findings, remediation, and final clean dispositions.
 6. **Native backend contract (owner correction, 2026-07-10):** retained smoke and timing evidence request Qt's native QRhi backend and accept whichever non-Null implementation the platform selects, including D3D, Metal, Vulkan, OpenGL, or a future API. The actual backend, device, and available driver identity are recorded, but no graphics API is itself a product gate. API-specific runs are optional diagnostics only. Null QRhi remains diagnostic and must never masquerade as retained GPU evidence. Raw timing comparisons use one accepted machine/backend/build fingerprint; a fingerprint mismatch invalidates comparison.
 7. **Calibration generation:** generate scenario manifests from the fixed plan matrices, dimensions, seeds, warm-up counts, and seven-run protocol. Preserve every raw run. Do not remove outliers automatically; an interrupted or failed run is retained and a replacement run is a separately identified attempt.
 8. **Calibration arithmetic:** deterministic counters whose accepted baseline is zero use exact-zero regression rules. For positive metrics, calculate relative median drift from the two calibration sets as specified below. If a median is zero/nonpositive or below declared measurement resolution, report relative margin as unavailable and propose a resolution-based absolute rule instead. The runner must not silently turn unstable calibration into a permissive threshold; it emits `CALIBRATION_REVIEW_REQUIRED` with the observed drift/resolution and proposed rule for owner approval.
-9. **A/B evidence:** mechanically reject a D4 candidate that violates correctness or M/V/H bounds. For surviving candidates, generate a numerical comparison, deterministic screenshots, pixel differences, and a side-by-side visual bundle. The runner may recommend but never silently select the D4 winner.
+9. **A/B evidence:** mechanically reject a D4 candidate that violates correctness, per-group M/V/H_limit, or D15 frame-admission bounds. For surviving candidates, generate a numerical comparison, deterministic screenshots, pixel differences, and a side-by-side visual bundle. The runner may recommend but never silently select the D4 winner.
 10. **Conditional stops:** the Stage 3C source-eligibility failure and any proposed Batch 3E remain owner decisions because they change supported-source scope or public API. Automation must present the failing evidence and the two plan-authorized choices without choosing one.
 
 ## Stage 1 — Close the baseline
@@ -360,6 +408,8 @@ Primary files:
 
 - `include/vnm_plot/core/types.h`;
 - `include/vnm_plot/core/basic_series_builder.h`;
+- `include/vnm_plot/core/series_window.h`;
+- `include/vnm_plot/rhi/qrhi_series_layer.h`;
 - examples, benchmark source/window, and focused tests;
 - every ordinary and preview source assignment.
 
@@ -370,16 +420,22 @@ Actions:
 1. Replace `Data_source_ref` in ordinary and preview descriptors with `shared_ptr<Data_source>`.
 2. Remove raw-reference setters/builders without a no-op-deleter bridge.
 3. Make `Benchmark_data_source` own/share its `Ring_buffer`; changing only the source pointer type would leave a teardown UAF.
-4. Remove ambiguous `Data_source::snapshot()` and migrate its three production callers to explicit `try_snapshot()` handling.
-5. EMPTY means no data; BUSY preserves the current operation; FAILED diagnoses/suppresses; READY retains its hold.
-6. Remove renderer snapshot-hold storage that becomes redundant once complete snapshot results are held canonically.
+4. Remove ambiguous `Data_source::snapshot()` and `Data_source::identity()`; migrate their production/cache callers atomically to explicit status handling and the D14 owner/object/sequence/semantics facts.
+5. Replace free-form snapshot status/payload construction with named invariant-safe READY, EMPTY, BUSY, and FAILED construction; READY validates its snapshot, and no other status carries one.
+6. Publish the D11 GUI-thread-only widget contract while preserving the separate internally synchronized `Data_source` concurrency contract.
+7. Publish D12's one-object acquisition-domain rule. Rejected attempts release immediately; no final plan, result, cross-frame cache, or record context owns a snapshot hold.
+8. Replace the owning custom-layer prepare window with a call-scoped non-owning metadata/span view that carries no hold. Remove raw snapshot access from the record context; layer-prepared/GPU state and value metadata remain available for recording.
+9. Migrate examples, benchmark ownership, package consumers, custom-layer tests, and record-context assertions in the same public API break; no compatibility shim or dormant alternate context remains.
 
 Gate:
 
-- `rg "Data_source_ref|set_data_source_ref|data_source_ref\("` has no public, production, example, or benchmark hits;
+- `rg "Data_source_ref|set_data_source_ref|data_source_ref\("` has no public, production, example, or benchmark hits, and source search proves the `Data_source::identity()` virtual and every cache call/field are absent;
 - Ubuntu Clang ASan (`-fsanitize=address`) ordinary/preview lifetime and benchmark teardown pass;
 - Ubuntu Clang TSan core/update-remove stress is run with `-fsanitize=thread`; if Qt/QRhi cannot link or run under TSan, record `UNSUPPORTED` with compiler/linker evidence and run the same stress test without sanitizer on all four CI platforms;
-- four-status tests pass;
+- four-status construction tests prove READY cannot coexist with an invalid snapshot;
+- an actual shared-lock-backed source proves rejected-LOD release, same-source main/preview sequencing, shared selected `(source,LOD)` acquisition, writer progress after prepare/derivation and before record, no overlap, and teardown on Windows plus the ordinary four-platform test matrix;
+- custom-layer tests prove prepare data is valid only for the call, prepare cannot retain a hold through its public type, and record has no raw snapshot access;
+- Qt tests and public documentation enforce GUI-thread-only widget access while source content remains concurrently readable;
 - repeat the approved Stage 2 full-path protocol; source wait and latency satisfy its numeric rule.
 
 ### Batch 3B — One evaluator and one range producer
@@ -392,28 +448,27 @@ Primary files:
 - `src/qt/plot_widget.cpp`;
 - focused range/interaction tests.
 
-Prerequisite: the recorded owner approvals for D7, D8, and D9 satisfy the semantic decision gate. Their named UBSan, performance, duplicate, and published-frame evidence remains required. Existing duplicate/indicator tests are not changed before Batch 3B establishes that evidence.
+Prerequisite: the recorded owner approvals for D7 and D8 satisfy the evaluator semantic gate. Their named UBSan, performance, duplicate, and nonfinite-winner evidence remains required. D9 renderer-pinned publication belongs to Batch 3C, where the shared frame plan exists.
 
-Hypothesis: one canonical evaluator preserves render semantics while indexed sources eliminate full LOD-0 UI copies/scans; the measurement boundary is cursor/auto-adjust request through immutable result publication.
+Hypothesis: one canonical evaluator preserves render semantics while indexed sources eliminate full LOD-0 UI copies/scans; the measurement boundary is evaluator/range request through its canonical value result.
 
 Actions:
 
 1. Add one `resolve_sample_at` producer for ordering, interpolation, duplicate winner, hold, and nonfinite semantics.
 2. Preserve GLOBAL value-only/range-only access without timestamps in canonical `Data_source::query_v_range()`.
 3. Time-bounded VISIBLE and point queries still require timestamp access.
-4. Route auto-adjust and indicators through canonical producers.
+4. Route auto-adjust and non-pixel-parity point queries through canonical producers; do not add renderer-pinned D9 publication or another snapshot path in this batch.
 5. Delete the private range scanner only after value-only/all-time parity is proven.
-6. For pixel-parity indicators, the UI publishes cursor time and the renderer returns immutable values from the held rendered frame; accept one-frame latency.
-7. Resolve the floating timestamp decision D7 in this batch so stacking does not inherit undefined conversion.
-8. Replace duplicate local time constants and `floor_div` with the canonical time-unit implementation; update README query/indicator contracts with the same API change.
+6. Implement D7's checked seconds-to-nanoseconds ingestion outside the member-pointer hot path, range-checking the rounded mathematical result and returning `nullopt` for nonfinite/nonrepresentable input.
+7. Apply D8 duplicate collapse before nonfinite/interpolation/hold processing in both traversal directions and across split snapshots.
+8. Replace duplicate local time constants and `floor_div` with the canonical time-unit implementation; update README query contracts with the same API change.
 
 Gate:
 
 - existing GLOBAL value-only test remains green;
 - unordered `[0,90,10,100]`, query 11 resolves nearest timestamp 10;
-- ascending, descending, duplicates (highest physical index wins), nonfinite policies, hold, and all statuses pass;
-- indicator equals the rendered frame and never a newer source generation;
-- UBSan floating timestamp boundary cases pass;
+- ascending, descending, wrapped-segment duplicates (greatest logical `at(i)` wins), nonfinite-winner behavior, hold, and all statuses pass;
+- D7 positive/negative exact-half, signed-boundary, one-step-outside, NaN, and infinity cases pass under UBSan with no hot-loop floating conversion;
 - duplicate scanner is absent only after parity;
 - direct indexed million-sample cursor/auto-adjust work is bounded and satisfies the Stage 2 numeric regression rule; fallback-source cost remains reported.
 
@@ -424,24 +479,29 @@ Primary files:
 - `src/core/series_window_planner.*`;
 - new internal `frame_series_planner.*` only if it immediately replaces current production planning;
 - frame range and renderer paths;
+- benchmark production-planner entry;
 - focused cache/layout tests.
 
-Hypothesis: one shared plan and attempted-LOD cache removes duplicate snapshots/scans and range/render disagreement without increasing acquisition cost as retained history grows. The full-path boundary is frame planning entry through range result and renderer-consumed plan.
+Hypothesis: one production frame entry and snapshot-free immutable plan remove duplicate snapshots/scans and range/render/result disagreement without increasing acquisition cost as retained history grows. The full-path boundary is production planning entry through executed renderer/RHI disposition and immutable frame result.
 
 Actions:
 
 1. Use full pre-layout framebuffer width as the deterministic LOD-budget width; final usable width changes transforms, not selected LOD.
-2. Produce one immutable per-series/per-view frame plan consumed by VISIBLE range and rendering.
-3. Share only complete `snapshot_result_t` values through a frame cache keyed `(Data_source*, LOD)`; cache every attempted level, not only the winner, and retain holds for the frame. Do not cache `query_time_window()` by that key because its result also depends on time range, access semantics, interpolation, hold, and nonfinite policy; leave direct query results uncached until evidence justifies their complete key.
-4. Make `Series_view_plan` own one `sample_window_t`; delete duplicated window fields and migrate renderer/tests atomically.
-5. Key renderer geometry reuse with existing immutable descriptor fields, owning source identity, stable access semantics, and concrete plan/window data. Do not add registry-incarnation or geometry-revision concepts.
-6. Update README VISIBLE/frame-plan behavior with the production change.
+2. **3C1 parity:** add one production frame entry that creates one immutable per-series/per-view plan consumed by VISIBLE range and rendering. The plan owns status, sequence, selected LOD/window/spans, extrema, access/semantic facts, and derived normalized data, but no snapshot or hold.
+3. **3C1 result:** after renderer/RHI disposition is known, construct the sole immutable frame result from the exact executed plan rather than accepting independent frame/config/view identities. Publish D9 value-only indicators with cursor request ID; the GUI discards a non-current request. No independent range, indicator, or status producer remains after parity.
+4. **3C1 evidence entry:** route the benchmark through the same production frame entry before generating parity evidence. Record the visible full-framebuffer-width LOD change explicitly rather than treating it as an invisible refactor.
+5. **3C2 acquisition/reuse:** enforce D12 scheduling. Cache attempted status, sequence, and counters without retaining rejected holds; acquire each selected `(source,LOD)` once and share it among consumers of that observation. Finish extrema/staging/custom prepare and destroy every hold before a distinct same-source LOD/query and before render-pass recording. Do not cache direct query results without their complete time/access/interpolation/hold/nonfinite key.
+6. Make `Series_view_plan` snapshot-free and own the canonical derived window/plan fields; delete duplicated window and renderer-hold storage and migrate renderer/tests atomically.
+7. Key geometry reuse by registration slot, descriptor `shared_ptr` owner control block plus aliased source object pointer, stable nonzero sequence, access semantics, and concrete plan/window fields. D13 governs observed absence; do not add source identity, registry incarnation, geometry revision, or series-instance tokens.
+8. Update README VISIBLE/frame-plan/result/acquisition behavior with the production change.
 
 Gate:
 
-- VISIBLE range and renderer use the same LOD, sequence, window, and one snapshot;
+- the production benchmark, VISIBLE range, renderer geometry, D9 indicators, and frame result use the same executed plan, LOD, sequence, window, and actual disposition;
 - ten series sharing one source/LOD call `try_snapshot()` once per frame;
-- attempted-LOD cache counters prove each `(source,lod)` acquisition occurs once per frame;
+- attempted-LOD counters prove rejected holds release before the next acquisition; same-source main/preview with distinct LODs are consumed sequentially without overlap and may truthfully report different sequences;
+- custom prepare finishes while its non-owning view is valid, the writer proceeds before render recording, and no plan/result/cache/record context owns a hold;
+- delayed cursor results are discarded by request ID, and frame-result identity fields are copied only from the executed plan;
 - at fixed W/visible interval, run 1x/10x/100x retained histories for direct/zero-copy, copy-on-snapshot, and unknown-order sources after a changed sequence: exact snapshot bytes/physical visits at 100x must not exceed the 1x value, and time/producer-lock metrics must satisfy the approved Stage 2 noise rule for any source class eligible for stacking; fallback classes that fail remain measured but are not silently declared stack-safe;
 - warning-clean initialized build and all focused tests pass;
 - the approved Stage 2 protocol passes for full-frame latency, allocations, snapshot bytes/time, alignment scans, producer wait, and memory.
@@ -457,22 +517,24 @@ Primary files:
 - Qt synchronization/cache tests;
 - matching README configuration example.
 
-Hypothesis: an existing-map publication revision eliminates unchanged map/config copying without changing renderer geometry identity or frame output. The boundary is Qt synchronize entry through immutable map publication.
+Hypothesis: GUI-thread-only revisioned publication eliminates unchanged map/config copying without changing structural geometry identity or frame output. The boundary is Qt synchronize entry through immutable render-input publication.
 
 Actions:
 
 1. Add only a series-map publication revision for Qt copying.
-2. In one `apply_series_updates` lock, null entries erase their IDs and add/update/remove commit together; increment the map revision exactly once for the batch.
+2. In one GUI-thread `apply_series_updates` operation, null entries erase their IDs and add/update/remove commit together; increment the map revision exactly once for the batch.
 3. Individual add/remove remains a committed intermediate topology; callers use the batch API when stack membership must change atomically.
 4. Copy map/config only when its publication revision changes.
-5. Geometry equality continues to use source identity, access semantics, and plan/window fields; global map revision, color, and label do not invalidate geometry.
+5. Geometry equality continues to use registration slot, owning source owner/object, sequence, access semantics, and plan/window fields; global map revision, color, and label do not invalidate geometry.
 6. Conservative callable access without a stable semantics key still invalidates safely.
-7. Update the README example to use the canonical widget setter for widget-owned fields.
+7. Once D11 enforcement and migrated tests are green, remove widget mutexes made redundant by GUI-thread ownership; do not add a second publication model.
+8. Update the README example to use the canonical widget setter for widget-owned fields and document queued cross-thread invocation.
 
 Gate:
 
 - one initial map/config copy, then zero until mutation;
 - one mixed add/update/remove call publishes one revision and contains no null map entries;
+- GUI-thread enforcement and queued cross-thread invocation tests pass before redundant widget mutexes are removed; source-content concurrency remains independently tested;
 - color/label-only stable-semantic update causes no snapshot/range scan/geometry upload;
 - conservative callable clone invalidates;
 - pixel/command output is unchanged;
@@ -480,21 +542,24 @@ Gate:
 
 ## Stage 4 — Settle the stack design with evidence
 
-### Batch 4A — Contract decision record
+### Batch 4A — Core stack contract implementation
 
-The execution record already approves D1–D3 and D5–D6. Batch 4A converts those decisions into the complete reviewed stack contract and leaves only D4 open. D3 uses `std::optional<int> stack_group_id` with ascending existing series ID and caller-batched topology; do not add a group descriptor. The record also fixes:
+The decision register approves D1–D3 and D5–D15 and leaves only D4 open. Batch 4A implements the backend-independent stack semantics and typed results without public RHI/Qt exposure. D3 uses `std::optional<int> stack_group_id` with ascending existing series ID and caller-batched topology; do not add a group descriptor. The implementation includes:
 
 - component order;
 - scalar/range projection;
-- duplicate winner;
+- D8 logical duplicate collapse before nonfinite processing;
 - nonfinite and hold behavior;
-- BUSY wholesale reuse key;
+- D2 ordered interval-set construction, endpoint inclusion, no gap bridging, and `FRAGMENTATION_BUDGET` whole-group failure;
+- cumulative nonfinite/overflow as a typed whole-group failure with no partial geometry;
+- D6 BUSY wholesale reuse, retained sequence/content-key publication, and `STALE_BUSY` disposition;
 - singleton, all-NONE, and custom-layer failures;
 - GLOBAL/GLOBAL_LOD common-domain behavior;
 - cross-source/cross-LOD non-atomic snapshot wording;
-- preview and indicator behavior.
+- preview and indicator behavior;
+- the core status taxonomy consumed by the D9/D15 immutable frame result.
 
-Do not add product semantic tests before approval. Private benchmark prototypes may assert only mechanical bounds, checked arithmetic, and explicit failures; they do not settle product semantics.
+The focused tests are product oracles for the approved contracts. This batch does not select D4, add a public stack API, or add an alternate result/status channel.
 
 ### Batch 4B — Sampling A/B experiment
 
@@ -514,9 +579,17 @@ Common definitions:
 - `H_limit=checked_add(checked_mul(40,M), checked_mul(A,U))`: conservative per-group/per-view upload cap for the simple interleaved layout, group-shared metadata, padded boundaries, and aligned uniforms;
 - `V=sum(physical_input_visits)+K*E`: composition visits, hard-capped at `2*M`.
 
-Actual prototype upload bytes are `12*K*E + 8*group_span_count + 8*sum_line(span_length+2) + sizeof(actual_prototype_stack_uniform_std140)*U`; upload only real uniform bytes, not alignment padding. Paired equal-timestamp events are stored in left/right vector order, so no GPU event-side stream exists. H_limit/memory reservation uses `A*U`. With `K*E<=M`, base is <=12M, group-shared spans <=4M, and padded LINE data <=16M; 40M leaves explicit alignment headroom. Span records must remain group-shared; if formats or ownership change, re-derive H_limit before use. Use checked add/multiply/divide for `D*K*K`, `D*K`, `K*E`, `A*U`, M, H, V, and every byte count. Overflow, V>2M, or actual bytes>H_limit returns an explicit budget status. Main, preview, and multiple groups each have their own M/H/V result; frame totals are reported as sums, never treated as one group's allowance.
+D15 adds a deterministic frame-admission layer above these per-group bounds.
+Before either candidate produces decision-grade evidence, the scenario manifest
+fixes hard frame work/visit/upload totals. Groups are considered by ascending
+lowest enabled series ID; a group is admitted only if its complete per-group
+M/V/H reservation fits every remaining frame total, otherwise it emits no
+geometry and reports `FRAME_BUDGET`. Candidate A and B use identical admission
+inputs and limits.
 
-Both prototypes call the same benchmark-local wrapper around the production LOD/window selector with explicit `max_visible_samples`; only composition differs. “Complete input” and V count interpolation padding, duplicate-collapse visits, hold samples, and every physical sample examined across attempted and selected LODs. The frame cache retains every attempted `(Data_source*,LOD)` result, not only the winning level.
+Actual prototype upload bytes are `12*K*E + 8*group_span_count + 8*sum_line(span_length+2) + sizeof(actual_prototype_stack_uniform_std140)*U`; upload only real uniform bytes, not alignment padding. Paired equal-timestamp events are stored in left/right vector order, so no GPU event-side stream exists. H_limit/memory reservation uses `A*U`. With `K*E<=M`, base is <=12M, group-shared spans <=4M, and padded LINE data <=16M; 40M leaves explicit alignment headroom. Span records must remain group-shared; if formats or ownership change, re-derive H_limit before use. Use checked add/multiply/divide for `D*K*K`, `D*K`, `K*E`, `A*U`, M, H, V, every byte count, and every D15 frame total. Overflow, V>2M, or actual bytes>H_limit returns an explicit group budget status. Main, preview, and multiple groups retain their own M/H/V results while their checked sums are also governed by D15 frame admission.
+
+Both prototypes call the same benchmark-local wrapper around the production LOD/window selector with explicit `max_visible_samples`; only composition differs. “Complete input” and V count interpolation padding, duplicate-collapse visits, hold samples, and every physical sample examined across attempted and selected LODs. D12 applies: attempted status/sequence/counters are retained, rejected holds release immediately, and selected observations are consumed sequentially with no hold in the final plan or prototype result.
 
 Candidate A — budgeted event union:
 
@@ -533,6 +606,13 @@ Candidate B — bounded shared grid:
 - `E<=D*N`, `K*E<=M`;
 - STEP changes use consecutive left/right vector-order events at the sampled grid transition;
 - grid approximation and step displacement are explicit.
+
+Before Candidate B implementation/evidence, freeze one deterministic grid
+construction covering the effective interval-set domain, origin, endpoint
+inclusion, widened timestamp arithmetic, allocation across disjoint spans, and
+the `FRAGMENTATION_BUDGET` result when mandatory endpoints alone exceed N. The
+same construction defines spike-attenuation and step-displacement evidence; no
+run-time grid variant or hidden fallback is permitted.
 
 A/B matrix:
 
@@ -558,6 +638,7 @@ Decision gate:
 
 - uncapped ordinary series retain identical selected LODs, windows, and pixels on regular/irregular ladders and coarsest-over-budget cases;
 - both candidates respect M, V, and H_limit or return an explicit budget status;
+- multi-group scenarios use identical D15 admission order and hard frame totals; rejected groups report `FRAME_BUDGET` and leave no partial geometry;
 - both repeat the approved Stage 2 seven-run native-backend protocol with identical workloads and candidate-specific B/N caps;
 - choose exactly one strategy using performance plus visual evidence;
 - record why the loser was rejected;
@@ -577,6 +658,7 @@ Scope:
 - move/promote the winning benchmark compositor and shared QRhi adapter/shader into the canonical layout/RHI targets, switch the benchmark to the production producer, and delete all benchmark-local winner copies in the same commit;
 - `std::optional<int> stack_group_id` on ordinary descriptors, ascending existing series ID as order, and existing `apply_series_updates` for atomic caller-intended topology;
 - selected bounded composition planner;
+- D15 deterministic frame-wide admission and checked total work/visit/upload accounting before any stack allocation;
 - VISIBLE range consumes every bottom/top extremum from the exact same immutable composed plan used by rendering;
 - bounded scalar GLOBAL/GLOBAL_LOD range: intersect effective member domains, query scalar min/max at each source-local selected level, accumulate every prefix lower/upper in `double`, cache by domain/levels/sequences/semantics, and report fallback scan work;
 - frame cache and complete structural/data cache keys;
@@ -586,7 +668,7 @@ Scope:
 - LINE cumulative boundaries using a separately keyed padded `{t_rel,top}` buffer and four prev/p0/p1/next bindings;
 - stack/composition/upload observations first consumed by this feature;
 - preview membership/order from ordinary descriptors, while main and preview independently plan their effective sources/access/styles/LODs; a missing/failed preview member suppresses only the complete preview group, never main and never a partial preview;
-- frame-published cumulative indicators;
+- the D9/D15 immutable frame result publishes cumulative indicators, READY/EMPTY/FAILED, `STALE_BUSY`, fragmentation/overflow/group/frame/resident budget failures, admitted/rejected disposition, and retained sequences/content key; no expected outcome exists only in logs/counters;
 - extend the existing `examples/preview_config` executable rather than add another example/QML target;
 - focused math/RHI/interaction tests;
 - representative benchmark scenarios and documentation.
@@ -595,8 +677,8 @@ Cache rules:
 
 - base composition requires stable nonzero sequences and non-conservative/explicit access semantics for cross-frame reuse;
 - unstable/conservative inputs recompute within M/H and record the disable reason;
-- BUSY may reuse only a prior complete structural match wholesale;
-- reuse keys use existing immutable descriptor fields, owning source identity, access semantics, and concrete plan/window fields—no new registry-incarnation/geometry-revision scheme;
+- BUSY may reuse only the D6 prior complete structural match wholesale and reports `STALE_BUSY` without mixing generations;
+- reuse keys use registration slot, descriptor source owner control block plus aliased object pointer, stable sequence, access semantics, and concrete plan/window fields; D13 observed absence retires the slot, and no source identity/incarnation/geometry/instance token exists;
 - color/label changes do not recompose;
 - boundary data key is base-content revision, LINE-membership mask, and spans;
 - color, width, opacity, and pixel-snap changes update uniforms/draw state only and never upload boundary data;
@@ -620,6 +702,8 @@ Performance gate:
 
 - define the actual stack std140 uniform record first, static-assert its layout, compute A from its real size/backend alignment, and use checked arithmetic for every per-group/per-view M/V/H bound;
 - observed upload bytes equal `12*K*E + metadata + 8*sum_line(span_length+2) + sizeof(actual_stack_uniform_std140)*U`; aligned reservation uses A*U, and both remain within their checked H_limit/memory bounds;
+- RHI enforces D15's separate hard cap on renderer-owned live stack CPU-vector capacity and QRhi buffer allocation capacity, retires non-current cached stack resources before prepare, and reports `RESIDENT_BUDGET` without claiming a bound on opaque driver physical residency;
+- multi-group/main/preview checked totals never exceed the evidence-set D15 frame work/visit/upload budgets; admission is deterministic by ascending lowest enabled series ID and rejected groups emit no geometry;
 - zero steady allocation after warm-up where cache reuse is permitted;
 - stable unchanged second frame: zero composition/base/boundary upload;
 - output, composition visits, snapshot bytes, alignment visits, and producer locks satisfy the Stage 3C bounded-history gate;
@@ -643,10 +727,10 @@ Before the feature merge/release is considered complete:
 5. clean no-sibling configure/install/consumer smoke passes while fetching dependency `master`;
 6. benchmark metadata names actual backend and resolved dependency commit;
 7. deterministic and end-to-end performance gates pass;
-8. two or three review rounds plus owner/human or different-model independent review recheck every contract/cache/performance claim;
+8. every completed delegated step has three clean high-reasoning reviews of the exact hash, including an architecture/contracts/ownership/missing-primitives review; owner/human approval closes external product and visual decisions;
 9. all observed failures, including recovered ones, remain in the handoff;
 10. worktree contains only the intended batch changes.
 
 ## Recommended immediate next action
 
-Batch 1A is closed and the Batch 1B style baseline is the base of Batch 2 delivery PR #18. Checkpoint 2.1 remediation includes the plan-ancestry merge, hardened retained evidence through `fea5a84`, the measured-epoch rate rebase, fail-closed gate bootstrap, three-way hosted-renderer provenance, and in-guest FreeBSD packaging with copied-back status/evidence. The fixed calibration contract now explicitly requires the Core 3.3, single-sample offscreen context request and separate 4x measured render target. The latest local diagnostic Release gate has CTest 29/29, 40 Python helper tests, `actionlint` 1.7.12, canonical Varinomics style, native pixel/counter smoke, and a fixed-protocol 64-series live epoch diagnostic. Next, obtain clean cross-platform CI for the exact committed candidate and iterate the same three xhigh reviewers until all three return green. Then run the fixed 108-execution calibration plus its separate environment probe and present the exact retained proposal SHA-256 to the owner. Checkpoint PASS is impossible until the owner explicitly approves that exact proposal hash. D4 remains open for Stage 4 and does not block completing Checkpoint 2.1.
+Batch 1A is closed and the Batch 1B style baseline is the base of Batch 2 delivery PR #18. Checkpoint 2.1 remediation includes the plan-ancestry merge, hardened retained evidence through `fea5a84`, the measured-epoch rate rebase, fail-closed gate bootstrap, three-way hosted-renderer provenance, in-guest FreeBSD packaging with copied-back status/evidence, removal of false-hypothesis renderer/VM workarounds, aggregate durable phase tracing, unversioned dependency discovery, and Windows extended-length artifact I/O. The remediation is preserved locally at `26a4cc6`; its Release build, CTest 30/30, 41 Python helper tests, `actionlint` 1.7.12, canonical Varinomics style, and diff checks pass. The D11-D15 convergence record gates future Batch 3 public work but does not reopen the fixed Checkpoint 2.1 protocol. Next, obtain clean cross-platform CI for the exact committed candidate and iterate the same three xhigh reviewers until all three return green. Then run the fixed 108-execution calibration plus its separate environment probe and present the exact retained proposal SHA-256 to the owner. Checkpoint PASS is impossible until the owner explicitly approves that exact proposal hash. D4 remains open for Stage 4 and does not block completing Checkpoint 2.1.
