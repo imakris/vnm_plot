@@ -4,6 +4,8 @@
 
 #include <chrono>
 #include <cmath>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <sstream>
 #include <thread>
@@ -162,6 +164,43 @@ bool test_observation_counters_are_unit_neutral() {
     TEST_ASSERT(scan_line.find("1.000") != std::string::npos,
         "range scan counter should be reported");
 
+    return true;
+}
+
+// Test: Raw artifact retains samples and calculated percentile fields
+bool test_raw_report_retains_samples() {
+    Benchmark_profiler profiler;
+    profiler.record_observation("benchmark.frame.total_ms", 1.0);
+    profiler.record_observation("benchmark.frame.total_ms", 2.0);
+    profiler.record_observation("benchmark.frame.total_ms", 9.0);
+
+    Report_metadata meta;
+    meta.session = "raw_test";
+    meta.stream = "TEST";
+    meta.output_directory = std::filesystem::temp_directory_path() /
+        "vnm_plot_benchmark_profiler_test";
+    meta.started_at = std::chrono::system_clock::from_time_t(1'700'000'000);
+    meta.generated_at = meta.started_at;
+    meta.reproduction["scenario"] = "unit-test";
+
+    const auto raw_path = profiler.write_raw_report(meta);
+    std::ifstream input(raw_path);
+    std::ostringstream contents;
+    contents << input.rdbuf();
+    const std::string json = contents.str();
+
+    TEST_ASSERT(!json.empty(), "raw report should be written");
+    TEST_ASSERT(json.find("\"scenario\": \"unit-test\"") != std::string::npos,
+        "raw report should include reproduction metadata");
+    TEST_ASSERT(json.find("\"p50\": 2") != std::string::npos,
+        "raw report should calculate p50");
+    TEST_ASSERT(json.find("\"p95\": 8.3") != std::string::npos,
+        "raw report should calculate interpolated p95");
+    TEST_ASSERT(json.find("\"samples\": [1, 2, 9]") != std::string::npos,
+        "raw report should retain observation samples");
+
+    std::error_code ec;
+    std::filesystem::remove_all(meta.output_directory, ec);
     return true;
 }
 
@@ -426,6 +465,7 @@ int main() {
     RUN_TEST(test_multiple_roots);
     RUN_TEST(test_format_compliance);
     RUN_TEST(test_observation_counters_are_unit_neutral);
+    RUN_TEST(test_raw_report_retains_samples);
 
     std::cout << "\n=============================\n";
     std::cout << "Results: " << passed << " passed, " << failed << " failed\n";

@@ -624,6 +624,10 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
                     if (request.profiler) {
                         request.profiler->record_counter(
                             "renderer.series_window.monotonicity_scan_count");
+                        request.profiler->record_observation(
+                            "renderer.series_window.monotonicity_scan_samples",
+                            static_cast<double>(
+                                state.last_timestamp_order_scan_samples));
                     }
                 }
             }

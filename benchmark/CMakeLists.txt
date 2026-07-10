@@ -23,6 +23,65 @@ endif()
 
 option(VNM_PLOT_BUILD_BENCHMARK_TESTS "Build benchmark helper tests" ON)
 
+set(VNM_PLOT_BENCHMARK_SOURCE_COMMIT "unknown")
+set(VNM_PLOT_BENCHMARK_SOURCE_TREE "unknown")
+set(VNM_PLOT_BENCHMARK_SOURCE_DIFF_SHA256 "unknown")
+set(VNM_PLOT_BENCHMARK_SOURCE_DIRTY "unknown")
+set(VNM_PLOT_BENCHMARK_DEPENDENCY_COMMIT "unknown")
+
+find_package(Git QUIET)
+if(Git_FOUND)
+    execute_process(
+        COMMAND "${GIT_EXECUTABLE}" rev-parse HEAD
+        WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+        OUTPUT_VARIABLE VNM_PLOT_BENCHMARK_SOURCE_COMMIT
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+    execute_process(
+        COMMAND "${GIT_EXECUTABLE}" rev-parse "HEAD^{tree}"
+        WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+        OUTPUT_VARIABLE VNM_PLOT_BENCHMARK_SOURCE_TREE
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+    execute_process(
+        COMMAND "${GIT_EXECUTABLE}" status --porcelain --untracked-files=no
+        WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+        OUTPUT_VARIABLE _benchmark_git_status
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+    execute_process(
+        COMMAND "${GIT_EXECUTABLE}" diff --binary HEAD
+        WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+        OUTPUT_VARIABLE _benchmark_git_diff
+        ERROR_QUIET
+    )
+    string(SHA256 VNM_PLOT_BENCHMARK_SOURCE_DIFF_SHA256 "${_benchmark_git_diff}")
+    if(_benchmark_git_status STREQUAL "")
+        set(VNM_PLOT_BENCHMARK_SOURCE_DIRTY "false")
+    else()
+        set(VNM_PLOT_BENCHMARK_SOURCE_DIRTY "true")
+    endif()
+
+    if(DEFINED vnm_msdf_text_SOURCE_DIR AND EXISTS "${vnm_msdf_text_SOURCE_DIR}/.git")
+        execute_process(
+            COMMAND "${GIT_EXECUTABLE}" rev-parse HEAD
+            WORKING_DIRECTORY "${vnm_msdf_text_SOURCE_DIR}"
+            OUTPUT_VARIABLE VNM_PLOT_BENCHMARK_DEPENDENCY_COMMIT
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET
+        )
+    endif()
+endif()
+
+configure_file(
+    include/benchmark_build_metadata.h.in
+    generated/benchmark_build_metadata.h
+    @ONLY
+)
+
 # -----------------------------------------------------------------------------
 # Benchmark executable
 # -----------------------------------------------------------------------------
@@ -54,10 +113,14 @@ set_target_properties(vnm_plot_benchmark PROPERTIES
 target_include_directories(vnm_plot_benchmark
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_BINARY_DIR}/generated
         ${PROJECT_SOURCE_DIR}/include
 )
 
 target_compile_features(vnm_plot_benchmark PRIVATE cxx_std_20)
+target_compile_definitions(vnm_plot_benchmark PRIVATE
+    VNM_PLOT_BENCHMARK_BUILD_TYPE="$<CONFIG>"
+)
 
 # Link dependencies
 target_link_libraries(vnm_plot_benchmark
@@ -73,6 +136,7 @@ target_link_libraries(vnm_plot_benchmark
 # Platform-specific settings
 if(WIN32)
     target_compile_definitions(vnm_plot_benchmark PRIVATE NOMINMAX)
+    target_link_libraries(vnm_plot_benchmark PRIVATE psapi)
     # Console application for benchmark output
     set_target_properties(vnm_plot_benchmark PROPERTIES
         WIN32_EXECUTABLE FALSE
@@ -244,4 +308,23 @@ endif()
 add_test(NAME benchmark_data_source_tests COMMAND test_benchmark_data_source)
 
 message(STATUS "vnm_plot: Building benchmark data source tests")
+
+add_test(
+    NAME benchmark_native_smoke
+    COMMAND vnm_plot_benchmark
+        --backend qrhi-offscreen
+        --graphics-backend native
+        --static
+        --data-type bars
+        --render-style line
+        --seed 12345
+        --warmup-frames 2
+        --frames 3
+        --finish
+        --pixel-checksum
+        --quiet
+        --output-dir "${CMAKE_CURRENT_BINARY_DIR}/smoke-reports"
+        --scenario ci-native-smoke
+)
+set_tests_properties(benchmark_native_smoke PROPERTIES TIMEOUT 60)
 endif()

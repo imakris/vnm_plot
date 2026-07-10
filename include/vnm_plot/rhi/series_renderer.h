@@ -110,6 +110,10 @@ private:
         std::size_t                    last_staged_sample_count         = 0;
         std::size_t                    last_sample_upload_bytes         = 0;
         std::size_t                    last_sample_upload_count         = 0;
+        std::size_t                    last_line_window_upload_bytes    = 0;
+        std::size_t                    last_line_window_upload_count    = 0;
+        std::size_t                    last_uniform_upload_bytes        = 0;
+        std::size_t                    last_uniform_upload_count        = 0;
         std::size_t                    last_primitive_prepare_count     = 0;
         std::size_t                    last_line_window_sample_count    = 0;
         std::size_t                    last_recorded_line_span_count    = 0;

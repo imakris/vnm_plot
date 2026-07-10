@@ -960,10 +960,14 @@ void Series_renderer::prepare(
     }
 
     const auto invalidate_view_upload_state = [](vbo_view_state_t& view_state) {
-        view_state.has_uploaded_vbo         = false;
-        view_state.last_sample_buffer       = nullptr;
-        view_state.last_staged_sample_count = 0;
-        view_state.last_sample_upload_bytes = 0;
+        view_state.has_uploaded_vbo              = false;
+        view_state.last_sample_buffer            = nullptr;
+        view_state.last_staged_sample_count      = 0;
+        view_state.last_sample_upload_bytes      = 0;
+        view_state.last_line_window_upload_bytes = 0;
+        view_state.last_line_window_upload_count = 0;
+        view_state.last_uniform_upload_bytes     = 0;
+        view_state.last_uniform_upload_count     = 0;
         view_state.line_draw_spans.clear();
     };
 
@@ -1044,9 +1048,13 @@ void Series_renderer::prepare(
         return sample_buffer;
     };
 
-    std::size_t frame_sample_upload_bytes = 0;
-    std::size_t frame_sample_upload_count = 0;
-    std::size_t next_draw_insertion_order = 0;
+    std::size_t frame_sample_upload_bytes      = 0;
+    std::size_t frame_sample_upload_count      = 0;
+    std::size_t frame_line_window_upload_bytes = 0;
+    std::size_t frame_line_window_upload_count = 0;
+    std::size_t frame_uniform_upload_bytes     = 0;
+    std::size_t frame_uniform_upload_count     = 0;
+    std::size_t next_draw_insertion_order      = 0;
 
     const auto ensure_view_ubo =
         [&](int series_id,
@@ -1065,6 +1073,12 @@ void Series_renderer::prepare(
                 state.buffer.reset();
                 return nullptr;
             }
+            if (profiler) {
+                profiler->record_observation(
+                    "renderer.frame.buffer_allocation_bytes",
+                    static_cast<double>(sizeof(series_view_uniform_std140_t)));
+                profiler->record_counter("renderer.frame.buffer_allocation_count");
+            }
         }
 
         const series_view_uniform_std140_t uniform =
@@ -1074,6 +1088,8 @@ void Series_renderer::prepare(
             0,
             sizeof(uniform),
             &uniform);
+        frame_uniform_upload_bytes += sizeof(uniform);
+        ++frame_uniform_upload_count;
         state.last_frame_used = m_frame_id;
         return state.buffer.get();
     };
@@ -1084,6 +1100,10 @@ void Series_renderer::prepare(
             vbo_view_state_t& view_state)
     {
         view_state.last_sample_upload_count         = 0;
+        view_state.last_line_window_upload_bytes    = 0;
+        view_state.last_line_window_upload_count    = 0;
+        view_state.last_uniform_upload_bytes        = 0;
+        view_state.last_uniform_upload_count        = 0;
         view_state.last_primitive_prepare_count     = 0;
         view_state.last_line_window_sample_count    = 0;
         view_state.last_recorded_line_span_count    = 0;
@@ -1383,6 +1403,12 @@ void Series_renderer::prepare(
                     static_cast<double>(view_state.last_sample_upload_count));
             }
         }
+        if (view_state.last_line_window_upload_count > 0) {
+            frame_line_window_upload_bytes += view_state.last_line_window_upload_bytes;
+            frame_line_window_upload_count += view_state.last_line_window_upload_count;
+        }
+        frame_uniform_upload_bytes += view_state.last_uniform_upload_bytes;
+        frame_uniform_upload_count += view_state.last_uniform_upload_count;
     };
 
     for (auto& draw_state : draw_states) {
@@ -1426,6 +1452,38 @@ void Series_renderer::prepare(
         profiler->record_observation(
             "renderer.frame.sample_upload_count",
             static_cast<double>(frame_sample_upload_count));
+        profiler->record_observation(
+            "renderer.frame.upload.primary_bytes",
+            static_cast<double>(frame_sample_upload_bytes));
+        profiler->record_observation(
+            "renderer.frame.upload.primary_count",
+            static_cast<double>(frame_sample_upload_count));
+        profiler->record_observation(
+            "renderer.frame.upload.line_window_bytes",
+            static_cast<double>(frame_line_window_upload_bytes));
+        profiler->record_observation(
+            "renderer.frame.upload.line_window_count",
+            static_cast<double>(frame_line_window_upload_count));
+        profiler->record_observation(
+            "renderer.frame.upload.uniform_bytes",
+            static_cast<double>(frame_uniform_upload_bytes));
+        profiler->record_observation(
+            "renderer.frame.upload.uniform_count",
+            static_cast<double>(frame_uniform_upload_count));
+        profiler->record_observation("renderer.frame.upload.known_custom_bytes", 0.0);
+        profiler->record_observation("renderer.frame.upload.known_custom_count", 0.0);
+        profiler->record_observation(
+            "renderer.frame.upload.total_bytes",
+            static_cast<double>(
+                frame_sample_upload_bytes +
+                frame_line_window_upload_bytes +
+                frame_uniform_upload_bytes));
+        profiler->record_observation(
+            "renderer.frame.upload.total_count",
+            static_cast<double>(
+                frame_sample_upload_count +
+                frame_line_window_upload_count +
+                frame_uniform_upload_count));
     }
 
     const auto qrhi_layer_still_configured =
@@ -1608,6 +1666,10 @@ bool Series_renderer::rhi_prepare_series_view_samples(
         view_state.line_draw_spans.clear();
         view_state.last_staged_sample_count      = 0;
         view_state.last_sample_upload_bytes      = 0;
+        view_state.last_line_window_upload_bytes = 0;
+        view_state.last_line_window_upload_count = 0;
+        view_state.last_uniform_upload_bytes     = 0;
+        view_state.last_uniform_upload_count     = 0;
         view_state.last_line_window_sample_count = 0;
         view_state.last_prepared_t_min_ns        = 0;
         view_state.last_prepared_t_max_ns        = 0;
@@ -1771,6 +1833,13 @@ bool Series_renderer::rhi_prepare_series_view_samples(
             if (view_state.rhi->vbo && view_state.rhi->vbo->create()) {
                 view_state.rhi_vbo_capacity_bytes = alloc_bytes;
                 ++view_state.last_vbo_generation;
+                if (ctx.config && ctx.config->profiler) {
+                    ctx.config->profiler->record_observation(
+                        "renderer.frame.buffer_allocation_bytes",
+                        static_cast<double>(alloc_bytes));
+                    ctx.config->profiler->record_counter(
+                        "renderer.frame.buffer_allocation_count");
+                }
             }
             else {
                 view_state.rhi->vbo.reset();
@@ -1878,6 +1947,13 @@ bool Series_renderer::rhi_prepare_series_primitive(
             // captures the new pointer.
             entry.srb.reset();
             entry.last_ubo = nullptr;
+            if (ctx.config && ctx.config->profiler) {
+                ctx.config->profiler->record_observation(
+                    "renderer.frame.buffer_allocation_bytes",
+                    static_cast<double>(k_series_ubo_bytes));
+                ctx.config->profiler->record_counter(
+                    "renderer.frame.buffer_allocation_count");
+            }
         }
         return true;
     };
@@ -1952,6 +2028,13 @@ bool Series_renderer::rhi_prepare_series_primitive(
             if (view_state.rhi->line_window_vbo && view_state.rhi->line_window_vbo->create())
             {
                 view_state.rhi_line_window_vbo_capacity_bytes = alloc_bytes;
+                if (ctx.config && ctx.config->profiler) {
+                    ctx.config->profiler->record_observation(
+                        "renderer.frame.buffer_allocation_bytes",
+                        static_cast<double>(alloc_bytes));
+                    ctx.config->profiler->record_counter(
+                        "renderer.frame.buffer_allocation_count");
+                }
             }
             else {
                 view_state.rhi->line_window_vbo.reset();
@@ -2031,6 +2114,8 @@ bool Series_renderer::rhi_prepare_series_primitive(
                 upload_bytes,
                 padded.data());
             view_state.last_line_window_sample_count = total_window_count;
+            view_state.last_line_window_upload_bytes = upload_bytes;
+            ++view_state.last_line_window_upload_count;
         }
     }
 
@@ -2216,6 +2301,8 @@ bool Series_renderer::rhi_prepare_series_primitive(
         if (updates) {
             updates->updateDynamicBuffer(
                 primary_srb_entry.ubo.get(), 0, sizeof(block), &block);
+            view_state.last_uniform_upload_bytes += sizeof(block);
+            ++view_state.last_uniform_upload_count;
         }
     }
     else
@@ -2229,6 +2316,8 @@ bool Series_renderer::rhi_prepare_series_primitive(
             updates->updateDynamicBuffer(
                 view_state.rhi->area_fill_srb.ubo.get(), 0,
                 sizeof(block), &block);
+            view_state.last_uniform_upload_bytes += sizeof(block);
+            ++view_state.last_uniform_upload_count;
         }
     }
     else {
@@ -2240,6 +2329,8 @@ bool Series_renderer::rhi_prepare_series_primitive(
         if (updates) {
             updates->updateDynamicBuffer(
                 primary_srb_entry.ubo.get(), 0, sizeof(block), &block);
+            view_state.last_uniform_upload_bytes += sizeof(block);
+            ++view_state.last_uniform_upload_count;
         }
     }
     ++view_state.last_primitive_prepare_count;

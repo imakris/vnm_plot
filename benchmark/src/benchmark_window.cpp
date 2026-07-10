@@ -10,22 +10,118 @@
 #include <QMatrix4x4>
 #include <QOffscreenSurface>
 #include <QQuickItem>
+#include <QSGRendererInterface>
 #include <QSurfaceFormat>
+#include <QVulkanInstance>
 
 #include <rhi/qrhi.h>
+#include <rhi/qrhi_platform.h>
 
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <limits>
 #include <sstream>
 
+#if defined(Q_OS_WIN)
+#include <windows.h>
+#include <psapi.h>
+#elif defined(Q_OS_UNIX)
+#include <sys/resource.h>
+#endif
+
 namespace vnm::benchmark {
 
 namespace {
+
+std::string device_type_name(QRhiDriverInfo::DeviceType type)
+{
+    switch (type) {
+    case QRhiDriverInfo::IntegratedDevice: return "integrated";
+    case QRhiDriverInfo::DiscreteDevice: return "discrete";
+    case QRhiDriverInfo::ExternalDevice: return "external";
+    case QRhiDriverInfo::VirtualDevice: return "virtual";
+    case QRhiDriverInfo::CpuDevice: return "cpu";
+    case QRhiDriverInfo::UnknownDevice: return "unknown";
+    }
+    return "unknown";
+}
+
+Graphics_device_info graphics_device_info_from_rhi(QRhi& rhi)
+{
+    const QRhiDriverInfo driver = rhi.driverInfo();
+    Graphics_device_info info;
+    info.backend = rhi.backendName();
+    info.device_name = std::string(driver.deviceName.constData(), driver.deviceName.size());
+    info.device_type = device_type_name(driver.deviceType);
+    info.device_id = driver.deviceId;
+    info.vendor_id = driver.vendorId;
+    return info;
+}
+
+std::uint64_t process_memory_high_water_bytes()
+{
+#if defined(Q_OS_WIN)
+    PROCESS_MEMORY_COUNTERS_EX counters{};
+    counters.cb = sizeof(counters);
+    if (GetProcessMemoryInfo(
+            GetCurrentProcess(),
+            reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&counters),
+            sizeof(counters)))
+    {
+        return static_cast<std::uint64_t>(counters.PeakWorkingSetSize);
+    }
+#elif defined(Q_OS_UNIX)
+    rusage usage{};
+    if (getrusage(RUSAGE_SELF, &usage) == 0) {
+#if defined(Q_OS_MACOS)
+        return static_cast<std::uint64_t>(usage.ru_maxrss);
+#else
+        return static_cast<std::uint64_t>(usage.ru_maxrss) * 1024u;
+#endif
+    }
+#endif
+    return 0;
+}
+
+template<typename T>
+void record_ring_statistics(
+    Benchmark_profiler& profiler,
+    const std::vector<std::unique_ptr<Ring_buffer<T>>>& buffers,
+    double measured_seconds)
+{
+    if (buffers.empty()) {
+        return;
+    }
+    typename Ring_buffer<T>::Statistics total;
+    for (const auto& buffer : buffers) {
+        const auto stats = buffer->statistics();
+        total.occupancy += stats.occupancy;
+        total.high_water_occupancy += stats.high_water_occupancy;
+        total.published_samples += stats.published_samples;
+        total.overwritten_samples += stats.overwritten_samples;
+    }
+    profiler.record_observation("benchmark.ring.occupancy", static_cast<double>(total.occupancy));
+    profiler.record_observation(
+        "benchmark.ring.high_water_occupancy",
+        static_cast<double>(total.high_water_occupancy));
+    profiler.record_observation(
+        "benchmark.ring.published_samples",
+        static_cast<double>(total.published_samples));
+    profiler.record_observation(
+        "benchmark.ring.overwritten_samples",
+        static_cast<double>(total.overwritten_samples));
+    if (measured_seconds > 0.0) {
+        profiler.record_observation(
+            "benchmark.ring.published_samples_per_second",
+            static_cast<double>(total.published_samples) / measured_seconds);
+    }
+}
 
 glm::mat4 to_glm_mat4(const QMatrix4x4& matrix)
 {
@@ -90,6 +186,12 @@ void update_view_range_from_source(
     t_max = t_last;
     t_min = std::max(t_first, t_last - k_window_ns);
 
+    // Release the direct-view shared lock before query_v_range() takes its own
+    // snapshot. On writer-priority shared_mutex implementations, retaining the
+    // first read lock while a producer queues can deadlock this thread's nested
+    // read behind the waiting writer.
+    result = {};
+
     vnm::plot::Data_access_policy access = data_type == "Trades"
         ? make_trade_access_policy()
         : make_bar_access_policy();
@@ -137,19 +239,31 @@ Benchmark_rhi_window::Benchmark_rhi_window(const Benchmark_config& config)
     setFormat(format);
 
     setTitle("vnm_plot Benchmark QRhi");
-    resize(1200, 720);
+    resize(m_config.framebuffer_width, m_config.framebuffer_height);
 
     if (m_config.data_type == "Trades") {
-        m_trade_buffer = std::make_unique<Ring_buffer<Trade_sample>>(m_config.ring_capacity);
-        m_trade_buffer->set_profiler(&m_profiler);
-        m_trade_source = std::make_unique<Benchmark_data_source<Trade_sample>>(*m_trade_buffer);
-        m_trade_source->set_profiler(&m_profiler);
+        m_trade_buffers.reserve(m_config.series_count);
+        m_trade_sources.reserve(m_config.series_count);
+        for (std::size_t index = 0; index < m_config.series_count; ++index) {
+            auto buffer = std::make_unique<Ring_buffer<Trade_sample>>(m_config.ring_capacity);
+            buffer->set_profiler(&m_profiler);
+            auto source = std::make_unique<Benchmark_data_source<Trade_sample>>(*buffer);
+            source->set_profiler(&m_profiler);
+            m_trade_buffers.push_back(std::move(buffer));
+            m_trade_sources.push_back(std::move(source));
+        }
     }
     else {
-        m_bar_buffer = std::make_unique<Ring_buffer<Bar_sample>>(m_config.ring_capacity);
-        m_bar_buffer->set_profiler(&m_profiler);
-        m_bar_source = std::make_unique<Benchmark_data_source<Bar_sample>>(*m_bar_buffer);
-        m_bar_source->set_profiler(&m_profiler);
+        m_bar_buffers.reserve(m_config.series_count);
+        m_bar_sources.reserve(m_config.series_count);
+        for (std::size_t index = 0; index < m_config.series_count; ++index) {
+            auto buffer = std::make_unique<Ring_buffer<Bar_sample>>(m_config.ring_capacity);
+            buffer->set_profiler(&m_profiler);
+            auto source = std::make_unique<Benchmark_data_source<Bar_sample>>(*buffer);
+            source->set_profiler(&m_profiler);
+            m_bar_buffers.push_back(std::move(buffer));
+            m_bar_sources.push_back(std::move(source));
+        }
     }
 
     m_render_config.dark_mode = true;
@@ -185,10 +299,23 @@ Benchmark_rhi_window::Benchmark_rhi_window(const Benchmark_config& config)
     });
     connect(&m_render_timer, &QTimer::timeout, this, &Benchmark_rhi_window::on_render_timer);
     connect(&m_benchmark_timer, &QTimer::timeout, this, &Benchmark_rhi_window::on_benchmark_timeout);
+    connect(
+        this,
+        &QQuickWindow::sceneGraphInitialized,
+        this,
+        [this]() {
+            auto* rhi = static_cast<QRhi*>(rendererInterface()->getResource(
+                this,
+                QSGRendererInterface::RhiResource));
+            if (!rhi) {
+                return;
+            }
+            std::lock_guard<std::mutex> lock(m_graphics_info_mutex);
+            m_graphics_info = graphics_device_info_from_rhi(*rhi);
+        },
+        Qt::DirectConnection);
 
     setup_series();
-
-    m_started_at = std::chrono::system_clock::now();
 
     if (m_config.static_data) {
         fill_static_data();
@@ -198,9 +325,15 @@ Benchmark_rhi_window::Benchmark_rhi_window(const Benchmark_config& config)
         m_generator_thread = std::thread(&Benchmark_rhi_window::generator_thread_func, this);
     }
 
+    m_warmup_frames_remaining = m_config.warmup_frames;
+    if (m_warmup_frames_remaining == 0) {
+        m_started_at = std::chrono::system_clock::now();
+        if (m_config.measured_frames == 0) {
+            m_benchmark_timer.setSingleShot(true);
+            m_benchmark_timer.start(static_cast<int>(m_config.duration_seconds * 1000));
+        }
+    }
     m_render_timer.start(0);
-    m_benchmark_timer.setSingleShot(true);
-    m_benchmark_timer.start(static_cast<int>(m_config.duration_seconds * 1000));
 }
 
 Benchmark_rhi_window::~Benchmark_rhi_window()
@@ -208,6 +341,12 @@ Benchmark_rhi_window::~Benchmark_rhi_window()
     stop_generator_thread();
     delete m_plot;
     m_plot = nullptr;
+}
+
+Graphics_device_info Benchmark_rhi_window::graphics_device_info() const
+{
+    std::lock_guard<std::mutex> lock(m_graphics_info_mutex);
+    return m_graphics_info;
 }
 
 void Benchmark_rhi_window::stop_generator_thread()
@@ -233,10 +372,16 @@ void Benchmark_rhi_window::generator_thread_func()
 
         while (current_count < static_cast<std::size_t>(target_samples) && !m_stop_generator.load()) {
             if (m_config.data_type == "Trades") {
-                m_trade_buffer->push(m_generator.next_trade());
+                const Trade_sample sample = m_generator.next_trade();
+                for (auto& buffer : m_trade_buffers) {
+                    buffer->push(sample);
+                }
             }
             else {
-                m_bar_buffer->push(m_generator.next_bar());
+                const Bar_sample sample = m_generator.next_bar();
+                for (auto& buffer : m_bar_buffers) {
+                    buffer->push(sample);
+                }
             }
             ++m_samples_generated;
             ++current_count;
@@ -263,7 +408,9 @@ void Benchmark_rhi_window::fill_static_data()
             s.timestamp = ts_ns[i];
             s.price = vs[i];
             s.size = 1.0f;
-            m_trade_buffer->push(s);
+            for (auto& buffer : m_trade_buffers) {
+                buffer->push(s);
+            }
         }
         else {
             Bar_sample b{};
@@ -273,49 +420,55 @@ void Benchmark_rhi_window::fill_static_data()
             b.low  = vs[i];
             b.close = vs[i];
             b.volume = 1.0f;
-            m_bar_buffer->push(b);
+            for (auto& buffer : m_bar_buffers) {
+                buffer->push(b);
+            }
         }
     }
 }
 
 void Benchmark_rhi_window::setup_series()
 {
-    m_series = std::make_shared<vnm::plot::series_data_t>();
-    m_series->enabled = true;
-    m_series->color = glm::vec4(0.2f, 0.7f, 0.9f, 1.0f);
-
-    if (m_config.data_type == "Trades") {
-        m_series->set_data_source_ref(*m_trade_source);
-        m_series->access = make_trade_access_policy();
-    }
-    else {
-        m_series->set_data_source_ref(*m_bar_source);
-        m_series->access = make_bar_access_policy();
-    }
-
     const std::string& style = !m_config.style.empty()
         ? m_config.style
         : (m_config.data_type == "Trades" ? std::string("Dots") : std::string("Area"));
+    m_series.reserve(m_config.series_count);
+    for (std::size_t index = 0; index < m_config.series_count; ++index) {
+        auto series = std::make_shared<vnm::plot::series_data_t>();
+        series->enabled = true;
+        const float blend = static_cast<float>(index % 8) / 8.0f;
+        series->color = glm::vec4(0.2f + 0.5f * blend, 0.7f, 0.9f - 0.5f * blend, 1.0f);
 
-    if (style == "Dots") {
-        m_series->style = vnm::plot::Display_style::DOTS;
-    }
-    else
-    if (style == "Line") {
-        m_series->style = vnm::plot::Display_style::LINE;
-    }
-    else {
-        m_series->style = vnm::plot::Display_style::AREA;
-    }
+        if (m_config.data_type == "Trades") {
+            series->set_data_source_ref(*m_trade_sources[index]);
+            series->access = make_trade_access_policy();
+        }
+        else {
+            series->set_data_source_ref(*m_bar_sources[index]);
+            series->access = make_bar_access_policy();
+        }
 
-    m_plot->add_series(1, m_series);
+        if (style == "Dots") {
+            series->style = vnm::plot::Display_style::DOTS;
+        }
+        else
+        if (style == "Line") {
+            series->style = vnm::plot::Display_style::LINE;
+        }
+        else {
+            series->style = vnm::plot::Display_style::AREA;
+        }
+
+        m_plot->add_series(static_cast<int>(index + 1), series);
+        m_series.push_back(std::move(series));
+    }
 }
 
 void Benchmark_rhi_window::update_plot_view()
 {
     vnm::plot::Data_source* source = m_config.data_type == "Trades"
-        ? static_cast<vnm::plot::Data_source*>(m_trade_source.get())
-        : static_cast<vnm::plot::Data_source*>(m_bar_source.get());
+        ? static_cast<vnm::plot::Data_source*>(m_trade_sources.front().get())
+        : static_cast<vnm::plot::Data_source*>(m_bar_sources.front().get());
 
     update_view_range_from_source(
         source,
@@ -336,6 +489,9 @@ void Benchmark_rhi_window::update_plot_view()
 
 void Benchmark_rhi_window::on_render_timer()
 {
+    if (m_measurement_finished) {
+        return;
+    }
     const auto now = std::chrono::steady_clock::now();
     if (m_last_timer_tick.time_since_epoch().count() != 0) {
         const double elapsed_ms =
@@ -344,25 +500,72 @@ void Benchmark_rhi_window::on_render_timer()
         m_timer_interval_total_ms += elapsed_ms;
         m_timer_interval_min_ms = std::min(m_timer_interval_min_ms, elapsed_ms);
         m_timer_interval_max_ms = std::max(m_timer_interval_max_ms, elapsed_ms);
+        if (m_warmup_frames_remaining == 0) {
+            m_profiler.record_observation("benchmark.frame.total_ms", elapsed_ms);
+        }
     }
     m_last_timer_tick = now;
 
     update_plot_view();
     m_plot->update();
     update();
+
+    if (m_warmup_frames_remaining > 0) {
+        --m_warmup_frames_remaining;
+        if (m_warmup_frames_remaining == 0) {
+            m_profiler.reset();
+            m_started_at = std::chrono::system_clock::now();
+            m_last_timer_tick = {};
+            m_timer_interval_count = 0;
+            m_timer_interval_total_ms = 0.0;
+            m_timer_interval_min_ms = std::numeric_limits<double>::max();
+            m_timer_interval_max_ms = 0.0;
+            if (m_config.measured_frames == 0) {
+                m_benchmark_timer.setSingleShot(true);
+                m_benchmark_timer.start(static_cast<int>(m_config.duration_seconds * 1000));
+            }
+        }
+        return;
+    }
+
+    ++m_measured_frame_count;
+    m_profiler.record_counter("benchmark.frame.output_count");
+    if (m_config.measured_frames > 0 &&
+        m_measured_frame_count >= m_config.measured_frames)
+    {
+        on_benchmark_timeout();
+    }
 }
 
 void Benchmark_rhi_window::on_benchmark_timeout()
 {
+    if (m_measurement_finished) {
+        return;
+    }
+    m_measurement_finished = true;
     stop_generator_thread();
     m_render_timer.stop();
+    m_benchmark_timer.stop();
     m_profiler.record_observation_summary(
         "qrhi.scheduler.timer_interval",
         m_timer_interval_count,
         m_timer_interval_total_ms,
         m_timer_interval_min_ms,
         m_timer_interval_max_ms);
+    record_final_statistics();
     emit benchmark_finished();
+}
+
+void Benchmark_rhi_window::record_final_statistics()
+{
+    const double measured_seconds = m_timer_interval_total_ms > 0.0
+        ? m_timer_interval_total_ms / 1000.0
+        : m_config.duration_seconds;
+    record_ring_statistics(m_profiler, m_bar_buffers, measured_seconds);
+    record_ring_statistics(m_profiler, m_trade_buffers, measured_seconds);
+    m_profiler.record_observation(
+        "benchmark.memory.process_high_water_bytes",
+        static_cast<double>(process_memory_high_water_bytes()));
 }
 
 Benchmark_rhi_offscreen_runner::Benchmark_rhi_offscreen_runner(const Benchmark_config& config)
@@ -389,16 +592,28 @@ Benchmark_rhi_offscreen_runner::~Benchmark_rhi_offscreen_runner()
 void Benchmark_rhi_offscreen_runner::setup_data_source()
 {
     if (m_config.data_type == "Trades") {
-        m_trade_buffer = std::make_unique<Ring_buffer<Trade_sample>>(m_config.ring_capacity);
-        m_trade_buffer->set_profiler(&m_profiler);
-        m_trade_source = std::make_unique<Benchmark_data_source<Trade_sample>>(*m_trade_buffer);
-        m_trade_source->set_profiler(&m_profiler);
+        m_trade_buffers.reserve(m_config.series_count);
+        m_trade_sources.reserve(m_config.series_count);
+        for (std::size_t index = 0; index < m_config.series_count; ++index) {
+            auto buffer = std::make_unique<Ring_buffer<Trade_sample>>(m_config.ring_capacity);
+            buffer->set_profiler(&m_profiler);
+            auto source = std::make_unique<Benchmark_data_source<Trade_sample>>(*buffer);
+            source->set_profiler(&m_profiler);
+            m_trade_buffers.push_back(std::move(buffer));
+            m_trade_sources.push_back(std::move(source));
+        }
     }
     else {
-        m_bar_buffer = std::make_unique<Ring_buffer<Bar_sample>>(m_config.ring_capacity);
-        m_bar_buffer->set_profiler(&m_profiler);
-        m_bar_source = std::make_unique<Benchmark_data_source<Bar_sample>>(*m_bar_buffer);
-        m_bar_source->set_profiler(&m_profiler);
+        m_bar_buffers.reserve(m_config.series_count);
+        m_bar_sources.reserve(m_config.series_count);
+        for (std::size_t index = 0; index < m_config.series_count; ++index) {
+            auto buffer = std::make_unique<Ring_buffer<Bar_sample>>(m_config.ring_capacity);
+            buffer->set_profiler(&m_profiler);
+            auto source = std::make_unique<Benchmark_data_source<Bar_sample>>(*buffer);
+            source->set_profiler(&m_profiler);
+            m_bar_buffers.push_back(std::move(buffer));
+            m_bar_sources.push_back(std::move(source));
+        }
     }
 }
 
@@ -438,36 +653,37 @@ void Benchmark_rhi_offscreen_runner::setup_rendering()
 
 void Benchmark_rhi_offscreen_runner::setup_series()
 {
-    const int series_id = 1;
-    auto series = std::make_shared<vnm::plot::series_data_t>();
-    series->enabled = true;
-    series->color = glm::vec4(0.2f, 0.7f, 0.9f, 1.0f);
-
-    if (m_config.data_type == "Trades") {
-        series->set_data_source_ref(*m_trade_source);
-        series->access = make_trade_access_policy();
-    }
-    else {
-        series->set_data_source_ref(*m_bar_source);
-        series->access = make_bar_access_policy();
-    }
-
     const std::string& style = !m_config.style.empty()
         ? m_config.style
         : (m_config.data_type == "Trades" ? std::string("Dots") : std::string("Area"));
+    for (std::size_t index = 0; index < m_config.series_count; ++index) {
+        auto series = std::make_shared<vnm::plot::series_data_t>();
+        series->enabled = true;
+        const float blend = static_cast<float>(index % 8) / 8.0f;
+        series->color = glm::vec4(0.2f + 0.5f * blend, 0.7f, 0.9f - 0.5f * blend, 1.0f);
 
-    if (style == "Dots") {
-        series->style = vnm::plot::Display_style::DOTS;
-    }
-    else
-    if (style == "Line") {
-        series->style = vnm::plot::Display_style::LINE;
-    }
-    else {
-        series->style = vnm::plot::Display_style::AREA;
-    }
+        if (m_config.data_type == "Trades") {
+            series->set_data_source_ref(*m_trade_sources[index]);
+            series->access = make_trade_access_policy();
+        }
+        else {
+            series->set_data_source_ref(*m_bar_sources[index]);
+            series->access = make_bar_access_policy();
+        }
 
-    m_series_map[series_id] = series;
+        if (style == "Dots") {
+            series->style = vnm::plot::Display_style::DOTS;
+        }
+        else
+        if (style == "Line") {
+            series->style = vnm::plot::Display_style::LINE;
+        }
+        else {
+            series->style = vnm::plot::Display_style::AREA;
+        }
+
+        m_series_map[static_cast<int>(index + 1)] = std::move(series);
+    }
 }
 
 void Benchmark_rhi_offscreen_runner::generator_thread_func()
@@ -485,10 +701,16 @@ void Benchmark_rhi_offscreen_runner::generator_thread_func()
 
         while (current_count < static_cast<std::size_t>(target_samples) && !m_stop_generator.load()) {
             if (m_config.data_type == "Trades") {
-                m_trade_buffer->push(m_generator.next_trade());
+                const Trade_sample sample = m_generator.next_trade();
+                for (auto& buffer : m_trade_buffers) {
+                    buffer->push(sample);
+                }
             }
             else {
-                m_bar_buffer->push(m_generator.next_bar());
+                const Bar_sample sample = m_generator.next_bar();
+                for (auto& buffer : m_bar_buffers) {
+                    buffer->push(sample);
+                }
             }
             ++m_samples_generated;
             ++current_count;
@@ -523,7 +745,9 @@ void Benchmark_rhi_offscreen_runner::fill_static_data()
             s.timestamp = ts_ns[i];
             s.price = vs[i];
             s.size = 1.0f;
-            m_trade_buffer->push(s);
+            for (auto& buffer : m_trade_buffers) {
+                buffer->push(s);
+            }
         }
         else {
             Bar_sample b{};
@@ -533,19 +757,22 @@ void Benchmark_rhi_offscreen_runner::fill_static_data()
             b.low  = vs[i];
             b.close = vs[i];
             b.volume = 1.0f;
-            m_bar_buffer->push(b);
+            for (auto& buffer : m_bar_buffers) {
+                buffer->push(b);
+            }
         }
     }
 }
 
 bool Benchmark_rhi_offscreen_runner::initialize_rhi(std::string& error_message)
 {
-    auto create_null_rhi = [&]() {
+    const auto create_null_rhi = [&]() {
         QRhiNullInitParams params;
         m_rhi.reset(QRhi::create(QRhi::Null, &params));
+        return m_rhi != nullptr;
     };
 
-    auto create_opengl_rhi = [&]() {
+    const auto create_opengl_rhi = [&]() {
 #if QT_CONFIG(opengl)
         m_fallback_surface.reset(QRhiGles2InitParams::newFallbackSurface());
         QRhiGles2InitParams params;
@@ -560,59 +787,91 @@ bool Benchmark_rhi_offscreen_runner::initialize_rhi(std::string& error_message)
 #endif
     };
 
-    const QByteArray forced_backend = qgetenv("QSG_RHI_BACKEND").trimmed().toLower();
-    if (!forced_backend.isEmpty()) {
-        if (forced_backend == "opengl" || forced_backend == "gles" ||
-            forced_backend == "gles2")
-        {
-            if (!create_opengl_rhi()) {
-                error_message = "QSG_RHI_BACKEND requests OpenGL, but offscreen OpenGL QRhi creation failed";
-                return false;
-            }
-        }
-        else
-        if (forced_backend == "null") {
-            create_null_rhi();
-        }
-        else
-        if (forced_backend == "d3d11") {
-#ifdef Q_OS_WIN
-            QRhiD3D11InitParams params;
-            m_rhi.reset(QRhi::create(QRhi::D3D11, &params));
-            if (!m_rhi) {
-                error_message = "QSG_RHI_BACKEND=d3d11 was requested, but D3D11 QRhi creation failed";
-                return false;
-            }
-#else
-            error_message = "QSG_RHI_BACKEND=d3d11 is only supported on Windows";
-            return false;
-#endif
-        }
-        else {
-            error_message =
-                "Unsupported QSG_RHI_BACKEND for offscreen benchmark: " +
-                std::string(forced_backend.constData(), forced_backend.size());
-            return false;
-        }
-    }
-    else {
+    const auto create_d3d11_rhi = [&]() {
 #ifdef Q_OS_WIN
         QRhiD3D11InitParams params;
         m_rhi.reset(QRhi::create(QRhi::D3D11, &params));
+        return m_rhi != nullptr;
 #else
-        create_opengl_rhi();
+        return false;
+#endif
+    };
+
+    const auto create_metal_rhi = [&]() {
+#if defined(Q_OS_MACOS) && QT_CONFIG(metal)
+        QRhiMetalInitParams params;
+        m_rhi.reset(QRhi::create(QRhi::Metal, &params));
+        return m_rhi != nullptr;
+#else
+        return false;
+#endif
+    };
+
+    const auto create_vulkan_rhi = [&]() {
+#if QT_CONFIG(vulkan) && __has_include(<vulkan/vulkan.h>)
+        m_vulkan_instance = std::make_unique<QVulkanInstance>();
+        if (!m_vulkan_instance->create()) {
+            m_vulkan_instance.reset();
+            return false;
+        }
+        QRhiVulkanInitParams params;
+        params.inst = m_vulkan_instance.get();
+        m_rhi.reset(QRhi::create(QRhi::Vulkan, &params));
+        if (!m_rhi) {
+            m_vulkan_instance.reset();
+        }
+        return m_rhi != nullptr;
+#else
+        return false;
+#endif
+    };
+
+    const std::string& requested = m_config.graphics_backend;
+    bool created = false;
+    if (requested == "null") {
+        created = create_null_rhi();
+    }
+    else
+    if (requested == "opengl") {
+        created = create_opengl_rhi();
+    }
+    else
+    if (requested == "d3d11") {
+        created = create_d3d11_rhi();
+    }
+    else
+    if (requested == "metal") {
+        created = create_metal_rhi();
+    }
+    else
+    if (requested == "vulkan") {
+        created = create_vulkan_rhi();
+    }
+    else
+    if (requested == "native") {
+#if defined(Q_OS_WIN)
+        created = create_d3d11_rhi();
+#elif defined(Q_OS_MACOS)
+        created = create_metal_rhi();
+#else
+        created = create_opengl_rhi();
 #endif
     }
 
-    if (!m_rhi) {
-        create_null_rhi();
+    if (!created || !m_rhi) {
+        error_message = "cold.backend_create: failed to create requested offscreen QRhi backend '" +
+            requested + "'";
+        return false;
     }
-    if (!m_rhi) {
-        error_message = "Failed to create offscreen QRhi";
+    if (m_rhi->backend() == QRhi::Null && requested != "null") {
+        error_message = "cold.backend_validate: requested '" + requested +
+            "' but QRhi created the Null backend";
         return false;
     }
 
-    const QSize size(1200, 720);
+    m_graphics_info = graphics_device_info_from_rhi(*m_rhi);
+
+    const QSize size(m_config.framebuffer_width, m_config.framebuffer_height);
     const int sample_count = 4;
     m_color_buffer.reset(m_rhi->newRenderBuffer(
         QRhiRenderBuffer::Color,
@@ -625,8 +884,23 @@ bool Benchmark_rhi_offscreen_runner::initialize_rhi(std::string& error_message)
         return false;
     }
 
+    if (m_config.capture_pixel_checksum) {
+        m_resolve_texture.reset(m_rhi->newTexture(
+            QRhiTexture::RGBA8,
+            size,
+            1,
+            QRhiTexture::RenderTarget | QRhiTexture::UsedAsTransferSource));
+        if (!m_resolve_texture || !m_resolve_texture->create()) {
+            error_message = "cold.render_target: failed to create pixel readback resolve texture";
+            return false;
+        }
+    }
+
     QRhiColorAttachment color_attachment;
     color_attachment.setRenderBuffer(m_color_buffer.get());
+    if (m_resolve_texture) {
+        color_attachment.setResolveTexture(m_resolve_texture.get());
+    }
     QRhiTextureRenderTargetDescription rt_desc(color_attachment);
     m_render_target.reset(m_rhi->newTextureRenderTarget(rt_desc));
     m_render_pass_descriptor.reset(m_render_target->newCompatibleRenderPassDescriptor());
@@ -639,8 +913,12 @@ bool Benchmark_rhi_offscreen_runner::initialize_rhi(std::string& error_message)
     return true;
 }
 
-bool Benchmark_rhi_offscreen_runner::render_frame(std::string& error_message)
+bool Benchmark_rhi_offscreen_runner::render_frame(
+    std::string& error_message,
+    bool measured)
 {
+    const auto frame_started = std::chrono::steady_clock::now();
+    const auto submission_started = frame_started;
     QRhiCommandBuffer* cb = nullptr;
     if (m_rhi->beginOffscreenFrame(&cb) != QRhi::FrameOpSuccess || !cb) {
         error_message = "QRhi beginOffscreenFrame failed";
@@ -650,12 +928,12 @@ bool Benchmark_rhi_offscreen_runner::render_frame(std::string& error_message)
     VNM_PLOT_PROFILE_SCOPE(&m_profiler, "renderer");
     VNM_PLOT_PROFILE_SCOPE(&m_profiler, "renderer.frame");
 
-    const int fb_w = 1200;
-    const int fb_h = 720;
+    const int fb_w = m_config.framebuffer_width;
+    const int fb_h = m_config.framebuffer_height;
 
     vnm::plot::Data_source* source = m_config.data_type == "Trades"
-        ? static_cast<vnm::plot::Data_source*>(m_trade_source.get())
-        : static_cast<vnm::plot::Data_source*>(m_bar_source.get());
+        ? static_cast<vnm::plot::Data_source*>(m_trade_sources.front().get())
+        : static_cast<vnm::plot::Data_source*>(m_bar_sources.front().get());
     {
         VNM_PLOT_PROFILE_SCOPE(&m_profiler, "renderer.frame.update_view_range");
         update_view_range_from_source(
@@ -771,7 +1049,13 @@ bool Benchmark_rhi_offscreen_runner::render_frame(std::string& error_message)
 
     {
         VNM_PLOT_PROFILE_SCOPE(&m_profiler, "renderer.frame.render_passes");
+        const auto planning_started = std::chrono::steady_clock::now();
         m_series_renderer.prepare(frame_ctx, m_series_map);
+        m_last_prepare_ms = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - planning_started).count();
+        if (measured) {
+            m_profiler.record_observation("benchmark.planning.time_ms", m_last_prepare_ms);
+        }
         m_chrome_renderer.render_grid_and_backgrounds(frame_ctx, m_primitives);
         const std::size_t back_layer_end = m_primitives.queued_op_count();
         m_chrome_renderer.render_zero_line(frame_ctx, m_primitives);
@@ -803,27 +1087,85 @@ bool Benchmark_rhi_offscreen_runner::render_frame(std::string& error_message)
         m_primitives.reset_frame();
     }
 
+    QRhiReadbackResult readback;
+    if (measured && m_config.capture_pixel_checksum && m_resolve_texture) {
+        QRhiResourceUpdateBatch* readback_updates = m_rhi->nextResourceUpdateBatch();
+        readback_updates->readBackTexture(
+            QRhiReadbackDescription(m_resolve_texture.get()),
+            &readback);
+        cb->resourceUpdate(readback_updates);
+    }
+
     m_rhi->endOffscreenFrame();
-    if (m_config.finish) {
+    if (measured) {
+        const double submission_ms = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - submission_started).count();
+        m_profiler.record_observation("benchmark.frame.submission_ms", submission_ms);
+    }
+    if (m_config.finish || (measured && m_config.capture_pixel_checksum)) {
         VNM_PLOT_PROFILE_SCOPE(&m_profiler, "renderer.frame.finish");
+        const auto finish_started = std::chrono::steady_clock::now();
         m_rhi->finish();
+        if (measured) {
+            const double finish_ms = std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - finish_started).count();
+            m_profiler.record_observation("benchmark.frame.gpu_finish_ms", finish_ms);
+        }
+    }
+    if (measured && m_config.capture_pixel_checksum) {
+        if (readback.data.isEmpty()) {
+            error_message = "measure.pixel_readback: QRhi returned no pixel data";
+            return false;
+        }
+        std::uint64_t checksum = 1'469'598'103'934'665'603ull;
+        for (const unsigned char byte : readback.data) {
+            checksum ^= byte;
+            checksum *= 1'099'511'628'211ull;
+        }
+        m_pixel_checksum = checksum;
+        m_profiler.record_observation(
+            "benchmark.frame.pixel_readback_bytes",
+            static_cast<double>(readback.data.size()));
+        m_profiler.record_observation(
+            "benchmark.frame.pixel_checksum_low32",
+            static_cast<double>(checksum & 0xffff'ffffull));
+    }
+    if (measured) {
+        const double frame_ms = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - frame_started).count();
+        m_profiler.record_observation("benchmark.frame.total_ms", frame_ms);
+        m_profiler.record_counter("benchmark.frame.output_count");
+        ++m_measured_frame_count;
     }
     return true;
 }
 
 bool Benchmark_rhi_offscreen_runner::run(std::string& error_message)
 {
+    m_phase_trace_started = std::chrono::steady_clock::now();
+    std::error_code remove_error;
+    std::filesystem::remove(
+        std::filesystem::path(m_config.output_directory) / "benchmark_phase_trace.jsonl",
+        remove_error);
+    record_phase("cold.setup.begin");
+    const auto cold_started = std::chrono::steady_clock::now();
+    const auto setup_started = cold_started;
     setup_data_source();
     setup_rendering();
     setup_series();
+    record_phase("cold.setup.end");
+    m_cold_setup_ms = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - setup_started).count();
 
+    const auto backend_started = std::chrono::steady_clock::now();
+    record_phase("cold.backend_create.begin");
     if (!initialize_rhi(error_message)) {
+        record_phase("cold.backend_create.failed");
         return false;
     }
-
-    m_started_at = std::chrono::system_clock::now();
-    const auto steady_start = std::chrono::steady_clock::now();
-    const auto duration = std::chrono::duration<double>(m_config.duration_seconds);
+    record_phase("cold.backend_create.end");
+    m_cold_backend_ms = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - backend_started).count();
 
     if (m_config.static_data) {
         fill_static_data();
@@ -833,15 +1175,110 @@ bool Benchmark_rhi_offscreen_runner::run(std::string& error_message)
         m_generator_thread = std::thread(&Benchmark_rhi_offscreen_runner::generator_thread_func, this);
     }
 
-    while (std::chrono::steady_clock::now() - steady_start < duration) {
-        if (!render_frame(error_message)) {
+    for (std::size_t frame = 0; frame < m_config.warmup_frames; ++frame) {
+        record_phase("warmup.frame.begin", frame);
+        const auto warmup_started = std::chrono::steady_clock::now();
+        if (!render_frame(error_message, false)) {
+            error_message = "warmup.frame: " + error_message;
             stop_generator_thread();
             return false;
         }
+        record_phase("warmup.frame.end", frame);
+        if (frame == 0) {
+            m_cold_first_submission_ms = std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - warmup_started).count();
+            m_cold_shader_pipeline_prepare_ms = m_last_prepare_ms;
+        }
     }
 
+    m_cold_total_ms = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - cold_started).count();
+    m_profiler.reset();
+    m_profiler.record_observation("benchmark.cold.setup_ms", m_cold_setup_ms);
+    m_profiler.record_observation("benchmark.cold.backend_create_ms", m_cold_backend_ms);
+    if (m_config.warmup_frames > 0) {
+        m_profiler.record_observation(
+            "benchmark.cold.first_submission_ms",
+            m_cold_first_submission_ms);
+        m_profiler.record_observation(
+            "benchmark.cold.shader_pipeline_prepare_ms",
+            m_cold_shader_pipeline_prepare_ms);
+    }
+    m_profiler.record_observation("benchmark.cold.total_ms", m_cold_total_ms);
+    m_profiler.record_observation(
+        "benchmark.warmup.frame_count",
+        static_cast<double>(m_config.warmup_frames));
+
+    m_started_at = std::chrono::system_clock::now();
+    const auto measured_started = std::chrono::steady_clock::now();
+    const auto duration = std::chrono::duration<double>(m_config.duration_seconds);
+
+    const auto render_measured_frame = [&](std::size_t frame) {
+        record_phase("measure.frame.begin", frame);
+        if (render_frame(error_message, true)) {
+            record_phase("measure.frame.end", frame);
+            return true;
+        }
+        record_phase("measure.frame.failed", frame);
+        error_message = "measure.frame: " + error_message;
+        return false;
+    };
+
+    if (m_config.measured_frames > 0) {
+        for (std::size_t frame = 0; frame < m_config.measured_frames; ++frame) {
+            if (!render_measured_frame(frame)) {
+                stop_generator_thread();
+                return false;
+            }
+        }
+    }
+    else {
+        std::size_t frame = 0;
+        while (std::chrono::steady_clock::now() - measured_started < duration) {
+            if (!render_measured_frame(frame++)) {
+                stop_generator_thread();
+                return false;
+            }
+        }
+    }
+
+    const double measured_seconds = std::chrono::duration<double>(
+        std::chrono::steady_clock::now() - measured_started).count();
+
+    const auto shutdown_started = std::chrono::steady_clock::now();
+    record_phase("shutdown.generator.begin");
     stop_generator_thread();
+    record_phase("shutdown.generator.end");
+    const double shutdown_ms = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - shutdown_started).count();
+    m_profiler.record_observation("benchmark.shutdown.generator_ms", shutdown_ms);
+    record_final_statistics(measured_seconds);
+    record_phase("complete");
     return true;
+}
+
+void Benchmark_rhi_offscreen_runner::record_phase(
+    const char* phase,
+    std::size_t frame) const
+{
+    const double elapsed_ms = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - m_phase_trace_started).count();
+    const std::filesystem::path trace_path =
+        std::filesystem::path(m_config.output_directory) / "benchmark_phase_trace.jsonl";
+    std::ofstream trace(trace_path, std::ios::app);
+    if (trace) {
+        trace << "{\"elapsed_ms\":" << std::setprecision(17) << elapsed_ms
+              << ",\"phase\":\"" << phase << "\",\"frame\":" << frame << "}\n";
+    }
+}
+
+void Benchmark_rhi_offscreen_runner::record_final_statistics(double measured_seconds)
+{
+    record_ring_statistics(m_profiler, m_bar_buffers, measured_seconds);
+    record_ring_statistics(m_profiler, m_trade_buffers, measured_seconds);
+    m_profiler.record_observation(
+        "benchmark.memory.process_high_water_bytes",
+        static_cast<double>(process_memory_high_water_bytes()));
 }
 
 }  // namespace vnm::benchmark

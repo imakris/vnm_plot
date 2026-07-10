@@ -6,6 +6,7 @@
 #include <iostream>
 #include <thread>
 #include <chrono>
+#include <future>
 #include <limits>
 #include <vector>
 
@@ -523,6 +524,52 @@ bool test_access_policy_layout_keys() {
     return true;
 }
 
+// Test: release a direct-view snapshot before a second snapshot-backed query
+bool test_release_snapshot_before_nested_query() {
+    Ring_buffer<Bar_sample> buffer(8);
+    Benchmark_data_source<Bar_sample> source(buffer);
+
+    Bar_sample first{};
+    first.timestamp = 1;
+    first.low = 9.0f;
+    first.high = 11.0f;
+    buffer.push(first);
+
+    auto snapshot_result = source.try_snapshot();
+    TEST_ASSERT(snapshot_result.status ==
+            vnm::plot::snapshot_result_t::Snapshot_status::READY,
+        "initial direct-view snapshot should be READY");
+
+    std::promise<void> writer_started;
+    auto writer_started_future = writer_started.get_future();
+    auto writer = std::async(std::launch::async, [&]() {
+        writer_started.set_value();
+        Bar_sample second{};
+        second.timestamp = 2;
+        second.low = 19.0f;
+        second.high = 21.0f;
+        buffer.push(second);
+    });
+    writer_started_future.wait();
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+    snapshot_result = {};
+    TEST_ASSERT(writer.wait_for(std::chrono::seconds(1)) == std::future_status::ready,
+        "writer should complete after the direct-view snapshot is released");
+    writer.get();
+
+    auto access = make_bar_access_policy();
+    vnm::plot::data_query_context_t query;
+    query.access = &access;
+    query.time_window = {0, 10};
+    const auto range = source.query_v_range(0, query);
+    TEST_ASSERT(range.status == vnm::plot::Data_query_status::READY,
+        "snapshot-backed range query should complete after writer progress");
+    TEST_ASSERT(range.value.min == 9.0f && range.value.max == 21.0f,
+        "range query should include both published bars");
+    return true;
+}
+
 int main() {
     std::cout << "Benchmark Data Source Test Suite\n";
     std::cout << "=================================\n\n";
@@ -546,6 +593,7 @@ int main() {
     RUN_TEST(test_unsupported_lod);
     RUN_TEST(test_sequence_short_circuit);
     RUN_TEST(test_access_policy_layout_keys);
+    RUN_TEST(test_release_snapshot_before_nested_query);
 
     std::cout << "\n=================================\n";
     std::cout << "Results: " << passed << " passed, " << failed << " failed\n";

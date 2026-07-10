@@ -19,8 +19,10 @@
 #include <mutex>
 #include <sstream>
 #include <stack>
+#include <stdexcept>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace vnm::benchmark {
 
@@ -42,6 +44,7 @@ struct Report_metadata {
     double volatility = 0.0;
     std::size_t ring_capacity = 0;
     std::size_t samples_generated = 0;
+    std::map<std::string, std::string> reproduction;
 };
 
 /// Profiler that builds hierarchical timing tree with scope aggregation.
@@ -108,7 +111,7 @@ public:
         }
 
         std::lock_guard<std::mutex> lock(m_mutex);
-        record_observation_locked(name, 1, value, value, value);
+        record_observation_locked(name, 1, value, value, value, true);
     }
 
     void record_observation_summary(
@@ -125,16 +128,19 @@ public:
         }
 
         std::lock_guard<std::mutex> lock(m_mutex);
-        record_observation_locked(name, call_count, total, min, max);
+        record_observation_locked(name, call_count, total, min, max, false);
     }
 
 private:
+    static constexpr std::size_t k_max_retained_samples = 8192;
+
     void record_observation_locked(
         const char* name,
         uint64_t call_count,
         double total,
         double min,
-        double max)
+        double max,
+        bool retain_sample)
     {
         auto& stats = m_observations[name];
         stats.name = name;
@@ -142,6 +148,19 @@ private:
         stats.total += total;
         stats.min = std::min(stats.min, min);
         stats.max = std::max(stats.max, max);
+        if (retain_sample) {
+            if (stats.samples.size() < k_max_retained_samples) {
+                stats.samples.push_back(total);
+            }
+            else {
+                const std::uint64_t mixed =
+                    stats.call_count * 11'400'714'819'323'198'485ull;
+                const std::uint64_t candidate = mixed % stats.call_count;
+                if (candidate < k_max_retained_samples) {
+                    stats.samples[static_cast<std::size_t>(candidate)] = total;
+                }
+            }
+        }
     }
 
 public:
@@ -217,10 +236,90 @@ public:
 
         // Write report
         std::ofstream ofs(output_path);
-        if (ofs) {
-            ofs << generate_report(meta);
+        if (!ofs) {
+            throw std::runtime_error("cannot open benchmark report: " + output_path.string());
+        }
+        ofs << generate_report(meta);
+        if (!ofs) {
+            throw std::runtime_error("cannot write benchmark report: " + output_path.string());
         }
 
+        write_raw_report(meta);
+
+        return output_path;
+    }
+
+    std::filesystem::path raw_report_path(const Report_metadata& meta) const
+    {
+        return meta.output_directory / generate_raw_filename(meta);
+    }
+
+    std::filesystem::path write_raw_report(const Report_metadata& meta) const
+    {
+        const std::filesystem::path output_path = raw_report_path(meta);
+        std::filesystem::create_directories(meta.output_directory);
+
+        std::lock_guard<std::mutex> lock(m_mutex);
+        std::ofstream ofs(output_path);
+        if (!ofs) {
+            throw std::runtime_error("cannot open raw benchmark report: " + output_path.string());
+        }
+
+        ofs << "{\n  \"schema_version\": 1,\n";
+        ofs << "  \"retained_sample_limit_per_metric\": "
+            << k_max_retained_samples << ",\n";
+        ofs << "  \"metadata\": {\n";
+        write_json_string_field(ofs, "session", meta.session, true, 4);
+        write_json_string_field(ofs, "stream", meta.stream, true, 4);
+        write_json_string_field(ofs, "data_type", meta.data_type, true, 4);
+        write_json_string_field(ofs, "backend", meta.backend, true, 4);
+        write_json_number_field(ofs, "target_duration_seconds", meta.target_duration, true, 4);
+        write_json_string_field(ofs, "started_at_utc", format_utc_time(meta.started_at), true, 4);
+        write_json_string_field(ofs, "generated_at_utc", format_utc_time(meta.generated_at),
+            !meta.reproduction.empty(), 4);
+        std::size_t reproduction_index = 0;
+        for (const auto& [name, value] : meta.reproduction) {
+            write_json_string_field(
+                ofs,
+                name,
+                value,
+                ++reproduction_index < meta.reproduction.size(),
+                4);
+        }
+        ofs << "  },\n  \"observations\": {\n";
+
+        std::size_t observation_index = 0;
+        for (const auto& [name, stats] : m_observations) {
+            ofs << "    \"" << json_escape(name) << "\": {\n";
+            ofs << "      \"count\": " << stats.call_count << ",\n";
+            ofs << "      \"retained_sample_count\": " << stats.samples.size() << ",\n";
+            ofs << "      \"total\": " << json_number(stats.total) << ",\n";
+            const double mean = stats.call_count > 0
+                ? stats.total / static_cast<double>(stats.call_count)
+                : 0.0;
+            ofs << "      \"mean\": " << json_number(mean) << ",\n";
+            ofs << "      \"min\": " << json_number(stats.min) << ",\n";
+            ofs << "      \"max\": " << json_number(stats.max) << ",\n";
+            write_json_percentile(ofs, "p50", stats.samples, 0.50);
+            write_json_percentile(ofs, "p95", stats.samples, 0.95);
+            write_json_percentile(ofs, "p99", stats.samples, 0.99);
+            ofs << "      \"samples\": [";
+            for (std::size_t i = 0; i < stats.samples.size(); ++i) {
+                if (i > 0) {
+                    ofs << ", ";
+                }
+                ofs << json_number(stats.samples[i]);
+            }
+            ofs << "]\n    }";
+            if (++observation_index < m_observations.size()) {
+                ofs << ",";
+            }
+            ofs << "\n";
+        }
+        ofs << "  }\n}\n";
+        if (!ofs) {
+            throw std::runtime_error("cannot write raw benchmark report: " + output_path.string());
+        }
         return output_path;
     }
 
@@ -257,6 +356,7 @@ private:
         double total = 0.0;
         double min = std::numeric_limits<double>::max();
         double max = 0.0;
+        std::vector<double> samples;
     };
 
     struct Thread_context {
@@ -342,6 +442,10 @@ private:
         if (meta.include_extended) {
             os << "  - volatility: " << std::fixed << std::setprecision(4) << meta.volatility << "\n";
         }
+
+        for (const auto& [name, value] : meta.reproduction) {
+            os << "  - " << name << ": " << value << "\n";
+        }
     }
 
     void write_observations(std::ostream& os) const
@@ -385,6 +489,96 @@ private:
         oss << prefix << "_" << format_filename_time(meta.started_at)
             << "_" << meta.stream << "_" << meta.data_type << ".txt";
         return oss.str();
+    }
+
+    static std::string generate_raw_filename(const Report_metadata& meta)
+    {
+        std::filesystem::path filename(generate_filename(meta));
+        filename.replace_extension(".json");
+        return filename.generic_string();
+    }
+
+    static std::string json_escape(const std::string& value)
+    {
+        std::ostringstream oss;
+        for (const unsigned char c : value) {
+            switch (c) {
+            case '\"': oss << "\\\""; break;
+            case '\\': oss << "\\\\"; break;
+            case '\b': oss << "\\b"; break;
+            case '\f': oss << "\\f"; break;
+            case '\n': oss << "\\n"; break;
+            case '\r': oss << "\\r"; break;
+            case '\t': oss << "\\t"; break;
+            default:
+                if (c < 0x20) {
+                    oss << "\\u" << std::hex << std::setw(4) << std::setfill('0')
+                        << static_cast<unsigned int>(c) << std::dec << std::setfill(' ');
+                }
+                else {
+                    oss << static_cast<char>(c);
+                }
+                break;
+            }
+        }
+        return oss.str();
+    }
+
+    static std::string json_number(double value)
+    {
+        if (!std::isfinite(value)) {
+            return "null";
+        }
+        std::ostringstream oss;
+        oss << std::setprecision(17) << value;
+        return oss.str();
+    }
+
+    static double percentile(std::vector<double> values, double fraction)
+    {
+        if (values.empty()) {
+            return std::numeric_limits<double>::quiet_NaN();
+        }
+        std::sort(values.begin(), values.end());
+        const double index = fraction * static_cast<double>(values.size() - 1);
+        const std::size_t lower = static_cast<std::size_t>(std::floor(index));
+        const std::size_t upper = static_cast<std::size_t>(std::ceil(index));
+        const double weight = index - static_cast<double>(lower);
+        return values[lower] * (1.0 - weight) + values[upper] * weight;
+    }
+
+    static void write_json_string_field(
+        std::ostream& os,
+        const std::string& name,
+        const std::string& value,
+        bool comma,
+        int indent)
+    {
+        os << std::string(static_cast<std::size_t>(indent), ' ')
+            << "\"" << json_escape(name) << "\": \"" << json_escape(value) << "\""
+            << (comma ? "," : "") << "\n";
+    }
+
+    static void write_json_number_field(
+        std::ostream& os,
+        const std::string& name,
+        double value,
+        bool comma,
+        int indent)
+    {
+        os << std::string(static_cast<std::size_t>(indent), ' ')
+            << "\"" << json_escape(name) << "\": " << json_number(value)
+            << (comma ? "," : "") << "\n";
+    }
+
+    static void write_json_percentile(
+        std::ostream& os,
+        const char* name,
+        const std::vector<double>& samples,
+        double fraction)
+    {
+        os << "      \"" << name << "\": "
+            << json_number(percentile(samples, fraction)) << ",\n";
     }
 
     // Extract short name from fully qualified scope name (e.g., "renderer.frame.foo" -> "foo")

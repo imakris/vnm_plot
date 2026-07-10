@@ -31,14 +31,18 @@
 #include <limits>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
 
 class QRhi;
 class QRhiRenderBuffer;
 class QRhiRenderPassDescriptor;
 class QRhiTextureRenderTarget;
+class QRhiTexture;
 class QOffscreenSurface;
+class QVulkanInstance;
 
 namespace vnm::benchmark {
 
@@ -56,11 +60,23 @@ struct Benchmark_config {
     double volatility = 0.02;
     double rate = 1000.0;  // samples per second
     std::size_t ring_capacity = 100000;
+    std::size_t series_count = 1;
     bool extended_metadata = false;
     bool quiet = false;  // Suppress console output during benchmark
     bool show_text = true;  // Text/font rendering (default: on)
     std::string backend = "qrhi-offscreen";  // "qrhi" or "qrhi-offscreen"
+    // Requested graphics API. "native" selects the platform's normal QRhi
+    // backend; Null is used only when explicitly requested.
+    std::string graphics_backend = "native";
     bool finish = false;  // Wait for GPU completion after offscreen frames
+    int framebuffer_width = 1200;
+    int framebuffer_height = 720;
+    std::size_t warmup_frames = 2;
+    // Zero keeps duration-based execution. Nonzero runs exactly this many
+    // measured frames after warmup and is preferred for calibration/CI.
+    std::size_t measured_frames = 0;
+    std::string scenario = "ad-hoc";
+    bool capture_pixel_checksum = false;
     // Visual-diff mode: pre-fill 5 fixed samples (4-segment zig-zag) and
     // skip the generator. Useful for side-by-side rendering comparisons.
     bool static_data = false;
@@ -71,6 +87,14 @@ struct Benchmark_config {
     // animated benchmark; bumped via --point-px so static-mode dots are
     // visible in side-by-side visual comparisons).
     double point_diameter_px = 1.0;
+};
+
+struct Graphics_device_info {
+    std::string backend = "uninitialized";
+    std::string device_name = "unknown";
+    std::string device_type = "unknown";
+    std::uint64_t device_id = 0;
+    std::uint64_t vendor_id = 0;
 };
 
 /// QRhi benchmark window using the public QQuickRhiItem Plot_widget path.
@@ -86,6 +110,9 @@ public:
     const Benchmark_config& config() const { return m_config; }
     std::size_t samples_generated() const { return m_samples_generated.load(); }
     std::chrono::system_clock::time_point started_at() const { return m_started_at; }
+    Graphics_device_info graphics_device_info() const;
+    std::size_t measured_frame_count() const { return m_measured_frame_count; }
+    std::uint64_t pixel_checksum() const { return 0; }
 
 signals:
     void benchmark_finished();
@@ -100,21 +127,22 @@ private:
     void stop_generator_thread();
     void fill_static_data();
     void update_plot_view();
+    void record_final_statistics();
 
     Benchmark_config m_config;
     Benchmark_profiler m_profiler;
 
-    std::unique_ptr<Ring_buffer<Bar_sample>> m_bar_buffer;
-    std::unique_ptr<Ring_buffer<Trade_sample>> m_trade_buffer;
-    std::unique_ptr<Benchmark_data_source<Bar_sample>> m_bar_source;
-    std::unique_ptr<Benchmark_data_source<Trade_sample>> m_trade_source;
+    std::vector<std::unique_ptr<Ring_buffer<Bar_sample>>> m_bar_buffers;
+    std::vector<std::unique_ptr<Ring_buffer<Trade_sample>>> m_trade_buffers;
+    std::vector<std::unique_ptr<Benchmark_data_source<Bar_sample>>> m_bar_sources;
+    std::vector<std::unique_ptr<Benchmark_data_source<Trade_sample>>> m_trade_sources;
     Brownian_generator m_generator;
 
     std::thread m_generator_thread;
     std::atomic<bool> m_stop_generator{false};
 
     vnm::plot::Plot_widget* m_plot = nullptr;
-    std::shared_ptr<vnm::plot::series_data_t> m_series;
+    std::vector<std::shared_ptr<vnm::plot::series_data_t>> m_series;
 
     vnm::plot::Plot_config m_render_config;
 
@@ -133,6 +161,11 @@ private:
     double m_timer_interval_max_ms = 0.0;
     std::chrono::system_clock::time_point m_started_at;
     std::atomic<std::size_t> m_samples_generated{0};
+    mutable std::mutex m_graphics_info_mutex;
+    Graphics_device_info m_graphics_info;
+    std::size_t m_measured_frame_count = 0;
+    std::size_t m_warmup_frames_remaining = 0;
+    bool m_measurement_finished = false;
 };
 
 /// Direct QRhi benchmark that renders into an offscreen target without Qt Quick.
@@ -147,6 +180,9 @@ public:
     const Benchmark_config& config() const { return m_config; }
     std::size_t samples_generated() const { return m_samples_generated.load(); }
     std::chrono::system_clock::time_point started_at() const { return m_started_at; }
+    Graphics_device_info graphics_device_info() const { return m_graphics_info; }
+    std::size_t measured_frame_count() const { return m_measured_frame_count; }
+    std::uint64_t pixel_checksum() const { return m_pixel_checksum; }
 
     bool run(std::string& error_message);
 
@@ -158,23 +194,29 @@ private:
     void stop_generator_thread();
     void fill_static_data();
     bool initialize_rhi(std::string& error_message);
-    bool render_frame(std::string& error_message);
+    bool render_frame(std::string& error_message, bool measured);
+    void record_final_statistics(double measured_seconds);
+    void record_phase(const char* phase, std::size_t frame = 0) const;
 
     Benchmark_config m_config;
     Benchmark_profiler m_profiler;
 
-    std::unique_ptr<Ring_buffer<Bar_sample>> m_bar_buffer;
-    std::unique_ptr<Ring_buffer<Trade_sample>> m_trade_buffer;
-    std::unique_ptr<Benchmark_data_source<Bar_sample>> m_bar_source;
-    std::unique_ptr<Benchmark_data_source<Trade_sample>> m_trade_source;
+    std::vector<std::unique_ptr<Ring_buffer<Bar_sample>>> m_bar_buffers;
+    std::vector<std::unique_ptr<Ring_buffer<Trade_sample>>> m_trade_buffers;
+    std::vector<std::unique_ptr<Benchmark_data_source<Bar_sample>>> m_bar_sources;
+    std::vector<std::unique_ptr<Benchmark_data_source<Trade_sample>>> m_trade_sources;
     Brownian_generator m_generator;
 
     std::thread m_generator_thread;
     std::atomic<bool> m_stop_generator{false};
 
     std::unique_ptr<QOffscreenSurface> m_fallback_surface;
+#if QT_CONFIG(vulkan) && __has_include(<vulkan/vulkan.h>)
+    std::unique_ptr<QVulkanInstance> m_vulkan_instance;
+#endif
     std::unique_ptr<QRhi> m_rhi;
     std::unique_ptr<QRhiRenderBuffer> m_color_buffer;
+    std::unique_ptr<QRhiTexture> m_resolve_texture;
     std::unique_ptr<QRhiTextureRenderTarget> m_render_target;
     std::unique_ptr<QRhiRenderPassDescriptor> m_render_pass_descriptor;
 
@@ -198,6 +240,16 @@ private:
     float m_v_max = 110.0f;
     std::chrono::system_clock::time_point m_started_at;
     std::atomic<std::size_t> m_samples_generated{0};
+    Graphics_device_info m_graphics_info;
+    std::size_t m_measured_frame_count = 0;
+    double m_cold_setup_ms = 0.0;
+    double m_cold_backend_ms = 0.0;
+    double m_cold_first_submission_ms = 0.0;
+    double m_cold_shader_pipeline_prepare_ms = 0.0;
+    double m_cold_total_ms = 0.0;
+    double m_last_prepare_ms = 0.0;
+    std::uint64_t m_pixel_checksum = 0;
+    std::chrono::steady_clock::time_point m_phase_trace_started;
 };
 
 }  // namespace vnm::benchmark

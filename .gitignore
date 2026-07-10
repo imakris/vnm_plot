@@ -11,6 +11,8 @@
 
 # Benchmark output files
 inspector_benchmark_*.txt
+inspector_benchmark_*.json
+benchmark_phase_trace.jsonl
 
 # QtCreator user settings
 /examples/**/.qtcreator/
