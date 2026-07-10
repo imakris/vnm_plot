@@ -1203,8 +1203,9 @@ void Series_renderer::prepare(
             view_state,
             window);
         const qrhi_series_sample_buffer_t sample_buffer =
-            samples_ready ? make_sample_buffer(view_state, window)
-                          : qrhi_series_sample_buffer_t{};
+            samples_ready
+                ? make_sample_buffer(view_state, window)
+                : qrhi_series_sample_buffer_t{};
         const bool needs_view_ubo = has_custom_layer;
         series_view_uniform_std140_t uniform{};
         const series_view_uniform_std140_t* view_uniform = nullptr;
@@ -1544,8 +1545,8 @@ void Series_renderer::render(
         m_last_recorded_draw_styles.push_back(
             command.kind ==
                     rhi_state_t::prepared_draw_command_t::kind_t::BUILTIN
-                ? command.primitive_style
-                : Display_style::NONE);
+                        ? command.primitive_style
+                        : Display_style::NONE);
         m_last_recorded_draw_series_ids.push_back(command.series_id);
         m_last_recorded_draw_view_kinds.push_back(command.view_kind);
 
@@ -1817,8 +1818,9 @@ bool Series_renderer::rhi_prepare_series_primitive(
         return false;
     }
     const std::vector<builtin_segment_span_t> segment_spans =
-        is_dots ? std::vector<builtin_segment_span_t>{}
-                : builtin_segment_spans(window);
+        is_dots
+            ? std::vector<builtin_segment_span_t>{}
+            : builtin_segment_spans(window);
     const bool has_segment_span = !segment_spans.empty();
     if (!is_dots && !has_segment_span) {
         return false;
@@ -2033,8 +2035,9 @@ bool Series_renderer::rhi_prepare_series_primitive(
     rhi_state_t::pipeline_key_t key{
         is_dots
             ? rhi_state_t::pipeline_kind_t::DOTS
-            : (is_area ? rhi_state_t::pipeline_kind_t::AREA
-                       : rhi_state_t::pipeline_kind_t::LINE)
+            : (is_area
+                ? rhi_state_t::pipeline_kind_t::AREA
+                : rhi_state_t::pipeline_kind_t::LINE)
     };
     auto& cached = m_rhi_state->pipelines[key];
 
@@ -2269,8 +2272,9 @@ void Series_renderer::rhi_record_series_primitive(
     rhi_state_t::pipeline_key_t key{
         is_dots
             ? rhi_state_t::pipeline_kind_t::DOTS
-            : (is_area ? rhi_state_t::pipeline_kind_t::AREA
-                       : rhi_state_t::pipeline_kind_t::LINE)
+            : (is_area
+                ? rhi_state_t::pipeline_kind_t::AREA
+                : rhi_state_t::pipeline_kind_t::LINE)
     };
     auto pipe_it = m_rhi_state->pipelines.find(key);
     if (pipe_it == m_rhi_state->pipelines.end() || !pipe_it->second.pipeline) {

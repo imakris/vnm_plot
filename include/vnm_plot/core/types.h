@@ -94,8 +94,9 @@ struct erased_access_policy_t
 
     std::pair<float, float> range(const void* sample) const
     {
-        return get_range ? get_range(*this, sample)
-                         : std::make_pair(0.0f, 0.0f);
+        return get_range
+            ? get_range(*this, sample)
+            : std::make_pair(0.0f, 0.0f);
     }
 };
 
