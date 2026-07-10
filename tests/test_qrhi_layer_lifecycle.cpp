@@ -694,11 +694,7 @@ bool test_layer_only_zero_style_prepare_record_order()
     TEST_ASSERT(view_state.last_primitive_prepare_count == 0,
         "custom-only drawable layers must not prepare built-in primitives");
     if (!assert_compact_upload_state(
-            renderer,
-            7,
-            events[low_prepare],
-            0,
-            "custom-only low layer"))
+            renderer, 7, events[low_prepare], 0, "custom-only low layer"))
     {
         return false;
     }
@@ -870,11 +866,7 @@ bool test_builtin_upload_stages_visible_window_only()
         "linear visible upload should stage one GPU sample per source sample");
 
     if (!assert_compact_upload_state(
-            renderer,
-            series_id,
-            *prepare,
-            prepare->gpu_count,
-            "linear line"))
+            renderer, series_id, *prepare, prepare->gpu_count, "linear line"))
     {
         return false;
     }
@@ -1364,10 +1356,8 @@ bool test_nonfinite_break_and_skip_split_drawable_spans()
             "gap window should compact only drawable samples");
         TEST_ASSERT(prepare->drawable_spans.size() == 2,
             "gap window should split drawable samples into two spans");
-        if (!assert_drawable_span(
-                prepare->drawable_spans, 0, 0, 2, 0, 2, test_case.layer_id) ||
-            !assert_drawable_span(
-                prepare->drawable_spans, 1, 3, 2, 2, 2, test_case.layer_id))
+        if (!assert_drawable_span(prepare->drawable_spans, 0, 0, 2, 0, 2, test_case.layer_id) ||
+            !assert_drawable_span(prepare->drawable_spans, 1, 3, 2, 2, 2, test_case.layer_id))
         {
             return false;
         }
@@ -1403,11 +1393,7 @@ bool test_nonfinite_break_and_skip_split_drawable_spans()
             "LINE padded windows should be built per drawable span");
 
         if (!assert_compact_upload_state(
-                renderer,
-                test_case.series_id,
-                *prepare,
-                4,
-                test_case.layer_id))
+                renderer, test_case.series_id, *prepare, 4, test_case.layer_id))
         {
             return false;
         }
@@ -1972,13 +1958,7 @@ bool test_nonfinite_hold_forward_policy_controls_held_sample()
         TEST_ASSERT(prepare->drawable_spans.size() == 1,
             "drawable held sample should have one drawable span");
         if (!assert_drawable_span(
-                prepare->drawable_spans,
-                0,
-                test_case.expected_source_first,
-                1,
-                0,
-                2,
-                test_case.layer_id))
+                prepare->drawable_spans, 0, test_case.expected_source_first, 1, 0, 2, test_case.layer_id))
         {
             return false;
         }
@@ -2058,10 +2038,8 @@ bool test_nonfinite_skip_hold_forward_preserves_earlier_held_sample_with_visible
         "SKIP held window should stage held, visible, and synthetic hold samples");
     TEST_ASSERT(prepare->drawable_spans.size() == 2,
         "SKIP held window should keep the skipped sample as a drawable gap");
-    if (!assert_drawable_span(
-            prepare->drawable_spans, 0, 0, 1, 0, 1, "hold-skip-visible") ||
-        !assert_drawable_span(
-            prepare->drawable_spans, 1, 2, 1, 1, 2, "hold-skip-visible"))
+    if (!assert_drawable_span(prepare->drawable_spans, 0, 0, 1, 0, 1, "hold-skip-visible") ||
+        !assert_drawable_span(prepare->drawable_spans, 1, 2, 1, 1, 2, "hold-skip-visible"))
     {
         return false;
     }
@@ -2495,11 +2473,7 @@ bool test_builtin_upload_stages_visible_windows_for_dots_and_area()
             "visible dots/area upload should stage one GPU sample per source sample");
 
         if (!assert_compact_upload_state(
-                renderer,
-                test_case.series_id,
-                *prepare,
-                0,
-                test_case.layer_id))
+                renderer, test_case.series_id, *prepare, 0, test_case.layer_id))
         {
             return false;
         }
@@ -2566,11 +2540,7 @@ bool test_builtin_upload_stages_single_synthetic_hold_sample()
         "hold-forward upload should stage one real and one synthetic GPU sample");
 
     if (!assert_compact_upload_state(
-            renderer,
-            series_id,
-            *prepare,
-            3,
-            "hold-forward line"))
+            renderer, series_id, *prepare, 3, "hold-forward line"))
     {
         return false;
     }
@@ -2651,11 +2621,7 @@ bool test_builtin_upload_stages_hold_windows_for_dots_and_area()
             "hold-forward dots/area upload should stage real and synthetic samples");
 
         if (!assert_compact_upload_state(
-                renderer,
-                test_case.series_id,
-                *prepare,
-                0,
-                test_case.layer_id))
+                renderer, test_case.series_id, *prepare, 0, test_case.layer_id))
         {
             return false;
         }

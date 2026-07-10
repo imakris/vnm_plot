@@ -139,11 +139,11 @@ namespace vnm::plot::detail {
     scissor.height  = bottom - top;
 
     const bool contained =
-        scissor.x >= 0 &&
-        scissor.y >= 0 &&
-        scissor.width > 0 &&
-        scissor.height > 0 &&
-        scissor.x + scissor.width <= window_width &&
+        scissor.x                  >= 0            &&
+        scissor.y                  >= 0            &&
+        scissor.width              >  0            &&
+        scissor.height             >  0            &&
+        scissor.x + scissor.width  <= window_width &&
         scissor.y + scissor.height <= window_height;
     if (!contained) {
         scissor = {};

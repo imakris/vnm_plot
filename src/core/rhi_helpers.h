@@ -46,7 +46,7 @@ inline bool to_positive_int(double value, int& out)
 
     const double rounded = std::round(value);
     if (rounded <= 0.0 ||
-        rounded > static_cast<double>(std::numeric_limits<int>::max()))
+        rounded >  static_cast<double>(std::numeric_limits<int>::max()))
     {
         return false;
     }
@@ -243,8 +243,7 @@ inline std::unique_ptr<QRhiGraphicsPipeline> build_alpha_blended_pipeline(
 
     std::unique_ptr<QRhiShaderResourceBindings> layout_srb;
     if (!rebuild_single_ubo_srb(
-            rhi, layout_srb, layout_ubo.get(),
-            desc.ubo_bytes, desc.ubo_stages))
+            rhi, layout_srb, layout_ubo.get(), desc.ubo_bytes, desc.ubo_stages))
     {
         return nullptr;
     }

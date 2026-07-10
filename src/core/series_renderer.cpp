@@ -900,7 +900,7 @@ void Series_renderer::prepare(
         main_plan.y_offset_px  = 0.0f;
         main_plan.window_alpha = 1.0f;
         if (ctx.config && ctx.config->log_debug &&
-            main_plan.gpu_count > 0 &&
+            main_plan.gpu_count >  0 &&
             main_plan.lod_level != prev_lod_level)
         {
             std::string message = "LOD selection: series=" + std::to_string(id)
@@ -1229,24 +1229,15 @@ void Series_renderer::prepare(
         for (const auto& planned_draw : planned_draws) {
             if (planned_draw.is_builtin) {
                 if (!samples_ready ||
-                    !is_builtin_primitive_drawable(
-                        planned_draw.primitive_style,
-                        window))
+                    !is_builtin_primitive_drawable( planned_draw.primitive_style, window))
                 {
                     continue;
                 }
 
                 std::vector<builtin_segment_span_t> prepared_segment_spans;
                 if (rhi_prepare_series_primitive(
-                        ctx,
-                        draw_state.series.get(),
-                        planned_draw.primitive_style,
-                        view_state,
-                        window,
-                        line_width_px,
-                        point_diameter_px,
-                        area_fill_alpha,
-                        &prepared_segment_spans))
+                        ctx, draw_state.series.get(), planned_draw.primitive_style, view_state, window,
+                        line_width_px, point_diameter_px, area_fill_alpha, &prepared_segment_spans))
                 {
                     rhi_state_t::prepared_draw_command_t command;
                     command.kind =
@@ -1292,13 +1283,13 @@ void Series_renderer::prepare(
 
             if (!window.snapshot) {
                 for (auto& [cached_key, cache_entry] : m_rhi_state->qrhi_layer_cache) {
-                    if (cached_key.series_id == program_key.series_id &&
-                        cached_key.view_kind == program_key.view_kind &&
-                        cached_key.layer_id == program_key.layer_id &&
+                    if (cached_key.series_id      == program_key.series_id      &&
+                        cached_key.view_kind      == program_key.view_kind      &&
+                        cached_key.layer_id       == program_key.layer_id       &&
                         cached_key.layer_revision == program_key.layer_revision &&
-                        cached_key.layout_key == program_key.layout_key &&
-                        cached_key.access_key == program_key.access_key &&
-                        cached_key.rhi == program_key.rhi)
+                        cached_key.layout_key     == program_key.layout_key     &&
+                        cached_key.access_key     == program_key.access_key     &&
+                        cached_key.rhi            == program_key.rhi)
                     {
                         cache_entry.last_frame_used = m_frame_id;
                     }
@@ -1455,8 +1446,8 @@ void Series_renderer::prepare(
             }
             if (!source || !access ||
                 key.data_identity != source->identity() ||
-                key.layout_key != access->layout_key ||
-                key.rhi != rhi)
+                key.layout_key    != access->layout_key ||
+                key.rhi           != rhi)
             {
                 return false;
             }
@@ -1474,14 +1465,14 @@ void Series_renderer::prepare(
                 qrhi_layers.end(),
                 [&](const auto& layer) {
                     return layer &&
-                        layer->draws_view(key.view_kind) &&
-                        layer->id() == key.layer_id &&
+                        layer->draws_view(key.view_kind)        &&
+                        layer->id() == key.layer_id             &&
                         layer->revision() == key.layer_revision;
                 });
         };
 
     for (auto it = m_rhi_state->qrhi_layer_cache.begin();
-         it != m_rhi_state->qrhi_layer_cache.end(); )
+         it != m_rhi_state->qrhi_layer_cache.end();)
     {
         if (it->second.last_frame_used == m_frame_id ||
             qrhi_layer_still_configured(it->first))
@@ -1497,7 +1488,7 @@ void Series_renderer::prepare(
     m_last_qrhi_layer_cache_size = m_rhi_state->qrhi_layer_cache.size();
 
     for (auto it = m_rhi_state->view_ubos.begin();
-         it != m_rhi_state->view_ubos.end(); )
+         it != m_rhi_state->view_ubos.end();)
     {
         if (it->second.last_frame_used == m_frame_id) {
             ++it;
@@ -1641,10 +1632,10 @@ bool Series_renderer::rhi_prepare_series_view_samples(
             return false;
         }
 
-        if (window.synthetic_hold_count > 1 ||
-            window.drawable_spans.empty() ||
-            window.source_first > snapshot.count ||
-            window.source_count > snapshot.count - window.source_first)
+        if (window.synthetic_hold_count > 1              ||
+            window.drawable_spans.empty()                ||
+            window.source_first         > snapshot.count ||
+            window.source_count         > snapshot.count - window.source_first)
         {
             invalidate_uploaded_vbo();
             return false;
@@ -1660,22 +1651,18 @@ bool Series_renderer::rhi_prepare_series_view_samples(
                 window.drawable_spans[span_index];
             const bool final_span =
                 span_index + 1u == window.drawable_spans.size();
-            if (span.source_count == 0 ||
-                span.gpu_count < span.source_count ||
-                span.gpu_first != expected_gpu_count ||
-                span.source_first < window.source_first ||
-                span.source_first > snapshot.count ||
-                span.source_count > snapshot.count - span.source_first ||
-                span.source_first + span.source_count >
-                    window.source_first + window.source_count)
+            if (span.source_count == 0               || span.gpu_count < span.source_count                     ||
+                span.gpu_first != expected_gpu_count || span.source_first < window.source_first                ||
+                span.source_first >  snapshot.count  || span.source_count > snapshot.count - span.source_first ||
+                span.source_first + span.source_count >  window.source_first + window.source_count)
             {
                 invalidate_uploaded_vbo();
                 return false;
             }
 
             const bool has_synthetic_hold =
-                final_span &&
-                window.synthetic_hold_count == 1 &&
+                final_span                               &&
+                window.synthetic_hold_count == 1         &&
                 span.gpu_count == span.source_count + 1u;
             if (has_synthetic_hold) {
                 synthetic_hold_seen = true;
@@ -1687,15 +1674,13 @@ bool Series_renderer::rhi_prepare_series_view_samples(
             }
 
             if (!detail::checked_size_add(
-                    expected_gpu_count,
-                    span.gpu_count,
-                    expected_gpu_count))
+                    expected_gpu_count, span.gpu_count, expected_gpu_count))
             {
                 invalidate_uploaded_vbo();
                 return false;
             }
         }
-        if (expected_gpu_count != window.gpu_count ||
+        if (expected_gpu_count  != window.gpu_count ||
             synthetic_hold_seen != (window.synthetic_hold_count == 1))
         {
             invalidate_uploaded_vbo();
@@ -1707,8 +1692,7 @@ bool Series_renderer::rhi_prepare_series_view_samples(
         quint32     upload_bytes    = 0;
         if (!detail::checked_size_add(window.gpu_count, 0u, needed_elements) ||
             !detail::qrhi_byte_size(
-                needed_elements, sizeof(gpu_sample_t),
-                needed_bytes, upload_bytes))
+                needed_elements, sizeof(gpu_sample_t), needed_bytes, upload_bytes))
         {
             invalidate_uploaded_vbo();
             return false;
@@ -1741,9 +1725,7 @@ bool Series_renderer::rhi_prepare_series_view_samples(
                 const void*       src          = snapshot.at(source_index);
                 if (!src ||
                     !stage_one_sample(
-                        staging[span.gpu_first + i],
-                        src,
-                        access_view.timestamp(src)))
+                        staging[span.gpu_first + i], src, access_view.timestamp(src)))
                 {
                     invalidate_uploaded_vbo();
                     return false;
@@ -1756,8 +1738,7 @@ bool Series_renderer::rhi_prepare_series_view_samples(
                 if (!source_sample ||
                     !stage_one_sample(
                         staging[span.gpu_first + span.gpu_count - 1u],
-                        source_sample,
-                        window.hold_timestamp_ns))
+                        source_sample, window.hold_timestamp_ns))
                 {
                     invalidate_uploaded_vbo();
                     return false;
@@ -1922,25 +1903,16 @@ bool Series_renderer::rhi_prepare_series_primitive(
         for (const builtin_segment_span_t& span : segment_spans) {
             std::size_t span_window_count = 0;
             if (!line_window_sample_count(
-                    span.gpu_count,
-                    window.interpolation,
-                    span_window_count))
+                    span.gpu_count, window.interpolation, span_window_count))
             {
                 return false;
             }
             std::size_t span_padded_count = 0;
-            if (!detail::checked_size_add(
-                    span_window_count,
-                    2u,
-                    span_padded_count) ||
+            if (!detail::checked_size_add( span_window_count, 2u, span_padded_count) ||
                 !detail::checked_size_add(
-                    total_window_count,
-                    span_window_count,
-                    total_window_count) ||
+                    total_window_count, span_window_count, total_window_count)       ||
                 !detail::checked_size_add(
-                    total_padded_count,
-                    span_padded_count,
-                    total_padded_count))
+                    total_padded_count, span_padded_count, total_padded_count))
             {
                 return false;
             }
@@ -1952,8 +1924,7 @@ bool Series_renderer::rhi_prepare_series_primitive(
         std::size_t needed_bytes = 0;
         quint32     upload_bytes = 0;
         if (!detail::qrhi_byte_size(
-                total_padded_count, sizeof(gpu_sample_t),
-                needed_bytes, upload_bytes))
+                total_padded_count, sizeof(gpu_sample_t), needed_bytes, upload_bytes))
         {
             return false;
         }
@@ -1964,14 +1935,13 @@ bool Series_renderer::rhi_prepare_series_primitive(
         {
             return false;
         }
-        if (!view_state.rhi->line_window_vbo
-            || view_state.rhi_line_window_vbo_capacity_bytes < needed_bytes)
+        if (!view_state.rhi->line_window_vbo ||
+            view_state.rhi_line_window_vbo_capacity_bytes < needed_bytes)
         {
             view_state.rhi->line_window_vbo.reset(rhi->newBuffer(
                 QRhiBuffer::Static, QRhiBuffer::VertexBuffer,
                 qrhi_alloc_bytes));
-            if (view_state.rhi->line_window_vbo
-                && view_state.rhi->line_window_vbo->create())
+            if (view_state.rhi->line_window_vbo && view_state.rhi->line_window_vbo->create())
             {
                 view_state.rhi_line_window_vbo_capacity_bytes = alloc_bytes;
             }
@@ -1998,17 +1968,12 @@ bool Series_renderer::rhi_prepare_series_primitive(
 
                 std::size_t span_window_count = 0;
                 if (!line_window_sample_count(
-                        span.gpu_count,
-                        window.interpolation,
-                        span_window_count))
+                        span.gpu_count, window.interpolation, span_window_count))
                 {
                     return false;
                 }
                 std::size_t span_padded_count = 0;
-                if (!detail::checked_size_add(
-                        span_window_count,
-                        2u,
-                        span_padded_count) ||
+                if (!detail::checked_size_add( span_window_count, 2u, span_padded_count) ||
                     span_padded_count > total_padded_count - write_idx)
                 {
                     return false;
@@ -2080,9 +2045,7 @@ bool Series_renderer::rhi_prepare_series_primitive(
     // or sample count moves.
     QRhiRenderPassDescriptor* current_rpd     = rt->renderPassDescriptor();
     const int                 current_samples = rt->sampleCount();
-    if (cached.pipeline
-        && (cached.last_rpd != current_rpd
-            || cached.last_sample_count != current_samples))
+    if (cached.pipeline && (cached.last_rpd != current_rpd || cached.last_sample_count != current_samples))
     {
         cached.pipeline.reset();
     }
@@ -2188,8 +2151,8 @@ bool Series_renderer::rhi_prepare_series_primitive(
 
         if (!detail::rebuild_single_ubo_srb(
                 rhi, entry.srb, current_ubo, k_series_ubo_bytes,
-                QRhiShaderResourceBinding::VertexStage
-                    | QRhiShaderResourceBinding::FragmentStage)) {
+                QRhiShaderResourceBinding::VertexStage | QRhiShaderResourceBinding::FragmentStage))
+        {
             // A failed create() leaves a non-null but unusable SRB; clear it so
             // the null guard in rhi_record_series_primitive skips this draw and
             // a later frame retries the rebuild instead of binding a bad object.
@@ -2352,15 +2315,10 @@ void Series_renderer::rhi_record_series_primitive(
             quint32 instance_count = 0;
             quint32 first_offset   = 0;
             quint32 next_offset    = 0;
-            if (!detail::to_qrhi_count(span.gpu_count - 1u, instance_count) ||
+            if (!detail::to_qrhi_count(span.gpu_count - 1u, instance_count)                      ||
+                !detail::qrhi_buffer_offset( span.gpu_first, sizeof(gpu_sample_t), first_offset) ||
                 !detail::qrhi_buffer_offset(
-                    span.gpu_first,
-                    sizeof(gpu_sample_t),
-                    first_offset) ||
-                !detail::qrhi_buffer_offset(
-                    span.gpu_first + 1u,
-                    sizeof(gpu_sample_t),
-                    next_offset))
+                    span.gpu_first + 1u, sizeof(gpu_sample_t), next_offset))
             {
                 return;
             }
@@ -2398,37 +2356,14 @@ void Series_renderer::rhi_record_series_primitive(
             quint32           qrhi_offset2   = 0;
             quint32           qrhi_offset3   = 0;
             quint32           instance_count = 0;
-            if (!detail::checked_size_add(
-                    line_span.line_first,
-                    1u,
-                    offset1) ||
-                !detail::checked_size_add(
-                    line_span.line_first,
-                    2u,
-                    offset2) ||
-                !detail::checked_size_add(
-                    line_span.line_first,
-                    3u,
-                    offset3) ||
-                !detail::qrhi_buffer_offset(
-                    offset0,
-                    sizeof(gpu_sample_t),
-                    qrhi_offset0) ||
-                !detail::qrhi_buffer_offset(
-                    offset1,
-                    sizeof(gpu_sample_t),
-                    qrhi_offset1) ||
-                !detail::qrhi_buffer_offset(
-                    offset2,
-                    sizeof(gpu_sample_t),
-                    qrhi_offset2) ||
-                !detail::qrhi_buffer_offset(
-                    offset3,
-                    sizeof(gpu_sample_t),
-                    qrhi_offset3) ||
-                !detail::to_qrhi_count(
-                    line_span.line_count - 1u,
-                    instance_count))
+            if (!detail::checked_size_add( line_span.line_first, 1u, offset1)             ||
+                !detail::checked_size_add( line_span.line_first, 2u, offset2)             ||
+                !detail::checked_size_add( line_span.line_first, 3u, offset3)             ||
+                !detail::qrhi_buffer_offset( offset0, sizeof(gpu_sample_t), qrhi_offset0) ||
+                !detail::qrhi_buffer_offset( offset1, sizeof(gpu_sample_t), qrhi_offset1) ||
+                !detail::qrhi_buffer_offset( offset2, sizeof(gpu_sample_t), qrhi_offset2) ||
+                !detail::qrhi_buffer_offset( offset3, sizeof(gpu_sample_t), qrhi_offset3) ||
+                !detail::to_qrhi_count( line_span.line_count - 1u, instance_count))
             {
                 return;
             }

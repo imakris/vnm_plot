@@ -191,12 +191,12 @@ private:
         friend bool operator==(const Context_key& lhs, const Context_key& rhs) noexcept
         {
             return lhs.step_bits == rhs.step_bits &&
-                   lhs.range_bits == rhs.range_bits &&
-                   lhs.monospace_bits == rhs.monospace_bits &&
+                   lhs.range_bits         == rhs.range_bits         &&
+                   lhs.monospace_bits     == rhs.monospace_bits     &&
                    lhs.monospace_reliable == rhs.monospace_reliable &&
-                   lhs.measure_key == rhs.measure_key &&
-                   lhs.font_size_bits == rhs.font_size_bits &&
-                   lhs.format_signature == rhs.format_signature;
+                   lhs.measure_key        == rhs.measure_key        &&
+                   lhs.font_size_bits     == rhs.font_size_bits     &&
+                   lhs.format_signature   == rhs.format_signature;
         }
     };
 
@@ -298,10 +298,10 @@ private:
         friend bool operator==(const Key& lhs, const Key& rhs) noexcept
         {
             return lhs.step_bits == rhs.step_bits &&
-                   lhs.coverage_bucket == rhs.coverage_bucket &&
-                   lhs.formatter_identity == rhs.formatter_identity &&
+                   lhs.coverage_bucket     == rhs.coverage_bucket     &&
+                   lhs.formatter_identity  == rhs.formatter_identity  &&
                    lhs.formatter_type_hash == rhs.formatter_type_hash &&
-                   lhs.formatter_revision == rhs.formatter_revision;
+                   lhs.formatter_revision  == rhs.formatter_revision;
         }
     };
 
@@ -447,12 +447,12 @@ bool Layout_calculator::fits_with_gap(
         while (j < accepted.size() && accepted[j].second + min_gap <= iv.first) {
             ++j;
         }
-        if (j < accepted.size() &&
+        if (j                                                                               < accepted.size() &&
             std::max(iv.first, accepted[j].first) - std::min(iv.second, accepted[j].second) < min_gap)
         {
             return false;
         }
-        if (j > 0 &&
+        if (j                                                                                       > 0 &&
             std::max(iv.first, accepted[j - 1].first) - std::min(iv.second, accepted[j - 1].second) < min_gap)
         {
             return false;
@@ -822,7 +822,7 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
                 "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis.setup");
             if (params.has_horizontal_seed &&
                 params.horizontal_seed_index >= 0 &&
-                params.horizontal_seed_index < static_cast<int>(steps.size()))
+                params.horizontal_seed_index <  static_cast<int>(steps.size()))
             {
                 const double seeded_step = steps[params.horizontal_seed_index];
                 const double ref = std::max(1e-6, std::max(std::abs(seeded_step),

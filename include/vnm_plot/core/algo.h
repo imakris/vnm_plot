@@ -571,13 +571,13 @@ visible_sample_aggregate_t aggregate_visible_sample_range(
         }
         const std::int64_t ts_ns = get_timestamp(sample);
         if (interpolation == Series_interpolation::STEP_AFTER &&
-            ts_ns < window_tmin_ns)
+            ts_ns         <  window_tmin_ns)
         {
             held_sample = sample;
             continue;
         }
         if (interpolation == Series_interpolation::STEP_AFTER &&
-            ts_ns >= window_tmin_ns)
+            ts_ns         >= window_tmin_ns)
         {
             have_sample_at_or_after_window_start = true;
         }

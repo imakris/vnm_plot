@@ -508,13 +508,7 @@ std::pair<float, float> resolve_main_v_range(
     float v_min = std::numeric_limits<float>::max();
     float v_max = std::numeric_limits<float>::lowest();
     if (!resolve_series_collection_range(
-            series,
-            data_cfg,
-            config,
-            false,
-            cache,
-            v_min,
-            v_max))
+            series, data_cfg, config, false, cache, v_min, v_max))
     {
         return fallback_range(data_cfg);
     }
@@ -532,13 +526,7 @@ std::pair<float, float> resolve_preview_v_range(
     float v_min = std::numeric_limits<float>::max();
     float v_max = std::numeric_limits<float>::lowest();
     if (!resolve_series_collection_range(
-            series,
-            data_cfg,
-            config,
-            true,
-            cache,
-            v_min,
-            v_max))
+            series, data_cfg, config, true, cache, v_min, v_max))
     {
         return fallback_range(data_cfg);
     }

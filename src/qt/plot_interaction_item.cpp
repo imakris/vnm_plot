@@ -367,13 +367,8 @@ void Plot_interaction_item::wheelEvent(QWheelEvent* event)
     const QPoint angle_delta = event->angleDelta();
     const QPoint pixel_delta = event->pixelDelta();
     if (!handle_wheel(
-            event->position().x(),
-            event->position().y(),
-            angle_delta.x(),
-            angle_delta.y(),
-            pixel_delta.x(),
-            pixel_delta.y(),
-            event->modifiers().toInt()))
+            event->position().x(), event->position().y(), angle_delta.x(),
+            angle_delta.y(), pixel_delta.x(), pixel_delta.y(), event->modifiers().toInt()))
     {
         event->ignore();
         return;

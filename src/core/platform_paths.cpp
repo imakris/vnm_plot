@@ -20,7 +20,8 @@ std::filesystem::path get_known_folder(int folder_id)
     wchar_t* path = nullptr;
     if (SUCCEEDED(SHGetKnownFolderPath(
             folder_id == CSIDL_LOCAL_APPDATA ? FOLDERID_LocalAppData : FOLDERID_RoamingAppData,
-            0, nullptr, &path))) {
+            0, nullptr, &path)))
+    {
         std::filesystem::path result(path);
         CoTaskMemFree(path);
         return result;

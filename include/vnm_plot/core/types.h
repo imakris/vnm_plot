@@ -113,12 +113,12 @@ struct access_policy_cache_key_t
         const access_policy_cache_key_t& other) const noexcept
     {
         return identity == other.identity &&
-            layout_key == other.layout_key &&
-            revision == other.revision &&
+            layout_key    == other.layout_key    &&
+            revision      == other.revision      &&
             dispatch_kind == other.dispatch_kind &&
             has_timestamp == other.has_timestamp &&
-            has_value == other.has_value &&
-            has_range == other.has_range;
+            has_value     == other.has_value     &&
+            has_range     == other.has_range;
     }
 
     [[nodiscard]] bool operator!=(
@@ -1175,18 +1175,18 @@ struct layout_cache_key_t
     [[nodiscard]] bool operator==(const layout_cache_key_t& other) const noexcept
     {
         return v0 == other.v0 &&
-               v1 == other.v1 &&
-               t0 == other.t0 &&
-               t1 == other.t1 &&
-               viewport_size == other.viewport_size &&
-               adjusted_reserved_height == other.adjusted_reserved_height &&
-               adjusted_preview_height == other.adjusted_preview_height &&
+               v1                           == other.v1                           &&
+               t0                           == other.t0                           &&
+               t1                           == other.t1                           &&
+               viewport_size                == other.viewport_size                &&
+               adjusted_reserved_height     == other.adjusted_reserved_height     &&
+               adjusted_preview_height      == other.adjusted_preview_height      &&
                adjusted_font_size_in_pixels == other.adjusted_font_size_in_pixels &&
-               vbar_width_pixels == other.vbar_width_pixels &&
-               font_metrics_key == other.font_metrics_key &&
-               config_revision == other.config_revision &&
-               format_timestamp_revision == other.format_timestamp_revision &&
-               format_value_revision == other.format_value_revision;
+               vbar_width_pixels            == other.vbar_width_pixels            &&
+               font_metrics_key             == other.font_metrics_key             &&
+               config_revision              == other.config_revision              &&
+               format_timestamp_revision    == other.format_timestamp_revision    &&
+               format_value_revision        == other.format_value_revision;
     }
 
 };

@@ -50,7 +50,7 @@ text_lcd_resolved_subpixel_order_t text_lcd_subpixel_order_from_windows()
             k_win_spi_get_font_smoothing,
             0U,
             &font_smoothing_enabled,
-            0U) == 0 ||
+            0U)                == 0 ||
         font_smoothing_enabled == 0)
     {
         return text_lcd_resolved_subpixel_order_t::NONE;

@@ -334,8 +334,8 @@ bool Text_renderer::render_axis_labels(
         m_fonts->batch_text(snapped_x, snapped_y, state.text.c_str());
         if (ctx.rhi) {
             const bool label_lcd_eligible =
-                label_lcd_possible &&
-                label_scissor.enabled &&
+                label_lcd_possible                                    &&
+                label_scissor.enabled                                 &&
                 state.alpha >= detail::k_text_lcd_opaque_alpha_cutoff &&
                 text_fits_label_backing;
             const text_lcd_t label_lcd =
@@ -438,8 +438,8 @@ bool Text_renderer::render_info_overlay(
         m_fonts->batch_text(pen_x, pen_y, state.text.c_str());
         if (ctx.rhi) {
             const bool label_lcd_eligible =
-                label_lcd_possible &&
-                label_scissor.enabled &&
+                label_lcd_possible                                    &&
+                label_scissor.enabled                                 &&
                 state.alpha >= detail::k_text_lcd_opaque_alpha_cutoff &&
                 text_fits_label_backing;
             const text_lcd_t label_lcd =
@@ -533,9 +533,8 @@ bool Text_renderer::render_info_overlay(
             const bool timestamp_formatter_changed =
                 timestamp_revision != m_last_timestamp_revision;
 
-            if (timestamp_style_changed || timestamp_values_changed
-                || timestamp_formatter_changed || m_cached_from_ts.empty()
-                || m_cached_to_ts.empty())
+            if (timestamp_style_changed  || timestamp_values_changed || timestamp_formatter_changed ||
+                m_cached_from_ts.empty() || m_cached_to_ts.empty())
             {
                 const auto format_ts = (ctx.config && ctx.config->format_timestamp)
                     ? ctx.config->format_timestamp

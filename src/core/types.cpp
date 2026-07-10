@@ -625,12 +625,9 @@ validated_time_window_t validated_time_window(
 
     const bool has_match =
         candidates.match_first < candidates.match_last_exclusive;
-    if (has_match && !validate_match_range(
-            snapshot,
-            access,
-            query,
-            candidates.match_first,
-            candidates.match_last_exclusive))
+    if (has_match &&
+        !validate_match_range(
+            snapshot, access, query, candidates.match_first, candidates.match_last_exclusive))
     {
         out.valid = false;
         return out;
@@ -739,7 +736,7 @@ sample_draw_status_t read_sample_draw_value(
     if (access.has_range()) {
         std::tie(low, high) = access.range(sample);
     }
-    if (!normalize_draw_component(low, policy) ||
+    if (!normalize_draw_component(low,  policy) ||
         !normalize_draw_component(high, policy))
     {
         return status_for_nonfinite(policy);
@@ -875,11 +872,7 @@ data_query_result_t<value_range_t> Data_source::query_v_range(
     const Time_order order     = time_order(lod);
     if (order == Time_order::UNKNOWN || order == Time_order::UNORDERED) {
         if (!scan_value_range(
-                snapshot_result.snapshot,
-                *query.access,
-                query,
-                range,
-                has_value))
+                snapshot_result.snapshot, *query.access, query, range, has_value))
         {
             result.status = Data_query_status::FAILED;
             return result;
@@ -927,11 +920,7 @@ data_query_result_t<value_range_t> Data_source::query_v_range(
         }
 
         if (!include_sample_range(
-                range,
-                has_value,
-                *query.access,
-                sample,
-                query.nonfinite_policy))
+                range, has_value, *query.access, sample, query.nonfinite_policy))
         {
             result.status = Data_query_status::FAILED;
             return result;

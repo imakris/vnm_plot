@@ -248,8 +248,8 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
         VNM_PLOT_PROFILE_SCOPE(request.profiler, "process_view.try_snapshot");
         snapshot_result_t snapshot_result;
         if (snapshot_cache.cached_snapshot_frame_id == request.frame_id &&
-            snapshot_cache.cached_snapshot_level == level &&
-            snapshot_cache.cached_snapshot_source == &data_source &&
+            snapshot_cache.cached_snapshot_level    == level            &&
+            snapshot_cache.cached_snapshot_source   == &data_source     &&
             snapshot_cache.cached_snapshot)
         {
             snapshot_result.snapshot = snapshot_cache.cached_snapshot;
@@ -329,19 +329,19 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
         // reusing it under a moved origin would draw at the wrong x positions
         // because set_common_uniforms feeds the new view_origin_ns regardless.
         const bool identity_ok =
-            (state.cached_data_identity != nullptr) &&
-            (state.cached_data_identity == current_identity) &&
-            request.has_uploaded_vbo &&
-            (state.last_count > 0) &&
-            state.has_last_lod_level &&
-            (state.last_lod_level == level) &&
-            (state.last_access_key == access_key) &&
-            (state.last_t_min == request.t_min_ns) &&
-            (state.last_t_max == request.t_max_ns) &&
-            (state.last_width_px == request.width_px) &&
+            (state.cached_data_identity != nullptr)                             &&
+            (state.cached_data_identity == current_identity)                    &&
+            request.has_uploaded_vbo                                            &&
+            (state.last_count > 0)                                              &&
+            state.has_last_lod_level                                            &&
+            (state.last_lod_level == level)                                     &&
+            (state.last_access_key == access_key)                               &&
+            (state.last_t_min == request.t_min_ns)                              &&
+            (state.last_t_max == request.t_max_ns)                              &&
+            (state.last_width_px == request.width_px)                           &&
             (state.last_empty_window_behavior == request.empty_window_behavior) &&
-            (state.last_nonfinite_policy == request.nonfinite_policy) &&
-            (state.last_interpolation == request.interpolation) &&
+            (state.last_nonfinite_policy == request.nonfinite_policy)           &&
+            (state.last_interpolation == request.interpolation)                 &&
             (state.uploaded_t_origin_ns == request.t_origin_ns);
         if (!identity_ok) {
             return false;
@@ -363,20 +363,20 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
         bool              hold_last_forward = false;
 
         const std::uint64_t current_seq = data_source.current_sequence(applied_level);
-        if (current_seq != 0 &&
-            current_seq == state.last_sequence &&
-            applied_level == state.last_lod_level &&
-            request.has_uploaded_vbo &&
-            state.last_count > 0 &&
-            state.cached_data_identity == data_source.identity() &&
-            state.last_access_key == access_key &&
-            state.last_t_min == request.t_min_ns &&
-            state.last_t_max == request.t_max_ns &&
-            state.last_width_px == request.width_px &&
+        if (current_seq                      != 0                             &&
+            current_seq                      == state.last_sequence           &&
+            applied_level                    == state.last_lod_level          &&
+            request.has_uploaded_vbo                                          &&
+            state.last_count                 >  0                             &&
+            state.cached_data_identity       == data_source.identity()        &&
+            state.last_access_key            == access_key                    &&
+            state.last_t_min                 == request.t_min_ns              &&
+            state.last_t_max                 == request.t_max_ns              &&
+            state.last_width_px              == request.width_px              &&
             state.last_empty_window_behavior == request.empty_window_behavior &&
-            state.last_nonfinite_policy == request.nonfinite_policy &&
-            state.last_interpolation == request.interpolation &&
-            state.uploaded_t_origin_ns == request.t_origin_ns)
+            state.last_nonfinite_policy      == request.nonfinite_policy      &&
+            state.last_interpolation         == request.interpolation         &&
+            state.uploaded_t_origin_ns       == request.t_origin_ns)
         {
             if (request.snapshot_requirement ==
                 Snapshot_requirement::Frame_snapshot_required)
@@ -447,7 +447,7 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
                     direct_time_window_empty = true;
                 }
                 else
-                if (first < snapshot.count &&
+                if (first          <  snapshot.count               &&
                     checked_size_add(first, count, last_exclusive) &&
                     last_exclusive <= snapshot.count)
                 {
@@ -488,16 +488,14 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
                             else {
                                 const std::int64_t first_ts_ns =
                                     get_timestamp(first_sample);
-                                if (first_ts_ns >= request.t_min_ns &&
-                                    direct_first_idx > 0)
+                                if (first_ts_ns      >= request.t_min_ns &&
+                                    direct_first_idx >  0)
                                 {
                                     --direct_first_idx;
                                 }
                                 std::size_t padded_last = direct_last_idx;
                                 if (checked_size_add(
-                                        direct_last_idx,
-                                        2u,
-                                        padded_last))
+                                        direct_last_idx, 2u, padded_last))
                                 {
                                     direct_last_idx =
                                         std::min(padded_last, snapshot.count);
@@ -589,10 +587,10 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
             }
             else {
                 const bool need_monotonicity_scan =
-                    state.last_timestamp_order_sequence != snapshot.sequence ||
-                    state.last_timestamp_order_identity != current_identity ||
-                    state.last_timestamp_order_access_key != access_key ||
-                    state.last_timestamp_source_order != source_order;
+                    state.last_timestamp_order_sequence   != snapshot.sequence ||
+                    state.last_timestamp_order_identity   != current_identity  ||
+                    state.last_timestamp_order_access_key != access_key        ||
+                    state.last_timestamp_source_order     != source_order;
                 if (need_monotonicity_scan) {
                     bool is_monotonic = true;
                     state.last_timestamp_order_scan_performed = true;
@@ -701,12 +699,8 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
                 std::size_t hold_source_index = 0;
                 bool        hold_failed       = false;
                 if (select_hold_source_index(
-                        snapshot,
-                        access_view,
-                        request.nonfinite_policy,
-                        snapshot.count - 1u,
-                        hold_source_index,
-                        hold_failed))
+                        snapshot, access_view, request.nonfinite_policy,
+                        snapshot.count - 1u, hold_source_index, hold_failed))
                 {
                     first_idx         = hold_source_index;
                     last_idx          = hold_source_index + 1u;
@@ -739,13 +733,13 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
             hold_last_forward = true;
         }
 
-        if (request.interpolation == Series_interpolation::STEP_AFTER &&
+        if (request.interpolation    == Series_interpolation::STEP_AFTER &&
             request.empty_window_behavior ==
-                Empty_window_behavior::HOLD_LAST_FORWARD &&
-            request.nonfinite_policy == Nonfinite_sample_policy::SKIP &&
-            !have_direct_time_window &&
-            timestamps_monotonic &&
-            first_idx < last_idx)
+                Empty_window_behavior::HOLD_LAST_FORWARD                 &&
+            request.nonfinite_policy == Nonfinite_sample_policy::SKIP    &&
+            !have_direct_time_window                                     &&
+            timestamps_monotonic                                         &&
+            first_idx                <  last_idx)
         {
             bool has_drawable_sample_in_requested_window = false;
             bool failed_sample_in_requested_window       = false;
@@ -783,12 +777,7 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
                 std::size_t hold_source_index = 0;
                 bool        hold_failed       = false;
                 if (select_hold_source_index(
-                        snapshot,
-                        access_view,
-                        request.nonfinite_policy,
-                        first_idx,
-                        hold_source_index,
-                        hold_failed))
+                        snapshot, access_view, request.nonfinite_policy, first_idx, hold_source_index, hold_failed))
                 {
                     if (has_drawable_sample_in_requested_window) {
                         first_idx = std::min(first_idx, hold_source_index);
@@ -819,19 +808,14 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
             hold_last_forward);
         if (drawable_window.valid &&
             drawable_window.gpu_count == 0 &&
-            hold_last_forward &&
-            request.nonfinite_policy == Nonfinite_sample_policy::SKIP &&
-            last_idx > 0)
+            hold_last_forward              &&
+            request.nonfinite_policy  == Nonfinite_sample_policy::SKIP &&
+            last_idx                  >  0)
         {
             std::size_t hold_source_index = 0;
             bool        hold_failed       = false;
             if (select_hold_source_index(
-                    snapshot,
-                    access_view,
-                    request.nonfinite_policy,
-                    last_idx - 1u,
-                    hold_source_index,
-                    hold_failed))
+                    snapshot, access_view, request.nonfinite_policy, last_idx - 1u, hold_source_index, hold_failed))
             {
                 first_idx       = hold_source_index;
                 last_idx        = hold_source_index + 1u;
@@ -855,9 +839,7 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
         const std::size_t source_count  = last_idx - first_idx;
         std::size_t       count_for_lod = 0;
         if (!checked_size_add(
-                source_count,
-                hold_last_forward ? 1u : 0u,
-                count_for_lod))
+                source_count, hold_last_forward ? 1u : 0u, count_for_lod))
         {
             break;
         }
@@ -879,7 +861,7 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
         }
 
         const bool lod_switched =
-            state.has_last_lod_level &&
+            state.has_last_lod_level                             &&
             state.cached_data_identity == data_source.identity() &&
             state.last_lod_level != applied_level;
 

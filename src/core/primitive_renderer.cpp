@@ -234,9 +234,7 @@ bool Primitive_renderer::rhi_ensure_rect_pipeline(
     QRhiRenderPassDescriptor* rpd = rt->renderPassDescriptor();
     const int samples = rt->sampleCount();
 
-    if (rhi_state.rect_pipeline
-        && (rhi_state.rect_pipeline_rpd != rpd
-            || rhi_state.rect_pipeline_samples != samples))
+    if (rhi_state.rect_pipeline && (rhi_state.rect_pipeline_rpd != rpd || rhi_state.rect_pipeline_samples != samples))
     {
         rhi_state.rect_pipeline.reset();
     }
@@ -281,9 +279,7 @@ bool Primitive_renderer::rhi_ensure_grid_pipeline(
     QRhiRenderPassDescriptor* rpd = rt->renderPassDescriptor();
     const int samples = rt->sampleCount();
 
-    if (rhi_state.grid_pipeline
-        && (rhi_state.grid_pipeline_rpd != rpd
-            || rhi_state.grid_pipeline_samples != samples))
+    if (rhi_state.grid_pipeline && (rhi_state.grid_pipeline_rpd != rpd || rhi_state.grid_pipeline_samples != samples))
     {
         rhi_state.grid_pipeline.reset();
     }
@@ -408,8 +404,7 @@ void Primitive_renderer::flush_rects(const frame_context_t& ctx, const glm::mat4
         quint32     upload_bytes   = 0;
         quint32     instance_count = 0;
         if (!detail::qrhi_byte_size(
-                m_cpu_buffer.size(), sizeof(rect_vertex_t),
-                bytes_needed, upload_bytes) ||
+                m_cpu_buffer.size(), sizeof(rect_vertex_t), bytes_needed, upload_bytes) ||
             !detail::to_qrhi_count(m_cpu_buffer.size(), instance_count))
         {
             m_cpu_buffer.clear();
@@ -462,9 +457,7 @@ void Primitive_renderer::flush_rects(const frame_context_t& ctx, const glm::mat4
         }
         if (!call.srb || call.srb_last_ubo != call.ubo.get()) {
             if (!detail::rebuild_single_ubo_srb(
-                    rhi, call.srb, call.ubo.get(),
-                    k_rect_ubo_bytes,
-                    QRhiShaderResourceBinding::VertexStage))
+                    rhi, call.srb, call.ubo.get(), k_rect_ubo_bytes, QRhiShaderResourceBinding::VertexStage))
             {
                 m_cpu_buffer.clear();
                 m_rhi_state->rect_used--;
@@ -546,10 +539,10 @@ void Primitive_renderer::draw_grid_shader(
             int y = 0;
             int w = 0;
             int h = 0;
-            if (!to_int_rounded(origin.x, x) ||
-                !to_int_rounded(origin.y, y) ||
-                !to_positive_int(size.x, w) ||
-                !to_positive_int(size.y, h))
+            if (!to_int_rounded(origin.x, x)  ||
+                !to_int_rounded(origin.y, y)  ||
+                !to_positive_int(size.x,   w) ||
+                !to_positive_int(size.y,   h))
             {
                 return;
             }
@@ -576,9 +569,7 @@ void Primitive_renderer::draw_grid_shader(
         }
         if (!call.srb || call.srb_last_ubo != call.ubo.get()) {
             if (!detail::rebuild_single_ubo_srb(
-                    rhi, call.srb, call.ubo.get(),
-                    k_grid_ubo_bytes,
-                    QRhiShaderResourceBinding::FragmentStage))
+                    rhi, call.srb, call.ubo.get(), k_grid_ubo_bytes, QRhiShaderResourceBinding::FragmentStage))
             {
                 m_rhi_state->grid_used--;
                 return;

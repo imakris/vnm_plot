@@ -72,7 +72,7 @@ grid_layer_params_t build_time_grid_layers(
     const double px_per_unit = width_px / range;
     const auto   steps       = detail::build_time_steps_covering(range);
     int          idx         = std::max(0, detail::find_time_step_start_index(steps, range));
-    while (idx + 1 < static_cast<int>(steps.size()) &&
+    while (idx + 1                  < static_cast<int>(steps.size()) &&
            steps[idx] * px_per_unit < cell_span_min)
     {
         ++idx;

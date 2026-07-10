@@ -560,8 +560,8 @@ void Plot_widget::set_time_axis(Plot_time_axis* axis)
             if (!m_time_axis->any_view_bound_initialized() && cfg.t_max > cfg.t_min) {
                 m_time_axis->set_t_range(cfg.t_min, cfg.t_max);
             }
-            if (!m_time_axis->any_available_bound_initialized()
-                && cfg.t_available_max > cfg.t_available_min)
+            if (!m_time_axis->any_available_bound_initialized() &&
+                cfg.t_available_max > cfg.t_available_min)
             {
                 m_time_axis->set_available_t_range(
                     cfg.t_available_min, cfg.t_available_max);

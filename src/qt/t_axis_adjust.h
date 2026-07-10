@@ -560,12 +560,12 @@ private:
         bool   t_available_max_initialized)
     {
         const bool changed =
-            m_t_min != t_min_ns ||
-            m_t_max != t_max_ns ||
-            m_t_available_min != t_available_min_ns ||
-            m_t_available_max != t_available_max_ns ||
-            m_t_min_initialized != t_min_initialized ||
-            m_t_max_initialized != t_max_initialized ||
+            m_t_min                       != t_min_ns                    ||
+            m_t_max                       != t_max_ns                    ||
+            m_t_available_min             != t_available_min_ns          ||
+            m_t_available_max             != t_available_max_ns          ||
+            m_t_min_initialized           != t_min_initialized           ||
+            m_t_max_initialized           != t_max_initialized           ||
             m_t_available_min_initialized != t_available_min_initialized ||
             m_t_available_max_initialized != t_available_max_initialized;
 

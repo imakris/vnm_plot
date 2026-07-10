@@ -254,7 +254,7 @@ bool validate_cached_glyph(const msdf_glyph_t& g)
         uv_in_range(g.uv_left) &&
         uv_in_range(g.uv_bottom) &&
         uv_in_range(g.uv_right) &&
-        uv_in_range(g.uv_top) &&
+        uv_in_range(g.uv_top)   &&
         g.uv_right >= g.uv_left &&
         g.uv_bottom >= g.uv_top;
 }
@@ -345,17 +345,14 @@ void add_text_to_vectors(
     std::size_t new_vertex_count   = 0;
     quint32     checked_qrhi_value = 0;
     if (!detail::checked_size_product(
-            vertices.size(), k_text_vertex_float_count, added_float_count) ||
-        !detail::checked_size_add(vertex_data.size(), added_float_count, new_float_count) ||
-        !detail::checked_size_add(index_data.size(), indices.size(), new_index_count) ||
+            vertices.size(), k_text_vertex_float_count, added_float_count)                     ||
+        !detail::checked_size_add(vertex_data.size(), added_float_count, new_float_count)      ||
+        !detail::checked_size_add(index_data.size(), indices.size(), new_index_count)          ||
         !detail::checked_size_add(
-            vertex_data.size() / k_text_vertex_float_count,
-            vertices.size(),
-            new_vertex_count) ||
-        !detail::to_qrhi_count(new_vertex_count, checked_qrhi_value) ||
-        !detail::qrhi_byte_size(new_float_count, sizeof(float), checked_qrhi_value) ||
-        !detail::qrhi_byte_size(
-            new_index_count, sizeof(std::uint32_t), checked_qrhi_value))
+            vertex_data.size() / k_text_vertex_float_count, vertices.size(), new_vertex_count) ||
+        !detail::to_qrhi_count(new_vertex_count, checked_qrhi_value)                           ||
+        !detail::qrhi_byte_size(new_float_count, sizeof(float), checked_qrhi_value)            ||
+        !detail::qrhi_byte_size( new_index_count, sizeof(std::uint32_t), checked_qrhi_value))
     {
         return;
     }
@@ -1156,7 +1153,7 @@ void Font_renderer::rhi_queue_draw(
 
     const std::size_t vertex_start_float_count =
         m_impl->m_rhi_frame_vertex_data.size();
-    if (vertex_start_float_count % k_text_vertex_float_count != 0u ||
+    if (vertex_start_float_count % k_text_vertex_float_count         != 0u ||
         m_impl->m_rhi_vertex_data.size() % k_text_vertex_float_count != 0u)
     {
         m_impl->m_rhi_vertex_data.clear();
@@ -1167,10 +1164,9 @@ void Font_renderer::rhi_queue_draw(
     quint32 index_start = 0;
     quint32 base_vertex = 0;
     quint32 index_count = 0;
-    if (!detail::to_qrhi_count(
-            m_impl->m_rhi_frame_index_data.size(), index_start) ||
+    if (!detail::to_qrhi_count( m_impl->m_rhi_frame_index_data.size(), index_start) ||
         !detail::to_qrhi_count(
-            vertex_start_float_count / k_text_vertex_float_count, base_vertex) ||
+            vertex_start_float_count / k_text_vertex_float_count, base_vertex)      ||
         !detail::to_qrhi_count(m_impl->m_rhi_index_data.size(), index_count))
     {
         m_impl->m_rhi_vertex_data.clear();
@@ -1184,21 +1180,16 @@ void Font_renderer::rhi_queue_draw(
     quint32     checked_qrhi_bytes     = 0;
     if (!detail::checked_size_add(
             m_impl->m_rhi_frame_vertex_data.size(),
-            m_impl->m_rhi_vertex_data.size(),
-            new_vertex_float_count) ||
+            m_impl->m_rhi_vertex_data.size(), new_vertex_float_count)                          ||
         !detail::checked_size_add(
             m_impl->m_rhi_frame_index_data.size(),
-            m_impl->m_rhi_index_data.size(),
-            new_index_count) ||
+            m_impl->m_rhi_index_data.size(), new_index_count)                                  ||
         !detail::checked_size_add(
             vertex_start_float_count / k_text_vertex_float_count,
-            m_impl->m_rhi_vertex_data.size() / k_text_vertex_float_count,
-            queued_vertex_count) ||
-        !detail::to_qrhi_count(queued_vertex_count, checked_qrhi_bytes) ||
-        !detail::qrhi_byte_size(
-            new_vertex_float_count, sizeof(float), checked_qrhi_bytes) ||
-        !detail::qrhi_byte_size(
-            new_index_count, sizeof(std::uint32_t), checked_qrhi_bytes))
+            m_impl->m_rhi_vertex_data.size() / k_text_vertex_float_count, queued_vertex_count) ||
+        !detail::to_qrhi_count(queued_vertex_count, checked_qrhi_bytes)                        ||
+        !detail::qrhi_byte_size( new_vertex_float_count, sizeof(float), checked_qrhi_bytes)    ||
+        !detail::qrhi_byte_size( new_index_count, sizeof(std::uint32_t), checked_qrhi_bytes))
     {
         m_impl->m_rhi_vertex_data.clear();
         m_impl->m_rhi_index_data.clear();
@@ -1232,7 +1223,7 @@ void Font_renderer::rhi_queue_draw(
 
     const auto& cached = *m_impl->m_font_cache;
     if (!rhi_state.atlas_texture ||
-        rhi_state.atlas_size != cached.atlas.atlas_size ||
+        rhi_state.atlas_size           != cached.atlas.atlas_size ||
         rhi_state.uploaded_cache_epoch != cached.cache_epoch)
     {
         rhi_state.atlas_texture.reset(rhi->newTexture(
@@ -1294,7 +1285,7 @@ void Font_renderer::rhi_queue_draw(
         }
 
         if (!call.srb ||
-            call.srb_last_ubo != call.ubo.get() ||
+            call.srb_last_ubo     != call.ubo.get()                ||
             call.srb_last_texture != rhi_state.atlas_texture.get() ||
             call.srb_last_sampler != rhi_state.sampler.get())
         {
@@ -1493,9 +1484,8 @@ void Font_renderer::rhi_queue_draw(
 void Font_renderer::rhi_finalize_frame(const frame_context_t& ctx)
 {
     auto& rhi_state = m_impl->m_rhi;
-    if (!ctx.rhi || !ctx.rhi_updates ||
-        m_impl->m_rhi_frame_vertex_data.empty() ||
-        m_impl->m_rhi_frame_index_data.empty())
+    if (!ctx.rhi                                || !ctx.rhi_updates ||
+        m_impl->m_rhi_frame_vertex_data.empty() || m_impl->m_rhi_frame_index_data.empty())
     {
         return;
     }
@@ -1508,11 +1498,11 @@ void Font_renderer::rhi_finalize_frame(const frame_context_t& ctx)
     quint32     qrhi_vertex_bytes = 0;
     quint32     qrhi_index_bytes  = 0;
     if (!detail::qrhi_byte_size(
-            m_impl->m_rhi_frame_vertex_data.size(), sizeof(float),
-            vertex_bytes, qrhi_vertex_bytes) ||
+            m_impl->m_rhi_frame_vertex_data.size(),
+            sizeof(float), vertex_bytes, qrhi_vertex_bytes) ||
         !detail::qrhi_byte_size(
-            m_impl->m_rhi_frame_index_data.size(), sizeof(std::uint32_t),
-            index_bytes, qrhi_index_bytes))
+            m_impl->m_rhi_frame_index_data.size(),
+            sizeof(std::uint32_t), index_bytes, qrhi_index_bytes))
     {
         rhi_reset_frame();
         return;
@@ -1582,8 +1572,8 @@ void Font_renderer::rhi_record_frame(const frame_context_t& ctx)
     QRhiCommandBuffer::VertexInput vertex_input{rhi_state.vbo.get(), 0u};
     const auto record_pass = [&](rhi_text_pass_t pass) {
         for (const auto& op : rhi_state.ops) {
-            if (op.pass != pass ||
-                op.call_index >= rhi_state.calls.size() ||
+            if (op.pass        != pass                   ||
+                op.call_index  >= rhi_state.calls.size() ||
                 op.index_count == 0)
             {
                 continue;

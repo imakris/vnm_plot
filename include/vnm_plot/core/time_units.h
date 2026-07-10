@@ -29,13 +29,13 @@ inline std::optional<std::int64_t> checked_add_ns(
     std::int64_t   value_ns,
     std::int64_t   delta_ns) noexcept
 {
-    if (delta_ns > 0
-        && value_ns > std::numeric_limits<std::int64_t>::max() - delta_ns)
+    if (delta_ns > 0 &&
+        value_ns > std::numeric_limits<std::int64_t>::max() - delta_ns)
     {
         return std::nullopt;
     }
-    if (delta_ns < 0
-        && value_ns < std::numeric_limits<std::int64_t>::min() - delta_ns)
+    if (delta_ns < 0 &&
+        value_ns < std::numeric_limits<std::int64_t>::min() - delta_ns)
     {
         return std::nullopt;
     }
@@ -46,13 +46,13 @@ inline std::optional<std::int64_t> checked_sub_ns(
     std::int64_t   value_ns,
     std::int64_t   delta_ns) noexcept
 {
-    if (delta_ns > 0
-        && value_ns < std::numeric_limits<std::int64_t>::min() + delta_ns)
+    if (delta_ns > 0 &&
+        value_ns < std::numeric_limits<std::int64_t>::min() + delta_ns)
     {
         return std::nullopt;
     }
-    if (delta_ns < 0
-        && value_ns > std::numeric_limits<std::int64_t>::max() + delta_ns)
+    if (delta_ns < 0 &&
+        value_ns > std::numeric_limits<std::int64_t>::max() + delta_ns)
     {
         return std::nullopt;
     }
