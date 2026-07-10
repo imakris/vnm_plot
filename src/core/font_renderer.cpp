@@ -243,7 +243,7 @@ bool validate_cached_glyph(const msdf_glyph_t& g)
     // Geometry is stored in scale-independent font units (Y-up bounds); plane
     // rectangles are derived per draw size via scaled_glyph(). Invisible
     // advance-only glyphs (e.g. U+0020) carry zero bounds, so equality is valid.
-    return
+    return (
         std::isfinite(g.advance_units)              &&
         std::isfinite(g.bounds_left_units)          &&
         std::isfinite(g.bounds_bottom_units)        &&
@@ -256,7 +256,7 @@ bool validate_cached_glyph(const msdf_glyph_t& g)
         uv_in_range(g.uv_right)                     &&
         uv_in_range(g.uv_top)                       &&
         g.uv_right >= g.uv_left                     &&
-        g.uv_bottom >= g.uv_top;
+        g.uv_bottom >= g.uv_top);
 }
 
 // draw_scale matching the library's draw_scaling_for(): draw_pixel_height /

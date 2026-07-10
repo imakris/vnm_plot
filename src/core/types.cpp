@@ -682,8 +682,8 @@ validated_time_window_t validated_time_window(
 bool selected_by_time_window(const validated_time_window_t& window, std::size_t index)
 {
     return (window.has_match &&
-        index >= window.match_first &&
-        index < window.match_last_exclusive) ||
+        index >= window.match_first                    &&
+        index < window.match_last_exclusive)           ||
         (window.has_held && index == window.held_index);
 }
 

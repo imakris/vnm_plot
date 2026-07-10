@@ -1182,7 +1182,7 @@ struct layout_cache_key_t
 
     [[nodiscard]] bool operator==(const layout_cache_key_t& other) const noexcept
     {
-        return
+        const bool layout_fields_match =
             v0                           == other.v0                           &&
             v1                           == other.v1                           &&
             t0                           == other.t0                           &&
@@ -1192,10 +1192,13 @@ struct layout_cache_key_t
             adjusted_preview_height      == other.adjusted_preview_height      &&
             adjusted_font_size_in_pixels == other.adjusted_font_size_in_pixels &&
             vbar_width_pixels            == other.vbar_width_pixels            &&
-            font_metrics_key             == other.font_metrics_key             &&
-            config_revision              == other.config_revision              &&
-            format_timestamp_revision    == other.format_timestamp_revision    &&
-            format_value_revision        == other.format_value_revision;
+            font_metrics_key             == other.font_metrics_key;
+
+        return
+            layout_fields_match                                          &&
+            config_revision           == other.config_revision           &&
+            format_timestamp_revision == other.format_timestamp_revision &&
+            format_value_revision     == other.format_value_revision;
     }
 
 };

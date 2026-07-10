@@ -322,13 +322,13 @@ void Chrome_renderer::render_preview_overlay(
     const glm::vec4     separator_color = palette.separator;
 
     // CPU calculations
-    const double x0 = static_cast<double>(
-        static_cast<long double>(ctx.win_w)                 *
-        span_ns_as_long_double(ctx.t_available_min, ctx.t0) /
-        t_avail_span                                      );
+    const long double scaled_left_span =
+        static_cast<long double>(ctx.win_w) *
+        span_ns_as_long_double(ctx.t_available_min, ctx.t0);
+    const double x0 = static_cast<double>(scaled_left_span / t_avail_span);
     const double x1 = static_cast<double>(
-         static_cast<long double>(ctx.win_w) *
-        (1.0L - span_ns_as_long_double(ctx.t1, ctx.t_available_max) / t_avail_span));
+        (static_cast<long double>(ctx.win_w) *
+            (1.0L - span_ns_as_long_double(ctx.t1, ctx.t_available_max) / t_avail_span)));
 
     const double dd    = x1 - x0;
     const double win_w = ctx.win_w;

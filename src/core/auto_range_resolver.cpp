@@ -209,7 +209,7 @@ bool same_cache_shape(
         make_erased_access_policy_view(access);
     const access_policy_cache_key_t access_key =
         make_access_policy_cache_key(&access, access_view);
-    return
+    return (
         entry.valid                                                      &&
         entry.source_identity == source.identity()                       &&
         entry.access_identity == &access                                 &&
@@ -220,11 +220,11 @@ bool same_cache_shape(
         entry.semantics_conservative == query.semantics_key.conservative &&
         entry.lod_level == lod_level                                     &&
         entry.t_min_ns == query.time_window.min_ns                       &&
-        entry.t_max_ns == query.time_window.max_ns                       &&
-        entry.interpolation == query.interpolation                       &&
+        entry.t_max_ns              == query.time_window.max_ns          &&
+        entry.interpolation         == query.interpolation               &&
         entry.empty_window_behavior == query.empty_window_behavior       &&
-        entry.nonfinite_policy == query.nonfinite_policy                 &&
-        entry.sequence == sequence;
+        entry.nonfinite_policy      == query.nonfinite_policy            &&
+        entry.sequence              == sequence);
 }
 
 auto_range_cache_entry_t make_cache_entry(

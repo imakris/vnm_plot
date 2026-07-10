@@ -423,7 +423,7 @@ struct Series_renderer::rhi_state_t
 
         bool operator==(const qrhi_layer_data_key_t& o) const noexcept
         {
-            return
+            const bool frame_fields_match =
                 lod_level            == o.lod_level            &&
                 sample_sequence      == o.sample_sequence      &&
                 t_origin_ns          == o.t_origin_ns          &&
@@ -433,11 +433,14 @@ struct Series_renderer::rhi_state_t
                 gpu_count            == o.gpu_count            &&
                 hold_last_forward    == o.hold_last_forward    &&
                 hold_timestamp_ns    == o.hold_timestamp_ns    &&
-                interpolation        == o.interpolation        &&
-                nonfinite_policy     == o.nonfinite_policy     &&
-                drawable_span_count  == o.drawable_span_count  &&
-                drawable_spans_hash  == o.drawable_spans_hash  &&
-                access_key           == o.access_key;
+                interpolation        == o.interpolation;
+
+            return
+                frame_fields_match                           &&
+                nonfinite_policy    == o.nonfinite_policy    &&
+                drawable_span_count == o.drawable_span_count &&
+                drawable_spans_hash == o.drawable_spans_hash &&
+                access_key          == o.access_key;
         }
     };
 

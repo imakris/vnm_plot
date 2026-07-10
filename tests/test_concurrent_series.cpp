@@ -339,7 +339,7 @@ bool test_vector_source_snapshots_progress_while_set_data_is_active()
         const auto read_deadline =
             std::chrono::steady_clock::now() + std::chrono::milliseconds(2000);
         while (active_reads.load(std::memory_order_acquire) < required_active_reads &&
-            std::chrono::steady_clock::now()             < read_deadline)
+            std::chrono::steady_clock::now()                < read_deadline)
         {
             std::this_thread::yield();
         }

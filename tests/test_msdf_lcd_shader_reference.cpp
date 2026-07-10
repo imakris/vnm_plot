@@ -298,10 +298,14 @@ std::string subpixel_step_statement()
 std::string lcd_enabled_statement()
 {
     return
-        "bool lcd_enabled =\n" "        (lcd_horizontal || lcd_vertical) &&\n" "        u.shadow_radius <= 0.0 &&\n" "        u.color.a >= " +
-        std::string(ref::k_lcd_opaque_alpha_cutoff_glsl)                                                                                     +
-        " &&\n" "        u.background_color.a >= "                                                                                           +
-        std::string(ref::k_lcd_opaque_alpha_cutoff_glsl)                                                                                     +
+        std::string("bool lcd_enabled =\n")              +
+        "        (lcd_horizontal || lcd_vertical) &&\n"  +
+        "        u.shadow_radius <= 0.0 &&\n"            +
+        "        u.color.a >= "                          +
+        std::string(ref::k_lcd_opaque_alpha_cutoff_glsl) +
+        " &&\n"                                          +
+        "        u.background_color.a >= "               +
+        std::string(ref::k_lcd_opaque_alpha_cutoff_glsl) +
         ";";
 }
 
