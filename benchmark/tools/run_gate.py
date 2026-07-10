@@ -506,6 +506,11 @@ class Gate:
                 if len(artifacts) != 1:
                     validation["gate_error"] = "missing-or-ambiguous-raw-artifact"
                     continue
+                invocations = list(path.parent.glob("smoke_invocation.json"))
+                if len(invocations) != 1:
+                    validation["gate_error"] = "missing-or-ambiguous-smoke-invocation"
+                    continue
+                invocation = json.loads(invocations[0].read_text(encoding="utf-8"))
                 if validation.get("artifact") != artifacts[0].name or validation.get(
                     "artifact_sha256"
                 ) != sha256_file(artifacts[0]):
@@ -561,12 +566,18 @@ class Gate:
                         }
                     )
                 environment = preflight.get("environment", {})
-                expected.update(renderer_environment_fingerprint(environment))
                 mismatches = {
                     field: {"expected": value, "actual": metadata.get(field)}
                     for field, value in expected.items()
                     if metadata.get(field) != value
                 }
+                mismatches.update(
+                    renderer_environment_mismatches(
+                        environment,
+                        invocation.get("renderer_environment", {}),
+                        metadata,
+                    )
+                )
                 if mismatches:
                     validation["gate_error"] = "execution-fingerprint-mismatch"
                     validation["fingerprint_mismatches"] = mismatches
@@ -663,6 +674,28 @@ def renderer_environment_fingerprint(environment: dict[str, Any]) -> dict[str, s
         f"env.{name}": str(environment.get(name, "") or "unset")
         for name in RENDERER_ENVIRONMENT_FIELDS
     }
+
+
+def renderer_environment_mismatches(
+    preflight: dict[str, Any],
+    invocation: dict[str, Any],
+    metadata: dict[str, Any],
+) -> dict[str, dict[str, Any]]:
+    expected = renderer_environment_fingerprint(preflight)
+    invoked = renderer_environment_fingerprint(invocation)
+    mismatches: dict[str, dict[str, Any]] = {}
+    for field, value in expected.items():
+        if invoked[field] != value:
+            mismatches[f"invocation.{field}"] = {
+                "expected": value,
+                "actual": invoked[field],
+            }
+        if metadata.get(field) != value:
+            mismatches[f"raw.{field}"] = {
+                "expected": value,
+                "actual": metadata.get(field),
+            }
+    return mismatches
 
 
 def parse_args() -> argparse.Namespace:

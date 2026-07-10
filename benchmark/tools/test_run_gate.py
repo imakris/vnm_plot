@@ -66,6 +66,35 @@ class GateEvidenceTests(unittest.TestCase):
             },
         )
 
+    def test_renderer_environment_three_way_match_is_clean(self) -> None:
+        preflight = {"GALLIUM_DRIVER": "softpipe", "LP_NUM_THREADS": "1"}
+        metadata = {
+            "env.GALLIUM_DRIVER": "softpipe",
+            "env.LP_NUM_THREADS": "1",
+        }
+        self.assertEqual(
+            run_gate.renderer_environment_mismatches(
+                preflight,
+                dict(preflight),
+                metadata,
+            ),
+            {},
+        )
+
+    def test_renderer_environment_three_way_tamper_is_rejected(self) -> None:
+        mismatches = run_gate.renderer_environment_mismatches(
+            {"GALLIUM_DRIVER": "softpipe", "LP_NUM_THREADS": "1"},
+            {"GALLIUM_DRIVER": "llvmpipe", "LP_NUM_THREADS": "1"},
+            {
+                "env.GALLIUM_DRIVER": "softpipe",
+                "env.LP_NUM_THREADS": "8",
+            },
+        )
+        self.assertEqual(
+            set(mismatches),
+            {"invocation.env.GALLIUM_DRIVER", "raw.env.LP_NUM_THREADS"},
+        )
+
     def test_msvc_initialized_environment_must_target_x64(self) -> None:
         common = {
             "INCLUDE": "include",
