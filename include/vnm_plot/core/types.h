@@ -902,8 +902,9 @@ private:
         Payload() = default;
 
         Payload(std::vector<T> payload_data, std::uint64_t payload_sequence)
-            : data(std::move(payload_data))
-            , sequence(payload_sequence)
+        :
+            data(std::move(payload_data)),
+            sequence(payload_sequence)
         {}
 
         std::vector<T> data;
