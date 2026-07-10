@@ -104,8 +104,8 @@ bool test_vector_source_set_data_bumps_sequence()
 bool test_vector_source_constructor_data_is_published()
 {
     std::vector<sample_t> samples = {
-        {0.0, 4.0f},
-        {1.0, 5.0f},
+        { 0.0, 4.0f },
+        { 1.0, 5.0f },
     };
     plot::Vector_data_source<sample_t> source(std::move(samples));
 

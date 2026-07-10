@@ -157,7 +157,7 @@ bool test_decimal_precision_helpers_reject_invalid_scaled_values()
     TEST_ASSERT(!plot::detail::any_fractional_at_precision({nan}, 1),
         "NaN values should be rejected cleanly");
     TEST_ASSERT(!plot::detail::any_fractional_at_precision(
-            {std::numeric_limits<double>::max()},
+            { std::numeric_limits<double>::max() },
             1),
         "values whose scaled form exceeds the safe integer range should be rejected");
     TEST_ASSERT(!plot::detail::any_fractional_at_precision({1.25}, 400),
@@ -228,9 +228,9 @@ bool test_timestamp_search_rejects_null_samples()
 bool test_raw_timestamp_search_rejects_zero_stride()
 {
     std::vector<sample_t> samples = {
-        {0, 0.0f},
-        {1, 1.0f},
-        {2, 2.0f}
+        { 0, 0.0f},
+        { 1, 1.0f},
+        { 2, 2.0f}
     };
 
     int get_timestamp_calls = 0;
@@ -335,11 +335,11 @@ bool test_select_visible_sample_window_monotonic_extends_bounds()
 bool test_select_visible_sample_window_non_monotonic_scans()
 {
     std::vector<sample_t> samples = {
-        {10, 0.0f},
-        {4, 0.0f},
-        {20, 0.0f},
-        {6, 0.0f},
-        {2, 0.0f}
+        { 10, 0.0f},
+        { 4,  0.0f},
+        { 20, 0.0f},
+        { 6,  0.0f},
+        { 2,  0.0f}
     };
 
     plot::data_snapshot_t snap;
@@ -377,7 +377,7 @@ bool test_select_visible_sample_window_non_monotonic_scans()
 bool test_aggregate_visible_sample_range_includes_step_after_hold()
 {
     std::vector<sample_t> samples = {
-        {0, 2.0f},
+        { 0, 2.0f },
         {15, 8.0f}
     };
 

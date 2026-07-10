@@ -1400,7 +1400,7 @@ void Font_renderer::rhi_queue_draw(
 
         rhi_state.pipeline.reset(rhi->newGraphicsPipeline());
         rhi_state.pipeline->setShaderStages({
-            { QRhiShaderStage::Vertex,   rhi_state.vert },
+            { QRhiShaderStage::Vertex, rhi_state.vert },
             { QRhiShaderStage::Fragment, rhi_state.frag }
         });
         rhi_state.pipeline->setVertexInputLayout(vlayout);

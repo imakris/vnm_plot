@@ -116,11 +116,11 @@ bool test_explicit_orders_skip_probes()
     };
 
     const explicit_request_case_t explicit_orders[] = {
-        {plot::text_lcd_none_request(), resolved_t::NONE},
-        {plot::text_lcd_explicit_request(resolved_t::RGB), resolved_t::RGB},
-        {plot::text_lcd_explicit_request(resolved_t::BGR), resolved_t::BGR},
-        {plot::text_lcd_explicit_request(resolved_t::VRGB), resolved_t::VRGB},
-        {plot::text_lcd_explicit_request(resolved_t::VBGR), resolved_t::VBGR},
+        { plot::text_lcd_none_request(), resolved_t::NONE },
+        { plot::text_lcd_explicit_request(resolved_t::RGB), resolved_t::RGB },
+        { plot::text_lcd_explicit_request(resolved_t::BGR), resolved_t::BGR },
+        { plot::text_lcd_explicit_request(resolved_t::VRGB), resolved_t::VRGB },
+        { plot::text_lcd_explicit_request(resolved_t::VBGR), resolved_t::VBGR },
     };
 
     for (const explicit_request_case_t& item : explicit_orders) {
@@ -137,11 +137,11 @@ bool test_explicit_orders_skip_probes()
 bool test_explicit_orders_for_null_window_are_deterministic()
 {
     const explicit_request_case_t explicit_orders[] = {
-        {plot::text_lcd_none_request(), resolved_t::NONE},
-        {plot::text_lcd_explicit_request(resolved_t::RGB), resolved_t::RGB},
-        {plot::text_lcd_explicit_request(resolved_t::BGR), resolved_t::BGR},
-        {plot::text_lcd_explicit_request(resolved_t::VRGB), resolved_t::VRGB},
-        {plot::text_lcd_explicit_request(resolved_t::VBGR), resolved_t::VBGR},
+        { plot::text_lcd_none_request(), resolved_t::NONE },
+        { plot::text_lcd_explicit_request(resolved_t::RGB), resolved_t::RGB },
+        { plot::text_lcd_explicit_request(resolved_t::BGR), resolved_t::BGR },
+        { plot::text_lcd_explicit_request(resolved_t::VRGB), resolved_t::VRGB },
+        { plot::text_lcd_explicit_request(resolved_t::VBGR), resolved_t::VBGR },
     };
 
     for (const explicit_request_case_t& item : explicit_orders) {

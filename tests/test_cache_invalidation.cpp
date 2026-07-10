@@ -37,14 +37,16 @@ using plot::value_range_t;
 
 namespace {
 
-struct Test_sample {
+struct Test_sample
+{
     std::int64_t t;
     float v;
 };
 
 constexpr std::uint64_t k_stable_policy_semantics = 0x535441424C45;
 
-class Query_range_source final : public Data_source {
+class Query_range_source final : public Data_source
+{
 public:
     std::vector<Test_sample> samples;
     Data_query_status query_status = Data_query_status::UNSUPPORTED;
@@ -103,7 +105,8 @@ public:
 
 };
 
-class Snapshot_range_source final : public Data_source {
+class Snapshot_range_source final : public Data_source
+{
 public:
     std::vector<Test_sample> samples;
     std::uint64_t snapshot_sequence = 1;
@@ -135,7 +138,8 @@ public:
     }
 };
 
-class Counting_profiler final : public plot::Profiler {
+class Counting_profiler final : public plot::Profiler
+{
 public:
     void begin_scope(const char* /*name*/) override {}
     void end_scope() override {}
@@ -350,9 +354,9 @@ bool test_unsupported_query_falls_back_to_snapshot_scan()
     auto source = std::make_shared<Query_range_source>();
     source->query_status = Data_query_status::UNSUPPORTED;
     source->samples = {
-        {0, 6.0f},
-        {5, 8.0f},
-        {10, 12.0f},
+        { 0,  6.0f  },
+        { 5,  8.0f  },
+        { 10, 12.0f },
     };
 
     Plot_config config;
@@ -408,9 +412,9 @@ bool test_default_query_profiler_counts_snapshot_scan()
     auto profiler = std::make_shared<Counting_profiler>();
     auto source = std::make_shared<Snapshot_range_source>();
     source->samples = {
-        {0, 6.0f},
-        {5, 8.0f},
-        {10, 12.0f},
+        { 0,  6.0f  },
+        { 5,  8.0f  },
+        { 10, 12.0f },
     };
 
     Plot_config config;
@@ -509,9 +513,9 @@ bool test_visible_step_after_hold_forward_contributes_held_sample()
     auto source = std::make_shared<Query_range_source>();
     source->query_status = Data_query_status::UNSUPPORTED;
     source->samples = {
-        {5, -4.0f},
-        {15, 6.0f},
-        {25, 100.0f},
+        { 5,  -4.0f  },
+        { 15, 6.0f   },
+        { 25, 100.0f },
     };
 
     auto series = make_series(source);
@@ -544,9 +548,9 @@ bool test_visible_step_after_skip_fallback_keeps_earlier_drawable_held_sample()
     auto source = std::make_shared<Query_range_source>();
     source->query_status = Data_query_status::UNSUPPORTED;
     source->samples = {
-        {5, -4.0f},
-        {9, nan},
-        {15, 6.0f},
+        { 5,  -4.0f },
+        { 9,  nan   },
+        { 15, 6.0f  },
     };
 
     auto series = make_series(source);
@@ -578,9 +582,9 @@ bool test_global_value_only_access_falls_back_to_snapshot_scan()
     auto source = std::make_shared<Query_range_source>();
     source->query_status = Data_query_status::UNSUPPORTED;
     source->samples = {
-        {0, -3.0f},
-        {0, 8.0f},
-        {0, 2.0f},
+        { 0, -3.0f },
+        { 0, 8.0f  },
+        { 0, 2.0f  },
     };
 
     auto series = make_series(source);
@@ -610,8 +614,8 @@ bool test_failed_query_does_not_fall_back_to_stale_scan()
     auto source = std::make_shared<Query_range_source>();
     source->query_status = Data_query_status::FAILED;
     source->samples = {
-        {0, 1.0f},
-        {5, 2.0f},
+        { 0, 1.0f },
+        { 5, 2.0f },
     };
 
     const data_config_t cfg = make_data_config();
@@ -1083,9 +1087,9 @@ bool test_frame_range_planner_preserves_step_after_visible_scan()
     auto source = std::make_shared<Query_range_source>();
     source->query_status = Data_query_status::UNSUPPORTED;
     source->samples = {
-        {5, -3.0f},
-        {15, 8.0f},
-        {25, 100.0f},
+        { 5,  -3.0f  },
+        { 15, 8.0f   },
+        { 25, 100.0f },
     };
 
     auto series = make_series(source);

@@ -255,7 +255,7 @@ inline std::unique_ptr<QRhiGraphicsPipeline> build_alpha_blended_pipeline(
         return nullptr;
     }
     pipeline->setShaderStages({
-        { QRhiShaderStage::Vertex,   desc.vert },
+        { QRhiShaderStage::Vertex, desc.vert },
         { QRhiShaderStage::Fragment, desc.frag }
     });
     pipeline->setVertexInputLayout(desc.vlayout);

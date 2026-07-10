@@ -169,15 +169,15 @@ bool test_fp32_snap_step_resolution_at_bucket_boundaries()
         std::int64_t t_view_min_ns;
     } cases[] = {
         // 1 us bucket (span <= 1 s). End-rel <= ~1 s; ulp << 1 us.
-        { k_ns_per_second,        k_ns_per_us,     0LL },
+        { k_ns_per_second, k_ns_per_us, 0LL },
         // 1 s bucket (span <= 1 day). End-rel <= ~86400 s; ulp ~6 ms.
-        { k_ns_per_day,           k_ns_per_second, 0LL },
+        { k_ns_per_day, k_ns_per_second, 0LL },
         // 1 hour bucket (span <= 1 year). End-rel ~3.15e7 s exceeds 2^24;
         // ulp at end ~2 s vs 3600 s snap, so rounding is preserved.
-        { k_ns_per_year,          k_ns_per_hour,   0LL },
+        { k_ns_per_year, k_ns_per_hour, 0LL },
         // 1 day fallback (span > 1 year). End-rel ~3.15e9 s; ulp at end
         // ~256 s vs 86400 s snap, so rounding is still preserved.
-        { 100LL * k_ns_per_year,  k_ns_per_day,    0LL },
+        { 100LL * k_ns_per_year, k_ns_per_day, 0LL },
     };
 
     for (const auto& c : cases) {

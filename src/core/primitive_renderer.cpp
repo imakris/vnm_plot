@@ -132,11 +132,14 @@ struct Primitive_renderer::rhi_state_t
         std::size_t resource_index;
         // For RECT: number of instances (== quads) in vbo.
         // For GRID: scissor rectangle in QRhi's bottom-left coordinates.
-        union {
-            struct {
+        union
+        {
+            struct
+            {
                 quint32 instance_count;
             } rect;
-            struct {
+            struct
+            {
                 int x, y, w, h;
             } grid;
         };

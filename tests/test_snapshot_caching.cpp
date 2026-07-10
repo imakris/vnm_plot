@@ -46,13 +46,15 @@ const plot::detail::series_window_planner_state_t& planner_state(
     return *view_state.planner;
 }
 
-struct Test_sample {
+struct Test_sample
+{
     // Timestamps are int64 nanoseconds (API convention).
     std::int64_t t;
     float v;
 };
 
-class Single_level_source final : public Data_source {
+class Single_level_source final : public Data_source
+{
 public:
     std::vector<Test_sample> samples;
     int snapshot_calls = 0;
@@ -102,7 +104,8 @@ public:
     plot::Time_order time_order(std::size_t /*lod*/) const override { return order; }
 };
 
-class Two_level_source final : public Data_source {
+class Two_level_source final : public Data_source
+{
 public:
     std::vector<Test_sample> lod0;
     std::vector<Test_sample> lod1;
@@ -138,7 +141,8 @@ public:
     uint64_t current_sequence(size_t /*lod_level*/) const override { return 0; }
 };
 
-class Direct_window_source final : public Data_source {
+class Direct_window_source final : public Data_source
+{
 public:
     std::vector<Test_sample> samples;
     plot::sample_index_window_t query_window{};
@@ -467,8 +471,8 @@ bool test_direct_time_window_empty_falls_back_to_renderer_padding()
 {
     auto source = std::make_shared<Direct_window_source>();
     source->samples = {
-        {0, 1.0f},
-        {10, 2.0f},
+        { 0, 1.0f },
+        { 10, 2.0f },
     };
     source->query_status = plot::Data_query_status::EMPTY;
     source->query_sequence = source->sequence;
@@ -510,8 +514,8 @@ bool test_direct_time_window_single_match_expands_for_linear_segments()
 {
     auto source = std::make_shared<Direct_window_source>();
     source->samples = {
-        {0, 1.0f},
-        {10, 2.0f},
+        { 0, 1.0f },
+        { 10, 2.0f },
     };
     source->query_window = {1, 1};
     source->query_sequence = source->sequence;
@@ -730,7 +734,7 @@ bool test_direct_time_window_unsupported_falls_back_to_snapshot_scan()
 bool test_ascending_time_order_skips_monotonicity_scan()
 {
     auto data_source = make_single_level_source(
-        {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
+        { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 },
         plot::Time_order::ASCENDING);
 
     auto series = std::make_shared<series_data_t>();
@@ -812,7 +816,7 @@ bool test_unknown_and_unordered_time_order_run_defensive_scan()
 {
     const bool unknown_ok = run_defensive_time_order_scan_case(
         plot::Time_order::UNKNOWN,
-        {0, 1, 2, 3, 4, 5, 6, 7, 8},
+        { 0, 1, 2, 3, 4, 5, 6, 7, 8 },
         plot::detail::Timestamp_window_search::BINARY,
         true,
         "UNKNOWN");
@@ -822,7 +826,7 @@ bool test_unknown_and_unordered_time_order_run_defensive_scan()
 
     return run_defensive_time_order_scan_case(
         plot::Time_order::UNORDERED,
-        {0, 5, 2, 7, 3, 8, 4, 9},
+        { 0, 5, 2, 7, 3, 8, 4, 9 },
         plot::detail::Timestamp_window_search::LINEAR,
         false,
         "UNORDERED");
@@ -831,7 +835,7 @@ bool test_unknown_and_unordered_time_order_run_defensive_scan()
 bool test_descending_time_order_uses_linear_window_search()
 {
     auto data_source = make_single_level_source(
-        {11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0},
+        { 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0 },
         plot::Time_order::DESCENDING);
 
     auto series = std::make_shared<series_data_t>();
@@ -870,7 +874,7 @@ bool test_descending_time_order_uses_linear_window_search()
 bool test_descending_time_order_does_not_hold_oldest_sample()
 {
     auto data_source = make_single_level_source(
-        {9, 7, 5, 3, 1},
+        { 9, 7, 5, 3, 1 },
         plot::Time_order::DESCENDING);
 
     auto series = std::make_shared<series_data_t>();
@@ -910,7 +914,7 @@ bool test_descending_time_order_does_not_hold_oldest_sample()
 bool test_renderer_uses_lod_scales_metadata()
 {
     auto data_source = make_single_level_source(
-        {0, 1, 2, 3, 4, 5, 6, 7},
+        { 0, 1, 2, 3, 4, 5, 6, 7 },
         plot::Time_order::ASCENDING);
     data_source->scale_values = {0};
 

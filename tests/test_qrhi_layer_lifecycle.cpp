@@ -83,7 +83,7 @@ public:
     Test_source()
     {
         set_samples({
-            {0LL, 1.0f},
+            { 0LL, 1.0f },
             {1'000'000'000LL, 2.0f},
             {2'000'000'000LL, 3.0f},
             {3'000'000'000LL, 4.0f},
@@ -1227,10 +1227,10 @@ bool test_builtin_staging_normalizes_finite_reversed_ranges()
 
     auto source = std::make_shared<Test_source>();
     source->set_samples({
-        {0LL, 1.0f, 3.0f, 1.0f},
-        {1LL * k_second_ns, 2.0f, 4.0f, 2.0f},
-        {2LL * k_second_ns, 3.0f, 5.0f, 3.0f},
-        {3LL * k_second_ns, 4.0f, 6.0f, 4.0f}
+        { 0LL, 1.0f, 3.0f, 1.0f },
+        { 1LL * k_second_ns, 2.0f, 4.0f, 2.0f},
+        { 2LL * k_second_ns, 3.0f, 5.0f, 3.0f},
+        { 3LL * k_second_ns, 4.0f, 6.0f, 4.0f}
     });
 
     auto series = std::make_shared<plot::series_data_t>();
@@ -1301,7 +1301,7 @@ bool test_nonfinite_break_and_skip_split_drawable_spans()
     };
 
     const policy_case_t cases[] = {
-        {plot::Nonfinite_sample_policy::BREAK_SEGMENT, "break-gap", 100},
+        { plot::Nonfinite_sample_policy::BREAK_SEGMENT, "break-gap", 100 },
         {plot::Nonfinite_sample_policy::SKIP, "skip-gap", 101}
     };
 
@@ -1312,10 +1312,10 @@ bool test_nonfinite_break_and_skip_split_drawable_spans()
             std::string(test_case.layer_id), 1, 20, events, create_count);
         auto source = std::make_shared<Test_source>();
         source->set_samples({
-            {0LL, 1.0f},
-            {1LL * k_second_ns, 2.0f},
-            {2LL * k_second_ns, nan},
-            {3LL * k_second_ns, 4.0f},
+            { 0LL, 1.0f },
+            { 1LL * k_second_ns, 2.0f },
+            { 2LL * k_second_ns, nan },
+            { 3LL * k_second_ns, 4.0f },
             {4LL * k_second_ns, 5.0f}
         });
 
@@ -1425,10 +1425,10 @@ bool test_nonfinite_replace_with_zero_keeps_contiguous_span()
         "replace-zero", 1, 20, events, create_count);
     auto source = std::make_shared<Test_source>();
     source->set_samples({
-        {0LL, 1.0f},
-        {1LL * k_second_ns, 2.0f},
-        {2LL * k_second_ns, nan},
-        {3LL * k_second_ns, 4.0f},
+        { 0LL, 1.0f },
+        { 1LL * k_second_ns, 2.0f },
+        { 2LL * k_second_ns, nan },
+        { 3LL * k_second_ns, 4.0f },
         {4LL * k_second_ns, 5.0f}
     });
 
@@ -1509,9 +1509,9 @@ bool test_nonfinite_reject_window_suppresses_drawable_upload()
         "reject-window", 1, 20, events, create_count);
     auto source = std::make_shared<Test_source>();
     source->set_samples({
-        {0LL, 1.0f},
-        {1LL * k_second_ns, 2.0f},
-        {2LL * k_second_ns, nan},
+        { 0LL, 1.0f },
+        { 1LL * k_second_ns, 2.0f },
+        { 2LL * k_second_ns, nan },
         {3LL * k_second_ns, 4.0f}
     });
 
@@ -1568,9 +1568,9 @@ bool test_nonfinite_reject_window_invalidates_prior_upload_before_busy()
 
     auto source = std::make_shared<Test_source>();
     source->set_samples({
-        {0LL, 1.0f},
-        {1LL * k_second_ns, 2.0f},
-        {2LL * k_second_ns, 3.0f}
+        { 0LL,               1.0f},
+        { 1LL * k_second_ns, 2.0f},
+        { 2LL * k_second_ns, 3.0f}
     });
 
     auto series = std::make_shared<plot::series_data_t>();
@@ -1612,8 +1612,8 @@ bool test_nonfinite_reject_window_invalidates_prior_upload_before_busy()
         "initial finite REJECT_WINDOW frame should draw");
 
     source->set_samples({
-        {0LL, 1.0f},
-        {1LL * k_second_ns, nan},
+        { 0LL, 1.0f },
+        { 1LL * k_second_ns, nan },
         {2LL * k_second_ns, 3.0f}
     });
     events.clear();
@@ -1645,9 +1645,9 @@ bool test_custom_layer_zero_gpu_window_invalidates_prior_upload_before_busy()
 
     auto source = std::make_shared<Test_source>();
     source->set_samples({
-        {0LL, 1.0f},
-        {1LL * k_second_ns, 2.0f},
-        {2LL * k_second_ns, 3.0f}
+        { 0LL,               1.0f},
+        { 1LL * k_second_ns, 2.0f},
+        { 2LL * k_second_ns, 3.0f}
     });
 
     std::vector<layer_event_t> events;
@@ -1699,8 +1699,8 @@ bool test_custom_layer_zero_gpu_window_invalidates_prior_upload_before_busy()
         "initial custom-layer frame should draw built-ins");
 
     source->set_samples({
-        {0LL, 1.0f},
-        {1LL * k_second_ns, nan},
+        { 0LL, 1.0f },
+        { 1LL * k_second_ns, nan },
         {2LL * k_second_ns, 3.0f}
     });
     events.clear();
@@ -1735,9 +1735,9 @@ bool test_non_drawable_window_invalidates_prior_upload_before_fast_path()
 
     auto source = std::make_shared<Test_source>();
     source->set_samples({
-        {0LL, 1.0f},
-        {1LL * k_second_ns, 2.0f},
-        {10LL * k_second_ns, 10.0f}
+        { 0LL,                1.0f },
+        { 1LL * k_second_ns,  2.0f },
+        { 10LL * k_second_ns, 10.0f}
     });
 
     auto series = std::make_shared<plot::series_data_t>();
@@ -1815,9 +1815,9 @@ bool test_non_rhi_prepare_invalidates_prior_upload_before_fast_path()
 
     auto source = std::make_shared<Test_source>();
     source->set_samples({
-        {0LL, 1.0f},
-        {1LL * k_second_ns, 2.0f},
-        {10LL * k_second_ns, 10.0f}
+        { 0LL,                1.0f },
+        { 1LL * k_second_ns,  2.0f },
+        { 10LL * k_second_ns, 10.0f}
     });
 
     auto series = std::make_shared<plot::series_data_t>();
@@ -1900,10 +1900,10 @@ bool test_nonfinite_hold_forward_policy_controls_held_sample()
     };
 
     const hold_case_t cases[] = {
-        {plot::Nonfinite_sample_policy::BREAK_SEGMENT, "hold-break", 106, false, 0, 0.0f},
-        {plot::Nonfinite_sample_policy::SKIP, "hold-skip", 107, true, 0, 1.0f},
-        {plot::Nonfinite_sample_policy::REJECT_WINDOW, "hold-reject", 108, false, 0, 0.0f},
-        {plot::Nonfinite_sample_policy::REPLACE_WITH_ZERO, "hold-zero", 109, true, 1, 0.0f}
+        { plot::Nonfinite_sample_policy::BREAK_SEGMENT,     "hold-break",  106, false, 0, 0.0f},
+        { plot::Nonfinite_sample_policy::SKIP,              "hold-skip",   107, true,  0, 1.0f},
+        { plot::Nonfinite_sample_policy::REJECT_WINDOW,     "hold-reject", 108, false, 0, 0.0f},
+        { plot::Nonfinite_sample_policy::REPLACE_WITH_ZERO, "hold-zero",   109, true,  1, 0.0f}
     };
 
     for (const auto& test_case : cases) {
@@ -1913,7 +1913,7 @@ bool test_nonfinite_hold_forward_policy_controls_held_sample()
             std::string(test_case.layer_id), 1, 20, events, create_count);
         auto source = std::make_shared<Test_source>();
         source->set_samples({
-            {0LL, 1.0f},
+            { 0LL, 1.0f },
             {2LL * k_second_ns, nan}
         });
 
@@ -2006,8 +2006,8 @@ bool test_nonfinite_skip_hold_forward_preserves_earlier_held_sample_with_visible
         "hold-skip-visible", 1, 20, events, create_count);
     auto source = std::make_shared<Test_source>();
     source->set_samples({
-        {0LL, 7.0f},
-        {2LL * k_second_ns, nan},
+        { 0LL, 7.0f },
+        { 2LL * k_second_ns, nan },
         {5LL * k_second_ns, 9.0f}
     });
 
@@ -2097,8 +2097,8 @@ bool test_nonfinite_skip_hold_forward_ignores_future_padding_without_visible_dat
         "hold-skip-padding", 1, 20, events, create_count);
     auto source = std::make_shared<Test_source>();
     source->set_samples({
-        {0LL, 7.0f},
-        {2LL * k_second_ns, nan},
+        { 0LL, 7.0f },
+        { 2LL * k_second_ns, nan },
         {5LL * k_second_ns, 9.0f}
     });
 
@@ -2431,7 +2431,7 @@ bool test_builtin_upload_stages_visible_windows_for_dots_and_area()
     };
 
     const upload_case_t cases[] = {
-        {plot::Display_style::DOTS, "visible-dots-upload", 33},
+        { plot::Display_style::DOTS, "visible-dots-upload", 33 },
         {plot::Display_style::AREA, "visible-area-upload", 34}
     };
 
@@ -2516,9 +2516,9 @@ bool test_builtin_upload_stages_single_synthetic_hold_sample()
         "hold-upload", 1, 20, events, create_count);
     auto source = std::make_shared<Test_source>();
     source->set_samples({
-        {0LL, 1.0f},
-        {1LL * k_second_ns, 2.0f},
-        {2LL * k_second_ns, 3.0f}
+        { 0LL,               1.0f},
+        { 1LL * k_second_ns, 2.0f},
+        { 2LL * k_second_ns, 3.0f}
     });
 
     auto series = std::make_shared<plot::rhi_series_data_t>();
@@ -2588,7 +2588,7 @@ bool test_builtin_upload_stages_hold_windows_for_dots_and_area()
     };
 
     const upload_case_t cases[] = {
-        {plot::Display_style::DOTS, "hold-dots-upload", 35},
+        { plot::Display_style::DOTS, "hold-dots-upload", 35 },
         {plot::Display_style::AREA, "hold-area-upload", 36}
     };
 
@@ -2599,9 +2599,9 @@ bool test_builtin_upload_stages_hold_windows_for_dots_and_area()
             std::string(test_case.layer_id), 1, 20, events, create_count);
         auto source = std::make_shared<Test_source>();
         source->set_samples({
-            {0LL, 1.0f},
-            {1LL * k_second_ns, 2.0f},
-            {2LL * k_second_ns, 3.0f}
+            { 0LL,               1.0f},
+            { 1LL * k_second_ns, 2.0f},
+            { 2LL * k_second_ns, 3.0f}
         });
 
         auto series = std::make_shared<plot::rhi_series_data_t>();
@@ -2748,9 +2748,9 @@ bool test_resources_changed_tracks_hold_timestamp_changes()
         "hold-key", 1, 20, events, create_count);
     auto source = std::make_shared<Test_source>();
     source->set_samples({
-        {0LL, 1.0f},
-        {1LL * k_second_ns, 2.0f},
-        {2LL * k_second_ns, 3.0f}
+        { 0LL,               1.0f},
+        { 1LL * k_second_ns, 2.0f},
+        { 2LL * k_second_ns, 3.0f}
     });
 
     auto series = std::make_shared<plot::rhi_series_data_t>();
@@ -2890,14 +2890,14 @@ bool test_busy_stale_fallback_rejects_changed_request_shape()
         std::vector<layer_event_t> events;
         auto source = std::make_shared<Test_source>();
         source->set_samples({
-            {0LL, 1.0f},
-            {1LL * k_second_ns, 2.0f},
-            {2LL * k_second_ns, 3.0f},
-            {3LL * k_second_ns, 4.0f},
-            {4LL * k_second_ns, 5.0f},
-            {5LL * k_second_ns, 6.0f},
-            {6LL * k_second_ns, 7.0f},
-            {7LL * k_second_ns, 8.0f}
+            { 0LL,               1.0f},
+            { 1LL * k_second_ns, 2.0f},
+            { 2LL * k_second_ns, 3.0f},
+            { 3LL * k_second_ns, 4.0f},
+            { 4LL * k_second_ns, 5.0f},
+            { 5LL * k_second_ns, 6.0f},
+            { 6LL * k_second_ns, 7.0f},
+            { 7LL * k_second_ns, 8.0f}
         });
 
         auto series = std::make_shared<plot::series_data_t>();
@@ -2984,9 +2984,9 @@ bool test_busy_hold_forward_does_not_prepare_stale_tmax()
     std::vector<layer_event_t> events;
     auto source = std::make_shared<Test_source>();
     source->set_samples({
-        {0LL, 1.0f},
-        {1LL * k_second_ns, 2.0f},
-        {2LL * k_second_ns, 3.0f}
+        { 0LL,               1.0f},
+        { 1LL * k_second_ns, 2.0f},
+        { 2LL * k_second_ns, 3.0f}
     });
 
     auto series = std::make_shared<plot::series_data_t>();
@@ -3054,9 +3054,9 @@ bool test_busy_hold_forward_does_not_reuse_non_hold_window()
     std::vector<layer_event_t> events;
     auto source = std::make_shared<Test_source>();
     source->set_samples({
-        {0LL, 1.0f},
-        {1LL * k_second_ns, 2.0f},
-        {2LL * k_second_ns, 3.0f}
+        { 0LL,               1.0f},
+        { 1LL * k_second_ns, 2.0f},
+        { 2LL * k_second_ns, 3.0f}
     });
 
     auto series = std::make_shared<plot::series_data_t>();
@@ -3358,17 +3358,17 @@ bool test_range_only_access_skips_builtin_value_styles()
 
     auto range_source = std::make_shared<Test_source>();
     range_source->set_samples({
-        {0LL, 1.0f},
-        {1LL * k_second_ns, 2.0f},
-        {2LL * k_second_ns, 3.0f},
-        {3LL * k_second_ns, 4.0f}
+        { 0LL,               1.0f},
+        { 1LL * k_second_ns, 2.0f},
+        { 2LL * k_second_ns, 3.0f},
+        { 3LL * k_second_ns, 4.0f}
     });
     auto value_source = std::make_shared<Test_source>();
     value_source->set_samples({
-        {0LL, 1.0f},
-        {1LL * k_second_ns, 2.0f},
-        {2LL * k_second_ns, 3.0f},
-        {3LL * k_second_ns, 4.0f}
+        { 0LL,               1.0f},
+        { 1LL * k_second_ns, 2.0f},
+        { 2LL * k_second_ns, 3.0f},
+        { 3LL * k_second_ns, 4.0f}
     });
 
     auto range_series = make_builtin_plus_layer_series(

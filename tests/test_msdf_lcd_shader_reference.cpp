@@ -313,11 +313,11 @@ bool test_cpp_order_values_match_shader_reference()
     };
 
     constexpr case_t cases[] = {
-        {lcd::Resolved_lcd_subpixel_order::NONE, ref::k_lcd_order_none_value, ref::k_lcd_order_none_uniform},
-        {lcd::Resolved_lcd_subpixel_order::RGB,  ref::k_lcd_order_rgb_value,  ref::k_lcd_order_rgb_uniform },
-        {lcd::Resolved_lcd_subpixel_order::BGR,  ref::k_lcd_order_bgr_value,  ref::k_lcd_order_bgr_uniform },
-        {lcd::Resolved_lcd_subpixel_order::VRGB, ref::k_lcd_order_vrgb_value, ref::k_lcd_order_vrgb_uniform},
-        {lcd::Resolved_lcd_subpixel_order::VBGR, ref::k_lcd_order_vbgr_value, ref::k_lcd_order_vbgr_uniform},
+        { lcd::Resolved_lcd_subpixel_order::NONE, ref::k_lcd_order_none_value, ref::k_lcd_order_none_uniform },
+        { lcd::Resolved_lcd_subpixel_order::RGB,  ref::k_lcd_order_rgb_value,  ref::k_lcd_order_rgb_uniform  },
+        { lcd::Resolved_lcd_subpixel_order::BGR,  ref::k_lcd_order_bgr_value,  ref::k_lcd_order_bgr_uniform  },
+        { lcd::Resolved_lcd_subpixel_order::VRGB, ref::k_lcd_order_vrgb_value, ref::k_lcd_order_vrgb_uniform },
+        { lcd::Resolved_lcd_subpixel_order::VBGR, ref::k_lcd_order_vbgr_value, ref::k_lcd_order_vbgr_uniform },
     };
 
     for (const case_t& item : cases) {

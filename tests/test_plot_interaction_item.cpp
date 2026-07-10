@@ -119,7 +119,7 @@ void configure_indicator_widget(
     configure_view(widget, 0, k_second_ns, 0.0f, 10.0f);
     widget.add_series(1, make_sample_series(
         {
-            {0, 0.0f},
+            { 0, 0.0f },
             {k_second_ns, 10.0f}
         },
         interpolation));
@@ -237,10 +237,10 @@ bool test_auto_adjust_view_uses_visible_samples_for_value_and_time_range()
     configure_view(widget, 5, 25, -100.0f, 100.0f);
     widget.add_series(1, make_sample_series(
         {
-            {0, 100.0f},
-            {10, 2.0f},
-            {20, 8.0f},
-            {30, -100.0f}
+            { 0,  100.0f },
+            { 10, 2.0f   },
+            { 20, 8.0f   },
+            { 30, -100.0f}
         },
         plot::Series_interpolation::LINEAR));
 
@@ -262,7 +262,7 @@ bool test_auto_adjust_view_includes_step_after_held_sample()
     configure_view(widget, 10, 20, -100.0f, 100.0f);
     widget.add_series(1, make_sample_series(
         {
-            {0, 2.0f},
+            { 0, 2.0f },
             {15, 8.0f}
         },
         plot::Series_interpolation::STEP_AFTER));
