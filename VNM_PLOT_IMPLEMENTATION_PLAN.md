@@ -18,7 +18,7 @@ Proceed in five gated stages:
 
 The product stack implementation does not begin until Stages 2–4 pass and the owner accepts the complete stack contract. The separately authorized dependency Windows repair may run in parallel with local `vnm_plot` work once dependent consumer CI and local product gates are green, but it remains a final-merge gate.
 
-Claude was unavailable for the stated 85-minute review window. Three Codex workers provided cross-worker review; under governance this is not different-model independence. Local commits and review branches may be pushed and PRs may be opened to run CI and gather review. No batch is merged to `master` until the repository owner/human or a different model such as Fable independently reviews it. Each batch receives two review rounds plus its executable gate; require a third round when round two finds a material issue or the remediation materially changes the reviewed behavior.
+Claude was unavailable for the stated 85-minute review window. Three Codex workers provided cross-worker review; under governance this is not different-model independence. On 2026-07-10 the owner reported that Fable was quota-exhausted and explicitly directed the executor not to invoke it or wait for it. The active review loop therefore uses three xhigh Codex reviewers iteratively until all three return green. Fable remains excluded unless the owner later reauthorizes it; the repository owner/human remains the independent approval boundary. Local commits and review branches may be pushed and PRs may be opened to run CI and gather review. No batch is merged to `master` until its independent approval and executable gate close. Each batch receives two review rounds plus its executable gate; require a third round when round two finds a material issue or the remediation materially changes the reviewed behavior.
 
 ## Failure ledger
 
@@ -57,6 +57,16 @@ The independent write-mode investigation added eight failed executions, bringing
 
 The repair is isolated in standards commit `ce01c3a` and [Varinomics/varinomics-standards PR #4](https://github.com/Varinomics/varinomics-standards/pull/4). Write mode now prechecks each fixable rule, skips fixers for green rules, verifies confirmed fixes, and performs one final read-only sweep after any fixer ran. It deliberately returns nonzero rather than auto-looping if a later fixer invalidates an earlier rule. Standards tests pass 576/576; on `vnm_plot@2ec8013`, repaired no-write is green and repaired `--write` exits green with zero file changes. The original dirty standards checkout was not modified.
 
+Batch 2 then retained these additional failure classes. They are recorded by event and artifact rather than collapsed into a misleading aggregate because a workflow run, matrix job, worker review, and local command retry are different units:
+
+1. PR validation at `715d6b8` failed on Linux, macOS, and FreeBSD while Windows passed. Linux could not create an OpenGL context under `QT_QPA_PLATFORM=offscreen`; macOS compiled an unconditional `QVulkanInstance` include without Vulkan; FreeBSD omitted `Threads::Threads` from `test_ring_buffer`. Runs `29103078313`, `29103078237`, and `29103078317` remain the failed evidence.
+2. All three second-round xhigh reviews returned red. They found build/runtime provenance gaps, a calibration-skipping PASS path, incomplete allocation evidence, counters outside the measured epoch, median-hidden deterministic-zero failures, optional CI evidence packaging, incomplete machine fingerprinting, multi-config executable ambiguity, and incomplete phase-trace validation.
+3. An additional owner-supplied review found the unsafe exact-zero median rule, premature manufactured owner approval, diagnostic runs labeled PASS, five-sample static calibration, per-frame trace reopen, producer statistics updated under the writer lock, ambiguous snapshot-byte semantics, obsolete 84-run artifacts, missing plan ancestry, and stale copy-on-snapshot documentation.
+4. A first producer-pause diagnostic exposed a deadlock/timeout during epoch-boundary work; the corrected handshake now pauses only between complete logical publications and a 64-series live diagnostic completes with nonzero publications and a terminal `complete` phase.
+5. A deliberately undersized one-second canonical-style wrapper timed out and produced a downstream broken-pipe error. No source changed; the canonical rerun with a sufficient timeout passed.
+6. Pinned `actionlint` 1.7.7 was too old for the workflow label syntax; 1.7.12 was checksum-verified and passed. A later PowerShell invocation passed a literal `*.yml` glob and failed before linting; the corrected explicit file list passed.
+7. Several read-only PowerShell/`rg` inspection wrappers had quoting or parser errors. No product state changed; each was corrected and the successful diagnostic retained. These command failures remain visible in the execution transcript rather than being reclassified as product failures.
+
 Preserve all ledgers rather than replacing them with later green results.
 
 | Current state | Owning batch |
@@ -86,11 +96,11 @@ These assignments apply unless the owner changes them before a batch starts.
 
 | Batches | Implementation executor | Decision approver / independent reviewer | Gate recorder | Failure-remediation owner |
 |---|---|---|---|---|
-| 1A | Codex `/root`, only after sibling-repository authorization | Repository owner; Fable or human review before merge | Codex `/root` | Batch 1A executor |
-| 1B, 2 | Codex `/root` | Repository owner; Fable or human review before merge | Codex `/root` | Active batch executor |
-| 3A–3D | Codex `/root` | Repository owner for API/oracle decisions; Fable or human review before each merge | Codex `/root` | Active batch executor |
+| 1A | Codex `/root`, only after sibling-repository authorization | Repository owner/human; Fable only if later reauthorized | Codex `/root` | Batch 1A executor |
+| 1B, 2 | Codex `/root` | Repository owner/human; Fable only if later reauthorized | Codex `/root` | Active batch executor |
+| 3A–3D | Codex `/root` | Repository owner for API/oracle decisions; human review before each merge; Fable only if later reauthorized | Codex `/root` | Active batch executor |
 | 4A–4B | Codex `/root` for decision record/prototype | Repository owner chooses contract and A/B winner; independent review verifies evidence | Codex `/root` | Batch 4 executor |
-| 5 | Codex `/root` | Repository owner plus independent Fable/human review | Codex `/root` | Batch 5 executor |
+| 5 | Codex `/root` | Repository owner plus independent human review; Fable only if later reauthorized | Codex `/root` | Batch 5 executor |
 
 ### Recorded owner authorization
 
@@ -128,7 +138,7 @@ The implementation should make each batch reproducible through one gate runner a
 3. **Artifacts:** write raw local evidence below the active build tree's `gate-artifacts/<batch>/<source-identity>/<timestamp>/` directory and upload the same bundle from CI/PR runs. Do not commit raw timing output to the source tree.
 4. **Delivery:** local commits and review-branch pushes are allowed before gates close so CI and reviewers can inspect them. Merge to `master` is the protected event and requires the named batch gate and independent approval.
 5. **Review rounds:** run two review/remediation rounds. Run a third when the second round identifies a material correctness, API, cache, performance, or evidence defect, or when its remediation materially changes reviewed behavior.
-6. **Backend matrix:** deterministic native smoke uses D3D11 on Windows, Metal on macOS, Vulkan and desktop OpenGL on Linux where available, and desktop OpenGL on FreeBSD. A backend unavailable on its intended runner is reported explicitly rather than silently replaced. Null QRhi remains diagnostic only. Raw timing comparisons use one accepted machine/backend/build fingerprint; a fingerprint mismatch invalidates comparison.
+6. **Native backend contract (owner correction, 2026-07-10):** retained smoke and timing evidence request Qt's native QRhi backend and accept whichever non-Null implementation the platform selects, including D3D, Metal, Vulkan, OpenGL, or a future API. The actual backend, device, and available driver identity are recorded, but no graphics API is itself a product gate. API-specific runs are optional diagnostics only. Null QRhi remains diagnostic and must never masquerade as retained GPU evidence. Raw timing comparisons use one accepted machine/backend/build fingerprint; a fingerprint mismatch invalidates comparison.
 7. **Calibration generation:** generate scenario manifests from the fixed plan matrices, dimensions, seeds, warm-up counts, and seven-run protocol. Preserve every raw run. Do not remove outliers automatically; an interrupted or failed run is retained and a replacement run is a separately identified attempt.
 8. **Calibration arithmetic:** deterministic counters whose accepted baseline is zero use exact-zero regression rules. For positive metrics, calculate relative median drift from the two calibration sets as specified below. If a median is zero/nonpositive or below declared measurement resolution, report relative margin as unavailable and propose a resolution-based absolute rule instead. The runner must not silently turn unstable calibration into a permissive threshold; it emits `CALIBRATION_REVIEW_REQUIRED` with the observed drift/resolution and proposed rule for owner approval.
 9. **A/B evidence:** mechanically reject a D4 candidate that violates correctness or M/V/H bounds. For surviving candidates, generate a numerical comparison, deterministic screenshots, pixel differences, and a side-by-side visual bundle. The runner may recommend but never silently select the D4 winner.
@@ -201,7 +211,7 @@ Process exactly one canonical style rule at a time in pipeline order:
 3. require a lexical C/C++ token-equivalence check for every formatting rewrite before build/test; any intended token change requires an explicit plan amendment and leaves this batch for the named Batch 1C checkpoint;
 4. inspect and retain the complete diff, then rerun all preceding rules plus the active rule;
 5. run `git diff --check`, the initialized Release build, and CTest 21/21;
-6. obtain the iterative three-worker and Claude Fable review required for the batch, feeding findings into the next remediation/review round;
+6. obtain the iterative three-xhigh-reviewer loop required for the batch, feeding findings into the next remediation/review round until all three return green; do not invoke or wait for Fable while the owner's quota exclusion remains active;
 7. continue until the complete canonical pipeline passes without `--write`.
 
 The canonical check command is:
@@ -245,7 +255,7 @@ Gate:
 - initialized Release build and CTest pass 21/21;
 - complete canonical style pipeline passes without `--write`;
 - repaired canonical pipeline with `--write` passes without changing an already green candidate;
-- the same iterative three-worker and Claude Fable review covers Batch 1B and 1C before either is merged.
+- the same iterative three-xhigh-reviewer loop covers Batch 1B and 1C before either is merged; Fable remains excluded under the recorded owner instruction.
 
 ## Stage 2 — Establish evidence, then remove unchanged-frame work
 
@@ -614,7 +624,7 @@ Before the feature merge/release is considered complete:
 
 1. governed style pipeline passes;
 2. initialized Release build and full CTest pass;
-3. shader bake/resource lifecycle passes on every supported backend;
+3. shader bake/resource lifecycle passes through Qt's native non-Null backend on every supported platform; API-specific diagnostic coverage is optional;
 4. dependency and `vnm_plot` Linux/Windows/macOS/FreeBSD workflows pass;
 5. clean no-sibling configure/install/consumer smoke passes while fetching dependency `master`;
 6. benchmark metadata names actual backend and resolved dependency commit;
@@ -625,4 +635,4 @@ Before the feature merge/release is considered complete:
 
 ## Recommended immediate next action
 
-Batch 1A is closed. Batch 1B/1C candidate `2ec8013`, its eight-platform CI, and its local style/build/test gates are green; standards repair `ce01c3a` makes confirmed `--write` a zero-change fixed point. Close the final iterative review round and merge the reviewed standards repair before marking the style PR ready, then start Batch 2. This is the shortest path that produces trustworthy evidence without idling local work.
+Batch 1A is closed and the Batch 1B style baseline is the base of Batch 2 delivery PR #18. Checkpoint 2.1 remediation is committed through `0dbbb41`; merge commit `2aa61d0` makes the original plan branch a real ancestor of the implementation branch. Local diagnostic Release build, CTest 29/29, 23 Python helper tests, `actionlint` 1.7.12, canonical Varinomics style, native pixel/counter smoke, and a 64-series live epoch diagnostic pass. Next, obtain clean cross-platform CI and iterate the same three xhigh reviewers until all three return green. Then run the fixed 108-execution calibration plus its separate environment probe and present the exact retained proposal SHA-256 to the owner. Checkpoint PASS is impossible until the owner explicitly approves that exact proposal hash. D4 remains open for Stage 4 and does not block completing Checkpoint 2.1.

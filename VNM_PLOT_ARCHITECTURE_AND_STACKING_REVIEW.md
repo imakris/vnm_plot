@@ -120,6 +120,14 @@ The corrected local command built successfully and CTest passed **21/21 tests in
 
 Failure ownership is explicit: dependency publication and the four `vnm_plot` workflow reruns are complete; dependency Batch 0 still owns its jobless Windows workflow; Batch 0A owns the 14 style violations; Batch 2 owns the shadow warnings; local gate automation owns initialized MSVC/platform selection; and the benchmark-integrity batch owns cold-start instrumentation. The concrete recommendation is to delegate the remaining remediation groups to those responsible agents/batches and require each to return its named gate evidence before closure. The green `vnm_plot` attempt 2 does not erase the eight initial failures or their provenance.
 
+### 2026-07-10 Batch 2 execution addendum
+
+The original review above is preserved as historical evidence. Subsequent Batch 2 implementation reached delivery PR #18 and validation PR #19. At candidate `715d6b8`, Windows passed while Linux, macOS, and FreeBSD exposed three independent portability defects: an offscreen OpenGL context failure, an unconditional Vulkan header, and a missing thread link. Three xhigh review workers also returned red on evidence integrity, and the owner supplied a fourth review with compatible findings.
+
+Remediation through `0dbbb41` requests Qt's native QRhi backend without imposing a Vulkan/OpenGL/D3D/Metal product matrix; rejects Null for retained evidence; records the actual backend/device plus source, dependency, executable, Qt, machine, OS, and CPU identity; makes smoke artifacts mandatory; uses Xvfb on Unix CI; links `Threads::Threads`; and guards Vulkan compilation. The calibration runner now fixes the protocol at six scenarios and 108 scenario executions, retains a separate current-environment probe, requires every deterministic-zero observation to be zero, validates terminal phase traces and artifact hashes, and cannot transition to checkpoint PASS. A separate owner command may record PASS only against the exact retained proposal SHA-256 after every required phase passes on clean source and dependency trees.
+
+The benchmark now distinguishes logical zero-copy view bytes from physical copied bytes, measures render-thread CPU allocations separately from QRhi buffer creation, keeps producer counters inside an exact paused measurement epoch but outside the writer mutex, opens one buffered phase-trace stream, and uses 10,000 static samples rather than the superseded five-point visual fixture. The old 84-run artifacts are obsolete and cannot approve Checkpoint 2.1. Clean CI, unanimous iterative three-worker review, the new 108-execution baseline, and explicit owner approval of its exact proposal hash remain open at this addendum.
+
 ## Prioritized architecture and performance findings
 
 ### P0 — The intentional cross-repository `master` oracle exposed delivery order; dependent CI recovered, dependency Windows CI remains open
