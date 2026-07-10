@@ -46,9 +46,9 @@ struct erased_access_policy_t
 {
     using timestamp_fn_t =
         std::int64_t (*)(const erased_access_policy_t&, const void*);
-    using value_fn_t =
+    using value_fn_t     =
         float (*)(const erased_access_policy_t&, const void*);
-    using range_fn_t =
+    using range_fn_t     =
         std::pair<float, float> (*)(const erased_access_policy_t&, const void*);
 
     const void*            ctx              = nullptr;
@@ -290,7 +290,7 @@ struct Size_2i
 // with file I/O. std::vector<char> is an alternative but std::string is more
 // convenient for text-based asset formats (shaders, JSON).
 using Byte_buffer = std::string;
-using Byte_view = std::string_view;
+using Byte_view   = std::string_view;
 
 // -----------------------------------------------------------------------------
 // data_snapshot_t: A view of sample data (optionally split into two segments)
@@ -366,9 +366,9 @@ struct Data_access_policy
 {
     using timestamp_accessor_t =
         detail::access_function_slot_t<std::int64_t(const void*)>;
-    using value_accessor_t =
+    using value_accessor_t     =
         detail::access_function_slot_t<float(const void*)>;
-    using range_accessor_t =
+    using range_accessor_t     =
         detail::access_function_slot_t<std::pair<float, float>(const void*)>;
 
     Data_access_policy()
@@ -1194,7 +1194,7 @@ struct layout_cache_key_t
 class Layout_cache
 {
 public:
-    using key_t = layout_cache_key_t;
+    using key_t      = layout_cache_key_t;
     using value_type = frame_layout_result_t;
 
     [[nodiscard]] const value_type* try_get(const key_t& query) const noexcept

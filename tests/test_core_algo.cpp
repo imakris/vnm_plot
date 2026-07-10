@@ -685,9 +685,9 @@ bool test_horizontal_label_fade_keys_preserve_int64_timestamps()
 
 bool test_text_lcd_policy_helpers()
 {
-    using request_t = plot::text_lcd_request_t;
+    using request_t  = plot::text_lcd_request_t;
     using resolved_t = plot::text_lcd_resolved_subpixel_order_t;
-    using surface_t = plot::detail::text_lcd_draw_surface_t;
+    using surface_t  = plot::detail::text_lcd_draw_surface_t;
 
     const request_t auto_request = plot::text_lcd_auto_request();
     const request_t none_request = plot::text_lcd_none_request();

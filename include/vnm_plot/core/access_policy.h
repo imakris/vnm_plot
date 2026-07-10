@@ -202,9 +202,9 @@ struct Data_access_policy_typed
 {
     using timestamp_accessor_t =
         detail::access_function_slot_t<std::int64_t(const Sample&)>;
-    using value_accessor_t =
+    using value_accessor_t     =
         detail::access_function_slot_t<float(const Sample&)>;
-    using range_accessor_t =
+    using range_accessor_t     =
         detail::access_function_slot_t<std::pair<float, float>(const Sample&)>;
 
     Data_access_policy_typed()

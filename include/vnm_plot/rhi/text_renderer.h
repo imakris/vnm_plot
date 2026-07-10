@@ -58,7 +58,7 @@ public:
         bool                                   initialized = false;
     };
 
-    using vertical_axis_fade_tracker_t = axis_fade_tracker_t<double>;
+    using vertical_axis_fade_tracker_t   = axis_fade_tracker_t<double>;
     using horizontal_axis_fade_tracker_t = axis_fade_tracker_t<std::int64_t>;
 
 private:

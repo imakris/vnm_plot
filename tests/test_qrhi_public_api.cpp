@@ -82,9 +82,9 @@ struct has_bind_internal_access<
 
 using erased_timestamp_accessor_t =
     decltype(std::declval<plot::Data_access_policy&>().get_timestamp);
-using erased_value_accessor_t =
+using erased_value_accessor_t     =
     decltype(std::declval<plot::Data_access_policy&>().get_value);
-using erased_range_accessor_t =
+using erased_range_accessor_t     =
     decltype(std::declval<plot::Data_access_policy&>().get_range);
 
 static_assert(std::is_assignable_v<

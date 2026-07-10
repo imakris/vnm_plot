@@ -9,7 +9,7 @@ namespace plot = vnm::plot;
 
 namespace {
 
-using request_t = plot::text_lcd_request_t;
+using request_t  = plot::text_lcd_request_t;
 using resolved_t = plot::text_lcd_resolved_subpixel_order_t;
 
 struct explicit_request_case_t
