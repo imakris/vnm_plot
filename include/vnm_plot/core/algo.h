@@ -237,12 +237,8 @@ inline double get_shift(double section_size, double minval)
         return 0.0;
     }
     ret /= m;
-    if (!std::isfinite(ret)) {
-        return 0.0;
-    }
-    if (ret < 0) {
-        ret += section_size;
-    }
+    if (!std::isfinite(ret)) { return 0.0;          }
+    if (ret < 0)             { ret += section_size; }
     return std::isfinite(ret) ? ret : 0.0;
 }
 
@@ -493,12 +489,8 @@ visible_sample_window_t select_visible_sample_window(
                 continue;
             }
             const std::int64_t ts = get_timestamp(sample);
-            if (ts < t_min_ns || ts > t_max_ns) {
-                continue;
-            }
-            if (match_first == snapshot.count) {
-                match_first = i;
-            }
+            if (ts < t_min_ns || ts > t_max_ns) { continue;        }
+            if (match_first == snapshot.count)  { match_first = i; }
             match_last = i + 1;
         }
         if (match_first < match_last) {
@@ -720,10 +712,10 @@ inline std::int64_t choose_snap_ns(std::int64_t span_ns)
     constexpr std::int64_t k_ns_per_day    = 86400LL * k_ns_per_second;
     constexpr std::int64_t k_ns_per_year   = 365LL * k_ns_per_day;
 
-    if (span_ns <= k_ns_per_ms)     { return 1LL; }
-    if (span_ns <= k_ns_per_second) { return k_ns_per_us; }
+    if (span_ns <= k_ns_per_ms)     { return 1LL;             }
+    if (span_ns <= k_ns_per_second) { return k_ns_per_us;     }
     if (span_ns <= k_ns_per_day)    { return k_ns_per_second; }
-    if (span_ns <= k_ns_per_year)   { return k_ns_per_hour; }
+    if (span_ns <= k_ns_per_year)   { return k_ns_per_hour;   }
     return k_ns_per_day;
 }
 

@@ -236,12 +236,8 @@ inline std::uint64_t duration_at_fraction_ns(
     std::uint64_t duration_ns,
     long double fraction) noexcept
 {
-    if (!std::isfinite(fraction) || fraction <= 0.0L) {
-        return 0;
-    }
-    if (fraction >= 1.0L) {
-        return duration_ns;
-    }
+    if (!std::isfinite(fraction) || fraction <= 0.0L) { return 0;           }
+    if (fraction >= 1.0L)                             { return duration_ns; }
 
     const long double rounded =
         std::round(static_cast<long double>(duration_ns) * fraction);
@@ -364,12 +360,8 @@ inline std::optional<time_range_t> translate_time_range_by_duration_ns(
     Time_translation_direction direction) noexcept
 {
     const auto span = positive_span_ns(range.min_ns, range.max_ns);
-    if (!span) {
-        return std::nullopt;
-    }
-    if (duration_ns == 0) {
-        return range;
-    }
+    if (!span)            { return std::nullopt; }
+    if (duration_ns == 0) { return range;        }
 
     if (direction == Time_translation_direction::FORWARD) {
         time_range_t shifted{
@@ -456,12 +448,8 @@ inline std::int64_t saturating_ms_to_ns(std::int64_t ms_value) noexcept
     constexpr std::int64_t k_min_ms =
         std::numeric_limits<std::int64_t>::min() / k_ns_per_ms;
 
-    if (ms_value > k_max_ms) {
-        return std::numeric_limits<std::int64_t>::max();
-    }
-    if (ms_value < k_min_ms) {
-        return std::numeric_limits<std::int64_t>::min();
-    }
+    if (ms_value > k_max_ms) { return std::numeric_limits<std::int64_t>::max(); }
+    if (ms_value < k_min_ms) { return std::numeric_limits<std::int64_t>::min(); }
     return ms_value * k_ns_per_ms;
 }
 

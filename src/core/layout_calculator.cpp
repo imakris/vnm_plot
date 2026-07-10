@@ -54,12 +54,8 @@ std::int64_t saturating_round_to_int64(long double value) noexcept
     }
 
     const long double rounded = std::round(value);
-    if (rounded <= k_min) {
-        return std::numeric_limits<std::int64_t>::min();
-    }
-    if (rounded >= k_max) {
-        return std::numeric_limits<std::int64_t>::max();
-    }
+    if (rounded <= k_min) { return std::numeric_limits<std::int64_t>::min(); }
+    if (rounded >= k_max) { return std::numeric_limits<std::int64_t>::max(); }
     return static_cast<std::int64_t>(rounded);
 }
 
@@ -80,12 +76,8 @@ std::int64_t saturating_floor_to_int64(long double value) noexcept
     }
 
     const long double floored = std::floor(value);
-    if (floored <= k_min) {
-        return std::numeric_limits<std::int64_t>::min();
-    }
-    if (floored >= k_max) {
-        return std::numeric_limits<std::int64_t>::max();
-    }
+    if (floored <= k_min) { return std::numeric_limits<std::int64_t>::min(); }
+    if (floored >= k_max) { return std::numeric_limits<std::int64_t>::max(); }
     return static_cast<std::int64_t>(floored);
 }
 
@@ -115,18 +107,10 @@ public:
         double adjusted_font_size,
         size_t format_signature)
     {
-        if (!std::isfinite(step)) {
-            step = 0.0;
-        }
-        if (!std::isfinite(range)) {
-            range = 0.0;
-        }
-        if (!std::isfinite(monospace_advance)) {
-            monospace_advance = 0.0f;
-        }
-        if (!std::isfinite(adjusted_font_size)) {
-            adjusted_font_size = 0.0;
-        }
+        if (!std::isfinite(step))               { step               = 0.0;  }
+        if (!std::isfinite(range))              { range              = 0.0;  }
+        if (!std::isfinite(monospace_advance))  { monospace_advance  = 0.0f; }
+        if (!std::isfinite(adjusted_font_size)) { adjusted_font_size = 0.0;  }
 
         const auto step_bits    = to_ieee_bits(step);
         const auto range_bits   = to_ieee_bits(range);
@@ -1097,12 +1081,8 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
                     auto write_it = candidates.begin();
                     for (auto it = candidates.begin(); it != candidates.end(); ++it) {
                         const bool anchor_taken = has_anchor_within(accepted, it->x_anchor, k_coincide);
-                        if (anchor_taken) {
-                            continue;
-                        }
-                        if (write_it != it) {
-                            *write_it = std::move(*it);
-                        }
+                        if (anchor_taken)   { continue;                   }
+                        if (write_it != it) { *write_it = std::move(*it); }
                         ++write_it;
                     }
                     candidates.erase(write_it, candidates.end());

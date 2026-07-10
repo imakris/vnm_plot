@@ -510,12 +510,8 @@ std::shared_ptr<cached_font_data_t> load_cached_font_from_disk(
     font->font_digest = digest;
 
     std::uint32_t atlas_size = 0;
-    if (!read(atlas_size)) {
-        return nullptr;
-    }
-    if (atlas_size != static_cast<std::uint32_t>(k_atlas_texture_size)) {
-        return nullptr;
-    }
+    if (!read(atlas_size))                                              { return nullptr; }
+    if (atlas_size != static_cast<std::uint32_t>(k_atlas_texture_size)) { return nullptr; }
     font->atlas.atlas_size = static_cast<int>(atlas_size);
 
     std::uint32_t baked_pixel_height = 0;

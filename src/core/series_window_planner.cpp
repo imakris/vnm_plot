@@ -78,12 +78,8 @@ drawable_window_result_t build_drawable_window(
             sample,
             nonfinite_policy,
             ignored);
-        if (status == sample_draw_status_t::FAILED) {
-            return false;
-        }
-        if (status == sample_draw_status_t::SKIPPED) {
-            return true;
-        }
+        if (status == sample_draw_status_t::FAILED)  { return false; }
+        if (status == sample_draw_status_t::SKIPPED) { return true;  }
 
         if (result.spans.empty() ||
             result.spans.back().source_first +

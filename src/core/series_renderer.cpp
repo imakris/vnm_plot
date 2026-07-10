@@ -143,12 +143,8 @@ std::vector<builtin_segment_span_t> builtin_segment_spans(
 
 bool has_builtin_segment_span(const sample_window_t& window)
 {
-    if (window.gpu_count < 2) {
-        return false;
-    }
-    if (window.nonfinite_policy == Nonfinite_sample_policy::SKIP) {
-        return true;
-    }
+    if (window.gpu_count        <  2)                             { return false; }
+    if (window.nonfinite_policy == Nonfinite_sample_policy::SKIP) { return true;  }
     return std::any_of(
         window.drawable_spans.begin(),
         window.drawable_spans.end(),
@@ -161,12 +157,8 @@ bool is_builtin_primitive_drawable(
     Display_style primitive_style,
     const sample_window_t& window)
 {
-    if (window.gpu_count == 0) {
-        return false;
-    }
-    if (primitive_style == Display_style::DOTS) {
-        return true;
-    }
+    if (window.gpu_count == 0)                   { return false; }
+    if (primitive_style  == Display_style::DOTS) { return true;  }
     return has_builtin_segment_span(window);
 }
 
@@ -1414,15 +1406,9 @@ void Series_renderer::prepare(
         [](const auto& a, const auto& b) {
             const int a_view = view_band_order(a.view_kind);
             const int b_view = view_band_order(b.view_kind);
-            if (a_view != b_view) {
-                return a_view < b_view;
-            }
-            if (a.z_order != b.z_order) {
-                return a.z_order < b.z_order;
-            }
-            if (a.series_order != b.series_order) {
-                return a.series_order < b.series_order;
-            }
+            if (a_view != b_view)                 { return a_view < b_view;                 }
+            if (a.z_order != b.z_order)           { return a.z_order < b.z_order;           }
+            if (a.series_order != b.series_order) { return a.series_order < b.series_order; }
             return a.insertion_order < b.insertion_order;
         });
 

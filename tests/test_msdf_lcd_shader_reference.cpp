@@ -173,41 +173,21 @@ std::string sample_name_for_offset(float offset)
 
 std::string weight_name_for_value(float weight)
 {
-    if (weight == ref::k_lcd_filter_edge) {
-        return "filter_edge";
-    }
-    if (weight == ref::k_lcd_filter_side) {
-        return "filter_side";
-    }
-    if (weight == ref::k_lcd_filter_center) {
-        return "filter_center";
-    }
+    if (weight == ref::k_lcd_filter_edge)   { return "filter_edge";   }
+    if (weight == ref::k_lcd_filter_side)   { return "filter_side";   }
+    if (weight == ref::k_lcd_filter_center) { return "filter_center"; }
     return {};
 }
 
 std::string sample_expression_for_offset(float offset)
 {
-    if (offset == -3.0f) {
-        return "glyph_ratio - subpixel_step * 3.0";
-    }
-    if (offset == -2.0f) {
-        return "glyph_ratio - subpixel_step * 2.0";
-    }
-    if (offset == -1.0f) {
-        return "glyph_ratio - subpixel_step";
-    }
-    if (offset == 0.0f) {
-        return "glyph_ratio";
-    }
-    if (offset == 1.0f) {
-        return "glyph_ratio + subpixel_step";
-    }
-    if (offset == 2.0f) {
-        return "glyph_ratio + subpixel_step * 2.0";
-    }
-    if (offset == 3.0f) {
-        return "glyph_ratio + subpixel_step * 3.0";
-    }
+    if (offset == -3.0f) { return "glyph_ratio - subpixel_step * 3.0"; }
+    if (offset == -2.0f) { return "glyph_ratio - subpixel_step * 2.0"; }
+    if (offset == -1.0f) { return "glyph_ratio - subpixel_step";       }
+    if (offset == 0.0f)  { return "glyph_ratio";                       }
+    if (offset == 1.0f)  { return "glyph_ratio + subpixel_step";       }
+    if (offset == 2.0f)  { return "glyph_ratio + subpixel_step * 2.0"; }
+    if (offset == 3.0f)  { return "glyph_ratio + subpixel_step * 3.0"; }
     return {};
 }
 

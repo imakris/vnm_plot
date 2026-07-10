@@ -52,12 +52,8 @@ bool fit_rect_vertically_within(glm::vec4& rect, float& baseline_y, const glm::v
     }
 
     float dy = 0.0f;
-    if (rect.y < clip.y) {
-        dy = clip.y - rect.y;
-    }
-    if (rect.w + dy > clip.w) {
-        dy += clip.w - (rect.w + dy);
-    }
+    if (rect.y      < clip.y) { dy =  clip.y - rect.y;        }
+    if (rect.w + dy > clip.w) { dy += clip.w - (rect.w + dy); }
 
     const glm::vec4 shifted(
         rect.x,
@@ -192,12 +188,8 @@ bool update_and_draw_faded_labels(
             continue;
         }
 
-        if (state.alpha > 0.0f) {
-            draw_fn(it->first, state);
-        }
-        if (state.direction != 0) {
-            any_active = true;
-        }
+        if (state.alpha     >  0.0f) { draw_fn(it->first, state); }
+        if (state.direction != 0)    { any_active = true;         }
 
         ++it;
     }

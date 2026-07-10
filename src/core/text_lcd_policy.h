@@ -24,12 +24,8 @@ constexpr text_lcd_resolved_subpixel_order_t text_lcd_auto_order_from_detections
     text_lcd_resolved_subpixel_order_t qt_order,
     text_lcd_resolved_subpixel_order_t os_order)
 {
-    if (vnm::msdf_text::lcd::is_display_specific(qt_order)) {
-        return qt_order;
-    }
-    if (vnm::msdf_text::lcd::is_display_specific(os_order)) {
-        return os_order;
-    }
+    if (vnm::msdf_text::lcd::is_display_specific(qt_order)) { return qt_order; }
+    if (vnm::msdf_text::lcd::is_display_specific(os_order)) { return os_order; }
     return text_lcd_resolved_subpixel_order_t::NONE;
 }
 

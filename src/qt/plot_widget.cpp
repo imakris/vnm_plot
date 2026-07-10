@@ -528,12 +528,8 @@ void Plot_widget::set_time_axis(Plot_time_axis* axis)
             &Plot_time_axis::shared_vbar_width_changed,
             this,
             [this](double px) {
-                if (!m_time_axis || !m_time_axis->sync_vbar_width()) {
-                    return;
-                }
-                if (px <= 0.0 || !std::isfinite(px)) {
-                    return;
-                }
+                if (!m_time_axis || !m_time_axis->sync_vbar_width()) { return; }
+                if (px <= 0.0 || !std::isfinite(px))                 { return; }
                 apply_vbar_width_target(px);
             });
         m_time_axis_sync_vbar_connection = QObject::connect(

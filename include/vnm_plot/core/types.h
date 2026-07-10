@@ -337,12 +337,8 @@ struct data_snapshot_t
             return nullptr;
         }
         const size_t count1 = count - count2;
-        if (index < count1) {
-            return static_cast<const char*>(data) + index * stride;
-        }
-        if (!data2 || count2 == 0) {
-            return nullptr;
-        }
+        if (index < count1)        { return static_cast<const char*>(data) + index * stride; }
+        if (!data2 || count2 == 0) { return nullptr;                                         }
         return static_cast<const char*>(data2) + (index - count1) * stride;
     }
 

@@ -125,12 +125,8 @@ double Plot_time_axis::shared_vbar_width_px() const
 
 void Plot_time_axis::update_shared_vbar_width(const QObject* owner, double width_px)
 {
-    if (!m_sync_vbar_width || !owner) {
-        return;
-    }
-    if (!std::isfinite(width_px) || width_px <= 0.0) {
-        return;
-    }
+    if (!m_sync_vbar_width       || !owner)          { return; }
+    if (!std::isfinite(width_px) || width_px <= 0.0) { return; }
 
     m_vbar_width_by_owner[owner] = width_px;
 

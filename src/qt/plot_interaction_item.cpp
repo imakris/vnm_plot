@@ -401,18 +401,10 @@ bool Plot_interaction_item::handle_wheel(
     }
 
     qreal dy = angle_delta_y;
-    if (dy == 0.0) {
-        dy = pixel_delta_y;
-    }
-    if (dy == 0.0) {
-        dy = angle_delta_x;
-    }
-    if (dy == 0.0) {
-        dy = pixel_delta_x;
-    }
-    if (dy == 0.0) {
-        return false;
-    }
+    if (dy == 0.0) { dy = pixel_delta_y; }
+    if (dy == 0.0) { dy = angle_delta_x; }
+    if (dy == 0.0) { dy = pixel_delta_x; }
+    if (dy == 0.0) { return false;       }
 
     const auto mods = Qt::KeyboardModifiers::fromInt(modifiers);
     const qreal steps = dy / 120.0;
