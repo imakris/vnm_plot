@@ -41,6 +41,15 @@ Batch 1B then added fourteen failed or terminated style executions, bringing the
 13. After the local-declaration formatter made those blocks green, the next canonical replay found the assignment-table checker required the opposite spacing on the same two initialized declarations.
 14. A combined verification after applying the assignment formatter confirmed the oscillation: assignment layout was green while local-declaration layout was red again. Codex `/root` avoided modifying the dirty external standards checkout and instead reordered only the constant multiplication operands, preserving exact constant values while satisfying both canonical checkers.
 
+The final canonical replay/remediation cycle added sixteen failed executions, bringing the running total to **50**:
+
+15. Three ordered checks exposed downstream formatter interaction in sequence: eight long-condition findings, then four hanging-indent findings after those were wrapped, then the same four long-condition findings after hanging normalization.
+16. Two focused parenthesized-return attempts still left two inline equality chains oscillating between the condition and hanging rules.
+17. One context-light multi-file `apply_patch` placed opening parentheses in earlier `return` blocks while placing the closing parentheses in the intended blocks. Codex `/root` owned the targeting error, found it through the complete diff before build/commit, and restored every unintended edit with context-rich patches.
+18. One focused check after splitting the equality chains still needed hanging normalization; the next two canonical replays exposed a single expression-RHS/condition oscillation in `chrome_renderer.cpp`.
+19. Five focused `chrome_renderer.cpp` layout prototypes remained red under one side of that expression-RHS/condition pair. None was committed; each was inspected and replaced by the next narrower form.
+20. Two exact-operation-grouping prototypes remained red before the accepted form materialized the existing long-double left product and parenthesized the unchanged right expression. The final canonical pipeline, initialized Release build, and CTest 21/21 then passed.
+
 Preserve all ledgers rather than replacing them with later green results.
 
 | Current state | Owning batch |
@@ -216,6 +225,9 @@ Batch 1B remains formatting-only. Isolate here only the two checker-enumerated c
 3. Permit only checker-enumerated adjacent C++ string-literal splits that the long-string rule cannot express without introducing an additional literal token. Require a focused diff proving that concatenated bytes, prefixes, and suffixes are unchanged; the initially known scope is one test message in `tests/test_plot_interaction_item.cpp`.
 4. For the two initialized constant blocks where the ordered local-declaration and assignment-table formatters require opposite spacing, permit commutative constant-multiplication operand reordering so each derived expression begins with its already declared base unit. Preserve the exact compile-time values and retain the core/snapshot tests; the exact scope is `choose_snap_ns()` in `include/vnm_plot/core/algo.h` and the main/preview origin regression in `tests/test_snapshot_caching.cpp`.
 5. In `tests/test_msdf_lcd_shader_reference.cpp::lcd_enabled_statement()`, permit decomposition of the same generated shader bytes into a `std::string` first clause and short `+`-joined literal clauses when required by the hard line-length gate. The focused shader-reference test must prove the complete generated statement remains byte-identical.
+6. Permit outer parentheses around the unchanged boolean return expressions in `same_cache_shape()` and `validate_cached_glyph()` when required to satisfy both the long-condition and hanging-indent checkers.
+7. In `qrhi_layer_data_key_t::operator==` and `layout_cache_key_t::operator==`, permit a named prefix boolean followed by the remaining short-circuit chain. Preserve clause order so no field is evaluated earlier than in the original expression; retain cache-key equality and renderer cache tests.
+8. In `Chrome_renderer::render_preview_overlay()`, permit materializing the existing long-double left product before its existing division and parenthesizing the unchanged right-side product. Preserve arithmetic operator order and retain renderer/preview geometry tests; benchmark numeric calibration must include this boundary in its proposed noise margins.
 
 Do not use this checkpoint for unrelated cleanup.
 
