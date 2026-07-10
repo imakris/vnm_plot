@@ -164,8 +164,8 @@ qreal Plot_interaction_item::zoom_animation_scale_factor(qreal velocity, qreal e
 }
 
 qreal Plot_interaction_item::zoom_animation_velocity_after(
-    qreal velocity,
-    qreal elapsed_timer_steps)
+    qreal  velocity,
+    qreal  elapsed_timer_steps)
 {
     if (elapsed_timer_steps <= 0.0) {
         return velocity;
@@ -384,13 +384,13 @@ void Plot_interaction_item::wheelEvent(QWheelEvent* event)
 }
 
 bool Plot_interaction_item::handle_wheel(
-    qreal x,
-    qreal y,
-    qreal angle_delta_x,
-    qreal angle_delta_y,
-    qreal pixel_delta_x,
-    qreal pixel_delta_y,
-    int modifiers)
+    qreal  x,
+    qreal  y,
+    qreal  angle_delta_x,
+    qreal  angle_delta_y,
+    qreal  pixel_delta_x,
+    qreal  pixel_delta_y,
+    int    modifiers)
 {
     if (!m_interaction_enabled || !m_plot_widget) {
         return false;

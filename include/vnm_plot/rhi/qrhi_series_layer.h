@@ -127,7 +127,7 @@ public:
 
 series_view_uniform_std140_t make_series_view_uniform(
     const frame_context_t& frame,
-    const series_data_t& series,
+    const series_data_t&   series,
     const sample_window_t& window);
 
 } // namespace vnm::plot

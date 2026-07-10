@@ -64,10 +64,10 @@ public:
     // queued onto ctx.rhi_updates; the actual draw is recorded by
     // record_draws() during the open pass.
     void draw_grid_shader(
-        const frame_context_t& ctx,
-        const glm::vec2& origin,
-        const glm::vec2& size,
-        const glm::vec4& color,
+        const frame_context_t&     ctx,
+        const glm::vec2&           origin,
+        const glm::vec2&           size,
+        const glm::vec4&           color,
         const grid_layer_params_t& vertical_levels,
         const grid_layer_params_t& horizontal_levels);
 
@@ -113,13 +113,26 @@ private:
     // state. Friendship via membership lets the helpers reach private types
     // (rect_vertex_t, rhi_state_t) without exposing them publicly.
     static bool rhi_ensure_rect_pipeline(
-        rhi_state_t& rhi_state, QRhi* rhi, QRhiRenderTarget* rt);
+        rhi_state_t&               rhi_state,
+        QRhi*                      rhi,
+        QRhiRenderTarget*          rt);
+
     static bool rhi_ensure_grid_pipeline(
-        rhi_state_t& rhi_state, QRhi* rhi, QRhiRenderTarget* rt);
+        rhi_state_t&               rhi_state,
+        QRhi*                      rhi,
+        QRhiRenderTarget*          rt);
+
     static bool rhi_ensure_grid_quad_vbo(
-        rhi_state_t& rhi_state, QRhi* rhi, QRhiResourceUpdateBatch* updates);
-    static void rhi_on_backend_change(rhi_state_t& rhi_state, QRhi* rhi);
-    static void rhi_reset_frame_plan(rhi_state_t& rhi_state);
+        rhi_state_t&               rhi_state,
+        QRhi*                      rhi,
+        QRhiResourceUpdateBatch*   updates);
+
+    static void rhi_on_backend_change(
+        rhi_state_t&               rhi_state,
+        QRhi*                      rhi);
+
+    static void rhi_reset_frame_plan(
+        rhi_state_t&               rhi_state);
 
     static constexpr int k_rect_initial_quads = 256;
 };

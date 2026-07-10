@@ -26,8 +26,8 @@ enum class Time_translation_direction
 };
 
 inline std::optional<std::int64_t> checked_add_ns(
-    std::int64_t value_ns,
-    std::int64_t delta_ns) noexcept
+    std::int64_t   value_ns,
+    std::int64_t   delta_ns) noexcept
 {
     if (delta_ns > 0
         && value_ns > std::numeric_limits<std::int64_t>::max() - delta_ns)
@@ -43,8 +43,8 @@ inline std::optional<std::int64_t> checked_add_ns(
 }
 
 inline std::optional<std::int64_t> checked_sub_ns(
-    std::int64_t value_ns,
-    std::int64_t delta_ns) noexcept
+    std::int64_t   value_ns,
+    std::int64_t   delta_ns) noexcept
 {
     if (delta_ns > 0
         && value_ns < std::numeric_limits<std::int64_t>::min() + delta_ns)
@@ -60,8 +60,8 @@ inline std::optional<std::int64_t> checked_sub_ns(
 }
 
 inline std::int64_t saturating_add_ns(
-    std::int64_t value_ns,
-    std::int64_t delta_ns) noexcept
+    std::int64_t   value_ns,
+    std::int64_t   delta_ns) noexcept
 {
     const auto result = checked_add_ns(value_ns, delta_ns);
     if (result) {
@@ -73,8 +73,8 @@ inline std::int64_t saturating_add_ns(
 }
 
 inline std::int64_t saturating_sub_ns(
-    std::int64_t value_ns,
-    std::int64_t delta_ns) noexcept
+    std::int64_t   value_ns,
+    std::int64_t   delta_ns) noexcept
 {
     const auto result = checked_sub_ns(value_ns, delta_ns);
     if (result) {
@@ -86,8 +86,8 @@ inline std::int64_t saturating_sub_ns(
 }
 
 inline std::int64_t saturating_add_duration_ns(
-    std::int64_t value_ns,
-    std::uint64_t duration_ns) noexcept
+    std::int64_t   value_ns,
+    std::uint64_t  duration_ns) noexcept
 {
     std::int64_t result = value_ns;
     std::uint64_t remaining = duration_ns;
@@ -109,8 +109,8 @@ inline std::int64_t saturating_add_duration_ns(
 }
 
 inline std::int64_t saturating_sub_duration_ns(
-    std::int64_t value_ns,
-    std::uint64_t duration_ns) noexcept
+    std::int64_t   value_ns,
+    std::uint64_t  duration_ns) noexcept
 {
     std::int64_t result = value_ns;
     std::uint64_t remaining = duration_ns;
@@ -132,8 +132,8 @@ inline std::int64_t saturating_sub_duration_ns(
 }
 
 inline std::optional<std::uint64_t> positive_span_ns(
-    std::int64_t min_ns,
-    std::int64_t max_ns) noexcept
+    std::int64_t   min_ns,
+    std::int64_t   max_ns) noexcept
 {
     if (!(max_ns > min_ns)) {
         return std::nullopt;
@@ -146,8 +146,8 @@ inline std::optional<std::uint64_t> positive_span_ns(
 namespace detail {
 
 inline std::int64_t positive_span_ns_for_signed_api(
-    std::int64_t min_ns,
-    std::int64_t max_ns) noexcept
+    std::int64_t   min_ns,
+    std::int64_t   max_ns) noexcept
 {
     const auto span = positive_span_ns(min_ns, max_ns);
     if (!span) {
@@ -162,16 +162,16 @@ inline std::int64_t positive_span_ns_for_signed_api(
 } // namespace detail
 
 inline long double span_ns_as_long_double(
-    std::int64_t min_ns,
-    std::int64_t max_ns) noexcept
+    std::int64_t   min_ns,
+    std::int64_t   max_ns) noexcept
 {
     return static_cast<long double>(max_ns) -
         static_cast<long double>(min_ns);
 }
 
 inline std::optional<long double> positive_span_ns_as_long_double(
-    std::int64_t min_ns,
-    std::int64_t max_ns) noexcept
+    std::int64_t   min_ns,
+    std::int64_t   max_ns) noexcept
 {
     if (!(max_ns > min_ns)) {
         return std::nullopt;
@@ -180,8 +180,8 @@ inline std::optional<long double> positive_span_ns_as_long_double(
 }
 
 inline std::int64_t midpoint_ns(
-    std::int64_t min_ns,
-    std::int64_t max_ns) noexcept
+    std::int64_t   min_ns,
+    std::int64_t   max_ns) noexcept
 {
     if (min_ns <= max_ns) {
         const std::uint64_t span =
@@ -197,8 +197,8 @@ inline std::int64_t midpoint_ns(
 }
 
 inline time_range_t centered_time_range_ns(
-    std::int64_t center_ns,
-    std::uint64_t span_ns) noexcept
+    std::int64_t   center_ns,
+    std::uint64_t  span_ns) noexcept
 {
     if (span_ns == 0) {
         return {center_ns, center_ns};
@@ -233,8 +233,8 @@ inline time_range_t centered_time_range_ns(
 }
 
 inline std::uint64_t duration_at_fraction_ns(
-    std::uint64_t duration_ns,
-    long double fraction) noexcept
+    std::uint64_t  duration_ns,
+    long double    fraction) noexcept
 {
     if (!std::isfinite(fraction) || fraction <= 0.0L) { return 0;           }
     if (fraction >= 1.0L)                             { return duration_ns; }
@@ -254,8 +254,8 @@ inline std::uint64_t duration_at_fraction_ns(
 }
 
 inline std::optional<std::int64_t> time_at_fraction_ns(
-    time_range_t range,
-    long double fraction) noexcept
+    time_range_t   range,
+    long double    fraction) noexcept
 {
     const auto span = positive_span_ns(range.min_ns, range.max_ns);
     if (!span) {
@@ -268,8 +268,8 @@ inline std::optional<std::int64_t> time_at_fraction_ns(
 }
 
 inline std::uint64_t scaled_duration_ns(
-    std::uint64_t duration_ns,
-    long double scale) noexcept
+    std::uint64_t  duration_ns,
+    long double    scale) noexcept
 {
     if (!std::isfinite(scale) || scale <= 0.0L || duration_ns == 0) {
         return 0;
@@ -291,9 +291,9 @@ inline std::uint64_t scaled_duration_ns(
 }
 
 inline time_range_t time_range_around_pivot_ns(
-    std::int64_t pivot_ns,
-    std::uint64_t left_span_ns,
-    std::uint64_t right_span_ns) noexcept
+    std::int64_t   pivot_ns,
+    std::uint64_t  left_span_ns,
+    std::uint64_t  right_span_ns) noexcept
 {
     if (left_span_ns > std::numeric_limits<std::uint64_t>::max() - right_span_ns) {
         return {
@@ -331,8 +331,8 @@ inline time_range_t time_range_around_pivot_ns(
 }
 
 inline std::optional<time_range_t> translate_time_range_ns(
-    time_range_t range,
-    std::int64_t delta_ns) noexcept
+    time_range_t               range,
+    std::int64_t               delta_ns) noexcept
 {
     const auto span = positive_span_ns(range.min_ns, range.max_ns);
     if (!span) {
@@ -355,8 +355,8 @@ inline std::optional<time_range_t> translate_time_range_ns(
 }
 
 inline std::optional<time_range_t> translate_time_range_by_duration_ns(
-    time_range_t range,
-    std::uint64_t duration_ns,
+    time_range_t               range,
+    std::uint64_t              duration_ns,
     Time_translation_direction direction) noexcept
 {
     const auto span = positive_span_ns(range.min_ns, range.max_ns);
@@ -391,8 +391,8 @@ inline std::optional<time_range_t> translate_time_range_by_duration_ns(
 }
 
 inline std::optional<time_range_t> clamp_time_range_to_available_ns(
-    time_range_t target,
-    time_range_t available) noexcept
+    time_range_t   target,
+    time_range_t   available) noexcept
 {
     const auto target_span = positive_span_ns(target.min_ns, target.max_ns);
     if (!target_span) {

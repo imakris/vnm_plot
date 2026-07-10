@@ -32,11 +32,11 @@ float compute_grid_alpha(float spacing_px, double cell_span_min, double fade_den
 }
 
 void append_grid_level(
-    grid_layer_params_t& levels,
-    float spacing_px,
-    float start_px,
-    double cell_span_min,
-    double fade_den)
+    grid_layer_params_t&   levels,
+    float                  spacing_px,
+    float                  start_px,
+    double                 cell_span_min,
+    double                 fade_den)
 {
     levels.spacing_px[levels.count] = spacing_px;
     levels.start_px[levels.count]   = start_px;
@@ -57,8 +57,8 @@ grid_layer_params_t flip_grid_levels_y(const grid_layer_params_t& levels, float 
 
 glm::vec2 to_gl_origin(
     const frame_context_t& ctx,
-    const glm::vec2& top_left,
-    const glm::vec2& size)
+    const glm::vec2&       top_left,
+    const glm::vec2&       size)
 {
     const float win_h = static_cast<float>(ctx.win_h);
     return {top_left.x, win_h - (top_left.y + size.y)};
@@ -107,7 +107,7 @@ grid_layer_params_t Chrome_renderer::calculate_grid_params(
 
 void Chrome_renderer::render_grid_and_backgrounds(
     const frame_context_t& ctx,
-    Primitive_renderer& prims)
+    Primitive_renderer&    prims)
 {
     vnm::plot::Profiler* profiler = ctx.config ? ctx.config->profiler.get() : nullptr;
     VNM_PLOT_PROFILE_SCOPE(
@@ -243,7 +243,7 @@ void Chrome_renderer::render_grid_and_backgrounds(
 
 void Chrome_renderer::render_zero_line(
     const frame_context_t& ctx,
-    Primitive_renderer& prims)
+    Primitive_renderer&    prims)
 {
     const double range_v = double(ctx.v1) - double(ctx.v0);
     if (!(range_v > 0.0)) {
@@ -286,7 +286,7 @@ void Chrome_renderer::render_zero_line(
 
 void Chrome_renderer::render_preview_overlay(
     const frame_context_t& ctx,
-    Primitive_renderer& prims)
+    Primitive_renderer&    prims)
 {
     vnm::plot::Profiler* profiler = ctx.config ? ctx.config->profiler.get() : nullptr;
     VNM_PLOT_PROFILE_SCOPE(

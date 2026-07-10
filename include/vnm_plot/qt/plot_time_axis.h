@@ -80,15 +80,29 @@ public:
     // one side at a time, but these atomic setters validate ordering in one
     // shot and skip the seed/slide branching, which is the right shape when
     // a caller already has both bounds in hand.
-    Q_INVOKABLE void set_t_range_qml_ms(qint64 t_min_ms, qint64 t_max_ms);
-    Q_INVOKABLE void set_available_t_range_qml_ms(
-        qint64 t_available_min_ms,
-        qint64 t_available_max_ms);
+    Q_INVOKABLE void set_t_range_qml_ms(
+        qint64         t_min_ms,
+        qint64         t_max_ms);
 
-    Q_INVOKABLE void adjust_t_from_mouse_diff(double ref_width, double diff);
-    Q_INVOKABLE void adjust_t_from_mouse_diff_on_preview(double ref_width, double diff);
-    Q_INVOKABLE void adjust_t_from_mouse_pos_on_preview(double ref_width, double x_pos);
-    Q_INVOKABLE void adjust_t_from_pivot_and_scale(double pivot, double scale);
+    Q_INVOKABLE void set_available_t_range_qml_ms(
+        qint64         t_available_min_ms,
+        qint64         t_available_max_ms);
+
+    Q_INVOKABLE void adjust_t_from_mouse_diff(
+        double         ref_width,
+        double         diff);
+
+    Q_INVOKABLE void adjust_t_from_mouse_diff_on_preview(
+        double         ref_width,
+        double         diff);
+
+    Q_INVOKABLE void adjust_t_from_mouse_pos_on_preview(
+        double         ref_width,
+        double         x_pos);
+
+    Q_INVOKABLE void adjust_t_from_pivot_and_scale(
+        double         pivot,
+        double         scale);
     // QML-facing indicator API: timestamp is milliseconds-since-epoch.
     Q_INVOKABLE void set_indicator_state(QObject* owner, bool active, qint64 t_ms);
     Q_INVOKABLE void set_indicator_state(QObject* owner, bool active, qint64 t_ms, double x_norm);
@@ -107,20 +121,21 @@ public:
 
 signals:
     void t_limits_changed();
+
     void sync_vbar_width_changed();
     void shared_vbar_width_changed(double width_px);
     void indicator_state_changed();
 
 private:
     bool apply_time_axis_limits_if_changed(
-        qint64 t_min_ns,
-        qint64 t_max_ns,
-        qint64 t_available_min_ns,
-        qint64 t_available_max_ns,
-        bool t_min_initialized,
-        bool t_max_initialized,
-        bool t_available_min_initialized,
-        bool t_available_max_initialized);
+        qint64         t_min_ns,
+        qint64         t_max_ns,
+        qint64         t_available_min_ns,
+        qint64         t_available_max_ns,
+        bool           t_min_initialized,
+        bool           t_max_initialized,
+        bool           t_available_min_initialized,
+        bool           t_available_max_initialized);
 
     qint64 m_t_min = 0;
     qint64 m_t_max = 0;

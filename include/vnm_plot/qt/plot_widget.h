@@ -100,8 +100,14 @@ public:
     // --- Data Management ---
 
     // Add or update a data series
-    void add_series(int id, std::shared_ptr<series_data_t> series);
-    void apply_series_updates(const std::vector<std::pair<int, std::shared_ptr<series_data_t>>>& updates);
+    void add_series(
+        int    id,
+        std::shared_ptr<series_data_t>
+               series);
+
+    void apply_series_updates(
+        const std::vector<std::pair<int, std::shared_ptr<series_data_t>>>&
+               updates);
 
     // Remove a data series
     void remove_series(int id);
@@ -187,17 +193,17 @@ public:
     Q_INVOKABLE virtual void adjust_t_from_pivot_and_scale(double pivot, double scale);
     Q_INVOKABLE virtual void adjust_v_from_mouse_diff(float ref_height, float diff);
     Q_INVOKABLE virtual void adjust_v_from_pivot_and_scale(float pivot, float scale);
-    Q_INVOKABLE void adjust_v_to_target(float target_vmin, float target_vmax);
-    Q_INVOKABLE void auto_adjust_view(bool adjust_t, double extra_v_scale);
-    Q_INVOKABLE void auto_adjust_view(bool adjust_t, double extra_v_scale, bool anchor_zero);
+    Q_INVOKABLE void        adjust_v_to_target(float target_vmin, float target_vmax);
+    Q_INVOKABLE void        auto_adjust_view(bool adjust_t, double extra_v_scale);
+    Q_INVOKABLE void        auto_adjust_view(bool adjust_t, double extra_v_scale, bool anchor_zero);
     Q_INVOKABLE virtual bool can_zoom_in() const;
-    Q_INVOKABLE double update_dpi_scaling_factor();
-    Q_INVOKABLE void set_visible_info(int flags);
-    Q_INVOKABLE void set_relative_preview_height(float relative);
-    Q_INVOKABLE void set_preview_height_min(double v);
-    Q_INVOKABLE void set_preview_height_max(double v);
-    Q_INVOKABLE void set_show_if_calculated_preview_height_below_min(bool v);
-    Q_INVOKABLE void set_preview_height_steps(int steps);
+    Q_INVOKABLE double      update_dpi_scaling_factor();
+    Q_INVOKABLE void        set_visible_info(int flags);
+    Q_INVOKABLE void        set_relative_preview_height(float relative);
+    Q_INVOKABLE void        set_preview_height_min(double v);
+    Q_INVOKABLE void        set_preview_height_max(double v);
+    Q_INVOKABLE void        set_show_if_calculated_preview_height_below_min(bool v);
+    Q_INVOKABLE void        set_preview_height_steps(int steps);
 
     // Q_INVOKABLEs that take or return timestamps cross the QML boundary
     // in milliseconds-since-epoch. Result maps also report entry["x"] in ms.
@@ -206,12 +212,15 @@ public:
         double plot_width,
         double plot_height,
         double mouse_px = -1.0) const;
+
     Q_INVOKABLE QVariantList get_nearest_samples(
         double x_ms,
         double plot_width,
         double plot_height,
         double mouse_px = -1.0) const;
-    Q_INVOKABLE QString format_timestamp_precise(qint64 timestamp_ms) const;
+
+    Q_INVOKABLE QString format_timestamp_precise(
+        qint64 timestamp_ms) const;
 
     // --- Qt Quick RHI Interface ---
 
@@ -219,6 +228,7 @@ public:
 
 signals:
     void t_limits_changed();
+
     void v_limits_changed();
     void v_auto_changed();
     void preview_height_changed();
@@ -251,7 +261,8 @@ private:
         double plot_width,
         double plot_height,
         double mouse_px,
-        Indicator_sample_mode mode) const;
+        Indicator_sample_mode
+               mode) const;
 
     // Plot_renderer reads m_config / m_data_cfg under the matching shared_mutexes
     // during synchronize(); friending lets it touch those members directly
@@ -310,6 +321,7 @@ private:
     double compute_preview_height_px(double widget_height_px) const;
     std::pair<float, float> current_v_range() const;
     data_config_t data_cfg_snapshot() const;
+
     template<typename Field, typename Value, typename Signal>
     void update_config_field(Field& field, Value new_value, Signal signal);
 

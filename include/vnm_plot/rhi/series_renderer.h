@@ -68,14 +68,18 @@ public:
     // only legal outside an open pass, and beginPass consumes its 4th
     // argument before the renderer's own draws would otherwise have written
     // to it.
-    void prepare(const frame_context_t& ctx,
-                 const std::map<int, std::shared_ptr<const series_data_t>>& series);
+    void prepare(
+        const frame_context_t& ctx,
+        const std::map<int, std::shared_ptr<const series_data_t>>&
+                               series);
 
     // Render all series in the frame context. Records draws only when
     // ctx.rhi is non-null; uploads must already have been submitted via
     // prepare() + beginPass(batch).
-    void render(const frame_context_t& ctx,
-                const std::map<int, std::shared_ptr<const series_data_t>>& series);
+    void render(
+        const frame_context_t& ctx,
+        const std::map<int, std::shared_ptr<const series_data_t>>&
+                               series);
 
 private:
     struct gpu_sample_t
@@ -210,24 +214,28 @@ private:
     //   open render pass.
     bool rhi_prepare_series_view_samples(
         const frame_context_t& ctx,
-        vbo_view_state_t& view_state,
+        vbo_view_state_t&      view_state,
         const sample_window_t& window);
+
     bool rhi_prepare_series_primitive(
         const frame_context_t& ctx,
-        const series_data_t* series,
-        Display_style primitive_style,
-        vbo_view_state_t& view_state,
+        const series_data_t*   series,
+        Display_style          primitive_style,
+        vbo_view_state_t&      view_state,
         const sample_window_t& window,
-        float line_width_px,
-        float point_diameter_px,
-        float area_fill_alpha,
-        std::vector<detail::builtin_segment_span_t>* out_segment_spans = nullptr);
+        float                  line_width_px,
+        float                  point_diameter_px,
+        float                  area_fill_alpha,
+        std::vector<detail::builtin_segment_span_t>*
+                               out_segment_spans = nullptr);
+
     void rhi_record_series_primitive(
         const frame_context_t& ctx,
-        Display_style primitive_style,
-        vbo_view_state_t& view_state,
+        Display_style          primitive_style,
+        vbo_view_state_t&      view_state,
         const sample_window_t& window,
-        const std::vector<detail::builtin_segment_span_t>& segment_spans);
+        const std::vector<detail::builtin_segment_span_t>&
+                               segment_spans);
 };
 
 } // namespace vnm::plot

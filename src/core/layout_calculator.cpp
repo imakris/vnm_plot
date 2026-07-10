@@ -99,13 +99,13 @@ class Timestamp_label_cache
 {
 public:
     void set_context(
-        double step,
-        double range,
-        uint64_t measure_key,
-        float monospace_advance,
-        bool monospace_advance_reliable,
-        double adjusted_font_size,
-        size_t format_signature)
+        double     step,
+        double     range,
+        uint64_t   measure_key,
+        float      monospace_advance,
+        bool       monospace_advance_reliable,
+        double     adjusted_font_size,
+        size_t     format_signature)
     {
         if (!std::isfinite(step))               { step               = 0.0;  }
         if (!std::isfinite(range))              { range              = 0.0;  }
@@ -237,8 +237,8 @@ class Format_signature_cache
 {
 public:
     size_t get_or_compute(
-        double step,
-        double range,
+        double                                 step,
+        double                                 range,
         const Layout_calculator::parameters_t& params)
     {
         if (!params.format_timestamp_func) {
@@ -398,9 +398,9 @@ Format_signature_cache& format_signature_cache()
 }
 
 bool has_anchor_within(
-    const std::vector<std::pair<float, float>>& intervals,
-    float anchor,
-    float tolerance)
+    const std::vector<std::pair<float, float>>&    intervals,
+    float                                          anchor,
+    float                                          tolerance)
 {
     if (intervals.empty()) {
         return false;
@@ -429,9 +429,9 @@ bool has_anchor_within(
 } // namespace
 
 bool Layout_calculator::fits_with_gap(
-    const std::vector<std::pair<float, float>>& level,
-    const std::vector<std::pair<float, float>>& accepted,
-    float min_gap) const
+    const std::vector<std::pair<float, float>>&    level,
+    const std::vector<std::pair<float, float>>&    accepted,
+    float                                          min_gap) const
 {
     if (level.empty()) {
         return true;

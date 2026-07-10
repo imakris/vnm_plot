@@ -12,7 +12,7 @@ namespace vnm::plot::detail {
 
 [[nodiscard]] inline bool horizontal_axis_label_pane_rect(
     const frame_context_t& ctx,
-    glm::vec4& rect)
+    glm::vec4&             rect)
 {
     const double frame_right  = static_cast<double>(ctx.win_w);
     const double frame_bottom = static_cast<double>(ctx.win_h);
@@ -42,7 +42,7 @@ namespace vnm::plot::detail {
 
 [[nodiscard]] inline bool vertical_axis_label_pane_rect(
     const frame_context_t& ctx,
-    glm::vec4& rect)
+    glm::vec4&             rect)
 {
     const double frame_right  = static_cast<double>(ctx.win_w);
     const double frame_bottom = static_cast<double>(ctx.win_h);
@@ -75,10 +75,10 @@ namespace vnm::plot::detail {
 }
 
 [[nodiscard]] inline bool framebuffer_scissor_from_top_left_rect(
-    const glm::vec4& rect,
-    int window_width,
-    int window_height,
-    text_scissor_t& scissor)
+    const glm::vec4&   rect,
+    int                window_width,
+    int                window_height,
+    text_scissor_t&    scissor)
 {
     if (window_width <= 0 || window_height <= 0 ||
         !std::isfinite(rect.x) ||

@@ -76,17 +76,17 @@ label_pane_opacity_t label_pane_opacity_for_text(const frame_context_t& ctx)
 }
 
 Layout_calculator::parameters_t build_layout_params(
-    float v_min,
-    float v_max,
-    std::int64_t t_min_ns,
-    std::int64_t t_max_ns,
-    int win_w,
-    double usable_height,
-    double vbar_width,
-    double preview_height,
-    double font_px,
-    const Plot_config& config,
-    const Font_renderer* fonts)
+    float                  v_min,
+    float                  v_max,
+    std::int64_t           t_min_ns,
+    std::int64_t           t_max_ns,
+    int                    win_w,
+    double                 usable_height,
+    double                 vbar_width,
+    double                 preview_height,
+    double                 font_px,
+    const Plot_config&     config,
+    const Font_renderer*   fonts)
 {
     Layout_calculator::parameters_t params;
     params.v_min = v_min;

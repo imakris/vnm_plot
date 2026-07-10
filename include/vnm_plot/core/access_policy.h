@@ -79,8 +79,8 @@ constexpr std::int64_t timestamp_member_to_ns(Timestamp value)
 
 template<typename Member>
 const std::decay_t<Member>& member_at_offset(
-    const void* sample,
-    std::size_t offset)
+    const void*    sample,
+    std::size_t    offset)
 {
     const auto* bytes = static_cast<const std::uint8_t*>(sample);
     return *reinterpret_cast<const std::decay_t<Member>*>(bytes + offset);
@@ -88,8 +88,8 @@ const std::decay_t<Member>& member_at_offset(
 
 template<typename Timestamp_member>
 std::int64_t member_timestamp_access(
-    const erased_access_policy_t& access,
-    const void* sample)
+    const erased_access_policy_t&  access,
+    const void*                    sample)
 {
     using timestamp_t = std::decay_t<Timestamp_member>;
     return timestamp_member_to_ns<timestamp_t>(
@@ -98,8 +98,8 @@ std::int64_t member_timestamp_access(
 
 template<typename Value_member>
 float member_value_access(
-    const erased_access_policy_t& access,
-    const void* sample)
+    const erased_access_policy_t&  access,
+    const void*                    sample)
 {
     using value_t = std::decay_t<Value_member>;
     return static_cast<float>(
@@ -108,8 +108,8 @@ float member_value_access(
 
 template<typename Range_min_member, typename Range_max_member>
 std::pair<float, float> member_range_access(
-    const erased_access_policy_t& access,
-    const void* sample)
+    const erased_access_policy_t&  access,
+    const void*                    sample)
 {
     using range_min_t = std::decay_t<Range_min_member>;
     using range_max_t = std::decay_t<Range_max_member>;
@@ -126,12 +126,12 @@ std::pair<float, float> member_range_access(
 // distinguishes user sample types so caches stay correct across mixed-type
 // series.
 inline std::uint64_t compute_sample_layout_key(
-    std::size_t sample_stride,
-    std::size_t timestamp_offset,
-    std::size_t value_offset,
-    bool has_range,
-    std::size_t range_min_offset,
-    std::size_t range_max_offset)
+    std::size_t    sample_stride,
+    std::size_t    timestamp_offset,
+    std::size_t    value_offset,
+    bool           has_range,
+    std::size_t    range_min_offset,
+    std::size_t    range_max_offset)
 {
     std::uint64_t h = k_fnv_offset_basis;
     h = fnv1a_mix(h, sample_stride);
@@ -169,16 +169,16 @@ constexpr std::uint64_t member_semantics_tag()
 }
 
 inline std::uint64_t compute_sample_semantics_key(
-    std::size_t sample_stride,
-    std::size_t timestamp_offset,
-    std::uint64_t timestamp_tag,
-    std::size_t value_offset,
-    std::uint64_t value_tag,
-    bool has_range,
-    std::size_t range_min_offset,
-    std::uint64_t range_min_tag,
-    std::size_t range_max_offset,
-    std::uint64_t range_max_tag)
+    std::size_t    sample_stride,
+    std::size_t    timestamp_offset,
+    std::uint64_t  timestamp_tag,
+    std::size_t    value_offset,
+    std::uint64_t  value_tag,
+    bool           has_range,
+    std::size_t    range_min_offset,
+    std::uint64_t  range_min_tag,
+    std::size_t    range_max_offset,
+    std::uint64_t  range_max_tag)
 {
     std::uint64_t h = k_fnv_offset_basis;
     h = fnv1a_mix(h, 0x53454D414E544943ULL);
@@ -282,8 +282,8 @@ struct Data_access_policy_typed
     }
 
     Data_access_policy_typed& set_semantics_key(
-        std::uint64_t value,
-        std::uint64_t revision = 0) noexcept
+        std::uint64_t  value,
+        std::uint64_t  revision = 0) noexcept
     {
         semantics_key =
             detail::make_explicit_sample_semantics_key(value, revision);
@@ -317,22 +317,22 @@ struct Data_access_policy_typed
 private:
     template<typename S, typename Timestamp_member, typename Value_member>
     friend void assign_standard_accessors(
-        Data_access_policy_typed<S>& policy,
-        Timestamp_member S::* timestamp_member,
-        Value_member S::* value_member);
+        Data_access_policy_typed<S>&   policy,
+        Timestamp_member S::*          timestamp_member,
+        Value_member S::*              value_member);
 
     template<typename S, typename Timestamp_member, typename Value_member>
     friend Data_access_policy_typed<S> make_access_policy(
-        Timestamp_member S::* timestamp_member,
-        Value_member S::* value_member);
+        Timestamp_member S::*  timestamp_member,
+        Value_member S::*      value_member);
 
     template<typename S, typename Timestamp_member, typename Value_member,
              typename Range_min_member, typename Range_max_member>
     friend Data_access_policy_typed<S> make_access_policy(
-        Timestamp_member S::* timestamp_member,
-        Value_member S::* value_member,
-        Range_min_member S::* range_min_member,
-        Range_max_member S::* range_max_member);
+        Timestamp_member S::*  timestamp_member,
+        Value_member S::*      value_member,
+        Range_min_member S::*  range_min_member,
+        Range_max_member S::*  range_max_member);
 
     void set_internal_access(detail::erased_access_policy_t access)
     {
@@ -363,9 +363,9 @@ private:
 
 template<typename Sample, typename Timestamp_member, typename Value_member>
 inline void assign_standard_accessors(
-    Data_access_policy_typed<Sample>& policy,
-    Timestamp_member Sample::* timestamp_member,
-    Value_member Sample::* value_member)
+    Data_access_policy_typed<Sample>&  policy,
+    Timestamp_member Sample::*         timestamp_member,
+    Value_member Sample::*             value_member)
 {
     policy.get_timestamp = [timestamp_member](const Sample& sample) -> std::int64_t {
         using timestamp_t = std::decay_t<decltype(sample.*timestamp_member)>;
@@ -391,7 +391,7 @@ template<typename Sample, typename Timestamp_member, typename Value_member,
          typename Range_min_member, typename Range_max_member>
 inline Data_access_policy_typed<Sample> make_access_policy(
     Timestamp_member Sample::* timestamp_member,
-    Value_member Sample::* value_member,
+    Value_member Sample::*     value_member,
     Range_min_member Sample::* range_min_member,
     Range_max_member Sample::* range_max_member)
 {
@@ -447,7 +447,7 @@ inline Data_access_policy_typed<Sample> make_access_policy(
 template<typename Sample, typename Timestamp_member, typename Value_member>
 inline Data_access_policy_typed<Sample> make_access_policy(
     Timestamp_member Sample::* timestamp_member,
-    Value_member Sample::* value_member)
+    Value_member Sample::*     value_member)
 {
     Data_access_policy_typed<Sample> policy;
     const std::size_t timestamp_offset = detail::member_offset(timestamp_member);

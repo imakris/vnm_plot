@@ -224,9 +224,9 @@ void Primitive_renderer::batch_rect(const glm::vec4& color, const glm::vec4& rec
 }
 
 bool Primitive_renderer::rhi_ensure_rect_pipeline(
-    rhi_state_t& rhi_state,
-    QRhi* rhi,
-    QRhiRenderTarget* rt)
+    rhi_state_t&       rhi_state,
+    QRhi*              rhi,
+    QRhiRenderTarget*  rt)
 {
     QRhiRenderPassDescriptor* rpd = rt->renderPassDescriptor();
     const int samples = rt->sampleCount();
@@ -271,9 +271,9 @@ bool Primitive_renderer::rhi_ensure_rect_pipeline(
 }
 
 bool Primitive_renderer::rhi_ensure_grid_pipeline(
-    rhi_state_t& rhi_state,
-    QRhi* rhi,
-    QRhiRenderTarget* rt)
+    rhi_state_t&       rhi_state,
+    QRhi*              rhi,
+    QRhiRenderTarget*  rt)
 {
     QRhiRenderPassDescriptor* rpd = rt->renderPassDescriptor();
     const int samples = rt->sampleCount();
@@ -315,9 +315,9 @@ bool Primitive_renderer::rhi_ensure_grid_pipeline(
 }
 
 bool Primitive_renderer::rhi_ensure_grid_quad_vbo(
-    rhi_state_t& rhi_state,
-    QRhi* rhi,
-    QRhiResourceUpdateBatch* updates)
+    rhi_state_t&               rhi_state,
+    QRhi*                      rhi,
+    QRhiResourceUpdateBatch*   updates)
 {
     if (rhi_state.grid_quad_vbo) {
         return true;
@@ -497,10 +497,10 @@ void Primitive_renderer::clear_rect_batch()
 }
 
 void Primitive_renderer::draw_grid_shader(
-    const frame_context_t& ctx,
-    const glm::vec2& origin,
-    const glm::vec2& size,
-    const glm::vec4& color,
+    const frame_context_t&     ctx,
+    const glm::vec2&           origin,
+    const glm::vec2&           size,
+    const glm::vec4&           color,
     const grid_layer_params_t& vertical_levels,
     const grid_layer_params_t& horizontal_levels)
 {
@@ -631,8 +631,8 @@ std::size_t Primitive_renderer::queued_op_count() const
 }
 
 void Primitive_renderer::record_draws(
-    [[maybe_unused]] const frame_context_t& ctx,
-    [[maybe_unused]] std::size_t end)
+    [[maybe_unused]] const frame_context_t&    ctx,
+    [[maybe_unused]] std::size_t               end)
 {
     if (!ctx.rhi || !ctx.cb) {
         return;

@@ -122,8 +122,8 @@ void write_valid_glyph(std::ofstream& out)
 }
 
 bool write_cache_file(
-    const std::filesystem::path& path,
-    const cache_file_options_t& options)
+    const std::filesystem::path&   path,
+    const cache_file_options_t&    options)
 {
     std::ofstream out(path, std::ios::binary | std::ios::trunc);
     if (!out) {
@@ -180,9 +180,9 @@ bool write_cache_file(
 }
 
 bool cache_file_is_valid(
-    const std::filesystem::path& path,
-    const digest_t& expected_digest,
-    int pixel_height = static_cast<int>(k_pixel_height))
+    const std::filesystem::path&   path,
+    const digest_t&                expected_digest,
+    int                            pixel_height = static_cast<int>(k_pixel_height))
 {
     return plot::detail::validate_font_disk_cache_file(path, expected_digest, pixel_height);
 }

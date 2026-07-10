@@ -88,7 +88,7 @@ detail::Time_axis_model widget_time_axis_model(const data_config_t& cfg)
 
 void apply_time_axis_model_to_data_config(
     const detail::Time_axis_model& model,
-    data_config_t& cfg)
+    data_config_t&                 cfg)
 {
     cfg.t_min           = model.t_min();
     cfg.t_max           = model.t_max();
@@ -1248,11 +1248,11 @@ QVariantList Plot_widget::get_nearest_samples(
 }
 
 QVariantList Plot_widget::get_samples_for_time(
-    double x_ms,
-    double plot_width,
-    double plot_height,
-    double mouse_px,
-    Indicator_sample_mode mode) const
+    double                 x_ms,
+    double                 plot_width,
+    double                 plot_height,
+    double                 mouse_px,
+    Indicator_sample_mode  mode) const
 {
     QVariantList result;
 

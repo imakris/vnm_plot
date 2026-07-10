@@ -554,10 +554,10 @@ bool Plot_time_axis::apply_time_axis_limits_if_changed(
     qint64 t_max_ns,
     qint64 t_available_min_ns,
     qint64 t_available_max_ns,
-    bool t_min_initialized,
-    bool t_max_initialized,
-    bool t_available_min_initialized,
-    bool t_available_max_initialized)
+    bool   t_min_initialized,
+    bool   t_max_initialized,
+    bool   t_available_min_initialized,
+    bool   t_available_max_initialized)
 {
     const bool changed =
         m_t_min != t_min_ns ||

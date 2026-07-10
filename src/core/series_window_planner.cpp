@@ -53,12 +53,12 @@ struct direct_time_window_query_t
 };
 
 drawable_window_result_t build_drawable_window(
-    const data_snapshot_t& snapshot,
-    const erased_access_policy_t& access,
-    Nonfinite_sample_policy nonfinite_policy,
-    std::size_t source_first,
-    std::size_t source_last_exclusive,
-    bool hold_last_forward)
+    const data_snapshot_t&         snapshot,
+    const erased_access_policy_t&  access,
+    Nonfinite_sample_policy        nonfinite_policy,
+    std::size_t                    source_first,
+    std::size_t                    source_last_exclusive,
+    bool                           hold_last_forward)
 {
     drawable_window_result_t result;
     result.source_first = source_first;
@@ -126,12 +126,12 @@ drawable_window_result_t build_drawable_window(
 }
 
 bool select_hold_source_index(
-    const data_snapshot_t& snapshot,
-    const erased_access_policy_t& access,
-    Nonfinite_sample_policy nonfinite_policy,
-    std::size_t candidate_index,
-    std::size_t& out_index,
-    bool& out_failed)
+    const data_snapshot_t&         snapshot,
+    const erased_access_policy_t&  access,
+    Nonfinite_sample_policy        nonfinite_policy,
+    std::size_t                    candidate_index,
+    std::size_t&                   out_index,
+    bool&                          out_failed)
 {
     out_failed = false;
     if (candidate_index >= snapshot.count) {

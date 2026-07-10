@@ -341,11 +341,11 @@ class Recording_layer final : public plot::Qrhi_series_layer
 {
 public:
     Recording_layer(
-        std::string id,
-        std::uint64_t revision,
-        int z_order,
-        std::vector<layer_event_t>& events,
-        int& create_count)
+        std::string                    id,
+        std::uint64_t                  revision,
+        int                            z_order,
+        std::vector<layer_event_t>&    events,
+        int&                           create_count)
     :
         m_id(std::move(id)),
         m_revision(revision),
@@ -426,9 +426,11 @@ public:
     bool render_layer_frame(
         plot::Series_renderer& renderer,
         plot::frame_context_t& ctx,
-        const std::map<int, std::shared_ptr<const plot::series_data_t>>& series_map,
-        std::vector<layer_event_t>& events,
-        std::string& error_message)
+        const std::map<int, std::shared_ptr<const plot::series_data_t>>&
+                               series_map,
+        std::vector<layer_event_t>&
+                               events,
+        std::string&           error_message)
     {
         QRhiCommandBuffer* command_buffer = nullptr;
         if (m_rhi->beginOffscreenFrame(&command_buffer) != QRhi::FrameOpSuccess || !command_buffer) {
@@ -472,7 +474,7 @@ plot::frame_layout_result_t make_layout()
 
 plot::frame_context_t make_context(
     const plot::frame_layout_result_t& layout,
-    const plot::Plot_config& config)
+    const plot::Plot_config&           config)
 {
     plot::frame_context_t ctx{layout};
     ctx.t0 = 0;
@@ -488,8 +490,8 @@ plot::frame_context_t make_context(
 }
 
 std::shared_ptr<plot::series_data_t> make_layer_only_series(
-    std::shared_ptr<Test_source> source,
-    std::vector<std::shared_ptr<const plot::Qrhi_series_layer>> layers)
+    std::shared_ptr<Test_source>                                   source,
+    std::vector<std::shared_ptr<const plot::Qrhi_series_layer>>    layers)
 {
     auto series = std::make_shared<plot::rhi_series_data_t>();
     series->style = plot::Display_style::NONE;
@@ -500,9 +502,9 @@ std::shared_ptr<plot::series_data_t> make_layer_only_series(
 }
 
 std::shared_ptr<plot::series_data_t> make_builtin_plus_layer_series(
-    std::shared_ptr<Test_source> source,
-    plot::Display_style style,
-    std::vector<std::shared_ptr<const plot::Qrhi_series_layer>> layers)
+    std::shared_ptr<Test_source>                                   source,
+    plot::Display_style                                            style,
+    std::vector<std::shared_ptr<const plot::Qrhi_series_layer>>    layers)
 {
     auto series = std::make_shared<plot::rhi_series_data_t>();
     series->style = style;
@@ -513,8 +515,8 @@ std::shared_ptr<plot::series_data_t> make_builtin_plus_layer_series(
 }
 
 std::shared_ptr<plot::series_data_t> make_line_plus_layer_series(
-    std::shared_ptr<Test_source> source,
-    std::vector<std::shared_ptr<const plot::Qrhi_series_layer>> layers)
+    std::shared_ptr<Test_source>                                   source,
+    std::vector<std::shared_ptr<const plot::Qrhi_series_layer>>    layers)
 {
     return make_builtin_plus_layer_series(
         std::move(source),
@@ -523,8 +525,8 @@ std::shared_ptr<plot::series_data_t> make_line_plus_layer_series(
 }
 
 const layer_event_t* find_prepare_event(
-    const std::vector<layer_event_t>& events,
-    std::string_view layer_id)
+    const std::vector<layer_event_t>&  events,
+    std::string_view                   layer_id)
 {
     for (const auto& event : events) {
         if (event.layer_id == layer_id && event.action == "prepare") {
@@ -535,9 +537,9 @@ const layer_event_t* find_prepare_event(
 }
 
 std::size_t find_event_index(
-    const std::vector<layer_event_t>& events,
-    std::string_view layer_id,
-    std::string_view action)
+    const std::vector<layer_event_t>&  events,
+    std::string_view                   layer_id,
+    std::string_view                   action)
 {
     for (std::size_t i = 0; i < events.size(); ++i) {
         if (events[i].layer_id == layer_id && events[i].action == action) {
@@ -548,11 +550,11 @@ std::size_t find_event_index(
 }
 
 bool assert_compact_upload_state(
-    const plot::Series_renderer& renderer,
-    int series_id,
-    const layer_event_t& prepare,
-    std::size_t expected_line_window_sample_count,
-    std::string_view label)
+    const plot::Series_renderer&       renderer,
+    int                                series_id,
+    const layer_event_t&               prepare,
+    std::size_t                        expected_line_window_sample_count,
+    std::string_view                   label)
 {
     constexpr std::size_t k_gpu_sample_bytes = sizeof(float) * 4u;
 
@@ -606,13 +608,14 @@ bool assert_compact_upload_state(
 }
 
 bool assert_drawable_span(
-    const std::vector<plot::drawable_sample_span_t>& spans,
-    std::size_t index,
-    std::size_t source_first,
-    std::size_t source_count,
-    std::size_t gpu_first,
-    std::size_t gpu_count,
-    std::string_view label)
+    const std::vector<plot::drawable_sample_span_t>&
+                           spans,
+    std::size_t            index,
+    std::size_t            source_first,
+    std::size_t            source_count,
+    std::size_t            gpu_first,
+    std::size_t            gpu_count,
+    std::string_view       label)
 {
     TEST_ASSERT(index < spans.size(),
         std::string(label) + " expected drawable span index");

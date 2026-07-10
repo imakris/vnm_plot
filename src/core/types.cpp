@@ -73,10 +73,10 @@ bool wants_hold_forward(const data_query_context_t& query)
 }
 
 bool timestamp_at(
-    const data_snapshot_t& snapshot,
-    const Data_access_policy& access,
-    std::size_t index,
-    std::int64_t& timestamp_ns)
+    const data_snapshot_t&     snapshot,
+    const Data_access_policy&  access,
+    std::size_t                index,
+    std::int64_t&              timestamp_ns)
 {
     const void* sample = snapshot.at(index);
     if (!sample) {
@@ -108,10 +108,10 @@ void include_range(value_range_t& range, bool& has_value, float low, float high)
 }
 
 sample_scan_status sample_value_range(
-    const Data_access_policy& access,
-    const void* sample,
-    Nonfinite_sample_policy policy,
-    value_range_t& range)
+    const Data_access_policy&      access,
+    const void*                    sample,
+    Nonfinite_sample_policy        policy,
+    value_range_t&                 range)
 {
     detail::sample_draw_value_t draw_value;
     const detail::sample_draw_status_t draw_status =
@@ -127,20 +127,20 @@ sample_scan_status sample_value_range(
 }
 
 sample_scan_status sample_status_for_staging(
-    const Data_access_policy& access,
-    const void* sample,
-    Nonfinite_sample_policy policy)
+    const Data_access_policy&      access,
+    const void*                    sample,
+    Nonfinite_sample_policy        policy)
 {
     value_range_t ignored;
     return sample_value_range(access, sample, policy, ignored);
 }
 
 bool include_sample_range(
-    value_range_t& range,
-    bool& has_value,
-    const Data_access_policy& access,
-    const void* sample,
-    Nonfinite_sample_policy policy)
+    value_range_t&                 range,
+    bool&                          has_value,
+    const Data_access_policy&      access,
+    const void*                    sample,
+    Nonfinite_sample_policy        policy)
 {
     value_range_t sample_range;
     const sample_scan_status scan_status =
@@ -155,10 +155,10 @@ bool include_sample_range(
 }
 
 std::size_t ascending_first_ge(
-    const data_snapshot_t& snapshot,
-    const Data_access_policy& access,
-    std::int64_t target_ns,
-    bool& valid)
+    const data_snapshot_t&         snapshot,
+    const Data_access_policy&      access,
+    std::int64_t                   target_ns,
+    bool&                          valid)
 {
     std::size_t first = 0;
     std::size_t count = snapshot.count;
@@ -182,10 +182,10 @@ std::size_t ascending_first_ge(
 }
 
 std::size_t ascending_first_gt(
-    const data_snapshot_t& snapshot,
-    const Data_access_policy& access,
-    std::int64_t target_ns,
-    bool& valid)
+    const data_snapshot_t&         snapshot,
+    const Data_access_policy&      access,
+    std::int64_t                   target_ns,
+    bool&                          valid)
 {
     std::size_t first = 0;
     std::size_t count = snapshot.count;
@@ -209,10 +209,10 @@ std::size_t ascending_first_gt(
 }
 
 std::size_t descending_first_le(
-    const data_snapshot_t& snapshot,
-    const Data_access_policy& access,
-    std::int64_t target_ns,
-    bool& valid)
+    const data_snapshot_t&         snapshot,
+    const Data_access_policy&      access,
+    std::int64_t                   target_ns,
+    bool&                          valid)
 {
     std::size_t first = 0;
     std::size_t count = snapshot.count;
@@ -236,10 +236,10 @@ std::size_t descending_first_le(
 }
 
 std::size_t descending_first_lt(
-    const data_snapshot_t& snapshot,
-    const Data_access_policy& access,
-    std::int64_t target_ns,
-    bool& valid)
+    const data_snapshot_t&         snapshot,
+    const Data_access_policy&      access,
+    std::int64_t                   target_ns,
+    bool&                          valid)
 {
     std::size_t first = 0;
     std::size_t count = snapshot.count;
@@ -263,9 +263,9 @@ std::size_t descending_first_lt(
 }
 
 time_window_candidates_t ascending_candidates(
-    const data_snapshot_t& snapshot,
-    const Data_access_policy& access,
-    const data_query_context_t& query)
+    const data_snapshot_t&         snapshot,
+    const Data_access_policy&      access,
+    const data_query_context_t&    query)
 {
     bool valid = true;
     time_window_candidates_t out;
@@ -287,9 +287,9 @@ time_window_candidates_t ascending_candidates(
 }
 
 time_window_candidates_t descending_candidates(
-    const data_snapshot_t& snapshot,
-    const Data_access_policy& access,
-    const data_query_context_t& query)
+    const data_snapshot_t&         snapshot,
+    const Data_access_policy&      access,
+    const data_query_context_t&    query)
 {
     bool valid = true;
     time_window_candidates_t out;
@@ -311,9 +311,9 @@ time_window_candidates_t descending_candidates(
 }
 
 time_window_candidates_t linear_candidates(
-    const data_snapshot_t& snapshot,
-    const Data_access_policy& access,
-    const data_query_context_t& query)
+    const data_snapshot_t&         snapshot,
+    const Data_access_policy&      access,
+    const data_query_context_t&    query)
 {
     bool found = false;
     bool gap_after_match = false;
@@ -375,11 +375,11 @@ time_window_candidates_t linear_candidates(
 }
 
 time_window_candidates_t time_window_candidates(
-    const Data_source& source,
-    const data_snapshot_t& snapshot,
-    const Data_access_policy& access,
-    std::size_t lod,
-    const data_query_context_t& query)
+    const Data_source&             source,
+    const data_snapshot_t&         snapshot,
+    const Data_access_policy&      access,
+    std::size_t                    lod,
+    const data_query_context_t&    query)
 {
     switch (source.time_order(lod)) {
         case Time_order::ASCENDING:  return ascending_candidates(snapshot, access, query);
@@ -391,11 +391,11 @@ time_window_candidates_t time_window_candidates(
 }
 
 bool validate_match_range(
-    const data_snapshot_t& snapshot,
-    const Data_access_policy& access,
-    const data_query_context_t& query,
-    std::size_t first,
-    std::size_t last_exclusive)
+    const data_snapshot_t&         snapshot,
+    const Data_access_policy&      access,
+    const data_query_context_t&    query,
+    std::size_t                    first,
+    std::size_t                    last_exclusive)
 {
     for (std::size_t index = first; index < last_exclusive; ++index) {
         const void* sample = snapshot.at(index);
@@ -412,11 +412,11 @@ bool validate_match_range(
 }
 
 bool scan_value_range(
-    const data_snapshot_t& snapshot,
-    const Data_access_policy& access,
-    const data_query_context_t& query,
-    value_range_t& range,
-    bool& has_value)
+    const data_snapshot_t&         snapshot,
+    const Data_access_policy&      access,
+    const data_query_context_t&    query,
+    value_range_t&                 range,
+    bool&                          has_value)
 {
     value_range_t held_range;
     bool has_held_candidate = false;
@@ -495,10 +495,10 @@ bool scan_value_range(
 }
 
 sample_scan_status held_sample_status(
-    const data_snapshot_t& snapshot,
-    const Data_access_policy& access,
-    const data_query_context_t& query,
-    std::size_t index)
+    const data_snapshot_t&         snapshot,
+    const Data_access_policy&      access,
+    const data_query_context_t&    query,
+    std::size_t                    index)
 {
     const void* sample = snapshot.at(index);
     if (!sample) {
@@ -508,13 +508,13 @@ sample_scan_status held_sample_status(
 }
 
 bool select_held_sample_index(
-    const data_snapshot_t& snapshot,
-    const Data_access_policy& access,
-    const data_query_context_t& query,
-    Time_order source_order,
-    std::size_t candidate_index,
-    std::size_t& out_index,
-    bool& out_failed)
+    const data_snapshot_t&         snapshot,
+    const Data_access_policy&      access,
+    const data_query_context_t&    query,
+    Time_order                     source_order,
+    std::size_t                    candidate_index,
+    std::size_t&                   out_index,
+    bool&                          out_failed)
 {
     out_failed = false;
     if (candidate_index >= snapshot.count) {
@@ -610,11 +610,11 @@ bool select_held_sample_index(
 }
 
 validated_time_window_t validated_time_window(
-    const data_snapshot_t& snapshot,
-    const Data_access_policy& access,
-    const data_query_context_t& query,
-    Time_order source_order,
-    const time_window_candidates_t& candidates)
+    const data_snapshot_t&             snapshot,
+    const Data_access_policy&          access,
+    const data_query_context_t&        query,
+    Time_order                         source_order,
+    const time_window_candidates_t&    candidates)
 {
     validated_time_window_t out;
     if (!candidates.valid) {
@@ -694,8 +694,8 @@ namespace detail {
 namespace {
 
 bool normalize_draw_component(
-    float& value,
-    Nonfinite_sample_policy policy)
+    float&                     value,
+    Nonfinite_sample_policy    policy)
 {
     if (std::isfinite(value)) {
         return true;
@@ -718,10 +718,10 @@ sample_draw_status_t status_for_nonfinite(
 } // namespace
 
 sample_draw_status_t read_sample_draw_value(
-    const erased_access_policy_t& access,
-    const void* sample,
-    Nonfinite_sample_policy policy,
-    sample_draw_value_t& out)
+    const erased_access_policy_t&  access,
+    const void*                    sample,
+    Nonfinite_sample_policy        policy,
+    sample_draw_value_t&           out)
 {
     out = sample_draw_value_t{};
     if (!sample) {
@@ -754,10 +754,10 @@ sample_draw_status_t read_sample_draw_value(
 }
 
 sample_draw_status_t read_sample_draw_value(
-    const Data_access_policy& access,
-    const void* sample,
-    Nonfinite_sample_policy policy,
-    sample_draw_value_t& out)
+    const Data_access_policy&  access,
+    const void*                sample,
+    Nonfinite_sample_policy    policy,
+    sample_draw_value_t&       out)
 {
     return read_sample_draw_value(
         make_erased_access_policy_view(access),
@@ -791,8 +791,8 @@ std::vector<std::size_t> Data_source::lod_scales() const
 }
 
 data_query_result_t<sample_index_window_t> Data_source::query_time_window(
-    std::size_t lod,
-    const data_query_context_t& query)
+    std::size_t                    lod,
+    const data_query_context_t&    query)
 {
     data_query_result_t<sample_index_window_t> result;
     if (!query.access || !query.access->get_timestamp) {
@@ -842,8 +842,8 @@ data_query_result_t<sample_index_window_t> Data_source::query_time_window(
 }
 
 data_query_result_t<value_range_t> Data_source::query_v_range(
-    std::size_t lod,
-    const data_query_context_t& query)
+    std::size_t                    lod,
+    const data_query_context_t&    query)
 {
     data_query_result_t<value_range_t> result;
     if (!query.access || !query.access->is_valid()) {

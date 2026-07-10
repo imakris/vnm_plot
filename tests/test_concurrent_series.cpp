@@ -57,15 +57,15 @@ const sample_t* sample_at(const plot::data_snapshot_t& snapshot, std::size_t ind
 }
 
 const Blocking_sample* blocking_sample_at(
-    const plot::data_snapshot_t& snapshot,
-    std::size_t index)
+    const plot::data_snapshot_t&   snapshot,
+    std::size_t                    index)
 {
     return reinterpret_cast<const Blocking_sample*>(snapshot.at(index));
 }
 
 std::vector<Blocking_sample> make_blocking_samples(
-    float generation,
-    std::shared_ptr<Blocking_publication_probe> probe = {})
+    float                                          generation,
+    std::shared_ptr<Blocking_publication_probe>    probe = {})
 {
     std::vector<Blocking_sample> samples;
     samples.reserve(16);

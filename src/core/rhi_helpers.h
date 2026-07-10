@@ -105,10 +105,10 @@ inline bool checked_size_product(std::size_t lhs, std::size_t rhs, std::size_t& 
 }
 
 inline bool qrhi_byte_size(
-    std::size_t element_count,
-    std::size_t element_bytes,
-    std::size_t& out_bytes,
-    quint32& out_qrhi_bytes)
+    std::size_t    element_count,
+    std::size_t    element_bytes,
+    std::size_t&   out_bytes,
+    quint32&       out_qrhi_bytes)
 {
     std::size_t bytes = 0;
     if (!checked_size_product(element_count, element_bytes, bytes) ||
@@ -121,26 +121,26 @@ inline bool qrhi_byte_size(
 }
 
 inline bool qrhi_byte_size(
-    std::size_t element_count,
-    std::size_t element_bytes,
-    quint32& out_qrhi_bytes)
+    std::size_t    element_count,
+    std::size_t    element_bytes,
+    quint32&       out_qrhi_bytes)
 {
     std::size_t bytes = 0;
     return qrhi_byte_size(element_count, element_bytes, bytes, out_qrhi_bytes);
 }
 
 inline bool qrhi_buffer_offset(
-    std::size_t element_index,
-    std::size_t element_bytes,
-    quint32& out_offset)
+    std::size_t    element_index,
+    std::size_t    element_bytes,
+    quint32&       out_offset)
 {
     return qrhi_byte_size(element_index, element_bytes, out_offset);
 }
 
 inline bool qrhi_grown_capacity_bytes(
-    std::size_t bytes_needed,
-    std::size_t& out_capacity_bytes,
-    quint32& out_qrhi_capacity_bytes)
+    std::size_t    bytes_needed,
+    std::size_t&   out_capacity_bytes,
+    quint32&       out_qrhi_capacity_bytes)
 {
     if (!to_qrhi_byte_count(bytes_needed, out_qrhi_capacity_bytes)) {
         return false;
@@ -167,11 +167,11 @@ inline bool qrhi_grown_capacity_bytes(
 // Replaces the ~6-line "newShaderResourceBindings + setBindings + create"
 // dance that recurred across primitive/grid/series renderers.
 inline bool rebuild_single_ubo_srb(
-    QRhi* rhi,
-    std::unique_ptr<QRhiShaderResourceBindings>& srb,
-    QRhiBuffer* ubo,
-    quint32 ubo_bytes,
-    QRhiShaderResourceBinding::StageFlags stages)
+    QRhi*                                          rhi,
+    std::unique_ptr<QRhiShaderResourceBindings>&   srb,
+    QRhiBuffer*                                    ubo,
+    quint32                                        ubo_bytes,
+    QRhiShaderResourceBinding::StageFlags          stages)
 {
     srb.reset(rhi->newShaderResourceBindings());
     if (!srb) {
@@ -187,10 +187,10 @@ inline bool rebuild_single_ubo_srb(
 // bytes. Returns true if the buffer is ready; on failure the unique_ptr is
 // reset to null so callers can early-out cleanly.
 inline bool ensure_dynamic_ubo(
-    QRhi* rhi,
-    std::unique_ptr<QRhiBuffer>& ubo,
-    std::size_t& capacity_bytes,
-    quint32 bytes_needed)
+    QRhi*                          rhi,
+    std::unique_ptr<QRhiBuffer>&   ubo,
+    std::size_t&                   capacity_bytes,
+    quint32                        bytes_needed)
 {
     if (ubo && capacity_bytes >= bytes_needed) {
         return true;
@@ -227,9 +227,9 @@ struct alpha_blended_pipeline_desc_t
 // caller is free to bind a per-draw SRB with a different UBO handle
 // (matching layout) at draw time.
 inline std::unique_ptr<QRhiGraphicsPipeline> build_alpha_blended_pipeline(
-    QRhi* rhi,
-    QRhiRenderTarget* rt,
-    const alpha_blended_pipeline_desc_t& desc)
+    QRhi*                                  rhi,
+    QRhiRenderTarget*                      rt,
+    const alpha_blended_pipeline_desc_t&   desc)
 {
     if (!rhi || !rt || !desc.vert.isValid() || !desc.frag.isValid()) {
         return nullptr;

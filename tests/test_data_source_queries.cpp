@@ -75,8 +75,8 @@ private:
 };
 
 plot::Data_access_policy make_value_access(
-    int* timestamp_calls = nullptr,
-    int* value_calls = nullptr)
+    int*   timestamp_calls = nullptr,
+    int*   value_calls = nullptr)
 {
     plot::Data_access_policy access;
     access.get_timestamp = [timestamp_calls](const void* sample) -> std::int64_t {
@@ -108,9 +108,9 @@ plot::Data_access_policy make_timestamp_access(int* timestamp_calls = nullptr)
 }
 
 plot::data_query_context_t make_query(
-    const plot::Data_access_policy& access,
-    std::int64_t t_min,
-    std::int64_t t_max)
+    const plot::Data_access_policy&    access,
+    std::int64_t                       t_min,
+    std::int64_t                       t_max)
 {
     plot::data_query_context_t query;
     query.access = &access;
@@ -122,9 +122,9 @@ plot::data_query_context_t make_query(
 }
 
 plot::data_query_context_t make_hold_query(
-    const plot::Data_access_policy& access,
-    std::int64_t t_min,
-    std::int64_t t_max)
+    const plot::Data_access_policy&    access,
+    std::int64_t                       t_min,
+    std::int64_t                       t_max)
 {
     plot::data_query_context_t query = make_query(access, t_min, t_max);
     query.interpolation = plot::Series_interpolation::STEP_AFTER;
@@ -133,9 +133,9 @@ plot::data_query_context_t make_hold_query(
 }
 
 plot::data_query_context_t make_draw_query(
-    const plot::Data_access_policy& access,
-    std::int64_t t_min,
-    std::int64_t t_max)
+    const plot::Data_access_policy&    access,
+    std::int64_t                       t_min,
+    std::int64_t                       t_max)
 {
     plot::data_query_context_t query = make_query(access, t_min, t_max);
     query.empty_window_behavior = plot::Empty_window_behavior::DRAW_NOTHING;

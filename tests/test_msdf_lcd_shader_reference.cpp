@@ -135,8 +135,8 @@ glsl_token_list_t tokenize_glsl(std::string_view text)
 }
 
 bool contains_token_sequence(
-    const glsl_token_list_t& tokens,
-    const glsl_token_list_t& expected)
+    const glsl_token_list_t&   tokens,
+    const glsl_token_list_t&   expected)
 {
     if (expected.empty() || tokens.size() < expected.size()) {
         return false;
@@ -159,8 +159,8 @@ bool contains_token_sequence(
 }
 
 bool contains_glsl_token_sequence(
-    const glsl_token_list_t& shader_tokens,
-    std::string_view expected_statement)
+    const glsl_token_list_t&   shader_tokens,
+    std::string_view           expected_statement)
 {
     return contains_token_sequence(shader_tokens, tokenize_glsl(expected_statement));
 }

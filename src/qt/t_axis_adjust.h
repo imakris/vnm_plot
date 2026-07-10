@@ -32,8 +32,10 @@ struct time_axis_update_result_t
 // against `ref_width`. Commit receives the new (t_min, t_max).
 template<typename Commit>
 inline void adjust_t_from_mouse_diff_impl(
-    const t_view_snapshot_t& view, double ref_width, double diff,
-    Commit&& commit)
+    const t_view_snapshot_t&   view,
+    double                     ref_width,
+    double                     diff,
+    Commit&&                   commit)
 {
     if (ref_width <= 0.0) {
         return;
@@ -65,8 +67,10 @@ inline void adjust_t_from_mouse_diff_impl(
 // moves in the same direction as the cursor.
 template<typename Commit>
 inline void adjust_t_from_mouse_diff_on_preview_impl(
-    const t_view_snapshot_t& view, double ref_width, double diff,
-    Commit&& commit)
+    const t_view_snapshot_t&   view,
+    double                     ref_width,
+    double                     diff,
+    Commit&&                   commit)
 {
     if (ref_width <= 0.0) {
         return;
@@ -99,8 +103,10 @@ inline void adjust_t_from_mouse_diff_on_preview_impl(
 // width, keeping the current span.
 template<typename Commit>
 inline void adjust_t_from_mouse_pos_on_preview_impl(
-    const t_view_snapshot_t& view, double ref_width, double x_pos,
-    Commit&& commit)
+    const t_view_snapshot_t&   view,
+    double                     ref_width,
+    double                     x_pos,
+    Commit&&                   commit)
 {
     if (ref_width <= 0.0) {
         return;
@@ -125,8 +131,10 @@ inline void adjust_t_from_mouse_pos_on_preview_impl(
 // <1.0 zooms in, >1.0 zooms out).
 template<typename Commit>
 inline void adjust_t_from_pivot_and_scale_impl(
-    const t_view_snapshot_t& view, double pivot, double scale,
-    Commit&& commit)
+    const t_view_snapshot_t&   view,
+    double                     pivot,
+    double                     scale,
+    Commit&&                   commit)
 {
     if (scale <= 0.0) {
         return;
@@ -169,10 +177,10 @@ public:
         qint64 t_max,
         qint64 t_available_min,
         qint64 t_available_max,
-        bool t_min_initialized,
-        bool t_max_initialized,
-        bool t_available_min_initialized,
-        bool t_available_max_initialized)
+        bool   t_min_initialized,
+        bool   t_max_initialized,
+        bool   t_available_min_initialized,
+        bool   t_available_max_initialized)
     :
         m_t_min(t_min),
         m_t_max(t_max),
@@ -546,10 +554,10 @@ private:
         qint64 t_max_ns,
         qint64 t_available_min_ns,
         qint64 t_available_max_ns,
-        bool t_min_initialized,
-        bool t_max_initialized,
-        bool t_available_min_initialized,
-        bool t_available_max_initialized)
+        bool   t_min_initialized,
+        bool   t_max_initialized,
+        bool   t_available_min_initialized,
+        bool   t_available_max_initialized)
     {
         const bool changed =
             m_t_min != t_min_ns ||

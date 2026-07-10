@@ -34,19 +34,22 @@ public:
     void set_pin_time_pivot_to_right(bool pinned);
 
     bool is_interaction_enabled() const;
-    void set_interaction_enabled(bool enabled);
+
+    void set_interaction_enabled(
+        bool           enabled);
 
     Q_INVOKABLE bool handle_wheel(
-        qreal x,
-        qreal y,
-        qreal angle_delta_x,
-        qreal angle_delta_y,
-        qreal pixel_delta_x,
-        qreal pixel_delta_y,
-        int modifiers);
+        qreal          x,
+        qreal          y,
+        qreal          angle_delta_x,
+        qreal          angle_delta_y,
+        qreal          pixel_delta_x,
+        qreal          pixel_delta_y,
+        int            modifiers);
 
 signals:
     void plot_widget_changed();
+
     void time_plot_widget_changed();
     void pin_time_pivot_to_right_changed();
     void interaction_enabled_changed();

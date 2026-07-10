@@ -99,8 +99,8 @@ text_lcd_resolved_subpixel_order_t text_lcd_frame_order(const frame_context_t& c
 
 text_lcd_t text_lcd_for_background(
     const frame_context_t& ctx,
-    const glm::vec4& background,
-    bool draw_lcd_eligible)
+    const glm::vec4&       background,
+    bool                   draw_lcd_eligible)
 {
     text_lcd_t lcd;
     lcd.subpixel_order = draw_lcd_eligible
@@ -112,11 +112,11 @@ text_lcd_t text_lcd_for_background(
 
 template <typename Labels, typename Tracker, typename KeyFunc, typename DrawFunc>
 bool update_and_draw_faded_labels(
-    const Labels& labels,
-    Tracker& tracker,
-    float fade_duration_ms,
-    KeyFunc&& key_fn,
-    DrawFunc&& draw_fn)
+    const Labels&  labels,
+    Tracker&       tracker,
+    float          fade_duration_ms,
+    KeyFunc&&      key_fn,
+    DrawFunc&&     draw_fn)
 {
     using key_t = typename Tracker::key_type;
 
@@ -223,10 +223,10 @@ bool Text_renderer::prepare(const frame_context_t& ctx, bool fade_v_labels, bool
 
 bool Text_renderer::prepare(
     const frame_context_t& ctx,
-    bool fade_v_labels,
-    bool fade_h_labels,
-    bool vertical_axis_label_pane_is_opaque,
-    bool horizontal_axis_label_pane_is_opaque)
+    bool                   fade_v_labels,
+    bool                   fade_h_labels,
+    bool                   vertical_axis_label_pane_is_opaque,
+    bool                   horizontal_axis_label_pane_is_opaque)
 {
     if (!m_fonts) {
         return false;
@@ -249,8 +249,8 @@ void Text_renderer::record(const frame_context_t& ctx)
 
 bool Text_renderer::render_axis_labels(
     const frame_context_t& ctx,
-    bool fade_labels,
-    bool vertical_axis_label_pane_is_opaque)
+    bool                   fade_labels,
+    bool                   vertical_axis_label_pane_is_opaque)
 {
     const auto& pl = ctx.layout;
     const bool dark_mode = ctx.dark_mode;
@@ -377,8 +377,8 @@ bool Text_renderer::render_axis_labels(
 
 bool Text_renderer::render_info_overlay(
     const frame_context_t& ctx,
-    bool fade_labels,
-    bool horizontal_axis_label_pane_is_opaque)
+    bool                   fade_labels,
+    bool                   horizontal_axis_label_pane_is_opaque)
 {
     const auto& pl = ctx.layout;
     const bool dark_mode = ctx.dark_mode;

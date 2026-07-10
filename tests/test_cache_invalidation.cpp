@@ -80,8 +80,8 @@ public:
     }
 
     data_query_result_t<value_range_t> query_v_range(
-        std::size_t lod,
-        const data_query_context_t& query) override
+        std::size_t                    lod,
+        const data_query_context_t&    query) override
     {
         ++query_calls;
         last_query_lod = lod;

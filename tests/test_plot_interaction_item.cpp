@@ -58,10 +58,9 @@ zoom_state_t advance_zoom(double initial_velocity, const std::vector<double>& el
 }
 
 std::shared_ptr<plot::series_data_t> make_sample_series(
-    std::vector<indicator_sample_t> samples,
-    plot::Series_interpolation interpolation,
-    plot::Empty_window_behavior empty_window_behavior =
-        plot::Empty_window_behavior::DRAW_NOTHING)
+    std::vector<indicator_sample_t>    samples,
+    plot::Series_interpolation         interpolation,
+    plot::Empty_window_behavior        empty_window_behavior = plot::Empty_window_behavior::DRAW_NOTHING)
 {
     auto source = std::make_shared<plot::Vector_data_source<indicator_sample_t>>(
         std::move(samples));
@@ -85,11 +84,11 @@ std::shared_ptr<plot::series_data_t> make_sample_series(
 }
 
 void configure_view(
-    plot::Plot_widget& widget,
-    std::int64_t tmin_ns,
-    std::int64_t tmax_ns,
-    float vmin,
-    float vmax)
+    plot::Plot_widget&         widget,
+    std::int64_t               tmin_ns,
+    std::int64_t               tmax_ns,
+    float                      vmin,
+    float                      vmax)
 {
     plot::Plot_view view;
     view.t_range = std::pair<qint64, qint64>{tmin_ns, tmax_ns};
@@ -101,18 +100,18 @@ void configure_view(
 }
 
 void configure_time_window(
-    plot::Plot_widget& widget,
-    std::int64_t tmin_ns,
-    std::int64_t tmax_ns,
-    std::int64_t t_available_min_ns,
-    std::int64_t t_available_max_ns)
+    plot::Plot_widget&         widget,
+    std::int64_t               tmin_ns,
+    std::int64_t               tmax_ns,
+    std::int64_t               t_available_min_ns,
+    std::int64_t               t_available_max_ns)
 {
     widget.set_t_range(tmin_ns, tmax_ns);
     widget.set_available_t_range(t_available_min_ns, t_available_max_ns);
 }
 
 void configure_indicator_widget(
-    plot::Plot_widget& widget,
+    plot::Plot_widget&         widget,
     plot::Series_interpolation interpolation)
 {
     constexpr std::int64_t k_second_ns = 1'000'000'000LL;

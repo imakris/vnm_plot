@@ -62,9 +62,9 @@ namespace detail {
 using font_disk_cache_digest_t = std::array<std::uint8_t, 32>;
 
 [[nodiscard]] bool validate_font_disk_cache_file(
-    const std::filesystem::path& path,
-    const font_disk_cache_digest_t& expected_digest,
-    int pixel_height);
+    const std::filesystem::path&       path,
+    const font_disk_cache_digest_t&    expected_digest,
+    int                                pixel_height);
 
 } // namespace detail
 #endif
@@ -93,16 +93,16 @@ public:
 
     // Initializes CPU font metrics/cache for layout calculation before the render pass.
     void initialize_metrics(
-        Asset_loader& asset_loader,
-        int pixel_height,
-        bool force_rebuild = false);
+        Asset_loader&          asset_loader,
+        int                    pixel_height,
+        bool                   force_rebuild = false);
 
     // Releases this instance's weak reference to the shared resources.
     void deinitialize();
 
     void set_log_callbacks(
-        std::function<void(const std::string&)> log_error,
-        std::function<void(const std::string&)> log_debug);
+        std::function<void(const std::string&)>    log_error,
+        std::function<void(const std::string&)>    log_debug);
 
     // --- Text Measurement ---
 
@@ -139,17 +139,18 @@ public:
     // Uploads the current QRhi CPU batch into this frame's draw plan and clears it.
     void rhi_queue_draw(
         const frame_context_t& ctx,
-        const glm::mat4& pmv,
-        const glm::vec4& color,
-        const text_scissor_t& scissor = {},
-        const text_shadow_t& shadow = {});
+        const glm::mat4&       pmv,
+        const glm::vec4&       color,
+        const text_scissor_t&  scissor = {},
+        const text_shadow_t&   shadow = {});
+
     void rhi_queue_draw(
         const frame_context_t& ctx,
-        const glm::mat4& pmv,
-        const glm::vec4& color,
-        const text_scissor_t& scissor,
-        const text_shadow_t& shadow,
-        const text_lcd_t& lcd);
+        const glm::mat4&       pmv,
+        const glm::vec4&       color,
+        const text_scissor_t&  scissor,
+        const text_shadow_t&   shadow,
+        const text_lcd_t&      lcd);
 
     // Uploads the accumulated QRhi text geometry after all draw batches are queued.
     void rhi_finalize_frame(const frame_context_t& ctx);

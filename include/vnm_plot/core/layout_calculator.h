@@ -96,9 +96,9 @@ public:
 private:
     // Check if intervals fit without overlap
     bool fits_with_gap(
-        const std::vector<std::pair<float, float>>& level,
-        const std::vector<std::pair<float, float>>& accepted,
-        float min_gap) const;
+        const std::vector<std::pair<float, float>>&    level,
+        const std::vector<std::pair<float, float>>&    accepted,
+        float                                          min_gap) const;
 
     // Scratch buffers (reused to avoid allocations)
     mutable std::vector<std::pair<double, float>> m_scratch_vals;

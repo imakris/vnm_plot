@@ -183,7 +183,7 @@ public:
     }
     plot::data_query_result_t<plot::sample_index_window_t> query_time_window(
         std::size_t /*lod*/,
-        const plot::data_query_context_t& query) override
+        const plot::data_query_context_t&  query) override
     {
         ++query_calls;
         last_query_time_window = query.time_window;
@@ -273,13 +273,13 @@ void fill_lod_samples(Two_level_source& source)
 }
 
 plot::Series_view_plan plan_two_level_lod_width(
-    Two_level_source& source,
-    const Data_access_policy& access,
-    const std::vector<std::size_t>& scales,
-    plot::detail::series_window_planner_state_t& state,
-    plot::detail::Series_window_snapshot_cache& cache,
-    std::uint64_t frame_id,
-    double width_px)
+    Two_level_source&                              source,
+    const Data_access_policy&                      access,
+    const std::vector<std::size_t>&                scales,
+    plot::detail::series_window_planner_state_t&   state,
+    plot::detail::Series_window_snapshot_cache&    cache,
+    std::uint64_t                                  frame_id,
+    double                                         width_px)
 {
     plot::detail::series_window_plan_request_t request;
     request.planner_state = &state;
@@ -297,8 +297,8 @@ plot::Series_view_plan plan_two_level_lod_width(
 }
 
 std::shared_ptr<Single_level_source> make_single_level_source(
-    std::vector<std::int64_t> timestamps,
-    plot::Time_order order)
+    std::vector<std::int64_t>      timestamps,
+    plot::Time_order               order)
 {
     auto source = std::make_shared<Single_level_source>();
     source->order = order;
@@ -311,10 +311,10 @@ std::shared_ptr<Single_level_source> make_single_level_source(
 }
 
 const plot::detail::series_window_planner_state_t* render_source_and_get_main_state(
-    Series_renderer& renderer,
-    const frame_context_t& ctx,
+    Series_renderer&               renderer,
+    const frame_context_t&         ctx,
     std::shared_ptr<series_data_t> series,
-    int series_id)
+    int                            series_id)
 {
     std::map<int, std::shared_ptr<const series_data_t>> series_map;
     series_map[series_id] = std::move(series);
@@ -767,11 +767,11 @@ bool test_ascending_time_order_skips_monotonicity_scan()
 }
 
 bool run_defensive_time_order_scan_case(
-    plot::Time_order order,
-    std::vector<std::int64_t> timestamps,
-    plot::detail::Timestamp_window_search expected_search,
-    bool expected_monotonic,
-    const std::string& label)
+    plot::Time_order                       order,
+    std::vector<std::int64_t>              timestamps,
+    plot::detail::Timestamp_window_search  expected_search,
+    bool                                   expected_monotonic,
+    const std::string&                     label)
 {
     auto data_source = make_single_level_source(timestamps, order);
 

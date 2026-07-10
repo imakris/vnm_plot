@@ -337,11 +337,11 @@ std::vector<std::size_t> compute_lod_scales(const DataSourceT& data_source)
 // sample pointer; nullptr means malformed or torn input and fails the search.
 template<typename AddrFn, typename GetTimestampFn, typename Cmp>
 std::optional<std::size_t> bsearch_ts_impl(
-    std::size_t count,
-    AddrFn&& addr,
-    GetTimestampFn&& get_timestamp,
-    Cmp&& cmp,
-    std::int64_t t_ns)
+    std::size_t        count,
+    AddrFn&&           addr,
+    GetTimestampFn&&   get_timestamp,
+    Cmp&&              cmp,
+    std::int64_t       t_ns)
 {
     std::size_t lo = 0;
     std::size_t hi = count;
@@ -366,11 +366,11 @@ std::optional<std::size_t> bsearch_ts_impl(
 // get_timestamp accessor must return the same unit.
 template<typename GetTimestampFn>
 std::size_t lower_bound_timestamp(
-    const void* data,
-    std::size_t count,
-    std::size_t stride,
-    GetTimestampFn&& get_timestamp,
-    std::int64_t t_ns)
+    const void*        data,
+    std::size_t        count,
+    std::size_t        stride,
+    GetTimestampFn&&   get_timestamp,
+    std::int64_t       t_ns)
 {
     if (data == nullptr || count == 0 || stride == 0) {
         return 0;
@@ -389,8 +389,8 @@ std::size_t lower_bound_timestamp(
 template<typename GetTimestampFn>
 std::size_t lower_bound_timestamp(
     const data_snapshot_t& snapshot,
-    GetTimestampFn&& get_timestamp,
-    std::int64_t t_ns)
+    GetTimestampFn&&       get_timestamp,
+    std::int64_t           t_ns)
 {
     if (!snapshot.is_valid()) {
         return 0;
@@ -408,11 +408,11 @@ std::size_t lower_bound_timestamp(
 // Query value t_ns is in nanoseconds (API convention).
 template<typename GetTimestampFn>
 std::size_t upper_bound_timestamp(
-    const void* data,
-    std::size_t count,
-    std::size_t stride,
-    GetTimestampFn&& get_timestamp,
-    std::int64_t t_ns)
+    const void*        data,
+    std::size_t        count,
+    std::size_t        stride,
+    GetTimestampFn&&   get_timestamp,
+    std::int64_t       t_ns)
 {
     if (data == nullptr || count == 0 || stride == 0) {
         return 0;
@@ -431,8 +431,8 @@ std::size_t upper_bound_timestamp(
 template<typename GetTimestampFn>
 std::size_t upper_bound_timestamp(
     const data_snapshot_t& snapshot,
-    GetTimestampFn&& get_timestamp,
-    std::int64_t t_ns)
+    GetTimestampFn&&       get_timestamp,
+    std::int64_t           t_ns)
 {
     if (!snapshot.is_valid()) {
         return 0;
@@ -467,10 +467,10 @@ struct visible_sample_window_t
 template<typename GetTimestampFn>
 visible_sample_window_t select_visible_sample_window(
     const data_snapshot_t& snapshot,
-    GetTimestampFn&& get_timestamp,
-    std::int64_t t_min_ns,
-    std::int64_t t_max_ns,
-    bool timestamps_monotonic)
+    GetTimestampFn&&       get_timestamp,
+    std::int64_t           t_min_ns,
+    std::int64_t           t_max_ns,
+    bool                   timestamps_monotonic)
 {
     if (!snapshot.is_valid()) {
         return {};
@@ -533,12 +533,12 @@ struct visible_sample_aggregate_t
 template<typename GetTimestampFn, typename GetRangeFn>
 visible_sample_aggregate_t aggregate_visible_sample_range(
     const data_snapshot_t& snapshot,
-    GetTimestampFn&& get_timestamp,
-    GetRangeFn&& get_range,
-    std::int64_t window_tmin_ns,
-    std::int64_t window_tmax_ns,
-    Series_interpolation interpolation,
-    Empty_window_behavior empty_window_behavior)
+    GetTimestampFn&&       get_timestamp,
+    GetRangeFn&&           get_range,
+    std::int64_t           window_tmin_ns,
+    std::int64_t           window_tmax_ns,
+    Series_interpolation   interpolation,
+    Empty_window_behavior  empty_window_behavior)
 {
     visible_sample_aggregate_t aggregate;
     if (!snapshot.is_valid() || window_tmax_ns < window_tmin_ns) {
@@ -606,10 +606,10 @@ visible_sample_aggregate_t aggregate_visible_sample_range(
 
 template<typename AddrFn, typename GetTimestampFn>
 timestamp_bracket_t bracket_timestamp_impl(
-    std::size_t count,
-    AddrFn&& addr,
-    GetTimestampFn&& get_timestamp,
-    double t_ns)
+    std::size_t        count,
+    AddrFn&&           addr,
+    GetTimestampFn&&   get_timestamp,
+    double             t_ns)
 {
     if (count == 0) {
         return {};
@@ -670,8 +670,8 @@ timestamp_bracket_t bracket_timestamp_impl(
 template<typename GetTimestampFn>
 timestamp_bracket_t bracket_timestamp(
     const data_snapshot_t& snapshot,
-    GetTimestampFn&& get_timestamp,
-    double t_ns)
+    GetTimestampFn&&       get_timestamp,
+    double                 t_ns)
 {
     if (!snapshot.is_valid()) {
         return {};
@@ -758,8 +758,8 @@ inline std::int64_t choose_origin_ns(std::int64_t t_view_min_ns, std::int64_t sp
 // Chooses the LOD level whose pixels-per-sample is closest to 1.0.
 
 inline std::size_t choose_lod_level(
-    const std::vector<std::size_t>& scales,
-    double base_pps)
+    const std::vector<std::size_t>&    scales,
+    double                             base_pps)
 {
     if (scales.empty() || !(base_pps > 0.0)) {
         return 0;

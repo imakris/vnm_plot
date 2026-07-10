@@ -32,9 +32,9 @@ struct Recorded_call
 };
 
 plot::Layout_calculator::parameters_t make_minimal_params(
-    std::int64_t t_min_ns,
-    std::int64_t t_max_ns,
-    std::vector<Recorded_call>& recorded_calls)
+    std::int64_t                   t_min_ns,
+    std::int64_t                   t_max_ns,
+    std::vector<Recorded_call>&    recorded_calls)
 {
     plot::Layout_calculator::parameters_t params;
     params.v_min = 0.0f;

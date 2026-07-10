@@ -31,11 +31,11 @@ float compute_grid_alpha(float spacing_px, double cell_span_min, double fade_den
 }
 
 void append_grid_level(
-    grid_layer_params_t& levels,
-    float spacing_px,
-    float start_px,
-    double cell_span_min,
-    double fade_den)
+    grid_layer_params_t&   levels,
+    float                  spacing_px,
+    float                  start_px,
+    double                 cell_span_min,
+    double                 fade_den)
 {
     levels.spacing_px[levels.count] = spacing_px;
     levels.start_px[levels.count]   = start_px;
@@ -52,7 +52,7 @@ grid_layer_params_t build_time_grid_layers(
     double t_max_seconds,
     double width_px,
     double font_px,
-    bool* out_dropped_non_multiple_step_or_null)
+    bool*  out_dropped_non_multiple_step_or_null)
 {
     if (out_dropped_non_multiple_step_or_null) {
         *out_dropped_non_multiple_step_or_null = false;

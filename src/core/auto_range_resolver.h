@@ -39,15 +39,15 @@ struct auto_range_cache_t
 
 std::pair<float, float> resolve_main_v_range(
     const std::map<int, std::shared_ptr<const series_data_t>>& series,
-    const data_config_t& data_cfg,
-    const Plot_config& config,
-    bool v_auto,
-    auto_range_cache_t* cache = nullptr);
+    const data_config_t&                                       data_cfg,
+    const Plot_config&                                         config,
+    bool                                                       v_auto,
+    auto_range_cache_t*                                        cache = nullptr);
 
 std::pair<float, float> resolve_preview_v_range(
     const std::map<int, std::shared_ptr<const series_data_t>>& series,
-    const data_config_t& data_cfg,
-    const Plot_config& config,
-    auto_range_cache_t* cache = nullptr);
+    const data_config_t&                                       data_cfg,
+    const Plot_config&                                         config,
+    auto_range_cache_t*                                        cache = nullptr);
 
 } // namespace vnm::plot::detail

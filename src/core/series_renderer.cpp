@@ -58,9 +58,9 @@ bool is_default_series_color(const glm::vec4& color)
 }
 
 bool line_window_sample_count(
-    std::size_t           source_count,
-    Series_interpolation  interpolation,
-    std::size_t&          out_count)
+    std::size_t            source_count,
+    Series_interpolation   interpolation,
+    std::size_t&           out_count)
 {
     out_count = 0;
     if (source_count == 0) {
@@ -154,7 +154,7 @@ bool has_builtin_segment_span(const sample_window_t& window)
 }
 
 bool is_builtin_primitive_drawable(
-    Display_style primitive_style,
+    Display_style          primitive_style,
     const sample_window_t& window)
 {
     if (window.gpu_count == 0)                   { return false; }
@@ -193,7 +193,7 @@ static_assert(sizeof(series_view_uniform_std140_t) == 128, "Series_view_t std140
 
 series_view_uniform_std140_t make_series_view_uniform(
     const frame_context_t& frame,
-    const series_data_t& series,
+    const series_data_t&   series,
     const sample_window_t& window)
 {
     series_view_uniform_std140_t uniform{};
@@ -647,7 +647,8 @@ void Series_renderer::clear_frame_snapshot_caches()
 
 void Series_renderer::prepare(
     const frame_context_t& ctx,
-    const std::map<int, std::shared_ptr<const series_data_t>>& series)
+    const std::map<int, std::shared_ptr<const series_data_t>>&
+                           series)
 {
     m_rhi_state->frame_draw_states.clear();
     m_rhi_state->prepared_draws.clear();
@@ -1500,7 +1501,8 @@ void Series_renderer::prepare(
 
 void Series_renderer::render(
     const frame_context_t& ctx,
-    const std::map<int, std::shared_ptr<const series_data_t>>& series)
+    const std::map<int, std::shared_ptr<const series_data_t>>&
+                           series)
 {
     if (!ctx.rhi) {
         prepare(ctx, series);
@@ -1582,7 +1584,7 @@ void Series_renderer::render(
 
 bool Series_renderer::rhi_prepare_series_view_samples(
     const frame_context_t& ctx,
-    vbo_view_state_t& view_state,
+    vbo_view_state_t&      view_state,
     const sample_window_t& window)
 {
     QRhi* rhi = ctx.rhi;
@@ -1802,15 +1804,15 @@ bool Series_renderer::rhi_prepare_series_view_samples(
 }
 
 bool Series_renderer::rhi_prepare_series_primitive(
-    const frame_context_t& ctx,
-    const series_data_t* series,
-    Display_style primitive_style,
-    vbo_view_state_t& view_state,
-    const sample_window_t& window,
-    float line_width_px,
-    float point_diameter_px,
-    float area_fill_alpha,
-    std::vector<detail::builtin_segment_span_t>* out_segment_spans)
+    const frame_context_t&                         ctx,
+    const series_data_t*                           series,
+    Display_style                                  primitive_style,
+    vbo_view_state_t&                              view_state,
+    const sample_window_t&                         window,
+    float                                          line_width_px,
+    float                                          point_diameter_px,
+    float                                          area_fill_alpha,
+    std::vector<detail::builtin_segment_span_t>*   out_segment_spans)
 {
     if (!series) {
         return false;
@@ -2265,10 +2267,11 @@ bool Series_renderer::rhi_prepare_series_primitive(
 
 void Series_renderer::rhi_record_series_primitive(
     const frame_context_t& ctx,
-    Display_style primitive_style,
-    vbo_view_state_t& view_state,
+    Display_style          primitive_style,
+    vbo_view_state_t&      view_state,
     const sample_window_t& window,
-    const std::vector<detail::builtin_segment_span_t>& segment_spans)
+    const std::vector<detail::builtin_segment_span_t>&
+                           segment_spans)
 {
     QRhiCommandBuffer* cb = ctx.cb;
     if (!cb) {

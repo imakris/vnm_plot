@@ -19,11 +19,12 @@ value_range_plan_t make_value_range_plan(std::pair<float, float> range)
 } // namespace
 
 Frame_range_plan Frame_range_planner::plan(
-    const std::map<int, std::shared_ptr<const series_data_t>>& series,
-    const data_config_t& data_cfg,
-    const Plot_config& config,
-    bool v_auto,
-    bool preview_enabled)
+    const std::map<int, std::shared_ptr<const series_data_t>>&
+                           series,
+    const data_config_t&   data_cfg,
+    const Plot_config&     config,
+    bool                   v_auto,
+    bool                   preview_enabled)
 {
     Frame_range_plan plan;
     plan.main_v_range = make_value_range_plan(

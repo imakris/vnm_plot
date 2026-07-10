@@ -179,8 +179,8 @@ static std::mutex s_cached_fonts_mutex;
 static std::unordered_map<int, std::shared_ptr<cached_font_data_t>> s_cached_fonts;
 
 std::shared_ptr<cached_font_data_t> get_cached_font(
-    int pixel_height,
-    const std::array<std::uint8_t, 32>& font_digest)
+    int                                    pixel_height,
+    const std::array<std::uint8_t, 32>&    font_digest)
 {
     std::lock_guard<std::mutex> lock(s_cached_fonts_mutex);
     auto it = s_cached_fonts.find(pixel_height);
@@ -272,13 +272,13 @@ double draw_scale_for(const msdf_atlas_t& atlas, int draw_pixel_height)
 }
 
 void add_text_to_vectors(
-    const char* text,
-    float x,
-    float y,
-    int draw_pixel_height,
-    const msdf_atlas_t& atlas,
-    std::vector<float>& vertex_data,
-    std::vector<std::uint32_t>& index_data)
+    const char*                    text,
+    float                          x,
+    float                          y,
+    int                            draw_pixel_height,
+    const msdf_atlas_t&            atlas,
+    std::vector<float>&            vertex_data,
+    std::vector<std::uint32_t>&    index_data)
 {
     if (!text) {
         return;
@@ -436,8 +436,8 @@ std::string digest_to_hex(const std::array<std::uint8_t, 32>& digest)
 }
 
 std::filesystem::path cache_file_path(
-    int pixel_height,
-    const std::array<std::uint8_t, 32>& font_digest)
+    int                                    pixel_height,
+    const std::array<std::uint8_t, 32>&    font_digest)
 {
     static std::filesystem::path s_cache_dir;
 
@@ -465,18 +465,18 @@ std::filesystem::path cache_file_path(
 
 // Forward declarations for disk cache helpers
 std::shared_ptr<cached_font_data_t> load_cached_font_from_disk(
-    const std::filesystem::path& path,
-    const std::array<std::uint8_t, 32>& expected_digest,
-    int pixel_height);
+    const std::filesystem::path&           path,
+    const std::array<std::uint8_t, 32>&    expected_digest,
+    int                                    pixel_height);
 
 void save_cached_font_to_disk(
-    const std::filesystem::path& path,
-    const cached_font_data_t& font);
+    const std::filesystem::path&           path,
+    const cached_font_data_t&              font);
 
 std::shared_ptr<cached_font_data_t> load_cached_font_from_disk(
-    const std::filesystem::path& path,
-    const std::array<std::uint8_t, 32>& expected_digest,
-    int pixel_height)
+    const std::filesystem::path&           path,
+    const std::array<std::uint8_t, 32>&    expected_digest,
+    int                                    pixel_height)
 {
     std::ifstream in(path, std::ios::binary);
     if (!in) {
@@ -628,8 +628,8 @@ std::shared_ptr<cached_font_data_t> load_cached_font_from_disk(
 }
 
 void save_cached_font_to_disk(
-    const std::filesystem::path& path,
-    const cached_font_data_t& font)
+    const std::filesystem::path&   path,
+    const cached_font_data_t&      font)
 {
     std::ofstream out(path, std::ios::binary | std::ios::trunc);
     if (!out) {
@@ -690,8 +690,8 @@ void save_cached_font_to_disk(
 }
 
 std::shared_ptr<cached_font_data_t> build_font_cache(
-    int pixel_height,
-    const std::array<std::uint8_t, 32>& font_digest,
+    int                                            pixel_height,
+    const std::array<std::uint8_t, 32>&            font_digest,
     const std::function<void(const std::string&)>& log_error,
     const std::function<void(const std::string&)>& log_debug)
 {
@@ -720,8 +720,8 @@ std::shared_ptr<cached_font_data_t> build_font_cache(
 }
 
 std::shared_ptr<cached_font_data_t> load_or_build_font_cache(
-    Asset_loader& asset_loader,
-    int pixel_height,
+    Asset_loader&                                  asset_loader,
+    int                                            pixel_height,
     const std::function<void(const std::string&)>& log_error,
     const std::function<void(const std::string&)>& log_debug)
 {
@@ -773,9 +773,9 @@ std::shared_ptr<cached_font_data_t> load_or_build_font_cache(
 namespace detail {
 
 bool validate_font_disk_cache_file(
-    const std::filesystem::path& path,
-    const font_disk_cache_digest_t& expected_digest,
-    int pixel_height)
+    const std::filesystem::path&       path,
+    const font_disk_cache_digest_t&    expected_digest,
+    int                                pixel_height)
 {
     return static_cast<bool>(
         load_cached_font_from_disk(path, expected_digest, pixel_height));
@@ -932,8 +932,8 @@ Font_renderer::Font_renderer()
 Font_renderer::~Font_renderer() = default;
 
 void Font_renderer::set_log_callbacks(
-    std::function<void(const std::string&)> log_error,
-    std::function<void(const std::string&)> log_debug)
+    std::function<void(const std::string&)>    log_error,
+    std::function<void(const std::string&)>    log_debug)
 {
     m_impl->m_log_error = log_error;
     m_impl->m_log_debug = log_debug;
@@ -960,9 +960,9 @@ void Font_renderer::initialize(Asset_loader& asset_loader, int pixel_height, boo
 }
 
 void Font_renderer::initialize_metrics(
-    Asset_loader& asset_loader,
-    int pixel_height,
-    bool force_rebuild)
+    Asset_loader&  asset_loader,
+    int            pixel_height,
+    bool           force_rebuild)
 {
     if (!force_rebuild &&
         m_impl->m_font_cache &&
@@ -1002,10 +1002,10 @@ float Font_renderer::measure_text_px(const char* text) const
 }
 
 bool Font_renderer::text_visual_bounds_px(
-    const char* text,
-    float x,
-    float y,
-    glm::vec4& bounds) const
+    const char*    text,
+    float          x,
+    float          y,
+    glm::vec4&     bounds) const
 {
     const msdf_atlas_t* atlas = m_impl->current_atlas();
     if (!text || !atlas) {
@@ -1128,21 +1128,21 @@ void Font_renderer::rhi_begin_frame()
 
 void Font_renderer::rhi_queue_draw(
     const frame_context_t& ctx,
-    const glm::mat4& pmv,
-    const glm::vec4& color,
-    const text_scissor_t& scissor,
-    const text_shadow_t& shadow)
+    const glm::mat4&       pmv,
+    const glm::vec4&       color,
+    const text_scissor_t&  scissor,
+    const text_shadow_t&   shadow)
 {
     rhi_queue_draw(ctx, pmv, color, scissor, shadow, {});
 }
 
 void Font_renderer::rhi_queue_draw(
     const frame_context_t& ctx,
-    const glm::mat4& pmv,
-    const glm::vec4& color,
-    const text_scissor_t& scissor,
-    const text_shadow_t& shadow,
-    const text_lcd_t& lcd)
+    const glm::mat4&       pmv,
+    const glm::vec4&       color,
+    const text_scissor_t&  scissor,
+    const text_shadow_t&   shadow,
+    const text_lcd_t&      lcd)
 {
     if (!ctx.rhi || !ctx.rhi_updates || !ctx.render_target || !m_impl->m_font_cache) {
         m_impl->m_rhi_vertex_data.clear();

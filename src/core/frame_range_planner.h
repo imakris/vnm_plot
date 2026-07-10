@@ -15,11 +15,12 @@ class Frame_range_planner
 {
 public:
     Frame_range_plan plan(
-        const std::map<int, std::shared_ptr<const series_data_t>>& series,
-        const data_config_t& data_cfg,
-        const Plot_config& config,
-        bool v_auto,
-        bool preview_enabled);
+        const std::map<int, std::shared_ptr<const series_data_t>>&
+                               series,
+        const data_config_t&   data_cfg,
+        const Plot_config&     config,
+        bool                   v_auto,
+        bool                   preview_enabled);
 
 private:
     auto_range_cache_t m_cache;

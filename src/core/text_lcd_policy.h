@@ -30,7 +30,7 @@ constexpr text_lcd_resolved_subpixel_order_t text_lcd_auto_order_from_detections
 }
 
 constexpr text_lcd_resolved_subpixel_order_t text_lcd_effective_order(
-    text_lcd_request_t requested,
+    text_lcd_request_t                 requested,
     text_lcd_resolved_subpixel_order_t auto_resolved)
 {
     if (requested.automatic) {
@@ -41,14 +41,14 @@ constexpr text_lcd_resolved_subpixel_order_t text_lcd_effective_order(
 }
 
 constexpr text_lcd_resolved_subpixel_order_t text_lcd_effective_order_for_frame(
-    text_lcd_request_t requested,
+    text_lcd_request_t                 requested,
     text_lcd_resolved_subpixel_order_t auto_resolved_order)
 {
     return text_lcd_effective_order(requested, auto_resolved_order);
 }
 
 constexpr text_lcd_resolved_subpixel_order_t text_lcd_effective_order_for_frame(
-    const text_lcd_request_t* requested,
+    const text_lcd_request_t*          requested,
     text_lcd_resolved_subpixel_order_t auto_resolved_order)
 {
     return requested != nullptr
@@ -57,10 +57,10 @@ constexpr text_lcd_resolved_subpixel_order_t text_lcd_effective_order_for_frame(
 }
 
 constexpr bool text_lcd_draw_is_eligible(
-    text_lcd_draw_surface_t surface,
+    text_lcd_draw_surface_t            surface,
     text_lcd_resolved_subpixel_order_t frame_order,
-    float background_alpha,
-    bool has_opaque_backing)
+    float                              background_alpha,
+    bool                               has_opaque_backing)
 {
     if (!vnm::msdf_text::lcd::is_display_specific(frame_order) ||
         !(background_alpha >= k_text_lcd_opaque_alpha_cutoff))

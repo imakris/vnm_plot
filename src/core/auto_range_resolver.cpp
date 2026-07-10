@@ -18,12 +18,12 @@ constexpr time_range_t all_time_window()
 }
 
 sample_draw_status_t include_sample_range(
-    const Data_access_policy& access,
-    const void* sample,
-    Nonfinite_sample_policy nonfinite_policy,
-    float& out_min,
-    float& out_max,
-    bool& have_any)
+    const Data_access_policy&  access,
+    const void*                sample,
+    Nonfinite_sample_policy    nonfinite_policy,
+    float&                     out_min,
+    float&                     out_max,
+    bool&                      have_any)
 {
     sample_draw_value_t draw_value;
     const sample_draw_status_t status =
@@ -45,17 +45,17 @@ sample_draw_status_t include_sample_range(
 }
 
 bool scan_series_range(
-    Data_source& source,
-    const Data_access_policy& access,
-    std::size_t level,
-    Series_interpolation interpolation,
-    Empty_window_behavior empty_window_behavior,
-    Nonfinite_sample_policy nonfinite_policy,
-    bool visible_only,
-    std::int64_t t_min,
-    std::int64_t t_max,
-    float& out_min,
-    float& out_max)
+    Data_source&               source,
+    const Data_access_policy&  access,
+    std::size_t                level,
+    Series_interpolation       interpolation,
+    Empty_window_behavior      empty_window_behavior,
+    Nonfinite_sample_policy    nonfinite_policy,
+    bool                       visible_only,
+    std::int64_t               t_min,
+    std::int64_t               t_max,
+    float&                     out_min,
+    float&                     out_max)
 {
     data_snapshot_t snapshot = source.snapshot(level);
     if (!snapshot.is_valid()) {
@@ -150,10 +150,10 @@ bool scan_series_range(
 }
 
 void apply_auto_v_range_padding(
-    const Plot_config& config,
-    bool data_range_nonnegative,
-    float& v_min,
-    float& v_max)
+    const Plot_config&                 config,
+    bool                               data_range_nonnegative,
+    float&                             v_min,
+    float&                             v_max)
 {
     if (v_max == v_min) {
         const float pad = std::max(std::abs(v_min) * 0.01f, 0.5f);
@@ -180,11 +180,11 @@ void apply_auto_v_range_padding(
 }
 
 data_query_context_t make_query(
-    const Data_access_policy& access,
-    time_range_t time_window,
-    Series_interpolation interpolation,
-    Empty_window_behavior empty_window_behavior,
-    Nonfinite_sample_policy nonfinite_policy)
+    const Data_access_policy&          access,
+    time_range_t                       time_window,
+    Series_interpolation               interpolation,
+    Empty_window_behavior              empty_window_behavior,
+    Nonfinite_sample_policy            nonfinite_policy)
 {
     data_query_context_t query;
     query.access = &access;
@@ -197,12 +197,12 @@ data_query_context_t make_query(
 }
 
 bool same_cache_shape(
-    const auto_range_cache_entry_t& entry,
-    const Data_source& source,
-    const Data_access_policy& access,
-    std::size_t lod_level,
-    const data_query_context_t& query,
-    std::uint64_t sequence)
+    const auto_range_cache_entry_t&    entry,
+    const Data_source&                 source,
+    const Data_access_policy&          access,
+    std::size_t                        lod_level,
+    const data_query_context_t&        query,
+    std::uint64_t                      sequence)
 {
     const erased_access_policy_t access_view =
         make_erased_access_policy_view(access);
@@ -226,13 +226,13 @@ bool same_cache_shape(
 }
 
 auto_range_cache_entry_t make_cache_entry(
-    const Data_source& source,
-    const Data_access_policy& access,
-    std::size_t lod_level,
-    const data_query_context_t& query,
-    std::uint64_t sequence,
-    Data_query_status status,
-    value_range_t range)
+    const Data_source&                 source,
+    const Data_access_policy&          access,
+    std::size_t                        lod_level,
+    const data_query_context_t&        query,
+    std::uint64_t                      sequence,
+    Data_query_status                  status,
+    value_range_t                      range)
 {
     auto_range_cache_entry_t entry;
     const erased_access_policy_t access_view =
@@ -258,8 +258,8 @@ auto_range_cache_entry_t make_cache_entry(
 }
 
 std::map<int, auto_range_cache_entry_t>* cache_entries(
-    auto_range_cache_t* cache,
-    bool preview)
+    auto_range_cache_t*                cache,
+    bool                               preview)
 {
     if (!cache) {
         return nullptr;
@@ -268,9 +268,10 @@ std::map<int, auto_range_cache_entry_t>* cache_entries(
 }
 
 void prune_cache_entries(
-    auto_range_cache_t* cache,
-    bool preview,
-    const std::map<int, std::shared_ptr<const series_data_t>>& series)
+    auto_range_cache_t*    cache,
+    bool                   preview,
+    const std::map<int, std::shared_ptr<const series_data_t>>&
+                           series)
 {
     std::map<int, auto_range_cache_entry_t>* entries = cache_entries(cache, preview);
     if (!entries) {
@@ -295,20 +296,20 @@ bool valid_query_range(value_range_t range)
 }
 
 bool query_or_scan_series_range(
-    int series_id,
-    bool preview,
-    Data_source& source,
-    const Data_access_policy& access,
-    std::size_t level,
-    Series_interpolation interpolation,
-    Empty_window_behavior empty_window_behavior,
-    Nonfinite_sample_policy nonfinite_policy,
-    bool visible_only,
-    time_range_t time_window,
-    auto_range_cache_t* cache,
-    Profiler* profiler,
-    float& out_min,
-    float& out_max)
+    int                        series_id,
+    bool                       preview,
+    Data_source&               source,
+    const Data_access_policy&  access,
+    std::size_t                level,
+    Series_interpolation       interpolation,
+    Empty_window_behavior      empty_window_behavior,
+    Nonfinite_sample_policy    nonfinite_policy,
+    bool                       visible_only,
+    time_range_t               time_window,
+    auto_range_cache_t*        cache,
+    Profiler*                  profiler,
+    float&                     out_min,
+    float&                     out_max)
 {
     data_query_context_t query = make_query(
         access,
@@ -398,13 +399,14 @@ bool query_or_scan_series_range(
 }
 
 bool resolve_series_collection_range(
-    const std::map<int, std::shared_ptr<const series_data_t>>& series,
-    const data_config_t& data_cfg,
-    const Plot_config& config,
-    bool preview,
-    auto_range_cache_t* cache,
-    float& out_min,
-    float& out_max)
+    const std::map<int, std::shared_ptr<const series_data_t>>&
+                           series,
+    const data_config_t&   data_cfg,
+    const Plot_config&     config,
+    bool                   preview,
+    auto_range_cache_t*    cache,
+    float&                 out_min,
+    float&                 out_max)
 {
     bool have_any = false;
     Profiler* profiler = config.profiler.get();
@@ -473,10 +475,10 @@ std::pair<float, float> fallback_range(const data_config_t& data_cfg)
 }
 
 std::pair<float, float> finalize_auto_range(
-    const data_config_t& data_cfg,
-    const Plot_config& config,
-    float v_min,
-    float v_max)
+    const data_config_t&   data_cfg,
+    const Plot_config&     config,
+    float                  v_min,
+    float                  v_max)
 {
     if (!std::isfinite(v_min) || !std::isfinite(v_max) || v_max < v_min) {
         return fallback_range(data_cfg);
@@ -490,11 +492,12 @@ std::pair<float, float> finalize_auto_range(
 } // namespace
 
 std::pair<float, float> resolve_main_v_range(
-    const std::map<int, std::shared_ptr<const series_data_t>>& series,
-    const data_config_t& data_cfg,
-    const Plot_config& config,
-    bool v_auto,
-    auto_range_cache_t* cache)
+    const std::map<int, std::shared_ptr<const series_data_t>>&
+                           series,
+    const data_config_t&   data_cfg,
+    const Plot_config&     config,
+    bool                   v_auto,
+    auto_range_cache_t*    cache)
 {
     if (!v_auto) {
         return {data_cfg.v_manual_min, data_cfg.v_manual_max};
@@ -518,10 +521,11 @@ std::pair<float, float> resolve_main_v_range(
 }
 
 std::pair<float, float> resolve_preview_v_range(
-    const std::map<int, std::shared_ptr<const series_data_t>>& series,
-    const data_config_t& data_cfg,
-    const Plot_config& config,
-    auto_range_cache_t* cache)
+    const std::map<int, std::shared_ptr<const series_data_t>>&
+                           series,
+    const data_config_t&   data_cfg,
+    const Plot_config&     config,
+    auto_range_cache_t*    cache)
 {
     float v_min = std::numeric_limits<float>::max();
     float v_max = std::numeric_limits<float>::lowest();

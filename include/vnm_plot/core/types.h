@@ -129,12 +129,14 @@ struct access_policy_cache_key_t
 };
 
 erased_access_policy_t make_erased_access_policy_view(
-    const Data_access_policy& policy);
+    const Data_access_policy&      policy);
+
 access_policy_cache_key_t make_access_policy_cache_key(
-    const Data_access_policy* policy,
-    const erased_access_policy_t& view);
+    const Data_access_policy*      policy,
+    const erased_access_policy_t&  view);
+
 sample_semantics_key_t make_sample_semantics_key(
-    const Data_access_policy* policy);
+    const Data_access_policy*      policy);
 
 template<typename Signature>
 class access_function_slot_t;
@@ -216,9 +218,9 @@ private:
     friend struct ::vnm::plot::Data_access_policy_typed;
 
     void bind_internal_access(
-        erased_access_policy_t* access,
-        std::uint64_t* revision,
-        sample_semantics_key_t* semantics_key = nullptr) noexcept
+        erased_access_policy_t*    access,
+        std::uint64_t*             revision,
+        sample_semantics_key_t*    semantics_key = nullptr) noexcept
     {
         m_internal_access = access;
         m_revision = revision;
@@ -245,8 +247,8 @@ private:
 };
 
 inline sample_semantics_key_t make_explicit_sample_semantics_key(
-    std::uint64_t value,
-    std::uint64_t revision) noexcept
+    std::uint64_t  value,
+    std::uint64_t  revision) noexcept
 {
     sample_semantics_key_t key;
     if (value != 0) {
@@ -455,8 +457,8 @@ struct Data_access_policy
     }
 
     Data_access_policy& set_semantics_key(
-        std::uint64_t value,
-        std::uint64_t revision = 0) noexcept
+        std::uint64_t  value,
+        std::uint64_t  revision = 0) noexcept
     {
         semantics_key =
             detail::make_explicit_sample_semantics_key(value, revision);
@@ -465,12 +467,14 @@ struct Data_access_policy
 
 private:
     friend detail::erased_access_policy_t detail::make_erased_access_policy_view(
-        const Data_access_policy& policy);
+        const Data_access_policy&      policy);
+
     friend detail::access_policy_cache_key_t detail::make_access_policy_cache_key(
-        const Data_access_policy* policy,
-        const detail::erased_access_policy_t& view);
+        const Data_access_policy*              policy,
+        const detail::erased_access_policy_t&  view);
+
     friend sample_semantics_key_t detail::make_sample_semantics_key(
-        const Data_access_policy* policy);
+        const Data_access_policy*      policy);
     template<typename>
     friend struct Data_access_policy_typed;
 
@@ -504,8 +508,8 @@ private:
 namespace detail {
 
 inline std::int64_t std_function_access_timestamp(
-    const erased_access_policy_t& view,
-    const void* sample)
+    const erased_access_policy_t&  view,
+    const void*                    sample)
 {
     const auto* policy = static_cast<const Data_access_policy*>(view.ctx);
     return policy && policy->get_timestamp
@@ -514,16 +518,16 @@ inline std::int64_t std_function_access_timestamp(
 }
 
 inline float std_function_access_value(
-    const erased_access_policy_t& view,
-    const void* sample)
+    const erased_access_policy_t&  view,
+    const void*                    sample)
 {
     const auto* policy = static_cast<const Data_access_policy*>(view.ctx);
     return policy && policy->get_value ? policy->get_value(sample) : 0.0f;
 }
 
 inline std::pair<float, float> std_function_access_range(
-    const erased_access_policy_t& view,
-    const void* sample)
+    const erased_access_policy_t&  view,
+    const void*                    sample)
 {
     const auto* policy = static_cast<const Data_access_policy*>(view.ctx);
     return policy && policy->get_range
@@ -564,8 +568,8 @@ inline erased_access_policy_t make_erased_access_policy_view(
 }
 
 inline access_policy_cache_key_t make_access_policy_cache_key(
-    const Data_access_policy* policy,
-    const erased_access_policy_t& view)
+    const Data_access_policy*      policy,
+    const erased_access_policy_t&  view)
 {
     access_policy_cache_key_t key;
     key.identity = policy;
@@ -678,16 +682,16 @@ struct sample_draw_value_t
 };
 
 sample_draw_status_t read_sample_draw_value(
-    const erased_access_policy_t& access,
-    const void* sample,
-    Nonfinite_sample_policy policy,
-    sample_draw_value_t& out);
+    const erased_access_policy_t&  access,
+    const void*                    sample,
+    Nonfinite_sample_policy        policy,
+    sample_draw_value_t&           out);
 
 sample_draw_status_t read_sample_draw_value(
-    const Data_access_policy& access,
-    const void* sample,
-    Nonfinite_sample_policy policy,
-    sample_draw_value_t& out);
+    const Data_access_policy&      access,
+    const void*                    sample,
+    Nonfinite_sample_policy        policy,
+    sample_draw_value_t&           out);
 
 } // namespace detail
 
@@ -770,11 +774,12 @@ public:
     /// snapshot fallback; UNSUPPORTED is ignored (local scan). Only opt in via
     /// `supports_direct_time_window_query()` when these hold.
     virtual data_query_result_t<sample_index_window_t> query_time_window(
-        std::size_t lod,
-        const data_query_context_t& query);
+        std::size_t                    lod,
+        const data_query_context_t&    query);
+
     virtual data_query_result_t<value_range_t> query_v_range(
-        std::size_t lod,
-        const data_query_context_t& query);
+        std::size_t                    lod,
+        const data_query_context_t&    query);
 
 };
 
