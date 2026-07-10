@@ -559,7 +559,8 @@ inline erased_access_policy_t make_erased_access_policy_view(
         if (view.dispatch_kind == access_dispatch_kind_t::NONE) {
             view.dispatch_kind = access_dispatch_kind_t::STD_FUNCTION;
         }
-        else if (view.dispatch_kind == access_dispatch_kind_t::MEMBER_POINTER) {
+        else
+        if (view.dispatch_kind == access_dispatch_kind_t::MEMBER_POINTER) {
             view.dispatch_kind = access_dispatch_kind_t::MIXED;
         }
     }

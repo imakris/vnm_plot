@@ -753,7 +753,8 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
                 if (use_monospace) {
                     width = advance * float(text.size());
                 }
-                else if (params.measure_text_func) {
+                else
+                if (params.measure_text_func) {
                     width = params.measure_text_func(text.c_str());
                     if (width <= 0.f && advance > 0.f) {
                         width = advance * float(text.size());
@@ -1021,7 +1022,8 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
                         if (use_monospace) {
                             w = advance * float(label.size());
                         }
-                        else if (params.measure_text_func) {
+                        else
+                        if (params.measure_text_func) {
                             VNM_PLOT_PROFILE_SCOPE(
                                 profiler,
                                 "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis.format_labels.measure_text");

@@ -1194,7 +1194,8 @@ void Plot_widget::auto_adjust_view(bool adjust_t, double extra_v_scale, bool anc
     if (adjust_t && has_time_axis) {
         m_time_axis->set_t_range(agg.tmin_ns, agg.tmax_ns);
     }
-    else if (adjust_t) {
+    else
+    if (adjust_t) {
         std::unique_lock lock(m_data_cfg_mutex);
         apply_time_axis_update_to_data_config(
             m_data_cfg,
