@@ -114,9 +114,9 @@ bool test_compute_lod_scales_forces_minimum_of_one()
     Zero_scale_source src;
     auto scales = plot::detail::compute_lod_scales(src);
     TEST_ASSERT(scales.size() == 3, "lod_levels should give 3 entries");
-    TEST_ASSERT(scales[0] == 1, "zero scale at level 0 should be clamped to 1");
-    TEST_ASSERT(scales[1] == 1, "unit scale at level 1 should survive");
-    TEST_ASSERT(scales[2] == 1, "zero scale at level 2 should be clamped to 1");
+    TEST_ASSERT(scales[0] == 1,     "zero scale at level 0 should be clamped to 1");
+    TEST_ASSERT(scales[1] == 1,     "unit scale at level 1 should survive");
+    TEST_ASSERT(scales[2] == 1,     "zero scale at level 2 should be clamped to 1");
     return true;
 }
 
@@ -456,7 +456,7 @@ bool test_snapshot_truthiness_requires_usable_stride()
     snap.count  = samples.size();
     snap.stride = 0;
 
-    TEST_ASSERT(!snap.is_valid(), "stride-zero snapshot should be invalid");
+    TEST_ASSERT(!snap.is_valid(),         "stride-zero snapshot should be invalid");
     TEST_ASSERT(!static_cast<bool>(snap), "stride-zero snapshot should be falsey");
 
     plot::snapshot_result_t result{
@@ -483,7 +483,7 @@ bool test_snapshot_count1_clamps_malformed_count2()
 
     TEST_ASSERT(snap.count1() == 0,
         "malformed count2 > count should clamp count1 to zero");
-    TEST_ASSERT(!snap.is_valid(), "count2 > count should be invalid");
+    TEST_ASSERT(!snap.is_valid(),         "count2 > count should be invalid");
     TEST_ASSERT(!static_cast<bool>(snap), "count2 > count should be falsey");
     TEST_ASSERT(snap.at(0) == nullptr,
         "count2 > count should make sample access fail explicitly");
@@ -657,10 +657,10 @@ bool test_horizontal_label_fade_keys_preserve_int64_timestamps()
     constexpr std::int64_t k_max = std::numeric_limits<std::int64_t>::max();
 
     plot::Text_renderer::horizontal_axis_fade_tracker_t tracker;
-    tracker.states.emplace(k_min, plot::Text_renderer::label_fade_state_t{});
+    tracker.states.emplace(k_min,     plot::Text_renderer::label_fade_state_t{});
     tracker.states.emplace(k_min + 1, plot::Text_renderer::label_fade_state_t{});
     tracker.states.emplace(k_max - 1, plot::Text_renderer::label_fade_state_t{});
-    tracker.states.emplace(k_max, plot::Text_renderer::label_fade_state_t{});
+    tracker.states.emplace(k_max,     plot::Text_renderer::label_fade_state_t{});
 
     TEST_ASSERT(tracker.states.size() == 4,
         "horizontal fade tracker should distinguish adjacent extreme int64 timestamps");

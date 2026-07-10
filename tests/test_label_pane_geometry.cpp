@@ -204,9 +204,9 @@ bool test_fractional_rects_round_inward_without_exceeding_framebuffer()
     plot::text_scissor_t scissor;
     TEST_ASSERT(plot::detail::framebuffer_scissor_from_top_left_rect(rect, width, height, scissor),
         "fractional rect with interior pixels must produce a scissor");
-    TEST_ASSERT(scissor.x == 1, "fractional left edge must ceil inward");
-    TEST_ASSERT(scissor.y == 20, "fractional bottom edge must floor before QRhi y conversion");
-    TEST_ASSERT(scissor.width == 98, "fractional width must be rounded inward");
+    TEST_ASSERT(scissor.x == 1,       "fractional left edge must ceil inward");
+    TEST_ASSERT(scissor.y == 20,      "fractional bottom edge must floor before QRhi y conversion");
+    TEST_ASSERT(scissor.width == 98,  "fractional width must be rounded inward");
     TEST_ASSERT(scissor.height == 39, "fractional height must be rounded inward");
     TEST_ASSERT(scissor_inside_frame(scissor, width, height),
         "fractional scissor must stay inside the framebuffer");

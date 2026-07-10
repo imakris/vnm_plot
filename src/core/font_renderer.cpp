@@ -802,17 +802,17 @@ struct Text_block_std140
     float          background_color[4] = {};
 };
 
-static_assert(offsetof(Text_block_std140, pmv)              ==  0, "Text UBO pmv offset");
-static_assert(offsetof(Text_block_std140, color)            == 64, "Text UBO color offset");
-static_assert(offsetof(Text_block_std140, shadow_color)     == 80, "Text UBO shadow color offset");
-static_assert(offsetof(Text_block_std140, px_range)         == 96, "Text UBO px_range offset");
-static_assert(offsetof(Text_block_std140, target_width)     == 100, "Text UBO target width offset");
-static_assert(offsetof(Text_block_std140, target_height)    == 104, "Text UBO target height offset");
-static_assert(offsetof(Text_block_std140, shadow_radius)    == 108, "Text UBO shadow radius offset");
+static_assert(offsetof(Text_block_std140, pmv)              ==  0,    "Text UBO pmv offset");
+static_assert(offsetof(Text_block_std140, color)            == 64,    "Text UBO color offset");
+static_assert(offsetof(Text_block_std140, shadow_color)     == 80,    "Text UBO shadow color offset");
+static_assert(offsetof(Text_block_std140, px_range)         == 96,    "Text UBO px_range offset");
+static_assert(offsetof(Text_block_std140, target_width)     == 100,   "Text UBO target width offset");
+static_assert(offsetof(Text_block_std140, target_height)    == 104,   "Text UBO target height offset");
+static_assert(offsetof(Text_block_std140, shadow_radius)    == 108,   "Text UBO shadow radius offset");
 static_assert(offsetof(Text_block_std140, lcd_subpixel_order) == 112, "Text UBO LCD order offset");
-static_assert(offsetof(Text_block_std140, framebuffer_y_up) == 116, "Text UBO framebuffer y-up offset");
-static_assert(offsetof(Text_block_std140, background_color) == 128, "Text UBO background color offset");
-static_assert(sizeof(Text_block_std140)                     == 144, "Text UBO std140 size");
+static_assert(offsetof(Text_block_std140, framebuffer_y_up) == 116,   "Text UBO framebuffer y-up offset");
+static_assert(offsetof(Text_block_std140, background_color) == 128,   "Text UBO background color offset");
+static_assert(sizeof(Text_block_std140)                     == 144,   "Text UBO std140 size");
 
 constexpr std::uint32_t k_text_ubo_bytes = sizeof(Text_block_std140);
 

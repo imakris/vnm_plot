@@ -663,23 +663,23 @@ bool test_layer_only_zero_style_prepare_record_order()
         rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
         error_message);
 
-    TEST_ASSERT(low_create_count == 1, "low z-order layer state should be created once");
+    TEST_ASSERT(low_create_count == 1,  "low z-order layer state should be created once");
     TEST_ASSERT(high_create_count == 1, "high z-order layer state should be created once");
-    const std::size_t low_prepare  = find_event_index(events, "low", "prepare");
-    const std::size_t high_prepare = find_event_index(events, "high", "prepare");
+    const std::size_t low_prepare  = find_event_index(events, "low",   "prepare");
+    const std::size_t high_prepare = find_event_index(events, "high",  "prepare");
     const std::size_t begin_pass   = find_event_index(events, "frame", "begin_pass");
-    const std::size_t low_record   = find_event_index(events, "low", "record");
-    const std::size_t high_record  = find_event_index(events, "high", "record");
+    const std::size_t low_record   = find_event_index(events, "low",   "record");
+    const std::size_t high_record  = find_event_index(events, "high",  "record");
 
-    TEST_ASSERT(low_prepare < events.size(), "expected low layer prepare event");
+    TEST_ASSERT(low_prepare  < events.size(), "expected low layer prepare event");
     TEST_ASSERT(high_prepare < events.size(), "expected high layer prepare event");
-    TEST_ASSERT(begin_pass < events.size(), "expected beginPass event");
-    TEST_ASSERT(low_record < events.size(), "expected low layer record event");
-    TEST_ASSERT(high_record < events.size(), "expected high layer record event");
-    TEST_ASSERT(low_prepare < high_prepare, "lower z-order layer must prepare first");
+    TEST_ASSERT(begin_pass   < events.size(), "expected beginPass event");
+    TEST_ASSERT(low_record   < events.size(), "expected low layer record event");
+    TEST_ASSERT(high_record  < events.size(), "expected high layer record event");
+    TEST_ASSERT(low_prepare  < high_prepare, "lower z-order layer must prepare first");
     TEST_ASSERT(high_prepare < begin_pass, "prepare must finish before beginPass");
-    TEST_ASSERT(begin_pass < low_record, "record must happen after beginPass");
-    TEST_ASSERT(low_record < high_record, "lower z-order layer must record first");
+    TEST_ASSERT(begin_pass   < low_record, "record must happen after beginPass");
+    TEST_ASSERT(low_record   < high_record, "lower z-order layer must record first");
     TEST_ASSERT(events[low_prepare].gpu_count > 0 && events[high_prepare].gpu_count > 0,
         "layer-only series with zero Display_style must not be skipped");
     TEST_ASSERT(events[low_prepare].snapshot_valid && events[high_prepare].snapshot_valid,

@@ -164,7 +164,7 @@ bool write_cache_file(
     const std::uint8_t zero_available = 1u;
     const std::uint8_t padding[3]{0u, 0u, 0u};
     out.write(reinterpret_cast<const char*>(&zero_available), sizeof(zero_available));
-    out.write(reinterpret_cast<const char*>(padding), sizeof(padding));
+    out.write(reinterpret_cast<const char*>(padding),         sizeof(padding));
 
     write_value(out, options.glyph_count);
     if (options.glyph_count == 1u) {

@@ -596,7 +596,7 @@ void Primitive_renderer::draw_grid_shader(
         block.grid_color[1]    = color.g;
         block.grid_color[2]    = color.b;
         block.grid_color[3]    = color.a;
-        block.v_count          = std::min(vertical_levels.count, grid_layer_params_t::k_max_levels);
+        block.v_count          = std::min(vertical_levels.count,   grid_layer_params_t::k_max_levels);
         block.t_count          = std::min(horizontal_levels.count, grid_layer_params_t::k_max_levels);
         block.framebuffer_y_up = rhi->isYUpInFramebuffer() ? 1 : 0;
         block.win_h            = static_cast<float>(ctx.win_h);

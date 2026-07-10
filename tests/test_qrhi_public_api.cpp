@@ -144,22 +144,22 @@ static_assert(std::is_same_v<
     decltype(std::declval<plot::Rhi_series_builder&>().build_value()),
     plot::rhi_series_data_t>);
 
-static_assert(static_cast<int>(plot::Display_style::NONE) == 0x0);
-static_assert(static_cast<int>(plot::Display_style::DOTS) == 0x1);
-static_assert(static_cast<int>(plot::Display_style::LINE) == 0x2);
-static_assert(static_cast<int>(plot::Display_style::AREA) == 0x4);
+static_assert(static_cast<int>(plot::Display_style::NONE)           == 0x0);
+static_assert(static_cast<int>(plot::Display_style::DOTS)           == 0x1);
+static_assert(static_cast<int>(plot::Display_style::LINE)           == 0x2);
+static_assert(static_cast<int>(plot::Display_style::AREA)           == 0x4);
 static_assert(static_cast<int>(plot::Display_style::DOTS_LINE_AREA) == 0x7);
 
-static_assert(offsetof(plot::series_view_uniform_std140_t, pmv)      ==   0);
-static_assert(offsetof(plot::series_view_uniform_std140_t, color)    ==  64);
-static_assert(offsetof(plot::series_view_uniform_std140_t, t_min)    ==  80);
-static_assert(offsetof(plot::series_view_uniform_std140_t, t_max)    ==  84);
-static_assert(offsetof(plot::series_view_uniform_std140_t, v_min)    ==  88);
-static_assert(offsetof(plot::series_view_uniform_std140_t, v_max)    ==  92);
-static_assert(offsetof(plot::series_view_uniform_std140_t, width)    ==  96);
-static_assert(offsetof(plot::series_view_uniform_std140_t, height)   == 100);
-static_assert(offsetof(plot::series_view_uniform_std140_t, y_offset) == 104);
-static_assert(offsetof(plot::series_view_uniform_std140_t, win_h)    == 108);
+static_assert(offsetof(plot::series_view_uniform_std140_t, pmv)              == 0);
+static_assert(offsetof(plot::series_view_uniform_std140_t, color)            == 64);
+static_assert(offsetof(plot::series_view_uniform_std140_t, t_min)            == 80);
+static_assert(offsetof(plot::series_view_uniform_std140_t, t_max)            == 84);
+static_assert(offsetof(plot::series_view_uniform_std140_t, v_min)            == 88);
+static_assert(offsetof(plot::series_view_uniform_std140_t, v_max)            == 92);
+static_assert(offsetof(plot::series_view_uniform_std140_t, width)            == 96);
+static_assert(offsetof(plot::series_view_uniform_std140_t, height)           == 100);
+static_assert(offsetof(plot::series_view_uniform_std140_t, y_offset)         == 104);
+static_assert(offsetof(plot::series_view_uniform_std140_t, win_h)            == 108);
 static_assert(offsetof(plot::series_view_uniform_std140_t, framebuffer_y_up) == 112);
 static_assert(sizeof(plot::series_view_uniform_std140_t) == 128);
 
@@ -252,7 +252,7 @@ bool test_series_builder_qrhi_layers_append_replace_clear()
         "Rhi_series_builder series_label mismatch");
     TEST_ASSERT(series.nonfinite_policy == plot::Nonfinite_sample_policy::SKIP,
         "Rhi_series_builder nonfinite_policy mismatch");
-    TEST_ASSERT(series.qrhi_layers.size() == 2, "qrhi_layer() must append");
+    TEST_ASSERT(series.qrhi_layers.size() == 2,   "qrhi_layer() must append");
     TEST_ASSERT(series.qrhi_layers[0] == layer_a, "first appended layer pointer mismatch");
     TEST_ASSERT(series.qrhi_layers[1] == layer_b, "second appended layer pointer mismatch");
 
@@ -260,7 +260,7 @@ bool test_series_builder_qrhi_layers_append_replace_clear()
         .qrhi_layers({layer_c})
         .build_value();
 
-    TEST_ASSERT(series.qrhi_layers.size() == 1, "qrhi_layers() must replace existing layers");
+    TEST_ASSERT(series.qrhi_layers.size() == 1,   "qrhi_layers() must replace existing layers");
     TEST_ASSERT(series.qrhi_layers[0] == layer_c, "replacement layer pointer mismatch");
 
     series = builder
@@ -308,8 +308,8 @@ bool test_qrhi_layer_api_surface_can_be_implemented()
     const Test_layer layer("api-layer", 23, -5);
 
     TEST_ASSERT(layer.id() == "api-layer", "layer id accessor mismatch");
-    TEST_ASSERT(layer.revision() == 23, "layer revision accessor mismatch");
-    TEST_ASSERT(layer.z_order() == -5, "layer z_order accessor mismatch");
+    TEST_ASSERT(layer.revision() == 23,    "layer revision accessor mismatch");
+    TEST_ASSERT(layer.z_order() == -5,     "layer z_order accessor mismatch");
     TEST_ASSERT(layer.draws_view(plot::Series_view_kind::MAIN),
         "test layer should draw the main view");
     TEST_ASSERT(!layer.draws_view(plot::Series_view_kind::PREVIEW),
@@ -323,7 +323,7 @@ bool test_qrhi_layer_api_surface_can_be_implemented()
     TEST_ASSERT(prepare_context.updates == nullptr, "prepare context update batch default mismatch");
     TEST_ASSERT(prepare_context.asset_loader == nullptr,
         "prepare context asset loader default mismatch");
-    TEST_ASSERT(prepare_context.frame == nullptr, "prepare context frame default mismatch");
+    TEST_ASSERT(prepare_context.frame == nullptr,  "prepare context frame default mismatch");
     TEST_ASSERT(prepare_context.series == nullptr, "prepare context series default mismatch");
     TEST_ASSERT(prepare_context.view_uniform == nullptr,
         "prepare context view uniform default mismatch");
@@ -340,8 +340,8 @@ bool test_qrhi_layer_api_surface_can_be_implemented()
     TEST_ASSERT(record_context.cb == nullptr, "record context command buffer default mismatch");
     TEST_ASSERT(record_context.render_target == nullptr,
         "record context render target default mismatch");
-    TEST_ASSERT(record_context.frame == nullptr, "record context frame default mismatch");
-    TEST_ASSERT(record_context.series == nullptr, "record context series default mismatch");
+    TEST_ASSERT(record_context.frame == nullptr,    "record context frame default mismatch");
+    TEST_ASSERT(record_context.series == nullptr,   "record context series default mismatch");
     TEST_ASSERT(record_context.view_ubo == nullptr, "record context UBO default mismatch");
 
     return true;
@@ -446,8 +446,8 @@ bool test_make_series_view_uniform_values()
     const plot::series_view_uniform_std140_t uniform =
         plot::make_series_view_uniform(frame, series, window);
 
-    TEST_ASSERT(nearly_equal(uniform.pmv[0],  1.0f), "uniform pmv[0] mismatch");
-    TEST_ASSERT(nearly_equal(uniform.pmv[5],  6.0f), "uniform pmv[5] mismatch");
+    TEST_ASSERT(nearly_equal(uniform.pmv[0],  1.0f),  "uniform pmv[0] mismatch");
+    TEST_ASSERT(nearly_equal(uniform.pmv[5],  6.0f),  "uniform pmv[5] mismatch");
     TEST_ASSERT(nearly_equal(uniform.pmv[15], 16.0f), "uniform pmv[15] mismatch");
 
     TEST_ASSERT(nearly_equal(uniform.color[0], 0.2f), "uniform color red mismatch");
@@ -456,14 +456,14 @@ bool test_make_series_view_uniform_values()
     TEST_ASSERT(nearly_equal(uniform.color[3], 0.4f),
         "uniform color alpha must include window alpha");
 
-    TEST_ASSERT(nearly_equal(uniform.t_min, 1.5f), "uniform t_min relative seconds mismatch");
-    TEST_ASSERT(nearly_equal(uniform.t_max, 4.0f), "uniform t_max relative seconds mismatch");
-    TEST_ASSERT(nearly_equal(uniform.v_min, -3.0f), "uniform v_min mismatch");
-    TEST_ASSERT(nearly_equal(uniform.v_max,  9.0f), "uniform v_max mismatch");
-    TEST_ASSERT(nearly_equal(uniform.width, 640.0f), "uniform width mismatch");
-    TEST_ASSERT(nearly_equal(uniform.height, 120.0f), "uniform height mismatch");
+    TEST_ASSERT(nearly_equal(uniform.t_min, 1.5f),     "uniform t_min relative seconds mismatch");
+    TEST_ASSERT(nearly_equal(uniform.t_max, 4.0f),     "uniform t_max relative seconds mismatch");
+    TEST_ASSERT(nearly_equal(uniform.v_min, -3.0f),    "uniform v_min mismatch");
+    TEST_ASSERT(nearly_equal(uniform.v_max,  9.0f),    "uniform v_max mismatch");
+    TEST_ASSERT(nearly_equal(uniform.width, 640.0f),   "uniform width mismatch");
+    TEST_ASSERT(nearly_equal(uniform.height, 120.0f),  "uniform height mismatch");
     TEST_ASSERT(nearly_equal(uniform.y_offset, 24.0f), "uniform y_offset mismatch");
-    TEST_ASSERT(nearly_equal(uniform.win_h, 300.0f), "uniform win_h mismatch");
+    TEST_ASSERT(nearly_equal(uniform.win_h, 300.0f),   "uniform win_h mismatch");
     TEST_ASSERT(uniform.framebuffer_y_up == 0,
         "null frame.rhi must produce framebuffer_y_up == 0");
 

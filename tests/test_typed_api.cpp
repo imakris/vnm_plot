@@ -186,7 +186,7 @@ bool test_make_access_policy_and_erase()
     s.v_max = 6.0f;
 
     TEST_ASSERT(policy.get_timestamp(s) == k_test_ts_ns, "timestamp accessor mismatch");
-    TEST_ASSERT(policy.get_value(s) == 3.5f, "value accessor mismatch");
+    TEST_ASSERT(policy.get_value(s) == 3.5f,             "value accessor mismatch");
     const auto range = policy.get_range(s);
     TEST_ASSERT(range.first == 1.0f && range.second == 6.0f, "range accessor mismatch");
 
@@ -197,7 +197,7 @@ bool test_make_access_policy_and_erase()
     TEST_ASSERT(erased.layout_key == policy.layout_key,
         "erase() should propagate layout_key");
     TEST_ASSERT(erased.get_timestamp(&s) == k_test_ts_ns, "erased timestamp accessor mismatch");
-    TEST_ASSERT(erased.get_value(&s) == 3.5f, "erased value accessor mismatch");
+    TEST_ASSERT(erased.get_value(&s) == 3.5f,             "erased value accessor mismatch");
     const auto erased_range = erased.get_range(&s);
     TEST_ASSERT(erased_range.first == 1.0f && erased_range.second == 6.0f,
         "erased range accessor mismatch");

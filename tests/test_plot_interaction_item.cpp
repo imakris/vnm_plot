@@ -148,7 +148,7 @@ bool test_zoom_math_stays_composable_across_small_velocity_decay()
         0.01,
         {1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0});
 
-    TEST_ASSERT(nearly_equal(single_gap.scale, fine_steps.scale), "small-velocity scale should stay composable");
+    TEST_ASSERT(nearly_equal(single_gap.scale, fine_steps.scale),       "small-velocity scale should stay composable");
     TEST_ASSERT(nearly_equal(single_gap.velocity, fine_steps.velocity), "small-velocity decay should stay composable");
 
     return true;
@@ -174,7 +174,7 @@ bool test_zoom_math_handles_zero_velocity()
 {
     const zoom_state_t state = advance_zoom(0.0, {0.3, 0.7, 1.5, 2.5, 5.0});
 
-    TEST_ASSERT(nearly_equal(state.scale, 1.0), "zero velocity should keep identity scale");
+    TEST_ASSERT(nearly_equal(state.scale, 1.0),    "zero velocity should keep identity scale");
     TEST_ASSERT(nearly_equal(state.velocity, 0.0), "zero velocity should stay zero");
 
     return true;

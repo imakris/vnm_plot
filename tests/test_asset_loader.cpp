@@ -50,7 +50,7 @@ bool test_missing_asset_logs_and_returns_nullopt()
 
     auto result = loader.load("does/not/exist.vert");
     TEST_ASSERT(!result.has_value(), "missing asset should return nullopt");
-    TEST_ASSERT(!messages.empty(), "missing asset should surface a log message");
+    TEST_ASSERT(!messages.empty(),   "missing asset should surface a log message");
     TEST_ASSERT(messages.front().find("does/not/exist.vert") != std::string::npos,
         "log message should reference the missing asset name");
     return true;
@@ -93,7 +93,7 @@ bool test_override_directory_falls_back_to_embedded_when_missing()
     loader.set_override_directory(tmp.path.string());
 
     auto result = loader.load("example.vert");
-    TEST_ASSERT(result.has_value(), "should fall back to embedded when override file is missing");
+    TEST_ASSERT(result.has_value(),         "should fall back to embedded when override file is missing");
     TEST_ASSERT(*result == "embedded-only", "embedded fallback bytes should be returned");
     return true;
 }
