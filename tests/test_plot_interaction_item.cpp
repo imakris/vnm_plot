@@ -136,7 +136,8 @@ bool test_zoom_math_is_invariant_to_timer_cadence()
     TEST_ASSERT(nearly_equal(single_gap.scale, split_gap.scale), "scale should match for split elapsed time");
     TEST_ASSERT(nearly_equal(single_gap.velocity, split_gap.velocity), "velocity should match for split elapsed time");
     TEST_ASSERT(nearly_equal(single_gap.scale, fine_steps.scale), "scale should match for fine-grained elapsed time");
-    TEST_ASSERT(nearly_equal(single_gap.velocity, fine_steps.velocity), "velocity should match for fine-grained elapsed time");
+    TEST_ASSERT(
+        nearly_equal(single_gap.velocity, fine_steps.velocity), "velocity should match for fine-grained elapsed time");
 
     return true;
 }
@@ -163,8 +164,10 @@ bool test_zoom_math_handles_negative_velocity()
         {0.3, 0.7, 1.5, 2.5, 5.0});
 
     TEST_ASSERT(nearly_equal(single_gap.scale, split_gap.scale), "negative scale should match for split elapsed time");
-    TEST_ASSERT(nearly_equal(single_gap.velocity, split_gap.velocity), "negative velocity should match for split elapsed time");
-    TEST_ASSERT(nearly_equal(single_gap.scale, fractional_steps.scale), "negative scale should match for fractional steps");
+    TEST_ASSERT(
+        nearly_equal(single_gap.velocity, split_gap.velocity), "negative velocity should match for split elapsed time");
+    TEST_ASSERT(
+        nearly_equal(single_gap.scale, fractional_steps.scale), "negative scale should match for fractional steps");
     TEST_ASSERT(nearly_equal(single_gap.velocity, fractional_steps.velocity), "negative velocity should match for fractional steps");
 
     return true;

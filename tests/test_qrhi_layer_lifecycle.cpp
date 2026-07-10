@@ -2703,9 +2703,8 @@ bool test_resources_changed_tracks_data_and_window_changes()
         "unchanged data and window must not report resources_changed");
 
     access_call_counts_t changed_access_calls;
-    series->access =
-        make_fallback_access_policy_with_counted_public_accessors(
-            changed_access_calls);
+    series->access = make_fallback_access_policy_with_counted_public_accessors(
+        changed_access_calls);
     events.clear();
     TEST_ASSERT(
         rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),

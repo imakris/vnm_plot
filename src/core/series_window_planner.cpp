@@ -662,13 +662,12 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
                 VNM_PLOT_PROFILE_SCOPE(
                     request.profiler,
                     "process_view.linear_fallback");
-                const visible_sample_window_t window =
-                    select_visible_sample_window(
-                        snapshot,
-                        get_timestamp,
-                        request.t_min_ns,
-                        request.t_max_ns,
-                        false);
+                const visible_sample_window_t window = select_visible_sample_window(
+                    snapshot,
+                    get_timestamp,
+                    request.t_min_ns,
+                    request.t_max_ns,
+                    false);
                 first_idx = window.first;
                 last_idx = window.last_exclusive;
             }
@@ -678,13 +677,12 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
                 VNM_PLOT_PROFILE_SCOPE(
                     request.profiler,
                     "process_view.binary_search");
-                const visible_sample_window_t window =
-                    select_visible_sample_window(
-                        snapshot,
-                        get_timestamp,
-                        request.t_min_ns,
-                        request.t_max_ns,
-                        true);
+                const visible_sample_window_t window = select_visible_sample_window(
+                    snapshot,
+                    get_timestamp,
+                    request.t_min_ns,
+                    request.t_max_ns,
+                    true);
                 first_idx = window.first;
                 last_idx = window.last_exclusive;
             }
@@ -760,12 +758,11 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
                 const std::int64_t ts_ns = get_timestamp(sample);
                 if (ts_ns >= request.t_min_ns && ts_ns <= request.t_max_ns) {
                     sample_draw_value_t ignored;
-                    const sample_draw_status_t status =
-                        read_sample_draw_value(
-                            access_view,
-                            sample,
-                            request.nonfinite_policy,
-                            ignored);
+                    const sample_draw_status_t status = read_sample_draw_value(
+                        access_view,
+                        sample,
+                        request.nonfinite_policy,
+                        ignored);
                     if (status == sample_draw_status_t::FAILED) {
                         failed_sample_in_requested_window = true;
                         break;
@@ -813,14 +810,13 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
             }
         }
 
-        drawable_window_result_t drawable_window =
-            build_drawable_window(
-                snapshot,
-                access_view,
-                request.nonfinite_policy,
-                first_idx,
-                last_idx,
-                hold_last_forward);
+        drawable_window_result_t drawable_window = build_drawable_window(
+            snapshot,
+            access_view,
+            request.nonfinite_policy,
+            first_idx,
+            last_idx,
+            hold_last_forward);
         if (drawable_window.valid &&
             drawable_window.gpu_count == 0 &&
             hold_last_forward &&

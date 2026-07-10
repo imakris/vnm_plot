@@ -1014,11 +1014,10 @@ bool Font_renderer::text_visual_bounds_px(
         return false;
     }
 
-    const vnm::msdf_text::text_bounds_t measured =
-        vnm::msdf_text::measure_text_bounds_px(
-            *atlas,
-            m_impl->current_draw_pixel_height(),
-            text);
+    const vnm::msdf_text::text_bounds_t measured = vnm::msdf_text::measure_text_bounds_px(
+        *atlas,
+        m_impl->current_draw_pixel_height(),
+        text);
     if (!measured.has_visible_glyphs) {
         return false;
     }

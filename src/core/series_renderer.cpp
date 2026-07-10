@@ -1276,10 +1276,9 @@ void Series_renderer::prepare(
                 plan.access
                     ? detail::make_erased_access_policy_view(*plan.access)
                     : detail::erased_access_policy_t{};
-            const detail::access_policy_cache_key_t layer_access_key =
-                detail::make_access_policy_cache_key(
-                    plan.access,
-                    layer_access_view);
+            const detail::access_policy_cache_key_t layer_access_key = detail::make_access_policy_cache_key(
+                plan.access,
+                layer_access_view);
 
             rhi_state_t::qrhi_layer_program_key_t program_key;
             program_key.series_id      = draw_state.id;
@@ -1721,12 +1720,11 @@ bool Series_renderer::rhi_prepare_series_view_samples(
         const auto stage_one_sample =
             [&](gpu_sample_t& dst, const void* src, std::int64_t ts_ns) {
                 detail::sample_draw_value_t draw_value;
-                const detail::sample_draw_status_t status =
-                    detail::read_sample_draw_value(
-                        access_view,
-                        src,
-                        window.nonfinite_policy,
-                        draw_value);
+                const detail::sample_draw_status_t status = detail::read_sample_draw_value(
+                    access_view,
+                    src,
+                    window.nonfinite_policy,
+                    draw_value);
                 if (status != detail::sample_draw_status_t::DRAWABLE) {
                     return false;
                 }

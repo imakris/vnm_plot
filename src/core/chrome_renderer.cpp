@@ -341,7 +341,8 @@ void Chrome_renderer::render_preview_overlay(
     else {
         const double xx = 0.5 * (k_preview_min_window_px - dd);
         prims.batch_rect(cover_color, {float(0 - xx), float(ptop + pband_h), float(x0 - xx), float(pbtm - pband_h)});
-        prims.batch_rect(cover_color, {float(x1 + xx), float(ptop + pband_h), float(win_w + xx), float(pbtm - pband_h)});
+        prims.batch_rect(
+            cover_color, {float(x1 + xx), float(ptop + pband_h), float(win_w + xx), float(pbtm - pband_h)});
         prims.batch_rect(cover_color2, {float(x0 - xx), float(ptop + pband_h), float(x0), float(pbtm - pband_h)});
         prims.batch_rect(cover_color2, {float(x1), float(ptop + pband_h), float(x1 + xx), float(pbtm - pband_h)});
     }

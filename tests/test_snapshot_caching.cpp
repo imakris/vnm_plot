@@ -1731,10 +1731,9 @@ bool test_renderer_assigns_distinct_origins_to_main_and_preview()
 
     const std::int64_t expected_main_span =
         plot::detail::positive_span_ns_for_signed_api(ctx.t0, ctx.t1);
-    const std::int64_t expected_preview_span =
-        plot::detail::positive_span_ns_for_signed_api(
-            ctx.t_available_min,
-            ctx.t_available_max);
+    const std::int64_t expected_preview_span = plot::detail::positive_span_ns_for_signed_api(
+        ctx.t_available_min,
+        ctx.t_available_max);
     const std::int64_t expected_main_origin =
         plot::detail::choose_origin_ns(ctx.t0, expected_main_span);
     const std::int64_t expected_preview_origin =

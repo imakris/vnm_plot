@@ -825,7 +825,8 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
                 params.horizontal_seed_index < static_cast<int>(steps.size()))
             {
                 const double seeded_step = steps[params.horizontal_seed_index];
-                const double ref = std::max(1e-6, std::max(std::abs(seeded_step), std::abs(params.horizontal_seed_step)));
+                const double ref = std::max(1e-6, std::max(std::abs(seeded_step),
+                    std::abs(params.horizontal_seed_step)));
                 if (std::abs(seeded_step - params.horizontal_seed_step) <= ref * 1e-6) {
                     si = params.horizontal_seed_index;
                 }

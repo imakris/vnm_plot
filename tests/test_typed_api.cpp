@@ -465,19 +465,17 @@ bool test_erased_access_view_uses_direct_member_accessors()
     plot::Data_access_policy revision_policy = erased;
     const auto revision_view_before =
         plot::detail::make_erased_access_policy_view(revision_policy);
-    const auto revision_key_before =
-        plot::detail::make_access_policy_cache_key(
-            &revision_policy,
-            revision_view_before);
+    const auto revision_key_before = plot::detail::make_access_policy_cache_key(
+        &revision_policy,
+        revision_view_before);
     revision_policy.get_value = [](const void*) {
         return 11.0f;
     };
     const auto revision_view_after =
         plot::detail::make_erased_access_policy_view(revision_policy);
-    const auto revision_key_after =
-        plot::detail::make_access_policy_cache_key(
-            &revision_policy,
-            revision_view_after);
+    const auto revision_key_after = plot::detail::make_access_policy_cache_key(
+        &revision_policy,
+        revision_view_after);
     TEST_ASSERT(revision_key_before != revision_key_after,
         "access policy cache key should change after accessor mutation");
 
