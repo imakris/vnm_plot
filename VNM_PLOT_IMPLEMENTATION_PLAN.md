@@ -24,7 +24,7 @@ Claude was unavailable for the stated 85-minute review window. Three Codex worke
 
 The architecture review records **19 failed or terminated executions** in [Observed failures and current gate status](VNM_PLOT_ARCHITECTURE_AND_STACKING_REVIEW.md#observed-failures-and-current-gate-status). Plan authoring added one failed `apply_patch` verification: a combined patch expected text that no longer exactly matched the staged draft. Codex `/root` owned the authoring error and recovered by rereading the file and applying smaller exact hunks, bringing the total to **20** before implementation began.
 
-Batch 1B then added seven failed or terminated style executions, bringing the running total to **27**:
+Batch 1B then added eleven failed or terminated style executions, bringing the running total to **31**:
 
 1. The aggregate `style_pipeline.py --write` invocation against the three originally named files advanced beyond the 14 switch fixes and attempted 737 insertions/826 deletions. Review caught `fix_hanging_indent.py` deleting a ternary expression's `?`, true arm, and `:` in `sample_statement_for_offset()` before commit. Codex `/root` owned the unsafe invocation, rejected the output, and restored all generated changes through `apply_patch`; no corrupting change was retained.
 2. After applying only the authorized 14 switch fixes, the canonical no-write pipeline passed its first stage and failed at stage two on four previously hidden `else if` layout violations. A read-only audit then showed 22 of 27 rule groups red; those counts are diagnostic/provisional because earlier ordered fixes can affect later checks.
@@ -33,6 +33,10 @@ Batch 1B then added seven failed or terminated style executions, bringing the ru
 5. One initialized build/test wrapper exited before execution because its PowerShell quoting was malformed. Codex `/root` corrected the invocation and retained the successful initialized Release build and CTest result rather than suppressing the failed command.
 6. One read-only aggregate-inventory wrapper exited because its diagnostic parser expected the wrong message shape. No source was changed; Codex `/root` corrected the parser and retained the resulting all-rule inventory.
 7. One canonical no-write pipeline invocation exceeded a 30-second wrapper timeout and ended with a downstream broken-pipe error. No source was changed; subsequent canonical runs use a recorded timeout long enough for the complete pipeline.
+8. One filtered hanging-indent check incorrectly passed `--root` to a positional-only individual checker; the Python error was hidden by the filtering pipeline while the build/test portion continued. No source was changed by the invalid check; Codex `/root` later detected the missing diagnostic and reran the checker through its actual interface.
+9. A direct fixer capability probe incorrectly passed unsupported `--help` to the positional-only hanging-indent fixer, which treated it as a filename and exited. No source was changed.
+10. A second direct hanging-indent check repeated the unsupported `--root` assumption in the same diagnostic command. No source was changed. Codex `/root` read both scripts' `main()` functions and switched all individual-rule invocations to positional files or their default repository scan.
+11. After the hanging-indent fixer reported all 23 enumerated files token-equivalent, its own no-write checker retained one `operator return block should be normalized` finding in `include/vnm_plot/core/types.h`. The fixer's repeated-pass normalization did not converge on the renderer's required one-column mixed-parenthesis alignment. Codex `/root` applied that exact whitespace-only alignment manually, reran the token comparison, and obtained a green hanging-indent/build/CTest checkpoint.
 
 Preserve all ledgers rather than replacing them with later green results.
 
@@ -206,6 +210,7 @@ Batch 1B remains formatting-only. Isolate here only the two checker-enumerated c
 
 1. Rewrite `tests/test_msdf_lcd_shader_reference.cpp::sample_statement_for_offset()` from its ternary return to an equivalent empty-expression early return followed by the existing non-empty string construction. This avoids the proven `std::string`/ternary parser collision without changing generated shader text; retain the focused LCD shader-reference assertions.
 2. If the ordered naming check still reports them, rename only the private `_pad0`, `_pad1`, and `_pad2` members in `src/core/series_renderer.cpp` to checker-approved names without changing declaration order, field types, initialization values, buffer packing, public headers, or exported symbols.
+3. Permit only checker-enumerated adjacent C++ string-literal splits that the long-string rule cannot express without introducing an additional literal token. Require a focused diff proving that concatenated bytes, prefixes, and suffixes are unchanged; the initially known scope is one test message in `tests/test_plot_interaction_item.cpp`.
 
 Do not use this checkpoint for unrelated cleanup.
 
