@@ -470,7 +470,9 @@ plot::frame_layout_result_t make_layout()
     return layout;
 }
 
-plot::frame_context_t make_context(const plot::frame_layout_result_t& layout, const plot::Plot_config& config)
+plot::frame_context_t make_context(
+    const plot::frame_layout_result_t& layout,
+    const plot::Plot_config& config)
 {
     plot::frame_context_t ctx{layout};
     ctx.t0 = 0;

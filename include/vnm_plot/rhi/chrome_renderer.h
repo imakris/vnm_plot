@@ -29,7 +29,11 @@ public:
 
 private:
     // Helper to compute grid layer parameters for vertical axis
-    grid_layer_params_t calculate_grid_params(double min, double max, double pixel_span, double font_px);
+    grid_layer_params_t calculate_grid_params(
+        double min,
+        double max,
+        double pixel_span,
+        double font_px);
 };
 
 } // namespace vnm::plot

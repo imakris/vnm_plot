@@ -201,8 +201,16 @@ public:
 
     // Q_INVOKABLEs that take or return timestamps cross the QML boundary
     // in milliseconds-since-epoch. Result maps also report entry["x"] in ms.
-    Q_INVOKABLE QVariantList get_indicator_samples(double x_ms, double plot_width, double plot_height, double mouse_px = -1.0) const;
-    Q_INVOKABLE QVariantList get_nearest_samples(double x_ms, double plot_width, double plot_height, double mouse_px = -1.0) const;
+    Q_INVOKABLE QVariantList get_indicator_samples(
+        double x_ms,
+        double plot_width,
+        double plot_height,
+        double mouse_px = -1.0) const;
+    Q_INVOKABLE QVariantList get_nearest_samples(
+        double x_ms,
+        double plot_width,
+        double plot_height,
+        double mouse_px = -1.0) const;
     Q_INVOKABLE QString format_timestamp_precise(qint64 timestamp_ms) const;
 
     // --- Qt Quick RHI Interface ---

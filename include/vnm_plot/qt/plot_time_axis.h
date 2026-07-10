@@ -81,7 +81,9 @@ public:
     // shot and skip the seed/slide branching, which is the right shape when
     // a caller already has both bounds in hand.
     Q_INVOKABLE void set_t_range_qml_ms(qint64 t_min_ms, qint64 t_max_ms);
-    Q_INVOKABLE void set_available_t_range_qml_ms(qint64 t_available_min_ms, qint64 t_available_max_ms);
+    Q_INVOKABLE void set_available_t_range_qml_ms(
+        qint64 t_available_min_ms,
+        qint64 t_available_max_ms);
 
     Q_INVOKABLE void adjust_t_from_mouse_diff(double ref_width, double diff);
     Q_INVOKABLE void adjust_t_from_mouse_diff_on_preview(double ref_width, double diff);

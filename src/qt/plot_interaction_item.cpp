@@ -163,7 +163,9 @@ qreal Plot_interaction_item::zoom_animation_scale_factor(qreal velocity, qreal e
     return std::pow(s_base_k, integrated_velocity);
 }
 
-qreal Plot_interaction_item::zoom_animation_velocity_after(qreal velocity, qreal elapsed_timer_steps)
+qreal Plot_interaction_item::zoom_animation_velocity_after(
+    qreal velocity,
+    qreal elapsed_timer_steps)
 {
     if (elapsed_timer_steps <= 0.0) {
         return velocity;

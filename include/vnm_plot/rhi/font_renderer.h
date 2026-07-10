@@ -92,7 +92,10 @@ public:
     void initialize(Asset_loader& asset_loader, int pixel_height, bool force_rebuild = false);
 
     // Initializes CPU font metrics/cache for layout calculation before the render pass.
-    void initialize_metrics(Asset_loader& asset_loader, int pixel_height, bool force_rebuild = false);
+    void initialize_metrics(
+        Asset_loader& asset_loader,
+        int pixel_height,
+        bool force_rebuild = false);
 
     // Releases this instance's weak reference to the shared resources.
     void deinitialize();

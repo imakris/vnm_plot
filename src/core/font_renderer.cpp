@@ -959,7 +959,10 @@ void Font_renderer::initialize(Asset_loader& asset_loader, int pixel_height, boo
     m_impl->m_resources = &resources;
 }
 
-void Font_renderer::initialize_metrics(Asset_loader& asset_loader, int pixel_height, bool force_rebuild)
+void Font_renderer::initialize_metrics(
+    Asset_loader& asset_loader,
+    int pixel_height,
+    bool force_rebuild)
 {
     if (!force_rebuild &&
         m_impl->m_font_cache &&
@@ -998,7 +1001,11 @@ float Font_renderer::measure_text_px(const char* text) const
         *atlas, m_impl->current_draw_pixel_height(), text);
 }
 
-bool Font_renderer::text_visual_bounds_px(const char* text, float x, float y, glm::vec4& bounds) const
+bool Font_renderer::text_visual_bounds_px(
+    const char* text,
+    float x,
+    float y,
+    glm::vec4& bounds) const
 {
     const msdf_atlas_t* atlas = m_impl->current_atlas();
     if (!text || !atlas) {
