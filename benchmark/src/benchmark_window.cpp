@@ -7,6 +7,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include <QByteArray>
+#include <QCoreApplication>
 #include <QMatrix4x4>
 #include <QOffscreenSurface>
 #include <QQuickItem>
@@ -52,6 +53,17 @@ std::string device_type_name(QRhiDriverInfo::DeviceType type)
     return "unknown";
 }
 
+std::string frame_op_result_name(QRhi::FrameOpResult result)
+{
+    switch (result) {
+    case QRhi::FrameOpSuccess: return "success";
+    case QRhi::FrameOpError: return "error";
+    case QRhi::FrameOpSwapChainOutOfDate: return "swap-chain-out-of-date";
+    case QRhi::FrameOpDeviceLost: return "device-lost";
+    }
+    return "unknown";
+}
+
 Graphics_device_info graphics_device_info_from_rhi(QRhi& rhi)
 {
     const QRhiDriverInfo driver = rhi.driverInfo();
@@ -89,6 +101,31 @@ std::uint64_t process_memory_high_water_bytes()
     return 0;
 }
 
+double steady_clock_resolution_ns()
+{
+    double resolution = std::numeric_limits<double>::max();
+    auto previous = std::chrono::steady_clock::now();
+    for (int sample = 0; sample < 10'000; ++sample) {
+        const auto current = std::chrono::steady_clock::now();
+        const double delta = std::chrono::duration<double, std::nano>(
+            current - previous).count();
+        if (delta > 0.0) {
+            resolution = std::min(resolution, delta);
+        }
+        previous = current;
+    }
+    return std::isfinite(resolution) ? resolution : 0.0;
+}
+
+void ensure_interval_observations(Benchmark_profiler& profiler)
+{
+    profiler.ensure_observation("benchmark.producer.lock_wait_ns");
+    profiler.ensure_observation("renderer.series_window.monotonicity_scan_count");
+    profiler.ensure_observation("renderer.series_window.monotonicity_scan_samples");
+    profiler.ensure_observation("renderer.frame.buffer_allocation_bytes");
+    profiler.ensure_observation("renderer.frame.buffer_allocation_count");
+}
+
 template<typename T>
 void record_ring_statistics(
     Benchmark_profiler& profiler,
@@ -99,12 +136,21 @@ void record_ring_statistics(
         return;
     }
     typename Ring_buffer<T>::Statistics total;
+    std::uint64_t producer_wait_min_ns = std::numeric_limits<std::uint64_t>::max();
     for (const auto& buffer : buffers) {
         const auto stats = buffer->statistics();
         total.occupancy += stats.occupancy;
         total.high_water_occupancy += stats.high_water_occupancy;
         total.published_samples += stats.published_samples;
         total.overwritten_samples += stats.overwritten_samples;
+        total.producer_wait_count += stats.producer_wait_count;
+        total.producer_wait_total_ns += stats.producer_wait_total_ns;
+        if (stats.producer_wait_count > 0) {
+            producer_wait_min_ns = std::min(producer_wait_min_ns, stats.producer_wait_min_ns);
+            total.producer_wait_max_ns = std::max(
+                total.producer_wait_max_ns,
+                stats.producer_wait_max_ns);
+        }
     }
     profiler.record_observation("benchmark.ring.occupancy", static_cast<double>(total.occupancy));
     profiler.record_observation(
@@ -120,6 +166,23 @@ void record_ring_statistics(
         profiler.record_observation(
             "benchmark.ring.published_samples_per_second",
             static_cast<double>(total.published_samples) / measured_seconds);
+    }
+    if (total.producer_wait_count > 0) {
+        profiler.record_observation_summary(
+            "benchmark.producer.lock_wait_ns",
+            total.producer_wait_count,
+            static_cast<double>(total.producer_wait_total_ns),
+            static_cast<double>(producer_wait_min_ns),
+            static_cast<double>(total.producer_wait_max_ns));
+    }
+}
+
+template<typename T>
+void reset_ring_measurement_statistics(
+    std::vector<std::unique_ptr<Ring_buffer<T>>>& buffers)
+{
+    for (auto& buffer : buffers) {
+        buffer->reset_measurement_statistics();
     }
 }
 
@@ -513,6 +576,8 @@ void Benchmark_rhi_window::on_render_timer()
     if (m_warmup_frames_remaining > 0) {
         --m_warmup_frames_remaining;
         if (m_warmup_frames_remaining == 0) {
+            reset_ring_measurement_statistics(m_bar_buffers);
+            reset_ring_measurement_statistics(m_trade_buffers);
             m_profiler.reset();
             m_started_at = std::chrono::system_clock::now();
             m_last_timer_tick = {};
@@ -566,6 +631,7 @@ void Benchmark_rhi_window::record_final_statistics()
     m_profiler.record_observation(
         "benchmark.memory.process_high_water_bytes",
         static_cast<double>(process_memory_high_water_bytes()));
+    ensure_interval_observations(m_profiler);
 }
 
 Benchmark_rhi_offscreen_runner::Benchmark_rhi_offscreen_runner(const Benchmark_config& config)
@@ -1096,7 +1162,11 @@ bool Benchmark_rhi_offscreen_runner::render_frame(
         cb->resourceUpdate(readback_updates);
     }
 
-    m_rhi->endOffscreenFrame();
+    const QRhi::FrameOpResult end_result = m_rhi->endOffscreenFrame();
+    if (end_result != QRhi::FrameOpSuccess) {
+        error_message = "measure.end_offscreen_frame: " + frame_op_result_name(end_result);
+        return false;
+    }
     if (measured) {
         const double submission_ms = std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - submission_started).count();
@@ -1105,7 +1175,11 @@ bool Benchmark_rhi_offscreen_runner::render_frame(
     if (m_config.finish || (measured && m_config.capture_pixel_checksum)) {
         VNM_PLOT_PROFILE_SCOPE(&m_profiler, "renderer.frame.finish");
         const auto finish_started = std::chrono::steady_clock::now();
-        m_rhi->finish();
+        const QRhi::FrameOpResult finish_result = m_rhi->finish();
+        if (finish_result != QRhi::FrameOpSuccess) {
+            error_message = "measure.finish: " + frame_op_result_name(finish_result);
+            return false;
+        }
         if (measured) {
             const double finish_ms = std::chrono::duration<double, std::milli>(
                 std::chrono::steady_clock::now() - finish_started).count();
@@ -1123,12 +1197,24 @@ bool Benchmark_rhi_offscreen_runner::render_frame(
             checksum *= 1'099'511'628'211ull;
         }
         m_pixel_checksum = checksum;
+        m_pixel_nonuniform_count = 0;
+        if (readback.data.size() >= 4) {
+            const char* pixels = readback.data.constData();
+            for (qsizetype offset = 4; offset + 4 <= readback.data.size(); offset += 4) {
+                if (std::memcmp(pixels, pixels + offset, 4) != 0) {
+                    ++m_pixel_nonuniform_count;
+                }
+            }
+        }
         m_profiler.record_observation(
             "benchmark.frame.pixel_readback_bytes",
             static_cast<double>(readback.data.size()));
         m_profiler.record_observation(
             "benchmark.frame.pixel_checksum_low32",
             static_cast<double>(checksum & 0xffff'ffffull));
+        m_profiler.record_observation(
+            "benchmark.frame.pixel_nonuniform_count",
+            static_cast<double>(m_pixel_nonuniform_count));
     }
     if (measured) {
         const double frame_ms = std::chrono::duration<double, std::milli>(
@@ -1143,10 +1229,11 @@ bool Benchmark_rhi_offscreen_runner::render_frame(
 bool Benchmark_rhi_offscreen_runner::run(std::string& error_message)
 {
     m_phase_trace_started = std::chrono::steady_clock::now();
-    std::error_code remove_error;
-    std::filesystem::remove(
-        std::filesystem::path(m_config.output_directory) / "benchmark_phase_trace.jsonl",
-        remove_error);
+    const auto trace_identity = std::chrono::system_clock::now().time_since_epoch().count();
+    m_phase_trace_path = (
+        std::filesystem::path(m_config.output_directory) /
+        ("benchmark_phase_trace_" + std::to_string(trace_identity) + "_" +
+            std::to_string(QCoreApplication::applicationPid()) + ".jsonl")).string();
     record_phase("cold.setup.begin");
     const auto cold_started = std::chrono::steady_clock::now();
     const auto setup_started = cold_started;
@@ -1193,6 +1280,8 @@ bool Benchmark_rhi_offscreen_runner::run(std::string& error_message)
 
     m_cold_total_ms = std::chrono::duration<double, std::milli>(
         std::chrono::steady_clock::now() - cold_started).count();
+    reset_ring_measurement_statistics(m_bar_buffers);
+    reset_ring_measurement_statistics(m_trade_buffers);
     m_profiler.reset();
     m_profiler.record_observation("benchmark.cold.setup_ms", m_cold_setup_ms);
     m_profiler.record_observation("benchmark.cold.backend_create_ms", m_cold_backend_ms);
@@ -1201,10 +1290,13 @@ bool Benchmark_rhi_offscreen_runner::run(std::string& error_message)
             "benchmark.cold.first_submission_ms",
             m_cold_first_submission_ms);
         m_profiler.record_observation(
-            "benchmark.cold.shader_pipeline_prepare_ms",
+            "benchmark.cold.series_shader_pipeline_prepare_ms",
             m_cold_shader_pipeline_prepare_ms);
     }
     m_profiler.record_observation("benchmark.cold.total_ms", m_cold_total_ms);
+    m_profiler.record_observation(
+        "benchmark.clock.steady_resolution_ns",
+        steady_clock_resolution_ns());
     m_profiler.record_observation(
         "benchmark.warmup.frame_count",
         static_cast<double>(m_config.warmup_frames));
@@ -1263,9 +1355,7 @@ void Benchmark_rhi_offscreen_runner::record_phase(
 {
     const double elapsed_ms = std::chrono::duration<double, std::milli>(
         std::chrono::steady_clock::now() - m_phase_trace_started).count();
-    const std::filesystem::path trace_path =
-        std::filesystem::path(m_config.output_directory) / "benchmark_phase_trace.jsonl";
-    std::ofstream trace(trace_path, std::ios::app);
+    std::ofstream trace(m_phase_trace_path, std::ios::app);
     if (trace) {
         trace << "{\"elapsed_ms\":" << std::setprecision(17) << elapsed_ms
               << ",\"phase\":\"" << phase << "\",\"frame\":" << frame << "}\n";
@@ -1279,6 +1369,7 @@ void Benchmark_rhi_offscreen_runner::record_final_statistics(double measured_sec
     m_profiler.record_observation(
         "benchmark.memory.process_high_water_bytes",
         static_cast<double>(process_memory_high_water_bytes()));
+    ensure_interval_observations(m_profiler);
 }
 
 }  // namespace vnm::benchmark

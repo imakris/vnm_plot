@@ -17,6 +17,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <random>
 #include <sstream>
 #include <stack>
 #include <stdexcept>
@@ -45,6 +46,7 @@ struct Report_metadata {
     std::size_t ring_capacity = 0;
     std::size_t samples_generated = 0;
     std::map<std::string, std::string> reproduction;
+    std::vector<std::string> invocation_args;
 };
 
 /// Profiler that builds hierarchical timing tree with scope aggregation.
@@ -131,6 +133,17 @@ public:
         record_observation_locked(name, call_count, total, min, max, false);
     }
 
+    void ensure_observation(const char* name, double value = 0.0)
+    {
+        if (!name || !std::isfinite(value)) {
+            return;
+        }
+        std::lock_guard<std::mutex> lock(m_mutex);
+        if (m_observations.find(name) == m_observations.end()) {
+            record_observation_locked(name, 1, value, value, value, true);
+        }
+    }
+
 private:
     static constexpr std::size_t k_max_retained_samples = 8192;
 
@@ -142,7 +155,16 @@ private:
         double max,
         bool retain_sample)
     {
-        auto& stats = m_observations[name];
+        auto [stats_it, inserted] = m_observations.try_emplace(name);
+        auto& stats = stats_it->second;
+        if (inserted) {
+            std::uint64_t seed = 1'469'598'103'934'665'603ull;
+            for (const unsigned char byte : std::string(name)) {
+                seed ^= byte;
+                seed *= 1'099'511'628'211ull;
+            }
+            stats.reservoir_rng.seed(seed);
+        }
         stats.name = name;
         stats.call_count += call_count;
         stats.total += total;
@@ -153,9 +175,10 @@ private:
                 stats.samples.push_back(total);
             }
             else {
-                const std::uint64_t mixed =
-                    stats.call_count * 11'400'714'819'323'198'485ull;
-                const std::uint64_t candidate = mixed % stats.call_count;
+                std::uniform_int_distribution<std::uint64_t> distribution(
+                    0,
+                    stats.call_count - 1);
+                const std::uint64_t candidate = distribution(stats.reservoir_rng);
                 if (candidate < k_max_retained_samples) {
                     stats.samples[static_cast<std::size_t>(candidate)] = total;
                 }
@@ -286,7 +309,14 @@ public:
                 ++reproduction_index < meta.reproduction.size(),
                 4);
         }
-        ofs << "  },\n  \"observations\": {\n";
+        ofs << "  },\n  \"invocation_args\": [";
+        for (std::size_t i = 0; i < meta.invocation_args.size(); ++i) {
+            if (i > 0) {
+                ofs << ", ";
+            }
+            ofs << "\"" << json_escape(meta.invocation_args[i]) << "\"";
+        }
+        ofs << "],\n  \"observations\": {\n";
 
         std::size_t observation_index = 0;
         for (const auto& [name, stats] : m_observations) {
@@ -357,6 +387,7 @@ private:
         double min = std::numeric_limits<double>::max();
         double max = 0.0;
         std::vector<double> samples;
+        std::mt19937_64 reservoir_rng;
     };
 
     struct Thread_context {
@@ -395,7 +426,10 @@ private:
         gmtime_r(&time_t_val, &tm_val);
 #endif
         std::ostringstream oss;
-        oss << std::put_time(&tm_val, "%Y%m%d_%H%M%S");
+        const auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(
+            tp.time_since_epoch()) % 1000;
+        oss << std::put_time(&tm_val, "%Y%m%d_%H%M%S_")
+            << std::setw(3) << std::setfill('0') << milliseconds.count();
         return oss.str();
     }
 

@@ -151,6 +151,31 @@ bool test_overwrite() {
     TEST_ASSERT(stats.overwritten_samples == 2,
         "statistics should report overwritten samples");
 
+    const auto revision_before_reset = buf.sequence();
+    buf.reset_measurement_statistics();
+    const auto reset_stats = buf.statistics();
+    TEST_ASSERT(reset_stats.occupancy == 5,
+        "measurement reset should preserve occupancy");
+    TEST_ASSERT(reset_stats.revision == revision_before_reset,
+        "measurement reset should preserve revision");
+    TEST_ASSERT(reset_stats.published_samples == 0,
+        "measurement reset should clear publication count");
+    TEST_ASSERT(reset_stats.overwritten_samples == 0,
+        "measurement reset should clear overwrite count");
+    TEST_ASSERT(reset_stats.producer_wait_count == 0,
+        "measurement reset should clear producer wait count");
+
+    buf.push(102);
+    const auto measured_stats = buf.statistics();
+    TEST_ASSERT(measured_stats.published_samples == 1,
+        "post-reset publication should count in the new interval");
+    TEST_ASSERT(measured_stats.overwritten_samples == 1,
+        "post-reset overwrite should count in the new interval");
+    TEST_ASSERT(measured_stats.producer_wait_count == 1,
+        "post-reset producer wait should count in the new interval");
+    TEST_ASSERT(measured_stats.producer_wait_max_ns >= measured_stats.producer_wait_min_ns,
+        "producer wait min/max should be ordered");
+
     return true;
 }
 

@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -31,6 +32,10 @@ public:
         std::uint64_t revision = 0;
         std::uint64_t published_samples = 0;
         std::uint64_t overwritten_samples = 0;
+        std::uint64_t producer_wait_count = 0;
+        std::uint64_t producer_wait_total_ns = 0;
+        std::uint64_t producer_wait_min_ns = 0;
+        std::uint64_t producer_wait_max_ns = 0;
     };
 
     /// Result of a copy operation
@@ -103,8 +108,8 @@ public:
 
         m_published_samples.fetch_add(1, std::memory_order_relaxed);
         publish_next_revision();
-        lock.unlock();
         record_producer_wait(wait_ns);
+        lock.unlock();
     }
 
     /// Push multiple samples. Overwrites oldest as needed.
@@ -146,8 +151,8 @@ public:
         m_published_samples.fetch_add(count, std::memory_order_relaxed);
         m_overwritten_samples.fetch_add(overwritten, std::memory_order_relaxed);
         m_revision.store(revision, std::memory_order_release);
-        lock.unlock();
         record_producer_wait(wait_ns);
+        lock.unlock();
     }
 
     // -------------------------------------------------------------------------
@@ -249,7 +254,30 @@ public:
         stats.revision = m_revision.load(std::memory_order_acquire);
         stats.published_samples = m_published_samples.load(std::memory_order_acquire);
         stats.overwritten_samples = m_overwritten_samples.load(std::memory_order_acquire);
+        stats.producer_wait_count = m_producer_wait_count.load(std::memory_order_acquire);
+        stats.producer_wait_total_ns = m_producer_wait_total_ns.load(std::memory_order_acquire);
+        const std::uint64_t wait_min = m_producer_wait_min_ns.load(std::memory_order_acquire);
+        stats.producer_wait_min_ns = wait_min == std::numeric_limits<std::uint64_t>::max()
+            ? 0
+            : wait_min;
+        stats.producer_wait_max_ns = m_producer_wait_max_ns.load(std::memory_order_acquire);
         return stats;
+    }
+
+    /// Start a measurement interval without changing content or revision.
+    void reset_measurement_statistics()
+    {
+        std::unique_lock lock(m_mutex);
+        const std::size_t occupancy = m_count.load(std::memory_order_relaxed);
+        m_high_water_occupancy.store(occupancy, std::memory_order_relaxed);
+        m_published_samples.store(0, std::memory_order_relaxed);
+        m_overwritten_samples.store(0, std::memory_order_relaxed);
+        m_producer_wait_count.store(0, std::memory_order_relaxed);
+        m_producer_wait_total_ns.store(0, std::memory_order_relaxed);
+        m_producer_wait_min_ns.store(
+            std::numeric_limits<std::uint64_t>::max(),
+            std::memory_order_relaxed);
+        m_producer_wait_max_ns.store(0, std::memory_order_relaxed);
     }
 
 private:
@@ -279,10 +307,25 @@ private:
     }
 
     void record_producer_wait(double wait_ns) {
-        if (!m_profiler) {
-            return;
-        }
-        m_profiler->record_observation("benchmark.producer.lock_wait_ns", wait_ns);
+        const std::uint64_t value = wait_ns <= 0.0
+            ? 0
+            : static_cast<std::uint64_t>(std::ceil(wait_ns));
+        m_producer_wait_count.fetch_add(1, std::memory_order_relaxed);
+        m_producer_wait_total_ns.fetch_add(value, std::memory_order_relaxed);
+
+        std::uint64_t previous_min = m_producer_wait_min_ns.load(std::memory_order_relaxed);
+        while (value < previous_min && !m_producer_wait_min_ns.compare_exchange_weak(
+            previous_min,
+            value,
+            std::memory_order_relaxed))
+        {}
+
+        std::uint64_t previous_max = m_producer_wait_max_ns.load(std::memory_order_relaxed);
+        while (value > previous_max && !m_producer_wait_max_ns.compare_exchange_weak(
+            previous_max,
+            value,
+            std::memory_order_relaxed))
+        {}
     }
 
     std::vector<T> m_buffer;
@@ -293,6 +336,11 @@ private:
     std::atomic<std::uint64_t> m_revision{1};
     std::atomic<std::uint64_t> m_published_samples{0};
     std::atomic<std::uint64_t> m_overwritten_samples{0};
+    std::atomic<std::uint64_t> m_producer_wait_count{0};
+    std::atomic<std::uint64_t> m_producer_wait_total_ns{0};
+    std::atomic<std::uint64_t> m_producer_wait_min_ns{
+        std::numeric_limits<std::uint64_t>::max()};
+    std::atomic<std::uint64_t> m_producer_wait_max_ns{0};
     mutable std::shared_mutex m_mutex;    ///< Protects m_buffer during copy
     vnm::plot::Profiler* m_profiler = nullptr;
 };

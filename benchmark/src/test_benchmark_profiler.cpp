@@ -80,6 +80,18 @@ std::string line_after_report_line_containing(
     return {};
 }
 
+double json_number_after(const std::string& json, const std::string& key) {
+    const auto key_pos = json.find(key);
+    if (key_pos == std::string::npos) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    const auto value_pos = json.find_first_of("-0123456789", key_pos + key.size());
+    if (value_pos == std::string::npos) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    return std::stod(json.substr(value_pos));
+}
+
 // Test: Observation counters aggregate and report without millisecond units
 bool test_observation_counters_are_unit_neutral() {
     Benchmark_profiler profiler;
@@ -198,6 +210,48 @@ bool test_raw_report_retains_samples() {
         "raw report should calculate interpolated p95");
     TEST_ASSERT(json.find("\"samples\": [1, 2, 9]") != std::string::npos,
         "raw report should retain observation samples");
+
+    std::error_code ec;
+    std::filesystem::remove_all(meta.output_directory, ec);
+    return true;
+}
+
+// Test: Bounded Algorithm R retention remains representative and deterministic
+bool test_reservoir_sampling_is_representative() {
+    Benchmark_profiler first;
+    Benchmark_profiler second;
+    for (int value = 0; value < 100'000; ++value) {
+        first.record_observation("monotonic", static_cast<double>(value));
+        second.record_observation("monotonic", static_cast<double>(value));
+    }
+
+    Report_metadata meta;
+    meta.stream = "RESERVOIR";
+    meta.output_directory = std::filesystem::temp_directory_path() /
+        "vnm_plot_benchmark_reservoir_test";
+    meta.started_at = std::chrono::system_clock::from_time_t(1'700'000'001);
+    meta.generated_at = meta.started_at;
+
+    const auto first_path = first.write_raw_report(meta);
+    std::ifstream first_input(first_path);
+    std::ostringstream first_contents;
+    first_contents << first_input.rdbuf();
+
+    meta.stream = "RESERVOIR2";
+    const auto second_path = second.write_raw_report(meta);
+    std::ifstream second_input(second_path);
+    std::ostringstream second_contents;
+    second_contents << second_input.rdbuf();
+
+    const double p50 = json_number_after(first_contents.str(), "\"p50\":");
+    TEST_ASSERT(p50 > 48'000.0 && p50 < 52'000.0,
+        "reservoir p50 should represent the full monotonic stream");
+    const double second_p50 = json_number_after(second_contents.str(), "\"p50\":");
+    TEST_ASSERT(p50 == second_p50,
+        "reservoir sampling should be deterministic for the same metric and stream");
+    TEST_ASSERT(first_contents.str().find("\"retained_sample_count\": 8192") !=
+            std::string::npos,
+        "reservoir should reach its full retained-sample capacity");
 
     std::error_code ec;
     std::filesystem::remove_all(meta.output_directory, ec);
@@ -466,6 +520,7 @@ int main() {
     RUN_TEST(test_format_compliance);
     RUN_TEST(test_observation_counters_are_unit_neutral);
     RUN_TEST(test_raw_report_retains_samples);
+    RUN_TEST(test_reservoir_sampling_is_representative);
 
     std::cout << "\n=============================\n";
     std::cout << "Results: " << passed << " passed, " << failed << " failed\n";

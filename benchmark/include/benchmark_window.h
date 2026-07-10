@@ -113,6 +113,8 @@ public:
     Graphics_device_info graphics_device_info() const;
     std::size_t measured_frame_count() const { return m_measured_frame_count; }
     std::uint64_t pixel_checksum() const { return 0; }
+    std::size_t pixel_nonuniform_count() const { return 0; }
+    std::string phase_trace_path() const { return {}; }
 
 signals:
     void benchmark_finished();
@@ -183,6 +185,8 @@ public:
     Graphics_device_info graphics_device_info() const { return m_graphics_info; }
     std::size_t measured_frame_count() const { return m_measured_frame_count; }
     std::uint64_t pixel_checksum() const { return m_pixel_checksum; }
+    std::size_t pixel_nonuniform_count() const { return m_pixel_nonuniform_count; }
+    std::string phase_trace_path() const { return m_phase_trace_path; }
 
     bool run(std::string& error_message);
 
@@ -249,7 +253,9 @@ private:
     double m_cold_total_ms = 0.0;
     double m_last_prepare_ms = 0.0;
     std::uint64_t m_pixel_checksum = 0;
+    std::size_t m_pixel_nonuniform_count = 0;
     std::chrono::steady_clock::time_point m_phase_trace_started;
+    std::string m_phase_trace_path;
 };
 
 }  // namespace vnm::benchmark

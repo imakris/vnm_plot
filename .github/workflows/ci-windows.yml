@@ -57,9 +57,23 @@ jobs:
 
       - name: Run tests
         working-directory: build
-        env:
-          QT_QPA_PLATFORM: offscreen
         run: ctest --output-on-failure -C ${CMAKE_BUILD_TYPE}
+
+      - name: Package checkpoint evidence
+        if: always() && matrix.benchmark == 'ON'
+        continue-on-error: true
+        run: >-
+          python benchmark/tools/run_gate.py --source-root . --build-dir build
+          --mode ci-retain --upstream-status "${{ job.status }}"
+
+      - name: Retain benchmark gate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-gate-windows-${{ matrix.text }}
+          path: build/gate-artifacts
+          if-no-files-found: ignore
+          retention-days: 30
 
       - name: Build summary
         run: |

@@ -1,0 +1,572 @@
+#!/usr/bin/env python3
+"""Run or retain an append-only vnm_plot checkpoint gate evidence bundle."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import platform
+import shutil
+import subprocess
+import sys
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+
+def utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def attempt_identity() -> str:
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
+    return f"{timestamp}-{uuid.uuid4().hex[:8]}"
+
+
+def write_json(path: Path, value: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def run_capture(command: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        command,
+        cwd=cwd,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+
+
+def command_output(command: list[str], cwd: Path) -> str:
+    try:
+        completed = run_capture(command, cwd)
+    except OSError as exc:
+        return f"unavailable: {exc}"
+    output = completed.stdout.strip() or completed.stderr.strip()
+    if completed.returncode != 0:
+        return f"unavailable (exit {completed.returncode}): {output}"
+    return output
+
+
+def git_output(source_root: Path, *arguments: str) -> str:
+    completed = run_capture(["git", *arguments], source_root)
+    if completed.returncode != 0:
+        raise RuntimeError(completed.stderr.strip() or "git command failed")
+    return completed.stdout.rstrip("\r\n")
+
+
+def source_identity(source_root: Path) -> dict[str, Any]:
+    commit = git_output(source_root, "rev-parse", "HEAD")
+    status = git_output(source_root, "status", "--porcelain=v1", "--untracked-files=all")
+    diff_completed = run_capture(["git", "diff", "--binary", "HEAD", "--"], source_root)
+    if diff_completed.returncode != 0:
+        raise RuntimeError(diff_completed.stderr.strip() or "git diff failed")
+    diff = diff_completed.stdout
+    paths = git_output(
+        source_root,
+        "ls-files",
+        "--cached",
+        "--others",
+        "--exclude-standard",
+        "-z",
+    ).split("\0")
+    digest = hashlib.sha256()
+    retained_paths = []
+    for relative in (path for path in paths if path):
+        path = source_root / relative
+        if not path.is_file():
+            continue
+        encoded = relative.replace("\\", "/").encode("utf-8", errors="surrogateescape")
+        digest.update(encoded)
+        digest.update(b"\0")
+        with path.open("rb") as source:
+            for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                digest.update(chunk)
+        digest.update(b"\0")
+        retained_paths.append(relative.replace("\\", "/"))
+    exact_sha256 = digest.hexdigest()
+    return {
+        "commit": commit,
+        "git_tree": git_output(source_root, "rev-parse", "HEAD^{tree}"),
+        "dirty": bool(status),
+        "status": status,
+        "diff": diff,
+        "diff_sha256": hashlib.sha256(diff.encode("utf-8")).hexdigest(),
+        "exact_tree_sha256": exact_sha256,
+        "retained_path_count": len(retained_paths),
+        "slug": f"{commit[:12]}-{exact_sha256[:12]}-{'dirty' if status else 'clean'}",
+    }
+
+
+def parse_cache(build_dir: Path) -> dict[str, str]:
+    cache_path = build_dir / "CMakeCache.txt"
+    if not cache_path.is_file():
+        return {}
+    result: dict[str, str] = {}
+    for line in cache_path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if not line or line.startswith(("#", "//")) or "=" not in line or ":" not in line:
+            continue
+        key_and_type, value = line.split("=", 1)
+        key, _ = key_and_type.split(":", 1)
+        result[key] = value
+    return result
+
+
+def repository_identity(path: Path) -> dict[str, Any]:
+    if not path.is_dir():
+        return {"path": str(path), "status": "ENVIRONMENT_BOOTSTRAP_REQUIRED"}
+    result: dict[str, Any] = {"path": str(path.resolve())}
+    try:
+        result.update(
+            {
+                "commit": git_output(path, "rev-parse", "HEAD"),
+                "status": git_output(
+                    path,
+                    "status",
+                    "--porcelain=v1",
+                    "--untracked-files=all",
+                ),
+            }
+        )
+    except (OSError, RuntimeError) as exc:
+        result["status"] = f"unavailable: {exc}"
+    return result
+
+
+def preflight(
+    args: argparse.Namespace,
+    source: dict[str, Any],
+    attempt_dir: Path,
+) -> dict[str, Any]:
+    cache = parse_cache(args.build_dir)
+    standards_pipeline = args.standards_root / "tools" / "style_pipeline.py"
+    dependency_value = cache.get("vnm_msdf_text_SOURCE_DIR", "")
+    dependency_root = (
+        Path(dependency_value)
+        if dependency_value
+        else args.source_root.parent / "vnm_msdf_text"
+    )
+    relevant_environment = {
+        name: os.environ.get(name, "")
+        for name in (
+            "CI",
+            "CMAKE_BUILD_TYPE",
+            "GITHUB_ACTIONS",
+            "GITHUB_JOB",
+            "GITHUB_REF",
+            "GITHUB_REPOSITORY",
+            "GITHUB_RUN_ATTEMPT",
+            "GITHUB_RUN_ID",
+            "QT_QPA_PLATFORM",
+            "QSG_RHI_BACKEND",
+            "VULKAN_SDK",
+        )
+    }
+    actionlint = shutil.which("actionlint")
+    payload: dict[str, Any] = {
+        "recorded_at_utc": utc_now(),
+        "source": {key: value for key, value in source.items() if key != "diff"},
+        "source_diff_path": "preflight/source.diff",
+        "platform": platform.platform(),
+        "architecture": platform.machine(),
+        "python": {"version": sys.version, "executable": sys.executable},
+        "cmake": command_output(["cmake", "--version"], args.source_root),
+        "ctest": command_output(["ctest", "--version"], args.source_root),
+        "compiler": cache.get("CMAKE_CXX_COMPILER", "unavailable-before-configure"),
+        "compiler_id": cache.get("CMAKE_CXX_COMPILER_ID", "unavailable-before-configure"),
+        "qt_directory": cache.get("Qt6_DIR", "unavailable-before-configure"),
+        "standards": {
+            **repository_identity(args.standards_root),
+            "pipeline": str(standards_pipeline),
+            "pipeline_sha256": (
+                sha256_file(standards_pipeline) if standards_pipeline.is_file() else "unavailable"
+            ),
+        },
+        "dependency": repository_identity(dependency_root),
+        "actionlint": {
+            "path": actionlint or "unavailable",
+            "version": (
+                command_output([actionlint, "-version"], args.source_root)
+                if actionlint
+                else "ENVIRONMENT_BOOTSTRAP_REQUIRED"
+            ),
+            "sha256": sha256_file(Path(actionlint)) if actionlint else "unavailable",
+        },
+        "environment": relevant_environment,
+        "invocation": list(sys.argv),
+        "ci": {
+            "run_url": (
+                f"https://github.com/{os.environ.get('GITHUB_REPOSITORY', '')}/actions/runs/"
+                f"{os.environ.get('GITHUB_RUN_ID', '')}"
+                if os.environ.get("GITHUB_RUN_ID")
+                else ""
+            ),
+            "job": os.environ.get("GITHUB_JOB", ""),
+        },
+    }
+    preflight_dir = attempt_dir / "preflight"
+    preflight_dir.mkdir(parents=True, exist_ok=False)
+    (preflight_dir / "source.diff").write_bytes(source["diff"].encode("utf-8"))
+    write_json(preflight_dir / "preflight.json", payload)
+    return payload
+
+
+class Gate:
+    def __init__(
+        self,
+        args: argparse.Namespace,
+        attempt_dir: Path,
+        source: dict[str, Any],
+        preflight_payload: dict[str, Any],
+    ) -> None:
+        self.args = args
+        self.attempt_dir = attempt_dir
+        self.started_at = utc_now()
+        self.phases: list[dict[str, Any]] = []
+        self.manifest: dict[str, Any] = {
+            "schema_version": 1,
+            "batch": args.batch,
+            "checkpoint": args.checkpoint,
+            "mode": args.mode,
+            "attempt": attempt_dir.name,
+            "recovery_of": args.recovery_of,
+            "started_at_utc": self.started_at,
+            "ended_at_utc": None,
+            "status": "RUNNING",
+            "current_phase": "preflight",
+            "command": list(sys.argv),
+            "exit_status": None,
+            "inputs": {
+                "source": {key: value for key, value in source.items() if key != "diff"},
+                "build_dir": str(args.build_dir.resolve()),
+                "configuration": args.config,
+                "preflight": preflight_payload,
+                "owner_conditional_calibration_approval": (
+                    args.owner_approved_generated_calibration
+                ),
+            },
+            "phases": self.phases,
+            "artifact_hashes": {},
+        }
+        self.write_manifest()
+
+    def write_manifest(self) -> None:
+        write_json(self.attempt_dir / "gate_manifest.json", self.manifest)
+
+    def run_phase(
+        self,
+        name: str,
+        command: list[str],
+        *,
+        cwd: Path | None = None,
+        timeout: float | None = None,
+    ) -> None:
+        index = len(self.phases) + 1
+        phase_dir = self.attempt_dir / "phases" / f"{index:02d}-{name}"
+        phase_dir.mkdir(parents=True, exist_ok=False)
+        phase = {
+            "name": name,
+            "started_at_utc": utc_now(),
+            "ended_at_utc": None,
+            "command": command,
+            "working_directory": str((cwd or self.args.source_root).resolve()),
+            "returncode": None,
+            "status": "RUNNING",
+        }
+        self.phases.append(phase)
+        self.manifest["current_phase"] = name
+        self.write_manifest()
+        try:
+            completed = subprocess.run(
+                command,
+                cwd=cwd or self.args.source_root,
+                check=False,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=timeout,
+            )
+            stdout = completed.stdout
+            stderr = completed.stderr
+            phase["returncode"] = completed.returncode
+            phase["status"] = "PASS" if completed.returncode == 0 else "FAIL"
+        except subprocess.TimeoutExpired as exc:
+            stdout = exc.stdout or ""
+            stderr = exc.stderr or ""
+            phase["status"] = "TIMEOUT"
+            phase["timeout_seconds"] = timeout
+        except OSError as exc:
+            stdout = ""
+            stderr = str(exc)
+            phase["status"] = "ENVIRONMENT_BOOTSTRAP_REQUIRED"
+        (phase_dir / "stdout.txt").write_text(stdout, encoding="utf-8")
+        (phase_dir / "stderr.txt").write_text(stderr, encoding="utf-8")
+        phase["ended_at_utc"] = utc_now()
+        write_json(phase_dir / "phase.json", phase)
+        self.write_manifest()
+        if phase["status"] != "PASS":
+            raise RuntimeError(f"gate phase {name} ended with {phase['status']}")
+
+    def retain_smoke(self) -> None:
+        source = self.args.build_dir / "benchmark" / "smoke-reports"
+        destination = self.attempt_dir / "smoke-evidence"
+        if source.is_dir():
+            for backend_root in sorted(path for path in source.iterdir() if path.is_dir()):
+                candidates = sorted(
+                    path
+                    for path in backend_root.iterdir()
+                    if path.is_dir() and (path / "smoke_validation.json").is_file()
+                )
+                if candidates:
+                    selected = candidates[-1]
+                    shutil.copytree(
+                        selected,
+                        destination / backend_root.name / selected.name,
+                    )
+        validations = []
+        graphics = []
+        if destination.is_dir():
+            for path in sorted(destination.rglob("smoke_validation.json")):
+                validation = json.loads(path.read_text(encoding="utf-8"))
+                validations.append(validation)
+                if validation.get("status") != "PASS":
+                    continue
+                artifacts = list(path.parent.glob("inspector_benchmark_*.json"))
+                if len(artifacts) != 1:
+                    validation["gate_error"] = "missing-or-ambiguous-raw-artifact"
+                    continue
+                metadata = json.loads(
+                    artifacts[0].read_text(encoding="utf-8")
+                )["metadata"]
+                expected_source = self.manifest["inputs"]["source"]
+                expected = {
+                    "build_source_commit": expected_source["commit"],
+                    "source_commit": expected_source["commit"],
+                    "source_diff_sha256": expected_source["diff_sha256"],
+                    "source_dirty": "true" if expected_source["dirty"] else "false",
+                    "source_tree": expected_source["exact_tree_sha256"],
+                }
+                mismatches = {
+                    field: {"expected": value, "actual": metadata.get(field)}
+                    for field, value in expected.items()
+                    if metadata.get(field) != value
+                }
+                if mismatches:
+                    validation["gate_error"] = "source-fingerprint-mismatch"
+                    validation["source_mismatches"] = mismatches
+                graphics.append(
+                    {
+                        field: metadata.get(field, "")
+                        for field in (
+                            "actual_graphics_backend",
+                            "device_id",
+                            "device_name",
+                            "driver_identity",
+                            "driver_version",
+                            "vendor_id",
+                        )
+                    }
+                )
+        self.manifest["inputs"]["preflight"]["graphics"] = graphics
+        write_json(
+            self.attempt_dir / "preflight" / "preflight.json",
+            self.manifest["inputs"]["preflight"],
+        )
+        status = "PASS" if validations and all(
+            item.get("status") in {"PASS", "UNAVAILABLE"} and not item.get("gate_error")
+            for item in validations
+        ) else "FAIL"
+        phase = {
+            "name": "retain-smoke-evidence",
+            "started_at_utc": utc_now(),
+            "ended_at_utc": utc_now(),
+            "command": [],
+            "returncode": 0 if status == "PASS" else 1,
+            "status": status,
+            "validation_count": len(validations),
+            "validations": validations,
+        }
+        self.phases.append(phase)
+        self.manifest["current_phase"] = phase["name"]
+        self.write_manifest()
+        if status != "PASS":
+            raise RuntimeError("no complete passing smoke evidence was retained")
+
+    def finalize(self, status: str, exit_status: int, reason: str = "") -> None:
+        self.manifest["status"] = status
+        self.manifest["exit_status"] = exit_status
+        self.manifest["ended_at_utc"] = utc_now()
+        self.manifest["current_phase"] = self.phases[-1]["name"] if self.phases else "preflight"
+        if reason:
+            self.manifest["reason"] = reason
+        hashes: dict[str, str] = {}
+        for path in sorted(self.attempt_dir.rglob("*")):
+            if path.is_file() and path.name != "gate_manifest.json":
+                relative = path.relative_to(self.attempt_dir).as_posix()
+                hashes[relative] = sha256_file(path)
+        self.manifest["artifact_hashes"] = hashes
+        self.write_manifest()
+
+    def refresh_configured_preflight(self) -> None:
+        cache = parse_cache(self.args.build_dir)
+        preflight_payload = self.manifest["inputs"]["preflight"]
+        preflight_payload["compiler"] = cache.get("CMAKE_CXX_COMPILER", "unavailable")
+        preflight_payload["compiler_id"] = cache.get("CMAKE_CXX_COMPILER_ID", "unavailable")
+        preflight_payload["cmake_generator"] = cache.get("CMAKE_GENERATOR", "unavailable")
+        preflight_payload["qt_directory"] = cache.get("Qt6_DIR", "unavailable")
+        dependency_value = cache.get("vnm_msdf_text_SOURCE_DIR", "")
+        if dependency_value:
+            preflight_payload["dependency"] = repository_identity(Path(dependency_value))
+        write_json(
+            self.attempt_dir / "preflight" / "preflight.json",
+            preflight_payload,
+        )
+        self.write_manifest()
+
+
+def parse_args() -> argparse.Namespace:
+    default_source = Path(__file__).resolve().parents[2]
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--source-root", type=Path, default=default_source)
+    parser.add_argument("--build-dir", type=Path, required=True)
+    parser.add_argument(
+        "--standards-root",
+        type=Path,
+        default=Path(r"C:\plms\varinomics\varinomics-standards"),
+    )
+    parser.add_argument("--batch", default="batch-2")
+    parser.add_argument("--checkpoint", default="2.1")
+    parser.add_argument("--config", default="Release")
+    parser.add_argument("--mode", choices=("full", "ci-retain"), default="full")
+    parser.add_argument("--recovery-of")
+    parser.add_argument("--upstream-status", default="success")
+    parser.add_argument("--calibration-frames", type=int, default=120)
+    parser.add_argument("--skip-calibration", action="store_true")
+    parser.add_argument("--owner-approved-generated-calibration", action="store_true")
+    return parser.parse_args()
+
+
+def configure_command(args: argparse.Namespace) -> list[str]:
+    return [
+        "cmake",
+        "-S",
+        str(args.source_root.resolve()),
+        "-B",
+        str(args.build_dir.resolve()),
+        "-DVNM_PLOT_ENABLE_TEXT=ON",
+        "-DVNM_PLOT_BUILD_TESTS=ON",
+        "-DVNM_PLOT_BUILD_BENCHMARK=ON",
+        "-DVNM_PLOT_BUILD_BENCHMARK_TESTS=ON",
+        f"-DCMAKE_BUILD_TYPE={args.config}",
+    ]
+
+
+def main() -> int:
+    args = parse_args()
+    args.source_root = args.source_root.resolve()
+    args.build_dir = args.build_dir.resolve()
+    args.standards_root = args.standards_root.resolve()
+    args.build_dir.mkdir(parents=True, exist_ok=True)
+    source = source_identity(args.source_root)
+    attempt_dir = (
+        args.build_dir
+        / "gate-artifacts"
+        / args.batch
+        / source["slug"]
+        / attempt_identity()
+    )
+    attempt_dir.mkdir(parents=True, exist_ok=False)
+    preflight_payload = preflight(args, source, attempt_dir)
+    gate = Gate(args, attempt_dir, source, preflight_payload)
+    try:
+        if args.mode == "ci-retain":
+            gate.retain_smoke()
+            if args.upstream_status.lower() != "success":
+                raise RuntimeError(f"upstream CI status was {args.upstream_status}")
+        else:
+            pipeline = args.standards_root / "tools" / "style_pipeline.py"
+            if not pipeline.is_file():
+                raise RuntimeError(f"style pipeline bootstrap is missing: {pipeline}")
+            gate.run_phase(
+                "style",
+                [sys.executable, str(pipeline), "--root", str(args.source_root)],
+            )
+            actionlint = shutil.which("actionlint") or "actionlint"
+            gate.run_phase("actionlint", [actionlint])
+            gate.run_phase("configure", configure_command(args), timeout=300)
+            gate.refresh_configured_preflight()
+            gate.run_phase(
+                "build",
+                ["cmake", "--build", str(args.build_dir), "--config", args.config],
+                timeout=1200,
+            )
+            gate.run_phase(
+                "ctest",
+                [
+                    "ctest",
+                    "--test-dir",
+                    str(args.build_dir),
+                    "-C",
+                    args.config,
+                    "--output-on-failure",
+                ],
+                timeout=1200,
+            )
+            gate.retain_smoke()
+            if not args.skip_calibration:
+                executable_name = "vnm_plot_benchmark.exe" if os.name == "nt" else "vnm_plot_benchmark"
+                executable = args.build_dir / "benchmark" / executable_name
+                calibration_dir = attempt_dir / "calibration"
+                gate.run_phase(
+                    "calibration",
+                    [
+                        sys.executable,
+                        str(args.source_root / "benchmark" / "tools" / "calibrate.py"),
+                        "--executable",
+                        str(executable),
+                        "--output-dir",
+                        str(calibration_dir),
+                        "--frames",
+                        str(args.calibration_frames),
+                    ],
+                    timeout=7200,
+                )
+                if args.owner_approved_generated_calibration:
+                    proposal = calibration_dir / "proposed_noise_margins.json"
+                    approval = {
+                        "schema_version": 1,
+                        "status": "OWNER_CONDITIONALLY_APPROVED",
+                        "recorded_at_utc": utc_now(),
+                        "condition": "generated after retained baseline calibration",
+                        "owner_instruction_date": "2026-07-10",
+                        "proposal": proposal.relative_to(attempt_dir).as_posix(),
+                        "proposal_sha256": sha256_file(proposal),
+                        "note": "The runner proposes rules; this record captures the owner's prior conditional approval.",
+                    }
+                    write_json(calibration_dir / "owner_approval.json", approval)
+        gate.finalize("PASS", 0)
+        print(attempt_dir)
+        return 0
+    except Exception as exc:  # noqa: BLE001 - retain the exact failed phase.
+        gate.finalize("FAIL", 1, str(exc))
+        print(f"gate failed: {exc}; retained {attempt_dir}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

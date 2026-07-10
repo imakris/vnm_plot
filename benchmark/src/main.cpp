@@ -6,11 +6,16 @@
 #include "benchmark_window.h"
 
 #include <QByteArray>
+#include <QCoreApplication>
+#include <QCryptographicHash>
 #include <QDesktopServices>
+#include <QFile>
 #include <QGuiApplication>
+#include <QProcess>
 #include <QQuickWindow>
 #include <QSGRendererInterface>
 #include <QSurfaceFormat>
+#include <QSysInfo>
 #include <QUrl>
 
 #include <algorithm>
@@ -23,6 +28,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -46,6 +52,124 @@ std::string compiler_identity()
 #else
     return "unknown";
 #endif
+}
+
+std::string normalized_graphics_backend(std::string name)
+{
+    std::string normalized;
+    for (const unsigned char c : name) {
+        if (std::isalnum(c)) {
+            normalized.push_back(static_cast<char>(std::tolower(c)));
+        }
+    }
+    if (normalized == "opengles2" || normalized == "gles2" || normalized == "gles") {
+        return "opengl";
+    }
+    if (normalized == "direct3d11") {
+        return "d3d11";
+    }
+    return normalized;
+}
+
+std::string bytes_to_string(const QByteArray& value)
+{
+    return std::string(value.constData(), value.size());
+}
+
+QByteArray run_process(
+    const QString& program,
+    const QStringList& arguments,
+    const QString& working_directory,
+    int* exit_code = nullptr)
+{
+    QProcess process;
+    process.setWorkingDirectory(working_directory);
+    process.start(program, arguments);
+    if (!process.waitForStarted(10'000) || !process.waitForFinished(30'000)) {
+        if (exit_code) {
+            *exit_code = -1;
+        }
+        return {};
+    }
+    if (exit_code) {
+        *exit_code = process.exitCode();
+    }
+    return process.readAllStandardOutput();
+}
+
+std::string sha256_bytes(const QByteArray& value)
+{
+    return bytes_to_string(QCryptographicHash::hash(
+        value,
+        QCryptographicHash::Sha256).toHex());
+}
+
+std::string sha256_file(const QString& path)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        return "unavailable";
+    }
+    QCryptographicHash hash(QCryptographicHash::Sha256);
+    if (!hash.addData(&file)) {
+        return "unavailable";
+    }
+    return bytes_to_string(hash.result().toHex());
+}
+
+struct Runtime_source_identity {
+    std::string commit = "unavailable";
+    std::string git_tree = "unavailable";
+    std::string exact_tree_sha256 = "unavailable";
+    std::string diff_sha256 = "unavailable";
+    std::string diff;
+    std::string status;
+    bool dirty = true;
+};
+
+Runtime_source_identity runtime_source_identity(const QString& source_root)
+{
+    Runtime_source_identity identity;
+    int exit_code = 0;
+    const QByteArray commit = run_process(
+        "git", {"rev-parse", "HEAD"}, source_root, &exit_code).trimmed();
+    if (exit_code != 0) {
+        return identity;
+    }
+    identity.commit = bytes_to_string(commit);
+    identity.git_tree = bytes_to_string(run_process(
+        "git", {"rev-parse", "HEAD^{tree}"}, source_root).trimmed());
+
+    const QByteArray status = run_process(
+        "git", {"status", "--porcelain", "--untracked-files=all"}, source_root);
+    identity.status = bytes_to_string(status);
+    identity.dirty = !status.trimmed().isEmpty();
+
+    const QByteArray diff = run_process(
+        "git", {"diff", "--binary", "HEAD", "--"}, source_root);
+    identity.diff = bytes_to_string(diff);
+    identity.diff_sha256 = sha256_bytes(diff);
+
+    const QByteArray file_list = run_process(
+        "git",
+        {"ls-files", "-z", "--cached", "--others", "--exclude-standard"},
+        source_root);
+    QCryptographicHash exact_tree(QCryptographicHash::Sha256);
+    const QList<QByteArray> paths = file_list.split('\0');
+    for (const QByteArray& relative_path : paths) {
+        if (relative_path.isEmpty()) {
+            continue;
+        }
+        QFile file(source_root + "/" + QString::fromUtf8(relative_path));
+        exact_tree.addData(relative_path);
+        exact_tree.addData("\0", 1);
+        if (file.open(QIODevice::ReadOnly)) {
+            exact_tree.addData(&file);
+        }
+        exact_tree.addData("\0", 1);
+    }
+    identity.exact_tree_sha256 = bytes_to_string(exact_tree.result().toHex());
+    return identity;
 }
 
 void print_version()
@@ -303,6 +427,10 @@ std::string validate_config(const vnm::benchmark::Benchmark_config& config)
     if (config.backend != "qrhi" && config.backend != "qrhi-offscreen") {
         return "Backend must be 'qrhi' or 'qrhi-offscreen'";
     }
+    if (config.backend == "qrhi") {
+        return "The qrhi window path is visual-only and cannot produce measured evidence; "
+            "use qrhi-offscreen";
+    }
     if (config.capture_pixel_checksum && config.backend != "qrhi-offscreen") {
         return "Pixel checksum capture currently requires qrhi-offscreen";
     }
@@ -415,11 +543,14 @@ int main(int argc, char* argv[])
     auto& config = parse_result.config;
 
     std::ostringstream invocation_stream;
+    std::vector<std::string> invocation_args;
+    invocation_args.reserve(static_cast<std::size_t>(argc));
     for (int i = 0; i < argc; ++i) {
         if (i > 0) {
             invocation_stream << ' ';
         }
         invocation_stream << argv[i];
+        invocation_args.emplace_back(argv[i]);
     }
     const std::string invocation = invocation_stream.str();
 
@@ -474,16 +605,35 @@ int main(int argc, char* argv[])
 
     QGuiApplication app(argc, argv);
 
+    const Runtime_source_identity source_identity = runtime_source_identity(
+        QString::fromUtf8(VNM_PLOT_BENCHMARK_SOURCE_ROOT));
+    const std::string dependency_commit = bytes_to_string(run_process(
+        "git",
+        {"rev-parse", "HEAD"},
+        QString::fromUtf8(VNM_PLOT_BENCHMARK_DEPENDENCY_ROOT)).trimmed());
+    const std::string executable_sha256 = sha256_file(QCoreApplication::applicationFilePath());
+
     const auto add_reproduction_metadata = [&](auto& meta, const auto& benchmark) {
         const auto graphics = benchmark.graphics_device_info();
         meta.reproduction["actual_graphics_backend"] = graphics.backend;
+        meta.reproduction["build_source_commit"] = VNM_PLOT_BENCHMARK_SOURCE_COMMIT;
+        meta.reproduction["build_source_diff_sha256"] =
+            VNM_PLOT_BENCHMARK_SOURCE_DIFF_SHA256;
+        meta.reproduction["build_source_tree"] = VNM_PLOT_BENCHMARK_SOURCE_TREE;
         meta.reproduction["build_type"] = VNM_PLOT_BENCHMARK_BUILD_TYPE;
+        meta.reproduction["cmake_version"] = VNM_PLOT_BENCHMARK_CMAKE_VERSION;
         meta.reproduction["compiler"] = compiler_identity();
-        meta.reproduction["dependency_commit"] = VNM_PLOT_BENCHMARK_DEPENDENCY_COMMIT;
+        meta.reproduction["dependency_commit"] = dependency_commit.empty()
+            ? VNM_PLOT_BENCHMARK_DEPENDENCY_COMMIT
+            : dependency_commit;
         meta.reproduction["device_id"] = std::to_string(graphics.device_id);
         meta.reproduction["device_name"] = graphics.device_name;
         meta.reproduction["device_type"] = graphics.device_type;
-        meta.reproduction["driver"] = graphics.backend + " via Qt QRhi";
+        meta.reproduction["driver_identity"] = graphics.backend + "|" +
+            std::to_string(graphics.vendor_id) + "|" +
+            std::to_string(graphics.device_id) + "|" + graphics.device_name;
+        meta.reproduction["driver_version"] = "unavailable-from-QRhi";
+        meta.reproduction["executable_sha256"] = executable_sha256;
         meta.reproduction["finish_state"] = config.finish
             ? "enabled"
             : config.capture_pixel_checksum ? "forced-by-pixel-readback" : "disabled";
@@ -493,18 +643,37 @@ int main(int argc, char* argv[])
         meta.reproduction["measured_frames"] =
             std::to_string(benchmark.measured_frame_count());
         meta.reproduction["presentation_backend"] = config.backend;
+        meta.reproduction["phase_trace_path"] = benchmark.phase_trace_path();
         meta.reproduction["pixel_checksum"] = std::to_string(benchmark.pixel_checksum());
+        meta.reproduction["pixel_nonuniform_count"] =
+            std::to_string(benchmark.pixel_nonuniform_count());
         meta.reproduction["qt_version"] = qVersion();
         meta.reproduction["requested_graphics_backend"] = config.graphics_backend;
         meta.reproduction["scenario"] = config.scenario;
+        meta.reproduction["seed"] = std::to_string(config.seed);
         meta.reproduction["series_count"] = std::to_string(config.series_count);
         meta.reproduction["show_text"] = config.show_text ? "true" : "false";
-        meta.reproduction["source_commit"] = VNM_PLOT_BENCHMARK_SOURCE_COMMIT;
-        meta.reproduction["source_diff_sha256"] = VNM_PLOT_BENCHMARK_SOURCE_DIFF_SHA256;
-        meta.reproduction["source_dirty"] = VNM_PLOT_BENCHMARK_SOURCE_DIRTY;
-        meta.reproduction["source_tree"] = VNM_PLOT_BENCHMARK_SOURCE_TREE;
+        meta.reproduction["source_commit"] = source_identity.commit;
+        meta.reproduction["source_diff"] = source_identity.diff;
+        meta.reproduction["source_diff_sha256"] = source_identity.diff_sha256;
+        meta.reproduction["source_dirty"] = source_identity.dirty ? "true" : "false";
+        meta.reproduction["source_git_tree"] = source_identity.git_tree;
+        meta.reproduction["source_status"] = source_identity.status;
+        meta.reproduction["source_tree"] = source_identity.exact_tree_sha256;
+        meta.reproduction["static_data"] = config.static_data ? "true" : "false";
+        meta.reproduction["rate"] = std::to_string(config.rate);
+        meta.reproduction["render_style"] = config.style.empty()
+            ? (config.data_type == "Trades" ? "Dots" : "Area")
+            : config.style;
+        meta.reproduction["ring_capacity"] = std::to_string(config.ring_capacity);
+        meta.reproduction["os"] = bytes_to_string(QSysInfo::prettyProductName().toUtf8());
+        meta.reproduction["cpu_architecture"] =
+            bytes_to_string(QSysInfo::currentCpuArchitecture().toUtf8());
+        meta.reproduction["env.QSG_RHI_BACKEND"] = bytes_to_string(qgetenv("QSG_RHI_BACKEND"));
+        meta.reproduction["env.QT_QPA_PLATFORM"] = bytes_to_string(qgetenv("QT_QPA_PLATFORM"));
         meta.reproduction["vendor_id"] = std::to_string(graphics.vendor_id);
         meta.reproduction["warmup_frames"] = std::to_string(config.warmup_frames);
+        meta.invocation_args = invocation_args;
     };
 
     if (!config.quiet) {
@@ -519,14 +688,20 @@ int main(int argc, char* argv[])
 
     const auto graphics_backend_is_valid = [&](const auto& benchmark) {
         const auto graphics = benchmark.graphics_device_info();
-        return graphics.backend != "uninitialized" &&
-            (config.graphics_backend == "null" || graphics.backend != "Null");
+        const std::string actual = normalized_graphics_backend(graphics.backend);
+        if (actual == "uninitialized") {
+            return false;
+        }
+        if (config.graphics_backend == "native") {
+            return actual != "null";
+        }
+        return actual == normalized_graphics_backend(config.graphics_backend);
     };
 
     auto finish_benchmark = [&](auto& window) {
         if (!graphics_backend_is_valid(window)) {
             std::cerr << "Error: requested graphics backend '" << config.graphics_backend
-                      << "' did not initialize a non-Null QRhi backend\n";
+                      << "' but initialized '" << window.graphics_device_info().backend << "'\n";
             exit_code = k_exit_runtime_error;
             app.quit();
             return;
@@ -580,7 +755,7 @@ int main(int argc, char* argv[])
     auto write_benchmark_report = [&](auto& benchmark) {
         if (!graphics_backend_is_valid(benchmark)) {
             std::cerr << "Error: requested graphics backend '" << config.graphics_backend
-                      << "' did not initialize a non-Null QRhi backend\n";
+                      << "' but initialized '" << benchmark.graphics_device_info().backend << "'\n";
             return k_exit_runtime_error;
         }
         vnm::benchmark::Report_metadata meta;

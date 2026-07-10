@@ -6,6 +6,7 @@
 # and inherits cmake_minimum_required and project settings from parent.
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui GuiPrivate Quick)
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
 # Find vnm_plot targets (should be available from parent)
 if(NOT TARGET vnm_plot::rhi)
@@ -311,20 +312,68 @@ message(STATUS "vnm_plot: Building benchmark data source tests")
 
 add_test(
     NAME benchmark_native_smoke
-    COMMAND vnm_plot_benchmark
-        --backend qrhi-offscreen
+    COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/validate_smoke.py"
+        --executable "$<TARGET_FILE:vnm_plot_benchmark>"
+        --output-dir "${CMAKE_CURRENT_BINARY_DIR}/smoke-reports/native"
         --graphics-backend native
-        --static
-        --data-type bars
-        --render-style line
-        --seed 12345
-        --warmup-frames 2
         --frames 3
-        --finish
-        --pixel-checksum
-        --quiet
-        --output-dir "${CMAKE_CURRENT_BINARY_DIR}/smoke-reports"
-        --scenario ci-native-smoke
 )
-set_tests_properties(benchmark_native_smoke PROPERTIES TIMEOUT 60)
+set_tests_properties(benchmark_native_smoke PROPERTIES
+    TIMEOUT 60
+    ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1"
+)
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "FreeBSD")
+    add_test(
+        NAME benchmark_opengl_smoke
+        COMMAND "${Python3_EXECUTABLE}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tools/validate_smoke.py"
+            --executable "$<TARGET_FILE:vnm_plot_benchmark>"
+            --output-dir "${CMAKE_CURRENT_BINARY_DIR}/smoke-reports/opengl"
+            --graphics-backend opengl
+            --frames 3
+    )
+    set_tests_properties(benchmark_opengl_smoke PROPERTIES
+        TIMEOUT 60
+        ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1"
+    )
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    add_test(
+        NAME benchmark_vulkan_smoke
+        COMMAND "${Python3_EXECUTABLE}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tools/validate_smoke.py"
+            --executable "$<TARGET_FILE:vnm_plot_benchmark>"
+            --output-dir "${CMAKE_CURRENT_BINARY_DIR}/smoke-reports/vulkan"
+            --graphics-backend vulkan
+            --frames 3
+            --allow-unavailable
+    )
+    set_tests_properties(benchmark_vulkan_smoke PROPERTIES
+        TIMEOUT 60
+        ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1"
+    )
+endif()
+
+add_test(
+    NAME benchmark_calibration_tool_tests
+    COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/test_calibrate.py"
+)
+set_tests_properties(benchmark_calibration_tool_tests PROPERTIES
+    TIMEOUT 60
+    ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1"
+)
+
+add_test(
+    NAME benchmark_gate_tool_tests
+    COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/test_run_gate.py"
+)
+set_tests_properties(benchmark_gate_tool_tests PROPERTIES
+    TIMEOUT 60
+    ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1"
+)
 endif()

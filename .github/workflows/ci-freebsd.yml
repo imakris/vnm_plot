@@ -16,9 +16,11 @@ jobs:
         include:
           - name: QRhi (FreeBSD)
             text: OFF
+            benchmark: OFF
             examples: OFF
           - name: QRhi+Text (FreeBSD)
             text: ON
+            benchmark: ON
             examples: ON
     steps:
       - name: Checkout repository
@@ -28,24 +30,42 @@ jobs:
         uses: vmactions/freebsd-vm@v1
         env:
           TEXT: ${{ matrix.text }}
+          BENCHMARK: ${{ matrix.benchmark }}
           EXAMPLES: ${{ matrix.examples }}
         with:
           release: "15.0"
           usesh: true
-          envs: 'TEXT EXAMPLES'
+          envs: 'TEXT BENCHMARK EXAMPLES'
           prepare: |
             pkg bootstrap -fy
             mkdir -p /usr/local/etc/pkg/repos
             echo 'FreeBSD-ports: { enabled: no }' > /usr/local/etc/pkg/repos/FreeBSD-ports.conf
             echo 'FreeBSD: { url: https://pkg.FreeBSD.org/${ABI}/latest }' > /usr/local/etc/pkg/repos/FreeBSD.conf
             pkg update -f
-            pkg install -y git cmake pkgconf qt6-base qt6-declarative qt6-shadertools
+            pkg install -y git cmake pkgconf python311 qt6-base qt6-declarative qt6-shadertools
           run: |
             cmake -S . -B build \
               -DCMAKE_BUILD_TYPE=Release \
               -DVNM_PLOT_ENABLE_TEXT=${TEXT} \
               -DVNM_PLOT_BUILD_TESTS=ON \
+              -DVNM_PLOT_BUILD_BENCHMARK=${BENCHMARK} \
               -DVNM_PLOT_BUILD_EXAMPLES=${EXAMPLES} \
               -DVNM_PLOT_BUILD_FUNCTION_PLOTTER=OFF
             cmake --build build --config Release
             cd build && env QT_QPA_PLATFORM=offscreen ctest --output-on-failure
+
+      - name: Package checkpoint evidence
+        if: always() && matrix.benchmark == 'ON'
+        continue-on-error: true
+        run: >-
+          python benchmark/tools/run_gate.py --source-root . --build-dir build
+          --mode ci-retain --upstream-status "${{ job.status }}"
+
+      - name: Retain benchmark gate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-gate-freebsd-${{ matrix.text }}
+          path: build/gate-artifacts
+          if-no-files-found: ignore
+          retention-days: 30
