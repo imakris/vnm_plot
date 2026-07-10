@@ -50,12 +50,19 @@ The final canonical replay/remediation cycle added sixteen failed executions, br
 19. Five focused `chrome_renderer.cpp` layout prototypes remained red under one side of that expression-RHS/condition pair. None was committed; each was inspected and replaced by the next narrower form.
 20. Two exact-operation-grouping prototypes remained red before the accepted form materialized the existing long-double left product and parenthesized the unchanged right expression. The final canonical pipeline, initialized Release build, and CTest 21/21 then passed.
 
+The independent write-mode investigation added eight failed executions, bringing the running total to **58**:
+
+21. In an isolated candidate clone, the tool reviewer ran three successive aggregate `--write` passes. Each exited zero without producing a valid fixed point: the first changed six files and the next two continued or retained the cross-stage formatter conflict. The no-write verification after each pass failed, accounting for six executions. No token-changing or ternary corruption recurred.
+22. Codex `/root` independently reproduced one false-green aggregate write and its immediately red no-write verification, accounting for two executions. The root cause was `style_pipeline.py` running every fixer unconditionally even when that rule's check was already green, then omitting a final all-rule verification.
+
+The repair is isolated in standards commit `ce01c3a` and [Varinomics/varinomics-standards PR #4](https://github.com/Varinomics/varinomics-standards/pull/4). Write mode now prechecks each fixable rule, skips fixers for green rules, verifies confirmed fixes, and performs one final read-only sweep after any fixer ran. It deliberately returns nonzero rather than auto-looping if a later fixer invalidates an earlier rule. Standards tests pass 576/576; on `vnm_plot@2ec8013`, repaired no-write is green and repaired `--write` exits green with zero file changes. The original dirty standards checkout was not modified.
+
 Preserve all ledgers rather than replacing them with later green results.
 
 | Current state | Owning batch |
 |---|---|
 | Dependency Windows workflow failed before creating jobs | Recovered and closed by `vnm_msdf_text@b9c216a`: Linux, macOS, FreeBSD, normal Windows, and Windows full export all passed in [run 29090524058](https://github.com/imakris/vnm_msdf_text/actions/runs/29090524058). Dependent `vnm_plot@2d94f01` text-OFF/text-ON CI also passed on all four platforms. Retain the original startup failure as closed evidence. |
-| Style baseline | The original 14 switch violations are recovered in local checkpoint `3fe78e6`. The short-circuiting pipeline exposed broader pre-existing governed debt and an unsafe `fix_hanging_indent.py` rewrite; expanded Batch 1B remains open. |
+| Style baseline | Candidate `vnm_plot@2ec8013` passes the complete no-write pipeline, initialized Release build, CTest 21/21, and eight-platform PR CI. Repaired standards `--write` is a zero-change fixed point. Batch 1B/1C remains open only for final iterative-review closure and merge. |
 | Benchmark cold dynamic timeout unresolved | Codex `/root` performance-harness owner; Batch 2 instruments it and the ledger stays open after Batch 2 if cause remains unresolved |
 | `vnm_plot` eight first-attempt CI failures | Recovered on attempt 2; retain as closed evidence |
 | MSVC initialization, local Qt platform, report-validation, and plan-authoring command failures | Recovered/documented; keep in final handoff |
@@ -204,7 +211,7 @@ The canonical check command is:
     --root C:\plms\bsd_licensed\vnm_plot
   ```
 
-Record standards repository base `f5edc8b` and `style_pipeline.py` SHA-256 `8715313C94D8DCC4257EB3792459BA8D7C759C9CEB6958958B64560FD65CB2F4` with the initial gate because the standards repository is external and moving. Repin both after any standards-tool repair.
+Preserve the initial standards identity as historical evidence: repository base `f5edc8b` and `style_pipeline.py` SHA-256 `8715313C94D8DCC4257EB3792459BA8D7C759C9CEB6958958B64560FD65CB2F4`. The repaired review identity is commit `ce01c3a` from standards PR #4 and pipeline SHA-256 `38056A555CB3AC8CEE31B633A2F5C68CA6B823885C0EF6B15B95979989498CFC`; its tests pass 576/576, candidate no-write is green, and candidate `--write` is green with zero changes. Repin to the terminal merged standards commit if PR #4 is rebased or amended before merge.
 
 `fix_hanging_indent.py` is quarantined: an isolated replay proved that its operator-return renderer corrupts the `std::string{}` ternary in `tests/test_msdf_lcd_shader_reference.cpp::sample_statement_for_offset()`. Do not run that fixer again until the standards repository has a focused regression test and corrected implementation, or until the affected findings are satisfied by manually reviewed token-equivalent edits. A later green result does not erase the failed aggregate-write execution.
 
@@ -237,6 +244,7 @@ Gate:
 - inspect the complete token-changing diff and preserve the existing uniform-layout `static_assert` coverage;
 - initialized Release build and CTest pass 21/21;
 - complete canonical style pipeline passes without `--write`;
+- repaired canonical pipeline with `--write` passes without changing an already green candidate;
 - the same iterative three-worker and Claude Fable review covers Batch 1B and 1C before either is merged.
 
 ## Stage 2 — Establish evidence, then remove unchanged-frame work
@@ -617,4 +625,4 @@ Before the feature merge/release is considered complete:
 
 ## Recommended immediate next action
 
-Batch 1A is closed with all dependency and dependent-consumer jobs green. Complete the ordered Batch 1B formatting checkpoints and the narrowly scoped Batch 1C naming repair, then run their joint canonical style/build/test/review gate before starting Batch 2. This is the shortest path that produces trustworthy evidence without idling local work.
+Batch 1A is closed. Batch 1B/1C candidate `2ec8013`, its eight-platform CI, and its local style/build/test gates are green; standards repair `ce01c3a` makes confirmed `--write` a zero-change fixed point. Close the final iterative review round and merge the reviewed standards repair before marking the style PR ready, then start Batch 2. This is the shortest path that produces trustworthy evidence without idling local work.
