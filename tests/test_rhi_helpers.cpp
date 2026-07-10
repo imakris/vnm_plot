@@ -65,21 +65,21 @@ bool test_qrhi_grown_capacity_bytes_checks_headroom_overflow()
         static_cast<std::size_t>(std::numeric_limits<quint32>::max());
 
     TEST_ASSERT(plot::detail::qrhi_grown_capacity_bytes(
-            80u, capacity, qrhi_capacity),
+        80u, capacity, qrhi_capacity),
         "QRhi grown-capacity helper must accept ordinary byte counts");
     TEST_ASSERT(capacity == 100u && qrhi_capacity == 100u,
         "QRhi grown-capacity helper must add 25 percent headroom");
 
     TEST_ASSERT(plot::detail::qrhi_grown_capacity_bytes(
-            max_qrhi, capacity, qrhi_capacity),
+        max_qrhi, capacity, qrhi_capacity),
         "QRhi grown-capacity helper must accept a representable full-size buffer");
     TEST_ASSERT(capacity == max_qrhi &&
-            qrhi_capacity == std::numeric_limits<quint32>::max(),
+        qrhi_capacity == std::numeric_limits<quint32>::max(),
         "QRhi grown-capacity helper must cap headroom at quint32 max");
 
     if (std::numeric_limits<std::size_t>::max() > max_qrhi) {
         TEST_ASSERT(!plot::detail::qrhi_grown_capacity_bytes(
-                max_qrhi + 1u, capacity, qrhi_capacity),
+            max_qrhi + 1u, capacity, qrhi_capacity),
             "QRhi grown-capacity helper must reject byte counts above quint32 max");
     }
     return true;

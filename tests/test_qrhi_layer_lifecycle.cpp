@@ -569,10 +569,10 @@ bool assert_compact_upload_state(
         std::to_string(view_state.last_staged_sample_count) + ", expected " +
         std::to_string(prepare.gpu_count));
     TEST_ASSERT(view_state.last_sample_upload_bytes ==
-            prepare.gpu_count * k_gpu_sample_bytes,
+        prepare.gpu_count * k_gpu_sample_bytes,
         std::string(label) + " upload bytes must match compact GPU sample count");
     TEST_ASSERT(view_state.last_sample_upload_bytes <
-            prepare.snapshot_count * k_gpu_sample_bytes,
+        prepare.snapshot_count * k_gpu_sample_bytes,
         std::string(label) + " upload bytes must not scale with full snapshot count");
     TEST_ASSERT(
         view_state.last_line_window_sample_count ==
@@ -587,23 +587,23 @@ bool assert_compact_upload_state(
     TEST_ASSERT(prepare.sample_buffer_sample_count == prepare.gpu_count,
         std::string(label) + " sample buffer count mismatch");
     TEST_ASSERT(prepare.sample_buffer_source_first == prepare.source_first &&
-            prepare.sample_buffer_source_count == prepare.source_count &&
-            prepare.sample_buffer_synthetic_hold_count ==
-                prepare.synthetic_hold_count,
+        prepare.sample_buffer_source_count == prepare.source_count &&
+        prepare.sample_buffer_synthetic_hold_count ==
+            prepare.synthetic_hold_count,
         std::string(label) + " sample buffer window metadata mismatch");
     TEST_ASSERT(prepare.sample_buffer_t_origin_ns == prepare.t_origin_ns &&
-            prepare.sample_buffer_t_min_ns == prepare.t_min_ns &&
-            prepare.sample_buffer_t_max_ns == prepare.t_max_ns,
+        prepare.sample_buffer_t_min_ns == prepare.t_min_ns &&
+        prepare.sample_buffer_t_max_ns == prepare.t_max_ns,
         std::string(label) + " sample buffer time metadata mismatch");
     TEST_ASSERT(prepare.sample_buffer_v_min == prepare.v_min &&
-            prepare.sample_buffer_v_max == prepare.v_max,
+        prepare.sample_buffer_v_max == prepare.v_max,
         std::string(label) + " sample buffer value range mismatch");
     TEST_ASSERT(prepare.sample_buffer_stride_bytes == k_gpu_sample_bytes,
         std::string(label) + " sample buffer stride mismatch");
     TEST_ASSERT(prepare.sample_buffer_t_rel_seconds_offset == 0u &&
-            prepare.sample_buffer_value_offset == sizeof(float) &&
-            prepare.sample_buffer_range_min_offset == sizeof(float) * 2u &&
-            prepare.sample_buffer_range_max_offset == sizeof(float) * 3u,
+        prepare.sample_buffer_value_offset == sizeof(float) &&
+        prepare.sample_buffer_range_min_offset == sizeof(float) * 2u &&
+        prepare.sample_buffer_range_max_offset == sizeof(float) * 3u,
         std::string(label) + " sample buffer lane offsets mismatch");
 
     return true;
@@ -1020,7 +1020,7 @@ bool test_combined_builtin_uploads_samples_once_per_view()
     TEST_ASSERT(view_state.last_staged_sample_count == prepare->gpu_count,
         "combined style upload must stage the shared compact GPU window");
     TEST_ASSERT(view_state.last_sample_upload_bytes ==
-            prepare->gpu_count * k_gpu_sample_bytes,
+        prepare->gpu_count * k_gpu_sample_bytes,
         "combined style upload bytes must match one compact GPU window");
     TEST_ASSERT(view_state.last_line_window_sample_count == prepare->gpu_count,
         "combined style LINE primitive should still prepare its padded window");
@@ -1132,8 +1132,8 @@ bool test_direct_member_policy_uses_member_dispatch_in_renderer_staging()
             plot::detail::access_dispatch_kind_t::STD_FUNCTION,
         "capturing renderer fallback should use std::function dispatch");
     TEST_ASSERT(fallback_calls.timestamp > 0 &&
-            fallback_calls.value > 0 &&
-            fallback_calls.range > 0,
+        fallback_calls.value > 0 &&
+        fallback_calls.range > 0,
         "capturing renderer fallback should call public std::function accessors");
 
     return true;
@@ -1208,8 +1208,8 @@ bool test_access_policy_change_reuploads_builtin_samples()
             plot::detail::access_dispatch_kind_t::STD_FUNCTION,
         "changed policy should stage with std::function dispatch");
     TEST_ASSERT(changed_calls.timestamp > 0 &&
-            changed_calls.value > 0 &&
-            changed_calls.range > 0,
+        changed_calls.value > 0 &&
+        changed_calls.range > 0,
         "changed policy should invoke replacement public accessors");
 
     return true;
@@ -1369,23 +1369,23 @@ bool test_nonfinite_break_and_skip_split_drawable_spans()
         TEST_ASSERT(view_state.last_staged_sample_count == 4,
             "gap staging should upload four compact samples");
         TEST_ASSERT(view_state.staging[0].y == 1.0f &&
-                view_state.staging[1].y == 2.0f &&
-                view_state.staging[2].y == 4.0f &&
-                view_state.staging[3].y == 5.0f,
+            view_state.staging[1].y == 2.0f &&
+            view_state.staging[2].y == 4.0f &&
+            view_state.staging[3].y == 5.0f,
             "gap staging should omit the nonfinite sample without reordering valid samples");
         const std::size_t expected_builtin_span_count =
             test_case.policy == plot::Nonfinite_sample_policy::SKIP ? 1u : 2u;
         const std::size_t expected_builtin_segment_count =
             test_case.policy == plot::Nonfinite_sample_policy::SKIP ? 3u : 2u;
         TEST_ASSERT(view_state.last_recorded_line_span_count ==
-                    expected_builtin_span_count &&
+            expected_builtin_span_count &&
                 view_state.last_recorded_line_segment_count ==
-                    expected_builtin_segment_count,
+            expected_builtin_segment_count,
             "LINE rendering should break only for BREAK_SEGMENT and compact SKIP gaps");
         TEST_ASSERT(view_state.last_recorded_area_span_count ==
-                    expected_builtin_span_count &&
+            expected_builtin_span_count &&
                 view_state.last_recorded_area_segment_count ==
-                    expected_builtin_segment_count,
+            expected_builtin_segment_count,
             "AREA rendering should break only for BREAK_SEGMENT and compact SKIP gaps");
         TEST_ASSERT(view_state.last_recorded_dot_sample_count == 4,
             "DOTS rendering should draw only compact valid samples");
@@ -1471,14 +1471,14 @@ bool test_nonfinite_replace_with_zero_keeps_contiguous_span()
     TEST_ASSERT(view_state.last_staged_sample_count == 5,
         "REPLACE_WITH_ZERO should stage all five samples");
     TEST_ASSERT(view_state.staging[2].y == 0.0f &&
-            view_state.staging[2].y_min == 0.0f &&
-            view_state.staging[2].y_max == 0.0f,
+        view_state.staging[2].y_min == 0.0f &&
+        view_state.staging[2].y_max == 0.0f,
         "REPLACE_WITH_ZERO should stage zero for nonfinite value/range lanes");
     TEST_ASSERT(view_state.last_recorded_line_span_count == 1 &&
-            view_state.last_recorded_line_segment_count == 4,
+        view_state.last_recorded_line_segment_count == 4,
         "REPLACE_WITH_ZERO line rendering should remain contiguous");
     TEST_ASSERT(view_state.last_recorded_area_span_count == 1 &&
-            view_state.last_recorded_area_segment_count == 4,
+        view_state.last_recorded_area_segment_count == 4,
         "REPLACE_WITH_ZERO area rendering should remain contiguous");
     TEST_ASSERT(view_state.last_recorded_dot_sample_count == 5,
         "REPLACE_WITH_ZERO dots should draw every compact sample");
@@ -1543,7 +1543,7 @@ bool test_nonfinite_reject_window_suppresses_drawable_upload()
         "expected renderer VBO state for reject-window test");
     const auto& view_state = state_it->second.main_view;
     TEST_ASSERT(view_state.last_sample_upload_count == 0 &&
-            view_state.last_staged_sample_count == 0,
+        view_state.last_staged_sample_count == 0,
         "REJECT_WINDOW should not upload compact sample data");
 
     return true;
@@ -1761,7 +1761,7 @@ bool test_non_drawable_window_invalidates_prior_upload_before_fast_path()
     TEST_ASSERT(state_it != renderer.m_vbo_states.end(),
         "expected renderer VBO state for non-drawable fast-path test");
     TEST_ASSERT(state_it->second.main_view.has_uploaded_vbo &&
-            state_it->second.main_view.last_staged_sample_count > 1,
+        state_it->second.main_view.last_staged_sample_count > 1,
         "initial DOTS frame should upload multiple samples");
 
     source->set_samples({
@@ -1789,7 +1789,7 @@ bool test_non_drawable_window_invalidates_prior_upload_before_fast_path()
     TEST_ASSERT(state_it->second.main_view.has_uploaded_vbo,
         "DOTS frame after non-drawable singleton should upload its own VBO");
     TEST_ASSERT(state_it->second.main_view.last_sample_upload_count == 1 &&
-            state_it->second.main_view.last_staged_sample_count == 1,
+        state_it->second.main_view.last_staged_sample_count == 1,
         "DOTS frame after non-drawable singleton must not reuse the old two-sample upload");
     TEST_ASSERT(state_it->second.main_view.staging[0].y == 10.0f,
         "DOTS frame after non-drawable singleton should stage the singleton sample");
@@ -1841,7 +1841,7 @@ bool test_non_rhi_prepare_invalidates_prior_upload_before_fast_path()
     TEST_ASSERT(state_it != renderer.m_vbo_states.end(),
         "expected renderer VBO state for non-RHI prepare test");
     TEST_ASSERT(state_it->second.main_view.has_uploaded_vbo &&
-            state_it->second.main_view.last_staged_sample_count > 1,
+        state_it->second.main_view.last_staged_sample_count > 1,
         "initial QRhi frame should upload multiple samples");
 
     plot::frame_context_t non_rhi_ctx = make_context(layout, config);
@@ -1865,7 +1865,7 @@ bool test_non_rhi_prepare_invalidates_prior_upload_before_fast_path()
     TEST_ASSERT(state_it->second.main_view.last_staged_sample_count == 2,
         "QRhi frame after non-RHI prepare should stage the new expanded window");
     TEST_ASSERT(state_it->second.main_view.staging[0].y == 2.0f &&
-            state_it->second.main_view.staging[1].y == 10.0f,
+        state_it->second.main_view.staging[1].y == 10.0f,
         "QRhi frame after non-RHI prepare should stage samples from the new window");
 
     return true;
@@ -1950,10 +1950,10 @@ bool test_nonfinite_hold_forward_policy_controls_held_sample()
 
         TEST_ASSERT(prepare, "REPLACE_WITH_ZERO held sample should prepare");
         TEST_ASSERT(prepare->source_first == test_case.expected_source_first &&
-                prepare->source_count == 1,
+            prepare->source_count == 1,
             "drawable held sample should use the expected source sample");
         TEST_ASSERT(prepare->synthetic_hold_count == 1 &&
-                prepare->gpu_count == 2,
+            prepare->gpu_count == 2,
             "drawable hold should stage source plus synthetic hold samples");
         TEST_ASSERT(prepare->drawable_spans.size() == 1,
             "drawable held sample should have one drawable span");
@@ -1970,7 +1970,7 @@ bool test_nonfinite_hold_forward_policy_controls_held_sample()
         TEST_ASSERT(view_state.last_staged_sample_count == 2,
             "drawable held sample should stage two GPU samples");
         TEST_ASSERT(view_state.staging[0].y == test_case.expected_value &&
-                view_state.staging[1].y == test_case.expected_value,
+            view_state.staging[1].y == test_case.expected_value,
             "held source and synthetic samples should stage the expected value");
     }
 
@@ -2034,7 +2034,7 @@ bool test_nonfinite_skip_hold_forward_preserves_earlier_held_sample_with_visible
     TEST_ASSERT(prepare->source_first == 0 && prepare->source_count == 3,
         "SKIP held sample should widen the containing source window backward");
     TEST_ASSERT(prepare->synthetic_hold_count == 1 &&
-            prepare->gpu_count == 3,
+        prepare->gpu_count == 3,
         "SKIP held window should stage held, visible, and synthetic hold samples");
     TEST_ASSERT(prepare->drawable_spans.size() == 2,
         "SKIP held window should keep the skipped sample as a drawable gap");
@@ -2051,14 +2051,14 @@ bool test_nonfinite_skip_hold_forward_preserves_earlier_held_sample_with_visible
     TEST_ASSERT(view_state.last_staged_sample_count == 3,
         "SKIP held visible window should stage three compact GPU samples");
     TEST_ASSERT(view_state.staging[0].y == 7.0f &&
-            view_state.staging[1].y == 9.0f &&
-            view_state.staging[2].y == 9.0f,
+        view_state.staging[1].y == 9.0f &&
+        view_state.staging[2].y == 9.0f,
         "SKIP held visible staging should preserve held, visible, and hold values");
     TEST_ASSERT(view_state.last_recorded_line_span_count == 1 &&
-            view_state.last_recorded_line_segment_count == 4,
+        view_state.last_recorded_line_segment_count == 4,
         "SKIP held visible LINE rendering should connect the compact held and visible samples");
     TEST_ASSERT(view_state.last_recorded_area_span_count == 1 &&
-            view_state.last_recorded_area_segment_count == 2,
+        view_state.last_recorded_area_segment_count == 2,
         "SKIP held visible AREA rendering should connect the compact held and visible samples");
     TEST_ASSERT(view_state.last_recorded_dot_sample_count == 3,
         "DOTS should draw the compact held and visible samples");
@@ -2123,7 +2123,7 @@ bool test_nonfinite_skip_hold_forward_ignores_future_padding_without_visible_dat
     TEST_ASSERT(prepare->source_first == 0 && prepare->source_count == 1,
         "SKIP held-only window should collapse to the earlier drawable held sample");
     TEST_ASSERT(prepare->synthetic_hold_count == 1 &&
-            prepare->gpu_count == 2,
+        prepare->gpu_count == 2,
         "SKIP held-only window should stage source plus synthetic hold samples");
     TEST_ASSERT(prepare->drawable_spans.size() == 1,
         "SKIP held-only window should have one drawable span");
@@ -2140,7 +2140,7 @@ bool test_nonfinite_skip_hold_forward_ignores_future_padding_without_visible_dat
     TEST_ASSERT(view_state.last_staged_sample_count == 2,
         "SKIP held-only window should stage two compact GPU samples");
     TEST_ASSERT(view_state.staging[0].y == 7.0f &&
-            view_state.staging[1].y == 7.0f,
+        view_state.staging[1].y == 7.0f,
         "SKIP held-only staging should ignore skipped pre-window and future padding samples");
 
     return true;
@@ -2314,8 +2314,8 @@ bool test_builtin_draw_commands_sort_relative_to_custom_layers()
     TEST_ASSERT(renderer.m_last_qrhi_layer_cache_size == 3,
         "custom layer cache should contain only the three custom states");
     TEST_ASSERT(under_create_count == 1 &&
-            middle_create_count == 1 &&
-            top_create_count == 1,
+        middle_create_count == 1 &&
+        top_create_count == 1,
         "custom layer states should each be created once");
 
     const std::size_t under_record =
@@ -2755,9 +2755,9 @@ bool test_resources_changed_tracks_hold_timestamp_changes()
     TEST_ASSERT(first_prepare && first_prepare->resources_changed,
         "first hold-forward prepare must report resources_changed");
     TEST_ASSERT(first_prepare->source_first == 2 &&
-            first_prepare->source_count == 1 &&
-            first_prepare->synthetic_hold_count == 1 &&
-            first_prepare->gpu_count == 2,
+        first_prepare->source_count == 1 &&
+        first_prepare->synthetic_hold_count == 1 &&
+        first_prepare->gpu_count == 2,
         "first hold-forward prepare should draw one real and one synthetic sample");
 
     const layer_event_t first        = *first_prepare;
@@ -2775,10 +2775,10 @@ bool test_resources_changed_tracks_hold_timestamp_changes()
     TEST_ASSERT(second_prepare->t_origin_ns == first_origin,
         "hold timestamp test requires both frames to stay in the same origin bucket");
     TEST_ASSERT(second_prepare->source_first == first.source_first &&
-            second_prepare->source_count == first.source_count &&
-            second_prepare->synthetic_hold_count ==
-                first.synthetic_hold_count &&
-            second_prepare->gpu_count == first.gpu_count,
+        second_prepare->source_count == first.source_count &&
+        second_prepare->synthetic_hold_count ==
+            first.synthetic_hold_count &&
+        second_prepare->gpu_count == first.gpu_count,
         "hold timestamp test requires unchanged source/gpu window metadata");
     TEST_ASSERT(second_prepare->resources_changed,
         "changed hold-forward timestamp must invalidate external layer data key");
@@ -3398,10 +3398,10 @@ bool test_range_only_access_skips_builtin_value_styles()
     TEST_ASSERT(range_view.last_primitive_prepare_count == 0,
         "range-only access must not prepare any built-in value primitive");
     TEST_ASSERT(range_view.last_recorded_line_segment_count == 0 &&
-            range_view.last_recorded_line_span_count == 0,
+        range_view.last_recorded_line_span_count == 0,
         "range-only access must record no line geometry");
     TEST_ASSERT(range_view.last_recorded_area_segment_count == 0 &&
-            range_view.last_recorded_area_span_count == 0,
+        range_view.last_recorded_area_span_count == 0,
         "range-only access must record no area geometry");
     TEST_ASSERT(range_view.last_recorded_dot_sample_count == 0,
         "range-only access must record no dots");

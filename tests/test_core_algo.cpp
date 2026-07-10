@@ -157,8 +157,8 @@ bool test_decimal_precision_helpers_reject_invalid_scaled_values()
     TEST_ASSERT(!plot::detail::any_fractional_at_precision({nan}, 1),
         "NaN values should be rejected cleanly");
     TEST_ASSERT(!plot::detail::any_fractional_at_precision(
-            { std::numeric_limits<double>::max() },
-            1),
+        { std::numeric_limits<double>::max() },
+        1),
         "values whose scaled form exceeds the safe integer range should be rejected");
     TEST_ASSERT(!plot::detail::any_fractional_at_precision({1.25}, 400),
         "overflowing precision scale should be rejected cleanly");
@@ -240,18 +240,18 @@ bool test_raw_timestamp_search_rejects_zero_stride()
     };
 
     TEST_ASSERT(plot::detail::lower_bound_timestamp(
-            samples.data(),
-            samples.size(),
-            0,
-            get_ts,
-            std::int64_t{1}) == 0,
+        samples.data(),
+        samples.size(),
+        0,
+        get_ts,
+        std::int64_t{1}) == 0,
         "raw lower_bound should reject stride-zero input");
     TEST_ASSERT(plot::detail::upper_bound_timestamp(
-            samples.data(),
-            samples.size(),
-            0,
-            get_ts,
-            std::int64_t{1}) == 0,
+        samples.data(),
+        samples.size(),
+        0,
+        get_ts,
+        std::int64_t{1}) == 0,
         "raw upper_bound should reject stride-zero input");
     TEST_ASSERT(get_timestamp_calls == 0,
         "stride-zero search should not call the timestamp accessor");
@@ -616,32 +616,32 @@ bool test_time_unit_helpers_handle_edges()
         plot::time_range_t{k_max - 20, k_max - 10},
         50);
     TEST_ASSERT(shifted_right
-        && shifted_right->min_ns == k_max - 10
-        && shifted_right->max_ns == k_max,
+        && shifted_right->min_ns == k_max - 10 &&
+            shifted_right->max_ns == k_max,
         "positive translation at INT64_MAX should clamp while preserving span");
 
     const auto shifted_left = plot::translate_time_range_ns(
         plot::time_range_t{k_min + 10, k_min + 20},
         -50);
     TEST_ASSERT(shifted_left
-        && shifted_left->min_ns == k_min
-        && shifted_left->max_ns == k_min + 10,
+        && shifted_left->min_ns == k_min &&
+            shifted_left->max_ns == k_min + 10,
         "negative translation at INT64_MIN should clamp while preserving span");
 
     const auto clamped_to_edge = plot::clamp_time_range_to_available_ns(
         plot::time_range_t{k_max - 12, k_max - 2},
         plot::time_range_t{k_min + 4, k_max - 5});
     TEST_ASSERT(clamped_to_edge
-        && clamped_to_edge->min_ns == k_max - 15
-        && clamped_to_edge->max_ns == k_max - 5,
+        && clamped_to_edge->min_ns == k_max - 15 &&
+            clamped_to_edge->max_ns == k_max - 5,
         "availability clamp should preserve target span near INT64_MAX");
 
     const auto clamped_full_target = plot::clamp_time_range_to_available_ns(
         plot::time_range_t{k_min, k_max},
         plot::time_range_t{-500, 500});
     TEST_ASSERT(clamped_full_target
-        && clamped_full_target->min_ns == -500
-        && clamped_full_target->max_ns == 500,
+        && clamped_full_target->min_ns == -500 &&
+            clamped_full_target->max_ns == 500,
         "target wider than availability should adopt the available range");
 
     const std::string formatted = plot::default_format_timestamp(k_min, plot::k_ns_per_second);
@@ -723,10 +723,10 @@ bool test_text_lcd_policy_helpers()
         TEST_ASSERT(plot::detail::text_lcd_effective_order(auto_request, order) == order,
             "AUTO should resolve to every display-specific detected order");
         TEST_ASSERT(plot::detail::text_lcd_draw_is_eligible(
-                surface_t::VERTICAL_AXIS_LABEL, order, 1.0f, true),
+            surface_t::VERTICAL_AXIS_LABEL, order, 1.0f, true),
             "vertical axis labels may be LCD-eligible for every display-specific order");
         TEST_ASSERT(plot::detail::text_lcd_draw_is_eligible(
-                surface_t::HORIZONTAL_AXIS_LABEL, order, 1.0f, true),
+            surface_t::HORIZONTAL_AXIS_LABEL, order, 1.0f, true),
             "horizontal axis labels may be LCD-eligible for every display-specific order");
     }
 
@@ -787,26 +787,26 @@ bool test_text_lcd_policy_helpers()
         "manual frame order should still work without config");
 
     TEST_ASSERT(!plot::detail::text_lcd_draw_is_eligible(
-            surface_t::HORIZONTAL_AXIS_LABEL, resolved_t::RGB, 1.0f, false),
+        surface_t::HORIZONTAL_AXIS_LABEL, resolved_t::RGB, 1.0f, false),
         "horizontal axis labels should not be LCD-eligible without backing");
     TEST_ASSERT(!plot::detail::text_lcd_draw_is_eligible(
-            surface_t::VERTICAL_AXIS_LABEL, resolved_t::RGB, 1.0f, false),
+        surface_t::VERTICAL_AXIS_LABEL, resolved_t::RGB, 1.0f, false),
         "vertical axis labels should not be LCD-eligible without backing");
     TEST_ASSERT(!plot::detail::text_lcd_draw_is_eligible(
-            surface_t::VERTICAL_AXIS_LABEL, resolved_t::NONE, 1.0f, true),
+        surface_t::VERTICAL_AXIS_LABEL, resolved_t::NONE, 1.0f, true),
         "axis labels should not be LCD-eligible for NONE frame order");
     TEST_ASSERT(!plot::detail::text_lcd_draw_is_eligible(
-            surface_t::HORIZONTAL_AXIS_LABEL, resolved_t::NONE, 1.0f, true),
+        surface_t::HORIZONTAL_AXIS_LABEL, resolved_t::NONE, 1.0f, true),
         "axis labels should not be LCD-eligible for NONE frame order");
     TEST_ASSERT(!plot::detail::text_lcd_draw_is_eligible(
-            surface_t::VERTICAL_AXIS_LABEL, resolved_t::RGB, 0.998f, true),
+        surface_t::VERTICAL_AXIS_LABEL, resolved_t::RGB, 0.998f, true),
         "axis labels should not be LCD-eligible with translucent backing");
     TEST_ASSERT(!plot::detail::text_lcd_draw_is_eligible(
-            surface_t::VERTICAL_AXIS_LABEL, resolved_t::RGB,
-            std::numeric_limits<float>::quiet_NaN(), true),
+        surface_t::VERTICAL_AXIS_LABEL, resolved_t::RGB,
+        std::numeric_limits<float>::quiet_NaN(), true),
         "axis labels should not be LCD-eligible with unknown backing alpha");
     TEST_ASSERT(!plot::detail::text_lcd_draw_is_eligible(
-            static_cast<surface_t>(255), resolved_t::RGB, 1.0f, true),
+        static_cast<surface_t>(255), resolved_t::RGB, 1.0f, true),
         "invalid draw surfaces should fail closed");
 
     return true;

@@ -48,12 +48,18 @@ bool is_glsl_identifier_char(unsigned char ch)
 bool is_glsl_two_char_operator(std::string_view text)
 {
     return
-        text == "&&" || text == "||" ||
-        text == "<=" || text == ">=" ||
-        text == "==" || text == "!=" ||
-        text == "++" || text == "--" ||
-        text == "+=" || text == "-=" ||
-        text == "*=" || text == "/=";
+        text == "&&" ||
+        text == "||" ||
+        text == "<=" ||
+        text == ">=" ||
+        text == "==" ||
+        text == "!=" ||
+        text == "++" ||
+        text == "--" ||
+        text == "+=" ||
+        text == "-=" ||
+        text == "*=" ||
+        text == "/=";
 }
 
 glsl_token_list_t tokenize_glsl(std::string_view text)
@@ -89,7 +95,7 @@ glsl_token_list_t tokenize_glsl(std::string_view text)
         if (is_glsl_identifier_start(ch)) {
             const std::size_t start = pos++;
             while (pos < text.size() &&
-                   is_glsl_identifier_char(static_cast<unsigned char>(text[pos])))
+                is_glsl_identifier_char(static_cast<unsigned char>(text[pos])))
             {
                 ++pos;
             }
@@ -219,9 +225,11 @@ std::string decode_threshold_statement(const ref::decode_threshold_t& threshold)
     }
 
     return
-        "bool " + bool_name + " = u.lcd_subpixel_order " +
-        condition.substr(0, separator_pos) +
-        " && u.lcd_subpixel_order " +
+        "bool "                                            +
+        bool_name                                          +
+        " = u.lcd_subpixel_order "                         +
+        condition.substr(0, separator_pos)                 +
+        " && u.lcd_subpixel_order "                        +
         condition.substr(separator_pos + separator.size()) +
         ";";
 }
@@ -234,8 +242,12 @@ std::string sample_statement_for_offset(float offset)
         return {};
     }
 
-    return "float " + sample_name + " = glyph_alpha_at_ratio(" +
-        expression + ", uv_min, uv_max);";
+    return
+        "float "                   +
+        sample_name                +
+        " = glyph_alpha_at_ratio(" +
+        expression                 +
+        ", uv_min, uv_max);";
 }
 
 std::string filter_weight_statement(std::string_view name, std::string_view literal)
@@ -276,20 +288,21 @@ std::string lcd_vertical_group_statement()
 std::string subpixel_step_statement()
 {
     return
-        "vec2 subpixel_step = lcd_horizontal\n"
-        "            ? vec2(" + std::string(ref::k_lcd_horizontal_step_glsl) + ", 0.0)\n"
-        "            : vec2(0.0, " + std::string(ref::k_lcd_vertical_step_glsl) + ");";
+        "vec2 subpixel_step = lcd_horizontal\n" "            ? vec2(" +
+        std::string(ref::k_lcd_horizontal_step_glsl)                  +
+        ", 0.0)\n" "            : vec2(0.0, "                         +
+        std::string(ref::k_lcd_vertical_step_glsl)                    +
+        ");";
 }
 
 std::string lcd_enabled_statement()
 {
     return
-        "bool lcd_enabled =\n"
-        "        (lcd_horizontal || lcd_vertical) &&\n"
-        "        u.shadow_radius <= 0.0 &&\n"
-        "        u.color.a >= " + std::string(ref::k_lcd_opaque_alpha_cutoff_glsl) + " &&\n"
-        "        u.background_color.a >= " +
-            std::string(ref::k_lcd_opaque_alpha_cutoff_glsl) + ";";
+        "bool lcd_enabled =\n" "        (lcd_horizontal || lcd_vertical) &&\n" "        u.shadow_radius <= 0.0 &&\n" "        u.color.a >= " +
+        std::string(ref::k_lcd_opaque_alpha_cutoff_glsl)                                                                                     +
+        " &&\n" "        u.background_color.a >= "                                                                                           +
+        std::string(ref::k_lcd_opaque_alpha_cutoff_glsl)                                                                                     +
+        ";";
 }
 
 std::string forward_order_statement()
@@ -351,13 +364,13 @@ bool test_plot_shader_binds_lcd_reference_literals()
     }
 
     TEST_ASSERT(contains_glsl_token_sequence(
-            shader_tokens, filter_weight_statement("filter_edge", ref::k_lcd_filter_edge_glsl)),
+        shader_tokens, filter_weight_statement("filter_edge", ref::k_lcd_filter_edge_glsl)),
         "plot shader LCD edge filter literal must match shared reference");
     TEST_ASSERT(contains_glsl_token_sequence(
-            shader_tokens, filter_weight_statement("filter_side", ref::k_lcd_filter_side_glsl)),
+        shader_tokens, filter_weight_statement("filter_side", ref::k_lcd_filter_side_glsl)),
         "plot shader LCD side filter literal must match shared reference");
     TEST_ASSERT(contains_glsl_token_sequence(
-            shader_tokens, filter_weight_statement("filter_center", ref::k_lcd_filter_center_glsl)),
+        shader_tokens, filter_weight_statement("filter_center", ref::k_lcd_filter_center_glsl)),
         "plot shader LCD center filter literal must match shared reference");
 
     for (const ref::filter_window_t& window : ref::k_lcd_filter_windows) {
@@ -389,7 +402,7 @@ bool test_plot_shader_binds_lcd_reference_literals()
     TEST_ASSERT(contains_glsl_token_sequence(shader_tokens, lcd_enabled_statement()),
         "plot shader opacity cutoff expression must match shared reference");
     TEST_ASSERT(plot::detail::k_text_lcd_opaque_alpha_cutoff ==
-            ref::k_lcd_opaque_alpha_cutoff,
+        ref::k_lcd_opaque_alpha_cutoff,
         "plot CPU opacity cutoff must match shared shader reference");
 
     return true;

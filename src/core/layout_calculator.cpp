@@ -190,13 +190,14 @@ private:
 
         friend bool operator==(const Context_key& lhs, const Context_key& rhs) noexcept
         {
-            return lhs.step_bits == rhs.step_bits &&
-                   lhs.range_bits         == rhs.range_bits         &&
-                   lhs.monospace_bits     == rhs.monospace_bits     &&
-                   lhs.monospace_reliable == rhs.monospace_reliable &&
-                   lhs.measure_key        == rhs.measure_key        &&
-                   lhs.font_size_bits     == rhs.font_size_bits     &&
-                   lhs.format_signature   == rhs.format_signature;
+            return
+                lhs.step_bits          == rhs.step_bits          &&
+                lhs.range_bits         == rhs.range_bits         &&
+                lhs.monospace_bits     == rhs.monospace_bits     &&
+                lhs.monospace_reliable == rhs.monospace_reliable &&
+                lhs.measure_key        == rhs.measure_key        &&
+                lhs.font_size_bits     == rhs.font_size_bits     &&
+                lhs.format_signature   == rhs.format_signature;
         }
     };
 
@@ -297,11 +298,12 @@ private:
 
         friend bool operator==(const Key& lhs, const Key& rhs) noexcept
         {
-            return lhs.step_bits == rhs.step_bits &&
-                   lhs.coverage_bucket     == rhs.coverage_bucket     &&
-                   lhs.formatter_identity  == rhs.formatter_identity  &&
-                   lhs.formatter_type_hash == rhs.formatter_type_hash &&
-                   lhs.formatter_revision  == rhs.formatter_revision;
+            return
+                lhs.step_bits           == rhs.step_bits           &&
+                lhs.coverage_bucket     == rhs.coverage_bucket     &&
+                lhs.formatter_identity  == rhs.formatter_identity  &&
+                lhs.formatter_type_hash == rhs.formatter_type_hash &&
+                lhs.formatter_revision  == rhs.formatter_revision;
         }
     };
 

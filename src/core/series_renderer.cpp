@@ -374,14 +374,15 @@ struct Series_renderer::rhi_state_t
 
         bool operator==(const qrhi_layer_program_key_t& o) const noexcept
         {
-            return series_id == o.series_id
-                && view_kind == o.view_kind
-                && layer_id == o.layer_id
-                && layer_revision == o.layer_revision
-                && data_identity == o.data_identity
-                && layout_key == o.layout_key
-                && access_key == o.access_key
-                && rhi == o.rhi;
+            return
+                series_id      == o.series_id      &&
+                view_kind      == o.view_kind      &&
+                layer_id       == o.layer_id       &&
+                layer_revision == o.layer_revision &&
+                data_identity  == o.data_identity  &&
+                layout_key     == o.layout_key     &&
+                access_key     == o.access_key     &&
+                rhi            == o.rhi;
         }
     };
 
@@ -422,20 +423,21 @@ struct Series_renderer::rhi_state_t
 
         bool operator==(const qrhi_layer_data_key_t& o) const noexcept
         {
-            return lod_level == o.lod_level
-                && sample_sequence == o.sample_sequence
-                && t_origin_ns == o.t_origin_ns
-                && source_first == o.source_first
-                && source_count == o.source_count
-                && synthetic_hold_count == o.synthetic_hold_count
-                && gpu_count == o.gpu_count
-                && hold_last_forward == o.hold_last_forward
-                && hold_timestamp_ns == o.hold_timestamp_ns
-                && interpolation == o.interpolation
-                && nonfinite_policy == o.nonfinite_policy
-                && drawable_span_count == o.drawable_span_count
-                && drawable_spans_hash == o.drawable_spans_hash
-                && access_key == o.access_key;
+            return
+                lod_level            == o.lod_level            &&
+                sample_sequence      == o.sample_sequence      &&
+                t_origin_ns          == o.t_origin_ns          &&
+                source_first         == o.source_first         &&
+                source_count         == o.source_count         &&
+                synthetic_hold_count == o.synthetic_hold_count &&
+                gpu_count            == o.gpu_count            &&
+                hold_last_forward    == o.hold_last_forward    &&
+                hold_timestamp_ns    == o.hold_timestamp_ns    &&
+                interpolation        == o.interpolation        &&
+                nonfinite_policy     == o.nonfinite_policy     &&
+                drawable_span_count  == o.drawable_span_count  &&
+                drawable_spans_hash  == o.drawable_spans_hash  &&
+                access_key           == o.access_key;
         }
     };
 
@@ -748,7 +750,7 @@ void Series_renderer::prepare(
     };
 
     const auto log_error_once = [&](Error_cat cat, int series_id,
-                                    const std::string& message) {
+        const std::string& message) {
         if (!ctx.config || !ctx.config->log_error) {
             return;
         }
@@ -903,9 +905,9 @@ void Series_renderer::prepare(
             main_plan.gpu_count >  0 &&
             main_plan.lod_level != prev_lod_level)
         {
-            std::string message = "LOD selection: series=" + std::to_string(id)
-                + " level=" + std::to_string(main_plan.lod_level)
-                + " pps=" + std::to_string(main_plan.pixels_per_sample);
+            std::string message = "LOD selection: series=" + std::to_string(id) +
+                " level=" + std::to_string(main_plan.lod_level) +
+                " pps=" + std::to_string(main_plan.pixels_per_sample);
             ctx.config->log_debug(message);
         }
 
@@ -1180,10 +1182,9 @@ void Series_renderer::prepare(
             planned_draws.begin(),
             planned_draws.end(),
             [&](const planned_draw_t& draw) {
-                return draw.is_builtin &&
-                    is_builtin_primitive_drawable(
-                        draw.primitive_style,
-                        window);
+                return
+                    draw.is_builtin &&
+                    is_builtin_primitive_drawable(draw.primitive_style, window);
             });
         const bool has_custom_layer = std::any_of(
             planned_draws.begin(),
@@ -1465,15 +1466,16 @@ void Series_renderer::prepare(
                 qrhi_layers.begin(),
                 qrhi_layers.end(),
                 [&](const auto& layer) {
-                    return layer &&
-                        layer->draws_view(key.view_kind)        &&
-                        layer->id() == key.layer_id             &&
+                    return
+                        layer                            &&
+                        layer->draws_view(key.view_kind) &&
+                        layer->id() == key.layer_id      &&
                         layer->revision() == key.layer_revision;
                 });
         };
 
     for (auto it = m_rhi_state->qrhi_layer_cache.begin();
-         it != m_rhi_state->qrhi_layer_cache.end();)
+        it != m_rhi_state->qrhi_layer_cache.end();)
     {
         if (it->second.last_frame_used == m_frame_id ||
             qrhi_layer_still_configured(it->first))
@@ -1489,7 +1491,7 @@ void Series_renderer::prepare(
     m_last_qrhi_layer_cache_size = m_rhi_state->qrhi_layer_cache.size();
 
     for (auto it = m_rhi_state->view_ubos.begin();
-         it != m_rhi_state->view_ubos.end();)
+        it != m_rhi_state->view_ubos.end();)
     {
         if (it->second.last_frame_used == m_frame_id) {
             ++it;
@@ -1645,8 +1647,8 @@ bool Series_renderer::rhi_prepare_series_view_samples(
         std::size_t expected_gpu_count  = 0;
         bool        synthetic_hold_seen = false;
         for (std::size_t span_index = 0;
-             span_index < window.drawable_spans.size();
-             ++span_index)
+            span_index < window.drawable_spans.size();
+            ++span_index)
         {
             const drawable_sample_span_t& span =
                 window.drawable_spans[span_index];
@@ -2146,8 +2148,8 @@ bool Series_renderer::rhi_prepare_series_primitive(
     // use-after-free.
     auto ensure_srb = [&](vbo_view_state_t::rhi_buffers_t::srb_entry_t& entry) -> bool {
         QRhiBuffer* current_ubo = entry.ubo.get();
-        const bool srb_handles_match = entry.srb
-            && entry.last_ubo == current_ubo;
+        const bool srb_handles_match = entry.srb &&
+            entry.last_ubo == current_ubo;
         if (srb_handles_match) {
             return true;
         }

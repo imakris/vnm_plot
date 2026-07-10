@@ -61,15 +61,17 @@ Data_query_status invalid_ready_snapshot_status(const data_snapshot_t& snapshot)
 
 bool time_window_contains(time_range_t window, std::int64_t timestamp_ns)
 {
-    return window.min_ns <= window.max_ns
-        && timestamp_ns >= window.min_ns
-        && timestamp_ns <= window.max_ns;
+    return
+        window.min_ns <= window.max_ns &&
+        timestamp_ns  >= window.min_ns &&
+        timestamp_ns  <= window.max_ns;
 }
 
 bool wants_hold_forward(const data_query_context_t& query)
 {
-    return query.interpolation == Series_interpolation::STEP_AFTER
-        && query.empty_window_behavior == Empty_window_behavior::HOLD_LAST_FORWARD;
+    return
+        query.interpolation         == Series_interpolation::STEP_AFTER &&
+        query.empty_window_behavior == Empty_window_behavior::HOLD_LAST_FORWARD;
 }
 
 bool timestamp_at(
@@ -680,8 +682,8 @@ validated_time_window_t validated_time_window(
 bool selected_by_time_window(const validated_time_window_t& window, std::size_t index)
 {
     return (window.has_match &&
-            index >= window.match_first &&
-            index < window.match_last_exclusive) ||
+        index >= window.match_first &&
+        index < window.match_last_exclusive) ||
         (window.has_held && index == window.held_index);
 }
 

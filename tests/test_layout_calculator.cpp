@@ -131,7 +131,7 @@ bool test_format_timestamp_receives_nanosecond_units()
     }
     TEST_ASSERT(saw_label_in_window,
         std::string("expected at least one formatter call with a timestamp "
-                    "inside the visible window [") +
+            "inside the visible window [") +
         std::to_string(k_t_min_ns) + " .. " + std::to_string(k_t_max_ns) +
         "]; if the calculator passed t_seconds instead of t_ns, the "
         "values would land near 1.7e9 instead of 1.7e18");
@@ -143,7 +143,7 @@ bool test_format_timestamp_receives_nanosecond_units()
     constexpr std::int64_t k_sentinel_hi = std::numeric_limits<std::int64_t>::max();
     for (const auto& call : recorded) {
         TEST_ASSERT(call.timestamp_ns != k_sentinel_lo &&
-                    call.timestamp_ns != k_sentinel_hi,
+            call.timestamp_ns != k_sentinel_hi,
             "no formatter call should receive an INT64 sentinel timestamp");
         TEST_ASSERT(call.step_ns > 0,
             "formatter step must be positive (the calculator should never "

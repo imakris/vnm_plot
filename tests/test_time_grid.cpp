@@ -91,11 +91,11 @@ bool test_time_grid_layers_reject_degenerate_ranges()
 {
     bool dropped_non_multiple_step = true;
     TEST_ASSERT(plot::build_time_grid_layers(
-            5.0,
-            5.0,
-            600.0,
-            10.0,
-            &dropped_non_multiple_step).count == 0,
+        5.0,
+        5.0,
+        600.0,
+        10.0,
+        &dropped_non_multiple_step).count == 0,
         "zero-width time range should produce no grid levels");
     TEST_ASSERT(!dropped_non_multiple_step,
         "degenerate ranges should clear the non-multiple diagnostic flag");

@@ -285,7 +285,7 @@ bool test_vector_source_snapshots_progress_while_set_data_is_active()
 
     auto reader_fn = [&] {
         while (!readers_started.load(std::memory_order_acquire) &&
-               !readers_stop.load(std::memory_order_acquire))
+            !readers_stop.load(std::memory_order_acquire))
         {
             std::this_thread::yield();
         }
@@ -328,7 +328,7 @@ bool test_vector_source_snapshots_progress_while_set_data_is_active()
     const auto destroy_deadline =
         std::chrono::steady_clock::now() + std::chrono::milliseconds(2000);
     while (!probe->destroy_entered.load(std::memory_order_acquire) &&
-           std::chrono::steady_clock::now() < destroy_deadline)
+        std::chrono::steady_clock::now() < destroy_deadline)
     {
         std::this_thread::yield();
     }
@@ -339,7 +339,7 @@ bool test_vector_source_snapshots_progress_while_set_data_is_active()
         const auto read_deadline =
             std::chrono::steady_clock::now() + std::chrono::milliseconds(2000);
         while (active_reads.load(std::memory_order_acquire) < required_active_reads &&
-               std::chrono::steady_clock::now()             < read_deadline)
+            std::chrono::steady_clock::now()             < read_deadline)
         {
             std::this_thread::yield();
         }
@@ -432,8 +432,8 @@ bool test_ring_source_snapshots_are_consistent_under_concurrent_writes()
             }
             std::uint64_t current = observed_max_sequence.load(std::memory_order_relaxed);
             while (snap.sequence > current &&
-                   !observed_max_sequence.compare_exchange_weak(current, snap.sequence,
-                       std::memory_order_relaxed))
+                !observed_max_sequence.compare_exchange_weak(current, snap.sequence,
+                    std::memory_order_relaxed))
             {
             }
         }

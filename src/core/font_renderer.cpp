@@ -244,18 +244,18 @@ bool validate_cached_glyph(const msdf_glyph_t& g)
     // rectangles are derived per draw size via scaled_glyph(). Invisible
     // advance-only glyphs (e.g. U+0020) carry zero bounds, so equality is valid.
     return
-        std::isfinite(g.advance_units) &&
-        std::isfinite(g.bounds_left_units) &&
-        std::isfinite(g.bounds_bottom_units) &&
-        std::isfinite(g.bounds_right_units) &&
-        std::isfinite(g.bounds_top_units) &&
+        std::isfinite(g.advance_units)              &&
+        std::isfinite(g.bounds_left_units)          &&
+        std::isfinite(g.bounds_bottom_units)        &&
+        std::isfinite(g.bounds_right_units)         &&
+        std::isfinite(g.bounds_top_units)           &&
         g.bounds_right_units >= g.bounds_left_units &&
         g.bounds_top_units >= g.bounds_bottom_units &&
-        uv_in_range(g.uv_left) &&
-        uv_in_range(g.uv_bottom) &&
-        uv_in_range(g.uv_right) &&
-        uv_in_range(g.uv_top)   &&
-        g.uv_right >= g.uv_left &&
+        uv_in_range(g.uv_left)                      &&
+        uv_in_range(g.uv_bottom)                    &&
+        uv_in_range(g.uv_right)                     &&
+        uv_in_range(g.uv_top)                       &&
+        g.uv_right >= g.uv_left                     &&
         g.uv_bottom >= g.uv_top;
 }
 
@@ -1029,7 +1029,7 @@ bool Font_renderer::text_visual_bounds_px(
         std::isfinite(bounds.y) &&
         std::isfinite(bounds.z) &&
         std::isfinite(bounds.w) &&
-        bounds.z > bounds.x &&
+        bounds.z > bounds.x     &&
         bounds.w > bounds.y;
 }
 
@@ -1422,9 +1422,9 @@ void Font_renderer::rhi_queue_draw(
     }
 
     const auto queue_text_pass = [&](std::size_t call_index,
-                                     const glm::vec4& draw_color,
-                                     const text_shadow_t& draw_shadow,
-                                     rhi_text_pass_t pass) {
+        const glm::vec4& draw_color,
+        const text_shadow_t& draw_shadow,
+        rhi_text_pass_t pass) {
         auto& call = rhi_state.calls[call_index];
 
         Text_block_std140 block{};

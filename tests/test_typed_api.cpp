@@ -282,7 +282,7 @@ bool test_explicit_semantics_key_helpers()
     const plot::sample_semantics_key_t typed_key =
         plot::detail::make_sample_semantics_key(&erased);
     TEST_ASSERT(!typed_key.conservative && typed_key.value != 0 &&
-            typed_key.revision == 5,
+        typed_key.revision == 5,
         "typed policy explicit semantics should survive erase()");
 
     typed.get_value = [](const sample_t&) {
@@ -373,8 +373,8 @@ bool test_erased_access_view_uses_direct_member_accessors()
     TEST_ASSERT(mutated_range.first == 7.0f && mutated_range.second == 8.0f,
         "mutated erased range accessor should use the replacement callable");
     TEST_ASSERT(mutated_timestamp_calls == 1 &&
-            mutated_value_calls == 1 &&
-            mutated_range_calls == 1,
+        mutated_value_calls == 1 &&
+        mutated_range_calls == 1,
         "mutated erased policy should invoke each replacement callable once");
     TEST_ASSERT(mutated.semantics_key.conservative,
         "mutating an erased direct policy should clear member-pointer semantics");
@@ -416,7 +416,7 @@ bool test_erased_access_view_uses_direct_member_accessors()
             plot::detail::access_dispatch_kind_t::MEMBER_POINTER,
         "mutating a detached accessor copy must not clear the source policy");
     TEST_ASSERT(after_detached_slot_mutation_view.timestamp(&s) ==
-            k_sample_timestamp_ns,
+        k_sample_timestamp_ns,
         "detached accessor mutation must not affect source policy semantics");
 
     plot::Data_access_policy move_source          = erased;
@@ -439,7 +439,7 @@ bool test_erased_access_view_uses_direct_member_accessors()
             plot::detail::access_dispatch_kind_t::MEMBER_POINTER,
         "moving a whole policy should preserve destination member-pointer dispatch");
     TEST_ASSERT(after_whole_policy_move_view.timestamp(&s) ==
-            k_sample_timestamp_ns,
+        k_sample_timestamp_ns,
         "whole-policy move should preserve direct timestamp semantics");
 
     auto typed_mutated                 = policy;
@@ -493,7 +493,7 @@ bool test_erased_access_view_uses_direct_member_accessors()
         "erasing a mutated typed policy should expose conservative semantics");
 
     return true;
-}
+    }
 
 bool test_typed_api_floating_point_timestamp_member()
 {

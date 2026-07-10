@@ -324,31 +324,31 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
 
     const auto try_stale_fallback =
         [&](Series_view_plan& p, std::size_t level) -> bool {
-        const void* current_identity = data_source.identity();
-        // The cached VBO holds samples rebased against uploaded_t_origin_ns;
-        // reusing it under a moved origin would draw at the wrong x positions
-        // because set_common_uniforms feeds the new view_origin_ns regardless.
-        const bool identity_ok =
-            (state.cached_data_identity != nullptr)                             &&
-            (state.cached_data_identity == current_identity)                    &&
-            request.has_uploaded_vbo                                            &&
-            (state.last_count > 0)                                              &&
-            state.has_last_lod_level                                            &&
-            (state.last_lod_level == level)                                     &&
-            (state.last_access_key == access_key)                               &&
-            (state.last_t_min == request.t_min_ns)                              &&
-            (state.last_t_max == request.t_max_ns)                              &&
-            (state.last_width_px == request.width_px)                           &&
-            (state.last_empty_window_behavior == request.empty_window_behavior) &&
-            (state.last_nonfinite_policy == request.nonfinite_policy)           &&
-            (state.last_interpolation == request.interpolation)                 &&
-            (state.uploaded_t_origin_ns == request.t_origin_ns);
-        if (!identity_ok) {
-            return false;
-        }
-        load_cached_plan(p, state.last_lod_level);
-        return true;
-    };
+            const void* current_identity = data_source.identity();
+            // The cached VBO holds samples rebased against uploaded_t_origin_ns;
+            // reusing it under a moved origin would draw at the wrong x positions
+            // because set_common_uniforms feeds the new view_origin_ns regardless.
+            const bool identity_ok =
+                (state.cached_data_identity != nullptr)                             &&
+                (state.cached_data_identity == current_identity)                    &&
+                request.has_uploaded_vbo                                            &&
+                (state.last_count > 0)                                              &&
+                state.has_last_lod_level                                            &&
+                (state.last_lod_level == level)                                     &&
+                (state.last_access_key == access_key)                               &&
+                (state.last_t_min == request.t_min_ns)                              &&
+                (state.last_t_max == request.t_max_ns)                              &&
+                (state.last_width_px == request.width_px)                           &&
+                (state.last_empty_window_behavior == request.empty_window_behavior) &&
+                (state.last_nonfinite_policy == request.nonfinite_policy)           &&
+                (state.last_interpolation == request.interpolation)                 &&
+                (state.uploaded_t_origin_ns == request.t_origin_ns);
+            if (!identity_ok) {
+                return false;
+            }
+            load_cached_plan(p, state.last_lod_level);
+            return true;
+        };
 
     const int max_attempts = static_cast<int>(level_count) + 2;
 
@@ -458,8 +458,8 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
                         bool has_match_in_requested_window = false;
                         bool direct_window_valid           = true;
                         for (std::size_t index = first;
-                             index < last_exclusive;
-                             ++index)
+                            index < last_exclusive;
+                            ++index)
                         {
                             const void* sample = snapshot.at(index);
                             if (!sample) {
@@ -504,7 +504,7 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
                                     direct_last_idx = snapshot.count;
                                 }
                                 if (request.empty_window_behavior ==
-                                        Empty_window_behavior::HOLD_LAST_FORWARD &&
+                                    Empty_window_behavior::HOLD_LAST_FORWARD &&
                                     direct_last_idx == snapshot.count)
                                 {
                                     const void* last_window_sample =
@@ -524,9 +524,9 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
                         }
                         else
                         if (request.interpolation ==
-                                Series_interpolation::STEP_AFTER &&
+                            Series_interpolation::STEP_AFTER &&
                             request.empty_window_behavior ==
-                                Empty_window_behavior::HOLD_LAST_FORWARD)
+                            Empty_window_behavior::HOLD_LAST_FORWARD)
                         {
                             const void* last_window_sample =
                                 snapshot.at(last_exclusive - 1u);

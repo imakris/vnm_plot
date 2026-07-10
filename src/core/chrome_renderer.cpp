@@ -143,10 +143,10 @@ void Chrome_renderer::render_grid_and_backgrounds(
     }
     prims.batch_rect(separator_color,
         glm::vec4(0.f, float(ctx.win_h) - float(ctx.adjusted_reserved_height),
-                  float(ctx.win_w), float(ctx.win_h - ctx.adjusted_reserved_height + 1.0)));
+            float(ctx.win_w), float(ctx.win_h - ctx.adjusted_reserved_height + 1.0)));
     prims.batch_rect(separator_color,
         glm::vec4(0.f, float(ctx.win_h) - float(ctx.adjusted_preview_height + 1.0),
-                  float(ctx.win_w), float(ctx.win_h) - float(ctx.adjusted_preview_height)));
+            float(ctx.win_w), float(ctx.win_h) - float(ctx.adjusted_preview_height)));
 
     prims.flush_rects(ctx, ctx.pmv);
 
@@ -181,7 +181,10 @@ void Chrome_renderer::render_grid_and_backgrounds(
         prims.draw_grid_shader(ctx, main_origin, main_size, grid_rgb, vertical_levels_gl, horizontal_levels);
     }
 
-    const auto match_level_properties = [](float pos, const grid_layer_params_t& levels) -> std::pair<float, float> {
+    const auto match_level_properties = [](
+        float                      pos,
+        const grid_layer_params_t& levels) -> std::pair<float, float>
+    {
         float alpha = k_grid_line_alpha_base;
         float thick = 0.8f;
         for (int i = 0; i < levels.count; ++i) {
@@ -203,7 +206,11 @@ void Chrome_renderer::render_grid_and_backgrounds(
         return {alpha, thick};
     };
 
-    const auto build_tick_levels = [&](auto&& get_pos, const auto& labels, const grid_layer_params_t& main_levels) {
+    const auto build_tick_levels = [&](
+        auto&&                     get_pos,
+        const auto&                labels,
+        const grid_layer_params_t& main_levels)
+    {
         grid_layer_params_t ticks;
         for (const auto& label : labels) {
             if (ticks.count >= grid_layer_params_t::k_max_levels) {

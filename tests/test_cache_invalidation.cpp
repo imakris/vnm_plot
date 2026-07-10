@@ -266,27 +266,27 @@ bool test_visible_auto_range_uses_source_query_without_snapshot_fallback()
         true);
 
     TEST_ASSERT(range.first == 2.0f && range.second == 5.0f,
-                "visible auto-range should use the source query result");
+        "visible auto-range should use the source query result");
     TEST_ASSERT(source->query_calls == 1,
-                "visible auto-range should call query_v_range once");
+        "visible auto-range should call query_v_range once");
     TEST_ASSERT(source->snapshot_calls == 0,
-                "READY query result should avoid snapshot fallback");
+        "READY query result should avoid snapshot fallback");
     TEST_ASSERT(source->last_query_lod == 0,
-                "VISIBLE mode should query LOD 0");
+        "VISIBLE mode should query LOD 0");
     TEST_ASSERT(source->last_query.time_window.min_ns == 10 &&
-                    source->last_query.time_window.max_ns == 20,
+        source->last_query.time_window.max_ns == 20,
                 "visible query should use the configured time window");
     TEST_ASSERT(source->last_query.interpolation == Series_interpolation::STEP_AFTER,
-                "query should carry series interpolation");
+        "query should carry series interpolation");
     TEST_ASSERT(source->last_query.empty_window_behavior ==
-                    Empty_window_behavior::HOLD_LAST_FORWARD,
+        Empty_window_behavior::HOLD_LAST_FORWARD,
                 "query should carry series empty-window behavior");
     TEST_ASSERT(source->last_query.semantics_key.value == 0,
-                "default access semantics key should not reuse layout identity");
+        "default access semantics key should not reuse layout identity");
     TEST_ASSERT(source->last_query.semantics_key.conservative,
-                "default access semantics key should be conservative");
+        "default access semantics key should be conservative");
     TEST_ASSERT(source->last_query.semantics_key.revision != 0,
-                "conservative access semantics should carry accessor revision");
+        "conservative access semantics should carry accessor revision");
 
     return true;
 }
@@ -310,15 +310,15 @@ bool test_member_pointer_query_uses_stable_semantics_key()
         true);
 
     TEST_ASSERT(range.first == 2.0f && range.second == 5.0f,
-                "member-pointer query should use the source query result");
+        "member-pointer query should use the source query result");
     TEST_ASSERT(!source->last_query.semantics_key.conservative,
-                "member-pointer query should expose stable semantics");
+        "member-pointer query should expose stable semantics");
     TEST_ASSERT(source->last_query.semantics_key.value != 0,
-                "member-pointer query semantics key should be non-zero");
+        "member-pointer query semantics key should be non-zero");
     TEST_ASSERT(source->last_query.semantics_key.value != series->access.layout_key,
-                "query semantics key should not reuse layout identity");
+        "query semantics key should not reuse layout identity");
     TEST_ASSERT(source->last_query.semantics_key.revision == 0,
-                "member-pointer query semantics should not consume accessor revision");
+        "member-pointer query semantics should not consume accessor revision");
 
     return true;
 }
@@ -340,11 +340,11 @@ bool test_global_lod_auto_range_uses_query_when_no_legacy_range_exists()
         true);
 
     TEST_ASSERT(range.first == -4.0f && range.second == 9.0f,
-                "GLOBAL_LOD auto-range should use query_v_range when no legacy O(1) range exists");
+        "GLOBAL_LOD auto-range should use query_v_range when no legacy O(1) range exists");
     TEST_ASSERT(source->last_query_lod == 1,
-                "GLOBAL_LOD should query the last LOD level");
+        "GLOBAL_LOD should query the last LOD level");
     TEST_ASSERT(source->snapshot_calls == 0,
-                "READY global query result should avoid snapshot fallback");
+        "READY global query result should avoid snapshot fallback");
 
     return true;
 }
@@ -369,11 +369,11 @@ bool test_unsupported_query_falls_back_to_snapshot_scan()
         true);
 
     TEST_ASSERT(range.first == 6.0f && range.second == 12.0f,
-                "unsupported query should fall back to snapshot scan");
+        "unsupported query should fall back to snapshot scan");
     TEST_ASSERT(source->query_calls == 1,
-                "resolver should try query_v_range before fallback");
+        "resolver should try query_v_range before fallback");
     TEST_ASSERT(source->snapshot_calls == 1,
-                "unsupported query should take one fallback snapshot");
+        "unsupported query should take one fallback snapshot");
 
     return true;
 }
@@ -396,13 +396,13 @@ bool test_ready_query_profiler_counts_query_without_scan()
         true);
 
     TEST_ASSERT(range.first == 2.0f && range.second == 5.0f,
-                "READY query should resolve the auto-range");
+        "READY query should resolve the auto-range");
     TEST_ASSERT(profiler->total("renderer.auto_range.query_count") == 1.0,
-                "READY query should increment the auto-range query counter");
+        "READY query should increment the auto-range query counter");
     TEST_ASSERT(profiler->total("renderer.auto_range.range_scan_count") == 0.0,
-                "READY query should not be counted as a range scan");
+        "READY query should not be counted as a range scan");
     TEST_ASSERT(source->snapshot_calls == 0,
-                "READY query should avoid snapshot work");
+        "READY query should avoid snapshot work");
 
     return true;
 }
@@ -428,13 +428,13 @@ bool test_default_query_profiler_counts_snapshot_scan()
         true);
 
     TEST_ASSERT(range.first == 6.0f && range.second == 12.0f,
-                "default query should resolve the auto-range through its snapshot scan");
+        "default query should resolve the auto-range through its snapshot scan");
     TEST_ASSERT(profiler->total("renderer.auto_range.query_count") == 1.0,
-                "default query should increment the auto-range query counter");
+        "default query should increment the auto-range query counter");
     TEST_ASSERT(profiler->total("renderer.auto_range.range_scan_count") == 1.0,
-                "default query snapshot scan should increment the range scan counter");
+        "default query snapshot scan should increment the range scan counter");
     TEST_ASSERT(source->snapshot_calls == 1,
-                "default query should take one snapshot");
+        "default query should take one snapshot");
 
     return true;
 }
@@ -455,9 +455,9 @@ bool test_positive_auto_range_excludes_zero_by_default()
         true);
 
     TEST_ASSERT(range.first == 2.0f && range.second == 8.0f,
-                "positive-only auto-range should preserve the positive data range by default");
+        "positive-only auto-range should preserve the positive data range by default");
     TEST_ASSERT(range.first > 0.0f && range.second > 0.0f,
-                "positive-only auto-range should not force zero into the default range");
+        "positive-only auto-range should not force zero into the default range");
 
     return true;
 }
@@ -478,9 +478,9 @@ bool test_negative_auto_range_excludes_zero_by_default()
         true);
 
     TEST_ASSERT(range.first == -8.0f && range.second == -2.0f,
-                "negative-only auto-range should preserve the negative data range by default");
+        "negative-only auto-range should preserve the negative data range by default");
     TEST_ASSERT(range.first < 0.0f && range.second < 0.0f,
-                "negative-only auto-range should not force zero into the default range");
+        "negative-only auto-range should not force zero into the default range");
 
     return true;
 }
@@ -503,7 +503,7 @@ bool test_nonnegative_auto_range_floor_policy_includes_zero()
         true);
 
     TEST_ASSERT(range.first == 0.0f && range.second == 5.0f,
-                "nonnegative auto-range floor policy should clamp padded lower bound to zero");
+        "nonnegative auto-range floor policy should clamp padded lower bound to zero");
 
     return true;
 }
@@ -532,11 +532,11 @@ bool test_visible_step_after_hold_forward_contributes_held_sample()
         true);
 
     TEST_ASSERT(range.first == -4.0f && range.second == 6.0f,
-                "visible STEP_AFTER auto-range should include the held sample entering the window");
+        "visible STEP_AFTER auto-range should include the held sample entering the window");
     TEST_ASSERT(source->query_calls == 1,
-                "visible STEP_AFTER auto-range should try query_v_range before fallback");
+        "visible STEP_AFTER auto-range should try query_v_range before fallback");
     TEST_ASSERT(source->snapshot_calls == 1,
-                "unsupported STEP_AFTER query should fall back to one snapshot scan");
+        "unsupported STEP_AFTER query should fall back to one snapshot scan");
 
     return true;
 }
@@ -568,11 +568,11 @@ bool test_visible_step_after_skip_fallback_keeps_earlier_drawable_held_sample()
         true);
 
     TEST_ASSERT(range.first == -4.0f && range.second == 6.0f,
-                "SKIP fallback auto-range should keep the earlier drawable held sample");
+        "SKIP fallback auto-range should keep the earlier drawable held sample");
     TEST_ASSERT(source->query_calls == 1,
-                "SKIP fallback auto-range should try query_v_range before fallback");
+        "SKIP fallback auto-range should try query_v_range before fallback");
     TEST_ASSERT(source->snapshot_calls == 1,
-                "SKIP fallback auto-range should take one snapshot scan");
+        "SKIP fallback auto-range should take one snapshot scan");
 
     return true;
 }
@@ -600,11 +600,11 @@ bool test_global_value_only_access_falls_back_to_snapshot_scan()
         true);
 
     TEST_ASSERT(range.first == -3.0f && range.second == 8.0f,
-                "global value-only access should use snapshot scan fallback");
+        "global value-only access should use snapshot scan fallback");
     TEST_ASSERT(source->query_calls == 1,
-                "value-only fallback should still try the source query first");
+        "value-only fallback should still try the source query first");
     TEST_ASSERT(source->snapshot_calls == 1,
-                "value-only fallback should take one snapshot");
+        "value-only fallback should take one snapshot");
 
     return true;
 }
@@ -629,11 +629,11 @@ bool test_failed_query_does_not_fall_back_to_stale_scan()
         true);
 
     TEST_ASSERT(range.first == cfg.v_min && range.second == cfg.v_max,
-                "FAILED query should be authoritative and leave configured fallback range");
+        "FAILED query should be authoritative and leave configured fallback range");
     TEST_ASSERT(source->query_calls == 1,
-                "FAILED source should still be queried once");
+        "FAILED source should still be queried once");
     TEST_ASSERT(source->snapshot_calls == 0,
-                "FAILED query must not be silently downgraded to snapshot fallback");
+        "FAILED query must not be silently downgraded to snapshot fallback");
 
     return true;
 }
@@ -666,11 +666,11 @@ bool test_ready_query_result_is_cached_by_current_sequence()
         &cache);
 
     TEST_ASSERT(first.first == 1.0f && first.second == 4.0f,
-                "first range should come from query");
+        "first range should come from query");
     TEST_ASSERT(second.first == 1.0f && second.second == 4.0f,
-                "second range should come from cache");
+        "second range should come from cache");
     TEST_ASSERT(source->query_calls == 1,
-                "matching sequence and query shape should reuse cached range");
+        "matching sequence and query shape should reuse cached range");
 
     return true;
 }
@@ -703,9 +703,9 @@ bool test_conservative_query_result_is_not_cached()
         &cache);
 
     TEST_ASSERT(source->query_calls == 2,
-                "conservative callable semantics should not reuse cached query results");
+        "conservative callable semantics should not reuse cached query results");
     TEST_ASSERT(cache.main_entries.empty(),
-                "conservative callable semantics should not populate resolver cache");
+        "conservative callable semantics should not populate resolver cache");
 
     return true;
 }
@@ -738,11 +738,11 @@ bool test_empty_query_result_is_cached_by_current_sequence()
         &cache);
 
     TEST_ASSERT(first.first == cfg.v_min && first.second == cfg.v_max,
-                "empty query should use configured fallback range");
+        "empty query should use configured fallback range");
     TEST_ASSERT(second.first == cfg.v_min && second.second == cfg.v_max,
-                "cached empty query should keep configured fallback range");
+        "cached empty query should keep configured fallback range");
     TEST_ASSERT(source->query_calls == 1,
-                "matching empty query should be cached by sequence");
+        "matching empty query should be cached by sequence");
 
     return true;
 }
@@ -779,9 +779,9 @@ bool test_sequence_change_invalidates_auto_range_cache()
         &cache);
 
     TEST_ASSERT(range.first == -3.0f && range.second == 9.0f,
-                "sequence change should force a fresh query result");
+        "sequence change should force a fresh query result");
     TEST_ASSERT(source->query_calls == 2,
-                "sequence change should invalidate the cached range");
+        "sequence change should invalidate the cached range");
 
     return true;
 }
@@ -819,9 +819,9 @@ bool test_visible_window_change_invalidates_auto_range_cache()
         &cache);
 
     TEST_ASSERT(range.first == -6.0f && range.second == -2.0f,
-                "visible window change should force a fresh query result");
+        "visible window change should force a fresh query result");
     TEST_ASSERT(source->query_calls == 2,
-                "visible window should be part of the cache key");
+        "visible window should be part of the cache key");
 
     return true;
 }
@@ -857,9 +857,9 @@ bool test_access_policy_change_invalidates_auto_range_cache()
         &cache);
 
     TEST_ASSERT(range.first == 10.0f && range.second == 12.0f,
-                "access-policy identity change should not reuse an old range");
+        "access-policy identity change should not reuse an old range");
     TEST_ASSERT(source->query_calls == 2,
-                "cache key should include access-policy identity");
+        "cache key should include access-policy identity");
 
     return true;
 }
@@ -894,9 +894,9 @@ bool test_semantics_revision_change_invalidates_auto_range_cache()
         &cache);
 
     TEST_ASSERT(range.first == 8.0f && range.second == 10.0f,
-                "semantics revision change should force a fresh query result");
+        "semantics revision change should force a fresh query result");
     TEST_ASSERT(source->query_calls == 2,
-                "cache key should include explicit semantics revision");
+        "cache key should include explicit semantics revision");
 
     return true;
 }
@@ -921,7 +921,7 @@ bool test_removed_series_prunes_auto_range_cache()
         true,
         &cache);
     TEST_ASSERT(cache.main_entries.size() == 1,
-                "first query should populate one cache entry");
+        "first query should populate one cache entry");
 
     std::map<int, std::shared_ptr<const series_data_t>> empty_series;
     (void)plot::detail::resolve_main_v_range(
@@ -931,7 +931,7 @@ bool test_removed_series_prunes_auto_range_cache()
         true,
         &cache);
     TEST_ASSERT(cache.main_entries.empty(),
-                "removed series should be pruned from auto-range cache");
+        "removed series should be pruned from auto-range cache");
 
     return true;
 }
@@ -959,13 +959,13 @@ bool test_preview_auto_range_uses_preview_query_source()
         config);
 
     TEST_ASSERT(range.first == -2.0f && range.second == 11.0f,
-                "preview auto-range should use the preview source query");
+        "preview auto-range should use the preview source query");
     TEST_ASSERT(main_source->query_calls == 0,
-                "preview resolver should not query the main source when a preview source is set");
+        "preview resolver should not query the main source when a preview source is set");
     TEST_ASSERT(preview_source->query_calls == 1,
-                "preview resolver should query preview source");
+        "preview resolver should query preview source");
     TEST_ASSERT(preview_source->snapshot_calls == 0,
-                "READY preview query should avoid snapshot fallback");
+        "READY preview query should avoid snapshot fallback");
 
     return true;
 }
@@ -1010,19 +1010,19 @@ bool test_frame_range_planner_populates_ranges_and_reuses_cache()
         true);
 
     TEST_ASSERT(first.main_v_range.valid && first.main_v_range.min == 2.0f &&
-                    first.main_v_range.max == 5.0f,
+        first.main_v_range.max == 5.0f,
                 "frame planner should populate the main range plan");
     TEST_ASSERT(first.preview_v_range.valid && first.preview_v_range.min == -2.0f &&
-                    first.preview_v_range.max == 11.0f,
+        first.preview_v_range.max == 11.0f,
                 "frame planner should populate the preview range plan");
     TEST_ASSERT(second.main_v_range.min == 2.0f && second.main_v_range.max == 5.0f,
-                "frame planner should reuse cached main range values");
+        "frame planner should reuse cached main range values");
     TEST_ASSERT(second.preview_v_range.min == -2.0f && second.preview_v_range.max == 11.0f,
-                "frame planner should reuse cached preview range values");
+        "frame planner should reuse cached preview range values");
     TEST_ASSERT(main_source->query_calls == 1,
-                "frame planner should preserve main range cache reuse");
+        "frame planner should preserve main range cache reuse");
     TEST_ASSERT(preview_source->query_calls == 1,
-                "frame planner should preserve preview range cache reuse");
+        "frame planner should preserve preview range cache reuse");
 
     main_source->query_range            = {-4.0f, 12.0f};
     main_source->query_sequence         = 10;
@@ -1035,12 +1035,12 @@ bool test_frame_range_planner_populates_ranges_and_reuses_cache()
         true);
 
     TEST_ASSERT(after_sequence_change.main_v_range.min == -4.0f &&
-                    after_sequence_change.main_v_range.max == 12.0f,
+        after_sequence_change.main_v_range.max == 12.0f,
                 "frame planner should preserve sequence-based main cache invalidation");
     TEST_ASSERT(main_source->query_calls == 2,
-                "main sequence change should force a fresh planner query");
+        "main sequence change should force a fresh planner query");
     TEST_ASSERT(preview_source->query_calls == 1,
-                "unchanged preview range should remain cached");
+        "unchanged preview range should remain cached");
 
     return true;
 }
@@ -1071,13 +1071,13 @@ bool test_frame_range_planner_skips_preview_when_disabled()
         false);
 
     TEST_ASSERT(plan.main_v_range.min == 1.0f && plan.main_v_range.max == 4.0f,
-                "disabled-preview planner should still compute the main range");
+        "disabled-preview planner should still compute the main range");
     TEST_ASSERT(plan.preview_v_range.min == 1.0f && plan.preview_v_range.max == 4.0f,
-                "disabled-preview planner should mirror the main range");
+        "disabled-preview planner should mirror the main range");
     TEST_ASSERT(main_source->query_calls == 1,
-                "disabled-preview planner should query the main source");
+        "disabled-preview planner should query the main source");
     TEST_ASSERT(preview_source->query_calls == 0,
-                "disabled-preview planner should not query preview sources");
+        "disabled-preview planner should not query preview sources");
 
     return true;
 }
@@ -1108,11 +1108,11 @@ bool test_frame_range_planner_preserves_step_after_visible_scan()
         false);
 
     TEST_ASSERT(plan.main_v_range.min == -3.0f && plan.main_v_range.max == 8.0f,
-                "frame planner should preserve visible STEP_AFTER held-sample scan behavior");
+        "frame planner should preserve visible STEP_AFTER held-sample scan behavior");
     TEST_ASSERT(source->query_calls == 1,
-                "frame planner should try query_v_range before step-after scan fallback");
+        "frame planner should try query_v_range before step-after scan fallback");
     TEST_ASSERT(source->snapshot_calls == 1,
-                "unsupported step-after query should fall back to one snapshot scan");
+        "unsupported step-after query should fall back to one snapshot scan");
 
     return true;
 }
@@ -1133,11 +1133,11 @@ bool test_manual_range_skips_queries()
         false);
 
     TEST_ASSERT(range.first == cfg.v_manual_min && range.second == cfg.v_manual_max,
-                "manual v-range should return manual config values");
+        "manual v-range should return manual config values");
     TEST_ASSERT(source->query_calls == 0,
-                "manual v-range should not query sources");
+        "manual v-range should not query sources");
     TEST_ASSERT(source->snapshot_calls == 0,
-                "manual v-range should not snapshot sources");
+        "manual v-range should not snapshot sources");
 
     return true;
 }

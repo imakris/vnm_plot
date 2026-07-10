@@ -385,10 +385,10 @@ bool test_direct_time_window_query_drives_renderer_window()
     TEST_ASSERT(source->snapshot_calls == 1,
         "direct time-window planning should still acquire one paired frame snapshot");
     TEST_ASSERT(source->last_query_time_window.min_ns == ctx.t0 &&
-            source->last_query_time_window.max_ns == ctx.t1,
+        source->last_query_time_window.max_ns == ctx.t1,
         "direct time-window query should receive the renderer view range");
     TEST_ASSERT(state->last_timestamp_window_search ==
-            plot::detail::Timestamp_window_search::QUERY,
+        plot::detail::Timestamp_window_search::QUERY,
         "direct time-window query should bypass local timestamp search");
     TEST_ASSERT(state->last_first == 39,
         "renderer planner should expand direct query with a predecessor sample");
@@ -433,8 +433,8 @@ bool test_direct_time_window_query_receives_access_semantics()
 
         TEST_ASSERT(state, "expected planner state for member semantics query test");
         TEST_ASSERT(!source->last_query_semantics_key.conservative &&
-                source->last_query_semantics_key.value == expected_key.value &&
-                source->last_query_semantics_key.revision == expected_key.revision,
+            source->last_query_semantics_key.value == expected_key.value &&
+            source->last_query_semantics_key.revision == expected_key.revision,
             "direct time-window query should receive member-pointer semantics");
     }
 
@@ -459,8 +459,8 @@ bool test_direct_time_window_query_receives_access_semantics()
         TEST_ASSERT(source->query_calls == 1,
             "explicit semantics direct-window source should be queried once");
         TEST_ASSERT(!source->last_query_semantics_key.conservative &&
-                source->last_query_semantics_key.value == expected_key.value &&
-                source->last_query_semantics_key.revision == 9,
+            source->last_query_semantics_key.value == expected_key.value &&
+            source->last_query_semantics_key.revision == 9,
             "direct time-window query should receive explicit semantics revision");
     }
 
@@ -502,7 +502,7 @@ bool test_direct_time_window_empty_falls_back_to_renderer_padding()
     TEST_ASSERT(source->query_calls == 1,
         "direct empty query should be attempted once");
     TEST_ASSERT(state->last_timestamp_window_search ==
-            plot::detail::Timestamp_window_search::BINARY,
+        plot::detail::Timestamp_window_search::BINARY,
         "direct empty query should fall back to local renderer padding");
     TEST_ASSERT(state->last_first == 0 && state->last_source_count == 2,
         "direct empty query fallback should keep adjacent renderer samples");
@@ -543,7 +543,7 @@ bool test_direct_time_window_single_match_expands_for_linear_segments()
 
     TEST_ASSERT(state, "expected planner state for direct single-match query test");
     TEST_ASSERT(state->last_timestamp_window_search ==
-            plot::detail::Timestamp_window_search::QUERY,
+        plot::detail::Timestamp_window_search::QUERY,
         "direct single-match query should still drive renderer planning");
     TEST_ASSERT(state->last_first == 0 && state->last_source_count == 2,
         "direct single-match query should expand to draw the visible segment");
@@ -588,15 +588,15 @@ bool test_direct_time_window_hold_forward_synthesizes_terminal_sample()
     TEST_ASSERT(source->query_calls == 1,
         "direct hold-forward source should be queried by renderer planning");
     TEST_ASSERT(state->last_timestamp_window_search ==
-            plot::detail::Timestamp_window_search::QUERY,
+        plot::detail::Timestamp_window_search::QUERY,
         "direct hold-forward query should drive renderer planning");
     TEST_ASSERT(state->last_first == source->query_window.first,
         "direct hold-forward query should keep the queried source sample");
     TEST_ASSERT(state->last_source_count == 1,
         "direct hold-forward query should keep one real source sample");
     TEST_ASSERT(state->last_synthetic_hold_count == 1 &&
-            state->last_count == 2 &&
-            state->last_hold_last_forward,
+        state->last_count == 2 &&
+        state->last_hold_last_forward,
         "direct hold-forward query should synthesize the terminal GPU sample");
 
     return true;
@@ -635,7 +635,7 @@ bool test_direct_time_window_sequence_mismatch_falls_back_to_snapshot_scan()
     TEST_ASSERT(source->snapshot_calls == 1,
         "sequence mismatch fallback should reuse the acquired frame snapshot");
     TEST_ASSERT(state->last_timestamp_window_search ==
-            plot::detail::Timestamp_window_search::BINARY,
+        plot::detail::Timestamp_window_search::BINARY,
         "sequence mismatch should fall back to local snapshot search");
     TEST_ASSERT(state->last_first == 39,
         "sequence mismatch must not pair stale query metadata with the snapshot");
@@ -679,7 +679,7 @@ bool test_direct_time_window_failed_status_suppresses_snapshot_fallback()
     TEST_ASSERT(source->snapshot_calls == 1,
         "failed direct query still needs the paired snapshot sequence check");
     TEST_ASSERT(state->last_timestamp_window_search ==
-            plot::detail::Timestamp_window_search::QUERY,
+        plot::detail::Timestamp_window_search::QUERY,
         "failed direct query should remain authoritative for the matched sequence");
     TEST_ASSERT(state->last_count == 0,
         "failed direct query must not fall back and draw local snapshot samples");
@@ -721,7 +721,7 @@ bool test_direct_time_window_unsupported_falls_back_to_snapshot_scan()
     TEST_ASSERT(source->snapshot_calls == 1,
         "unsupported direct query fallback should take the normal snapshot");
     TEST_ASSERT(state->last_timestamp_window_search ==
-            plot::detail::Timestamp_window_search::BINARY,
+        plot::detail::Timestamp_window_search::BINARY,
         "unsupported direct query should fall back to local snapshot search");
     TEST_ASSERT(state->last_first == 39,
         "unsupported direct query must not drive the renderer window");
@@ -1108,10 +1108,10 @@ bool test_frame_scoped_cache_reuse()
     renderer.render(ctx, series_map);
 
     TEST_ASSERT(data_source->snapshot_calls == 1,
-                std::string("expected shared snapshot between main and preview views, got ") +
-                    std::to_string(data_source->snapshot_calls));
+        std::string("expected shared snapshot between main and preview views, got ") +
+            std::to_string(data_source->snapshot_calls));
     TEST_ASSERT(data_source->last_hold.expired(),
-                "expected frame-scoped snapshot hold to release after render");
+        "expected frame-scoped snapshot hold to release after render");
 
     return true;
 }
@@ -1160,9 +1160,9 @@ bool test_preview_uses_distinct_source_snapshot()
     renderer.render(ctx, series_map);
 
     TEST_ASSERT(main_source->snapshot_calls == 1,
-                "expected main source snapshot call");
+        "expected main source snapshot call");
     TEST_ASSERT(preview_source->snapshot_calls == 1,
-                "expected preview source snapshot call");
+        "expected preview source snapshot call");
 
     return true;
 }
@@ -1205,9 +1205,9 @@ bool test_preview_disabled_skips_preview_snapshot()
     renderer.render(ctx, series_map);
 
     TEST_ASSERT(main_source->snapshot_calls == 1,
-                "expected main source snapshot call");
+        "expected main source snapshot call");
     TEST_ASSERT(preview_source->snapshot_calls == 0,
-                "expected preview source to be skipped when preview disabled");
+        "expected preview source to be skipped when preview disabled");
 
     return true;
 }
@@ -1246,7 +1246,7 @@ bool test_frame_change_invalidates_snapshot_cache()
     renderer.render(ctx, series_map);
 
     TEST_ASSERT(data_source->snapshot_calls == 2,
-                "expected snapshot refresh on frame change");
+        "expected snapshot refresh on frame change");
 
     return true;
 }
@@ -1284,21 +1284,21 @@ bool test_empty_window_behavior_invalidates_fast_path_cache()
 
     renderer.render(ctx, series_map);
     TEST_ASSERT(data_source->snapshot_calls == 1,
-                "expected first render to take one snapshot");
+        "expected first render to take one snapshot");
     auto state_it = renderer.m_vbo_states.find(series_id);
     TEST_ASSERT(state_it != renderer.m_vbo_states.end(),
-                "expected vbo state for test series");
+        "expected vbo state for test series");
     // QRhi-less tests seed upload state to exercise the CPU fast-path conditions in plan_view().
     state_it->second.main_view.has_uploaded_vbo = true;
 
     renderer.render(ctx, series_map);
     TEST_ASSERT(data_source->snapshot_calls == 1,
-                "expected fast-path cache hit to skip snapshot");
+        "expected fast-path cache hit to skip snapshot");
 
     series->empty_window_behavior = Empty_window_behavior::HOLD_LAST_FORWARD;
     renderer.render(ctx, series_map);
     TEST_ASSERT(data_source->snapshot_calls == 2,
-                "expected empty_window_behavior change to invalidate fast-path cache");
+        "expected empty_window_behavior change to invalidate fast-path cache");
 
     return true;
 }
@@ -1340,11 +1340,11 @@ bool test_preview_honors_hold_last_forward()
     renderer.render(ctx, series_map);
     auto state_it = renderer.m_vbo_states.find(series_id);
     TEST_ASSERT(state_it != renderer.m_vbo_states.end(),
-                "expected vbo state for preview hold-forward test");
+        "expected vbo state for preview hold-forward test");
     TEST_ASSERT(state_it->second.preview_view.planner,
-                "expected preview planner state for preview hold-forward test");
+        "expected preview planner state for preview hold-forward test");
     TEST_ASSERT(planner_state(state_it->second.preview_view).last_hold_last_forward,
-                "preview should honor HOLD_LAST_FORWARD behavior");
+        "preview should honor HOLD_LAST_FORWARD behavior");
 
     return true;
 }
@@ -1380,9 +1380,9 @@ bool test_lod_level_separation()
     renderer.render(ctx_wide, series_map);
 
     TEST_ASSERT(data_source->snapshot_calls[0] >= 1,
-                "expected LOD0 snapshot at wide width");
+        "expected LOD0 snapshot at wide width");
     TEST_ASSERT(data_source->snapshot_calls[1] == 0,
-                "did not expect LOD1 snapshot at wide width");
+        "did not expect LOD1 snapshot at wide width");
 
     frame_layout_result_t layout_narrow;
     layout_narrow.usable_width  = 20.0;
@@ -1395,7 +1395,7 @@ bool test_lod_level_separation()
     renderer.render(ctx_narrow, series_map);
 
     TEST_ASSERT(data_source->snapshot_calls[1] >= 1,
-                "expected LOD1 snapshot at narrow width");
+        "expected LOD1 snapshot at narrow width");
 
     return true;
 }
@@ -1641,7 +1641,7 @@ bool test_upload_invalidates_when_origin_changes_across_snap_bucket()
         planner_state(state_it->second.main_view).uploaded_t_origin_ns;
     TEST_ASSERT(origin_after_frame3 == k_one_second_ns,
         std::string("expected origin to advance to 1 s bucket after t_min "
-                    "crosses snap boundary, got ") +
+            "crosses snap boundary, got ") +
         std::to_string(origin_after_frame3));
     TEST_ASSERT(origin_after_frame3 != origin_after_frame1,
         "origin must change when t_min crosses a snap-step boundary");
@@ -1749,7 +1749,7 @@ bool test_renderer_assigns_distinct_origins_to_main_and_preview()
         std::to_string(expected_preview_origin));
     TEST_ASSERT(main_origin != preview_origin,
         std::string("main and preview must record different origins when "
-                    "their spans land in different snap buckets; got main=") +
+            "their spans land in different snap buckets; got main=") +
         std::to_string(main_origin) + ", preview=" +
         std::to_string(preview_origin));
 
@@ -1795,7 +1795,7 @@ bool test_render_skips_invalid_series()
     renderer.render(ctx, series_map);
 
     TEST_ASSERT(data_source->snapshot_calls == 0,
-                "expected disabled series to skip snapshots");
+        "expected disabled series to skip snapshots");
 
     return true;
 }

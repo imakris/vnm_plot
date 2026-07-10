@@ -25,7 +25,7 @@ bool finite_ordered(const glm::vec4& bounds)
         std::isfinite(bounds.y) &&
         std::isfinite(bounds.z) &&
         std::isfinite(bounds.w) &&
-        bounds.z > bounds.x &&
+        bounds.z > bounds.x     &&
         bounds.w > bounds.y;
 }
 

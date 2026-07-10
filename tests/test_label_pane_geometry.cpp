@@ -33,11 +33,11 @@ bool rect_equal(const glm::vec4& lhs, const glm::vec4& rhs)
 bool scissor_inside_frame(const plot::text_scissor_t& scissor, int width, int height)
 {
     return
-        scissor.enabled &&
-        scissor.x >= 0 &&
-        scissor.y >= 0 &&
-        scissor.width > 0 &&
-        scissor.height > 0 &&
+        scissor.enabled                    &&
+        scissor.x >= 0                     &&
+        scissor.y >= 0                     &&
+        scissor.width > 0                  &&
+        scissor.height > 0                 &&
         scissor.x + scissor.width <= width &&
         scissor.y + scissor.height <= height;
 }
@@ -88,7 +88,7 @@ bool test_no_preview_horizontal_pane_scissor_reaches_frame_bottom()
 
     plot::text_scissor_t scissor;
     TEST_ASSERT(plot::detail::framebuffer_scissor_from_top_left_rect(
-            horizontal, ctx.win_w, ctx.win_h, scissor),
+        horizontal, ctx.win_w, ctx.win_h, scissor),
         "horizontal axis label pane must convert to an in-frame scissor");
     TEST_ASSERT(scissor.x == 0 && scissor.y == 0 && scissor.width == 900 && scissor.height == 34,
         "frame-bottom horizontal pane must map to QRhi y=0 scissor");
@@ -121,7 +121,7 @@ bool test_partial_overflow_horizontal_pane_clamps_to_frame_bottom()
 
     plot::text_scissor_t scissor;
     TEST_ASSERT(plot::detail::framebuffer_scissor_from_top_left_rect(
-            horizontal, ctx.win_w, ctx.win_h, scissor),
+        horizontal, ctx.win_w, ctx.win_h, scissor),
         "partial-overflow horizontal pane must convert to an in-frame scissor");
     TEST_ASSERT(scissor.x == 0 && scissor.y == 0 && scissor.width == ctx.win_w,
         "partial-overflow horizontal pane scissor must span the frame bottom edge");
@@ -155,10 +155,10 @@ bool test_partial_overflow_vertical_pane_clamps_to_frame_right()
 
     plot::text_scissor_t scissor;
     TEST_ASSERT(plot::detail::framebuffer_scissor_from_top_left_rect(
-            vertical, ctx.win_w, ctx.win_h, scissor),
+        vertical, ctx.win_w, ctx.win_h, scissor),
         "partial-overflow vertical pane must convert to an in-frame scissor");
     TEST_ASSERT(scissor.x == static_cast<int>(layout.usable_width) &&
-            scissor.y == ctx.win_h - static_cast<int>(layout.usable_height),
+        scissor.y == ctx.win_h - static_cast<int>(layout.usable_height),
         "partial-overflow vertical pane scissor must keep the expected QRhi origin");
     TEST_ASSERT(scissor.width > 0 && scissor.width < layout.v_bar_width,
         "partial-overflow vertical pane scissor must be smaller than the full label lane");
@@ -186,7 +186,7 @@ bool test_standard_vertical_pane_scissor_maps_to_qrhi_coordinates()
 
     plot::text_scissor_t scissor;
     TEST_ASSERT(plot::detail::framebuffer_scissor_from_top_left_rect(
-            vertical, ctx.win_w, ctx.win_h, scissor),
+        vertical, ctx.win_w, ctx.win_h, scissor),
         "standard vertical axis label pane must convert to an in-frame scissor");
     TEST_ASSERT(scissor.y == 120 && scissor.height == 360,
         "standard vertical pane must map to the expected QRhi y and height");
@@ -221,21 +221,21 @@ bool test_invalid_inputs_fail_closed()
     plot::text_scissor_t scissor;
     scissor.enabled = true;
     TEST_ASSERT(!plot::detail::framebuffer_scissor_from_top_left_rect(
-            glm::vec4(0.0f, nan, 40.0f, 60.0f), 100, 80, scissor),
+        glm::vec4(0.0f, nan, 40.0f, 60.0f), 100, 80, scissor),
         "NaN rect must fail closed");
     TEST_ASSERT(!scissor.enabled,
         "NaN rect failure must disable the scissor");
 
     scissor.enabled = true;
     TEST_ASSERT(!plot::detail::framebuffer_scissor_from_top_left_rect(
-            glm::vec4(0.0f, 10.0f, infinity, 60.0f), 100, 80, scissor),
+        glm::vec4(0.0f, 10.0f, infinity, 60.0f), 100, 80, scissor),
         "infinite rect must fail closed");
     TEST_ASSERT(!scissor.enabled,
         "infinite rect failure must disable the scissor");
 
     scissor.enabled = true;
     TEST_ASSERT(!plot::detail::framebuffer_scissor_from_top_left_rect(
-            glm::vec4(0.0f, 10.0f, 40.0f, 60.0f), 0, 0, scissor),
+        glm::vec4(0.0f, 10.0f, 40.0f, 60.0f), 0, 0, scissor),
         "zero-size window must fail closed");
     TEST_ASSERT(!scissor.enabled,
         "zero-size window failure must disable the scissor");
@@ -259,7 +259,7 @@ bool test_degenerate_and_offscreen_panes_fail_closed()
 {
     plot::text_scissor_t scissor;
     TEST_ASSERT(!plot::detail::framebuffer_scissor_from_top_left_rect(
-            glm::vec4(10.2f, 10.0f, 10.8f, 30.0f), 100, 80, scissor),
+        glm::vec4(10.2f, 10.0f, 10.8f, 30.0f), 100, 80, scissor),
         "subpixel-width rect with no covered integer pixels must fail closed");
     TEST_ASSERT(!scissor.enabled,
         "failed degenerate scissor must be disabled");

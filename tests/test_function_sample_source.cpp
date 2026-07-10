@@ -113,7 +113,7 @@ bool test_function_sample_policy_uses_callable_manual_keys()
     TEST_ASSERT(erased.layout_key == policy.layout_key,
         "erased function sample policy should preserve layout key");
     TEST_ASSERT(!erased_key.conservative &&
-            erased_key.value == policy.semantics_key.value,
+        erased_key.value == policy.semantics_key.value,
         "erased function sample policy should preserve explicit semantics key");
     TEST_ASSERT(erased.get_timestamp(&sample) == k_expected_timestamp_ns,
         "erased function sample timestamp accessor mismatch");

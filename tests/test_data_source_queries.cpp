@@ -157,11 +157,12 @@ bool test_query_v_range_without_access_is_unsupported()
 
 bool test_ready_value_range_scan_populates_sequence()
 {
-    Query_source source({
-        { 0, 3.0f  },
-        { 1, -2.0f },
-        { 2, 5.0f  },
-    });
+    Query_source source(
+        {
+            { 0, 3.0f  },
+            { 1, -2.0f },
+            { 2, 5.0f  },
+            });
     source.set_sequence(123);
 
     const plot::Data_access_policy access = make_value_access();
@@ -243,11 +244,12 @@ bool test_ascending_skip_hold_value_range_scans_bounded_prefix()
 
 bool test_unordered_value_range_aggregates_discontiguous_matches()
 {
-    Query_source source({
-        { 0,   1.0f   },
-        { 100, 100.0f },
-        { 5,   2.0f   },
-    });
+    Query_source source(
+        {
+            { 0,   1.0f   },
+            { 100, 100.0f },
+            { 5,   2.0f   },
+            });
     source.set_time_order(plot::Time_order::UNORDERED);
 
     const plot::Data_access_policy access = make_value_access();
@@ -319,12 +321,13 @@ bool test_nonfinite_values_are_skipped_or_zeroed_by_policy()
 
     const plot::Data_access_policy access = make_value_access();
 
-    Query_source mixed_source({
-        { 0, 5.0f  },
-        { 1, nan   },
-        { 2, -2.0f },
-        { 3, inf   },
-    });
+    Query_source mixed_source(
+        {
+            { 0, 5.0f  },
+            { 1, nan   },
+            { 2, -2.0f },
+            { 3, inf   },
+            });
     const auto default_query = make_query(access, 0, 3);
     TEST_ASSERT(default_query.nonfinite_policy == plot::Nonfinite_sample_policy::BREAK_SEGMENT,
         "query default nonfinite policy should be BREAK_SEGMENT");
@@ -336,10 +339,11 @@ bool test_nonfinite_values_are_skipped_or_zeroed_by_policy()
     TEST_ASSERT(default_result.value.min == -2.0f && default_result.value.max == 5.0f,
         "nonfinite values should not contribute to the default aggregate range");
 
-    Query_source nonfinite_source({
-        { 0, nan },
-        { 1, inf },
-    });
+    Query_source nonfinite_source(
+        {
+            { 0, nan },
+            { 1, inf },
+            });
     auto replace_query = make_query(access, 0, 1);
     replace_query.nonfinite_policy = plot::Nonfinite_sample_policy::REPLACE_WITH_ZERO;
     const auto replace_result = nonfinite_source.query_v_range(0, replace_query);
@@ -385,13 +389,14 @@ bool test_query_time_window_returns_simple_ascending_window()
 
 bool test_query_time_window_handles_descending_inclusive_bounds()
 {
-    Query_source source({
-        { 9, 9.0f },
-        { 7, 7.0f },
-        { 5, 5.0f },
-        { 3, 3.0f },
-        { 1, 1.0f },
-    });
+    Query_source source(
+        {
+            { 9, 9.0f },
+            { 7, 7.0f },
+            { 5, 5.0f },
+            { 3, 3.0f },
+            { 1, 1.0f },
+            });
     source.set_time_order(plot::Time_order::DESCENDING);
 
     const plot::Data_access_policy access = make_timestamp_access();
@@ -406,12 +411,13 @@ bool test_query_time_window_handles_descending_inclusive_bounds()
 
 bool test_query_time_window_hold_forward_includes_held_sample()
 {
-    Query_source source({
-        { 0,  0.0f  },
-        { 10, 10.0f },
-        { 20, 20.0f },
-        { 30, 30.0f },
-    });
+    Query_source source(
+        {
+            { 0,  0.0f  },
+            { 10, 10.0f },
+            { 20, 20.0f },
+            { 30, 30.0f },
+            });
     source.set_time_order(plot::Time_order::ASCENDING);
 
     const plot::Data_access_policy access = make_timestamp_access();
@@ -427,11 +433,12 @@ bool test_query_time_window_hold_forward_includes_held_sample()
 bool test_query_time_window_keeps_break_segment_gaps_in_window()
 {
     const float nan = std::numeric_limits<float>::quiet_NaN();
-    Query_source source({
-        { 0, 1.0f },
-        { 1, nan  },
-        { 2, 2.0f },
-    });
+    Query_source source(
+        {
+            { 0, 1.0f },
+            { 1, nan  },
+            { 2, 2.0f },
+            });
     source.set_time_order(plot::Time_order::ASCENDING);
 
     const plot::Data_access_policy access = make_value_access();
@@ -447,11 +454,12 @@ bool test_query_time_window_keeps_break_segment_gaps_in_window()
 bool test_query_time_window_reject_window_fails_on_nonfinite_in_window_sample()
 {
     const float nan = std::numeric_limits<float>::quiet_NaN();
-    Query_source source({
-        { 0, 1.0f },
-        { 1, nan  },
-        { 2, 2.0f },
-    });
+    Query_source source(
+        {
+            { 0, 1.0f },
+            { 1, nan  },
+            { 2, 2.0f },
+            });
     source.set_time_order(plot::Time_order::ASCENDING);
 
     const plot::Data_access_policy access = make_value_access();
@@ -467,10 +475,11 @@ bool test_query_time_window_reject_window_fails_on_nonfinite_in_window_sample()
 bool test_query_time_window_does_not_hold_nonfinite_break_segment_sample()
 {
     const float nan = std::numeric_limits<float>::quiet_NaN();
-    Query_source source({
-        { 0, 7.0f },
-        { 2, nan },
-    });
+    Query_source source(
+        {
+            { 0, 7.0f },
+            { 2, nan },
+            });
     source.set_time_order(plot::Time_order::ASCENDING);
 
     const plot::Data_access_policy access = make_value_access();
@@ -484,10 +493,11 @@ bool test_query_time_window_does_not_hold_nonfinite_break_segment_sample()
 bool test_query_time_window_skip_holds_latest_drawable_sample()
 {
     const float nan = std::numeric_limits<float>::quiet_NaN();
-    Query_source source({
-        { 0, 7.0f },
-        { 2, nan },
-    });
+    Query_source source(
+        {
+            { 0, 7.0f },
+            { 2, nan },
+            });
     source.set_time_order(plot::Time_order::ASCENDING);
 
     const plot::Data_access_policy access = make_value_access();
@@ -505,10 +515,11 @@ bool test_query_time_window_skip_holds_latest_drawable_sample()
 bool test_query_time_window_reject_window_fails_on_nonfinite_held_sample()
 {
     const float nan = std::numeric_limits<float>::quiet_NaN();
-    Query_source source({
-        { 0, 7.0f },
-        { 2, nan },
-    });
+    Query_source source(
+        {
+            { 0, 7.0f },
+            { 2, nan },
+            });
     source.set_time_order(plot::Time_order::ASCENDING);
 
     const plot::Data_access_policy access = make_value_access();
@@ -523,11 +534,12 @@ bool test_query_time_window_reject_window_fails_on_nonfinite_held_sample()
 
 bool test_hold_forward_value_range_includes_pre_window_sample()
 {
-    Query_source source({
-        { 0, 10.0f },
-        { 5, 1.0f  },
-        { 6, 2.0f  },
-    });
+    Query_source source(
+        {
+            { 0, 10.0f },
+            { 5, 1.0f  },
+            { 6, 2.0f  },
+            });
     source.set_time_order(plot::Time_order::ASCENDING);
 
     const plot::Data_access_policy access = make_value_access();
@@ -542,10 +554,11 @@ bool test_hold_forward_value_range_includes_pre_window_sample()
 
 bool test_hold_forward_value_range_ready_from_held_sample_only()
 {
-    Query_source source({
-        { 0, 7.0f },
-        { 2, 9.0f },
-    });
+    Query_source source(
+        {
+            { 0, 7.0f },
+            { 2, 9.0f },
+            });
     source.set_time_order(plot::Time_order::ASCENDING);
 
     const plot::Data_access_policy access = make_value_access();
@@ -561,10 +574,11 @@ bool test_hold_forward_value_range_ready_from_held_sample_only()
 bool test_hold_forward_does_not_use_nonfinite_break_segment_sample()
 {
     const float nan = std::numeric_limits<float>::quiet_NaN();
-    Query_source source({
-        { 0, 7.0f },
-        { 2, nan },
-    });
+    Query_source source(
+        {
+            { 0, 7.0f },
+            { 2, nan },
+            });
     source.set_time_order(plot::Time_order::ASCENDING);
 
     const plot::Data_access_policy access = make_value_access();
@@ -578,10 +592,11 @@ bool test_hold_forward_does_not_use_nonfinite_break_segment_sample()
 bool test_hold_forward_skip_uses_latest_drawable_pre_window_sample()
 {
     const float nan = std::numeric_limits<float>::quiet_NaN();
-    Query_source source({
-        { 0, 7.0f },
-        { 2, nan },
-    });
+    Query_source source(
+        {
+            { 0, 7.0f },
+            { 2, nan },
+            });
     source.set_time_order(plot::Time_order::ASCENDING);
 
     const plot::Data_access_policy access = make_value_access();
@@ -599,10 +614,11 @@ bool test_hold_forward_skip_uses_latest_drawable_pre_window_sample()
 bool test_hold_forward_reject_window_fails_on_nonfinite_held_candidate()
 {
     const float nan = std::numeric_limits<float>::quiet_NaN();
-    Query_source source({
-        { 0, 7.0f },
-        { 2, nan },
-    });
+    Query_source source(
+        {
+            { 0, 7.0f },
+            { 2, nan },
+            });
     source.set_time_order(plot::Time_order::ASCENDING);
 
     const plot::Data_access_policy access = make_value_access();
