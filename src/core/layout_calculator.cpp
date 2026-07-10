@@ -908,7 +908,8 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
             {
                 VNM_PLOT_PROFILE_SCOPE(
                     profiler,
-                    "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis.format_labels.signature_build");
+                    "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis."
+                    "format_labels.signature_build");
                 format_signature = format_signature_cache().get_or_compute(step, t_range, params);
             }
 
@@ -941,7 +942,8 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
                 while (t <= t_max_seconds + step) {
                     VNM_PLOT_PROFILE_SCOPE(
                         profiler,
-                        "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis.format_labels.candidate_loop");
+                        "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis."
+                        "format_labels.candidate_loop");
                     const float x = x_of_t(t);
                     if (x >= right_vis) {
                         break;
@@ -964,7 +966,8 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
                     {
                         VNM_PLOT_PROFILE_SCOPE(
                             profiler,
-                            "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis.format_labels.anchor_check");
+                            "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis."
+                            "format_labels.anchor_check");
                         anchor_taken = has_anchor_within(accepted, x, k_coincide);
                     }
 
@@ -988,24 +991,29 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
                     if (cache_hit) {
                         VNM_PLOT_PROFILE_SCOPE(
                             profiler,
-                            "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis.format_labels.cache_hit_lookup");
+                            "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis."
+                            "format_labels.cache_hit_lookup");
                         VNM_PLOT_PROFILE_SCOPE(
                             profiler,
-                            "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis.format_labels.cache_hit_count");
+                            "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis."
+                            "format_labels.cache_hit_count");
                         w = cached->width;
                     }
                     else {
                         VNM_PLOT_PROFILE_SCOPE(
                             profiler,
-                            "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis.format_labels.cache_miss_lookup");
+                            "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis."
+                            "format_labels.cache_miss_lookup");
                         VNM_PLOT_PROFILE_SCOPE(
                             profiler,
-                            "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis.format_labels.cache_miss_count");
+                            "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis."
+                            "format_labels.cache_miss_count");
                         std::string label;
                         {
                             VNM_PLOT_PROFILE_SCOPE(
                                 profiler,
-                                "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis.format_labels.format_timestamp");
+                                "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis."
+                                "format_labels.format_timestamp");
                             label = label_text(t, step);
                         }
 
@@ -1016,7 +1024,8 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
                         if (params.measure_text_func) {
                             VNM_PLOT_PROFILE_SCOPE(
                                 profiler,
-                                "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis.format_labels.measure_text");
+                                "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis."
+                                "format_labels.measure_text");
                             w = params.measure_text_func(label.c_str());
                             if (w <= 0.f && advance > 0.f) {
                                 w = advance * float(label.size());
@@ -1083,7 +1092,8 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
                 {
                     VNM_PLOT_PROFILE_SCOPE(
                         profiler,
-                        "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis.arrange_labels.anchor_filter");
+                        "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis."
+                        "arrange_labels.anchor_filter");
                     auto write_it = candidates.begin();
                     for (auto it = candidates.begin(); it != candidates.end(); ++it) {
                         const bool anchor_taken = has_anchor_within(accepted, it->x_anchor, k_coincide);

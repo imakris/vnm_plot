@@ -87,7 +87,11 @@ class Plot_widget : public QQuickRhiItem
     Q_PROPERTY(double scaling_factor READ scaling_factor NOTIFY scaling_factor_changed)
     Q_PROPERTY(bool dark_mode READ dark_mode WRITE set_dark_mode NOTIFY dark_mode_changed)
     Q_PROPERTY(double grid_visibility READ grid_visibility WRITE set_grid_visibility NOTIFY grid_visibility_changed)
-    Q_PROPERTY(double preview_visibility READ preview_visibility WRITE set_preview_visibility NOTIFY preview_visibility_changed)
+    Q_PROPERTY(
+        double preview_visibility
+        READ preview_visibility
+        WRITE set_preview_visibility
+        NOTIFY preview_visibility_changed)
     Q_PROPERTY(double line_width_px READ line_width_px WRITE set_line_width_px NOTIFY line_width_px_changed)
     Q_PROPERTY(double vbar_width_px READ vbar_width_pixels NOTIFY vbar_width_changed)
     Q_PROPERTY(double vbar_width_qml READ vbar_width_qml NOTIFY vbar_width_changed)

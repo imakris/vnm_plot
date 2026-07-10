@@ -107,8 +107,8 @@ struct Plot_config
     // --- Theme ---
     bool                                       dark_mode           = false;
     bool                                       show_text           = true;
-    double                                     grid_visibility     = 1.0; // 0..1 alpha; 0 = hidden (skipped), 1 = fully visible
-    double                                     preview_visibility  = 1.0; // 0..1 alpha; 0 = hidden (skipped), 1 = fully visible
+    double                                     grid_visibility     = 1.0; // [0, 1] alpha; zero skips rendering
+    double                                     preview_visibility  = 1.0; // [0, 1] alpha; zero skips rendering
     Color_palette                              dark_color_palette  = Color_palette::dark();
     Color_palette                              light_color_palette = Color_palette::light();
 

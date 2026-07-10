@@ -26,8 +26,16 @@ class Plot_time_axis : public QObject
     // names end in _qml_ms to keep the unit obvious at the boundary.
     Q_PROPERTY(qint64 t_min READ t_min_qml_ms WRITE set_t_min_qml_ms NOTIFY t_limits_changed)
     Q_PROPERTY(qint64 t_max READ t_max_qml_ms WRITE set_t_max_qml_ms NOTIFY t_limits_changed)
-    Q_PROPERTY(qint64 t_available_min READ t_available_min_qml_ms WRITE set_t_available_min_qml_ms NOTIFY t_limits_changed)
-    Q_PROPERTY(qint64 t_available_max READ t_available_max_qml_ms WRITE set_t_available_max_qml_ms NOTIFY t_limits_changed)
+    Q_PROPERTY(
+        qint64 t_available_min
+        READ t_available_min_qml_ms
+        WRITE set_t_available_min_qml_ms
+        NOTIFY t_limits_changed)
+    Q_PROPERTY(
+        qint64 t_available_max
+        READ t_available_max_qml_ms
+        WRITE set_t_available_max_qml_ms
+        NOTIFY t_limits_changed)
     Q_PROPERTY(bool sync_vbar_width READ sync_vbar_width WRITE set_sync_vbar_width NOTIFY sync_vbar_width_changed)
     Q_PROPERTY(bool indicator_active READ indicator_active NOTIFY indicator_state_changed)
     Q_PROPERTY(qint64 indicator_t READ indicator_t_qml_ms NOTIFY indicator_state_changed)

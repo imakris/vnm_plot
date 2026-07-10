@@ -708,9 +708,9 @@ inline std::int64_t choose_snap_ns(std::int64_t span_ns)
     constexpr std::int64_t k_ns_per_us     = 1000LL;
     constexpr std::int64_t k_ns_per_ms     = 1000000LL;
     constexpr std::int64_t k_ns_per_second = 1000000000LL;
-    constexpr std::int64_t k_ns_per_hour   = 3600LL * k_ns_per_second;
-    constexpr std::int64_t k_ns_per_day    = 86400LL * k_ns_per_second;
-    constexpr std::int64_t k_ns_per_year   = 365LL * k_ns_per_day;
+    constexpr std::int64_t k_ns_per_hour   = k_ns_per_second * 3600LL;
+    constexpr std::int64_t k_ns_per_day    = k_ns_per_second * 86400LL;
+    constexpr std::int64_t k_ns_per_year   = k_ns_per_day * 365LL;
 
     if (span_ns <= k_ns_per_ms)     { return 1LL;             }
     if (span_ns <= k_ns_per_second) { return k_ns_per_us;     }

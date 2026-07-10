@@ -1673,8 +1673,8 @@ bool test_renderer_assigns_distinct_origins_to_main_and_preview()
     // Sparse 10-year coverage: one sample per day is enough for the
     // renderer to find data within both windows without ballooning memory.
     constexpr std::int64_t k_ns_per_second = 1'000'000'000LL;
-    constexpr std::int64_t k_ns_per_day    = 86'400LL * k_ns_per_second;
-    constexpr std::int64_t k_ns_per_hour   = 3'600LL * k_ns_per_second;
+    constexpr std::int64_t k_ns_per_day    = k_ns_per_second * 86'400LL;
+    constexpr std::int64_t k_ns_per_hour   = k_ns_per_second * 3'600LL;
     constexpr int          k_num_samples   = 365 * 10;
     data_source->samples.resize(k_num_samples);
     for (int i = 0; i < k_num_samples; ++i) {

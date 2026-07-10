@@ -182,16 +182,20 @@ bool test_lower_and_upper_bound_on_contiguous_buffer()
     // The original "3.5" probe has no integer-only equivalent; use 4 as the
     // first timestamp >= 3.5, which is what lower_bound is meant to find.
     TEST_ASSERT(
-        plot::detail::lower_bound_timestamp(samples.data(), samples.size(), sizeof(sample_t), get_ts, std::int64_t{4}) == 4,
+        plot::detail::lower_bound_timestamp(
+            samples.data(), samples.size(), sizeof(sample_t), get_ts, std::int64_t{4}) == 4,
         "lower_bound(4) should land on index 4");
     TEST_ASSERT(
-        plot::detail::lower_bound_timestamp(samples.data(), samples.size(), sizeof(sample_t), get_ts, std::int64_t{3}) == 3,
+        plot::detail::lower_bound_timestamp(
+            samples.data(), samples.size(), sizeof(sample_t), get_ts, std::int64_t{3}) == 3,
         "lower_bound(3) should land on index 3");
     TEST_ASSERT(
-        plot::detail::upper_bound_timestamp(samples.data(), samples.size(), sizeof(sample_t), get_ts, std::int64_t{3}) == 4,
+        plot::detail::upper_bound_timestamp(
+            samples.data(), samples.size(), sizeof(sample_t), get_ts, std::int64_t{3}) == 4,
         "upper_bound(3) should land on index 4");
     TEST_ASSERT(
-        plot::detail::lower_bound_timestamp(samples.data(), samples.size(), sizeof(sample_t), get_ts, std::int64_t{-5}) == 0,
+        plot::detail::lower_bound_timestamp(
+            samples.data(), samples.size(), sizeof(sample_t), get_ts, std::int64_t{-5}) == 0,
         "lower_bound below range should be 0");
     TEST_ASSERT(
         plot::detail::lower_bound_timestamp(samples.data(), samples.size(), sizeof(sample_t), get_ts, std::int64_t{100})
@@ -735,7 +739,8 @@ bool test_text_lcd_policy_helpers()
         "Qt LCD detection should win over OS detection");
     TEST_ASSERT(plot::detail::text_lcd_auto_order_from_detections(resolved_t::NONE, resolved_t::BGR) == resolved_t::BGR,
         "OS LCD detection should be used when Qt has no order");
-    TEST_ASSERT(plot::detail::text_lcd_auto_order_from_detections(resolved_t::NONE, resolved_t::NONE) == resolved_t::NONE,
+    TEST_ASSERT(plot::detail::text_lcd_auto_order_from_detections(
+        resolved_t::NONE, resolved_t::NONE) == resolved_t::NONE,
         "AUTO detection should fail closed when no source has an order");
 
     TEST_ASSERT(plot::detail::text_lcd_effective_order(auto_request, resolved_t::RGB) == resolved_t::RGB,

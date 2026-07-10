@@ -13,9 +13,21 @@ class Plot_interaction_item : public QQuickItem
 {
     Q_OBJECT
     Q_PROPERTY(Plot_widget* plot_widget READ plot_widget WRITE set_plot_widget NOTIFY plot_widget_changed REQUIRED)
-    Q_PROPERTY(Plot_widget* time_plot_widget READ time_plot_widget WRITE set_time_plot_widget NOTIFY time_plot_widget_changed)
-    Q_PROPERTY(bool pin_time_pivot_to_right READ pin_time_pivot_to_right WRITE set_pin_time_pivot_to_right NOTIFY pin_time_pivot_to_right_changed)
-    Q_PROPERTY(bool interaction_enabled READ is_interaction_enabled WRITE set_interaction_enabled NOTIFY interaction_enabled_changed)
+    Q_PROPERTY(
+        Plot_widget* time_plot_widget
+        READ time_plot_widget
+        WRITE set_time_plot_widget
+        NOTIFY time_plot_widget_changed)
+    Q_PROPERTY(
+        bool pin_time_pivot_to_right
+        READ pin_time_pivot_to_right
+        WRITE set_pin_time_pivot_to_right
+        NOTIFY pin_time_pivot_to_right_changed)
+    Q_PROPERTY(
+        bool interaction_enabled
+        READ is_interaction_enabled
+        WRITE set_interaction_enabled
+        NOTIFY interaction_enabled_changed)
 
 public:
     explicit Plot_interaction_item(QQuickItem* parent = nullptr);
