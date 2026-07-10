@@ -123,17 +123,42 @@ class CalibrationProtocolTests(unittest.TestCase):
     def test_manifest_records_fixed_protocol_and_scenarios(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             manifest = calibrate.scenario_manifest(self.make_args(Path(temporary)))
+        self.assertEqual(manifest["schema_version"], 3)
         protocol = manifest["protocol"]
         self.assertEqual(protocol["calibration_sets"], 2)
         self.assertEqual(protocol["warmup_runs_per_set"], 2)
         self.assertEqual(protocol["measured_runs_per_set"], 7)
-        self.assertEqual(protocol["sample_count"], 4)
+        self.assertEqual(protocol["context_profile_request"], "core")
+        self.assertEqual(protocol["context_sample_count"], 1)
+        self.assertEqual(protocol["context_version_request"], "3.3")
+        self.assertEqual(protocol["measured_render_sample_count"], 4)
         self.assertEqual(len(manifest["scenarios"]), 6)
         self.assertEqual(
             {scenario["rate"] for scenario in manifest["scenarios"]},
             {calibrate.FIXED_LIVE_RATE},
         )
         self.assertEqual(manifest["status"], "CALIBRATION_REVIEW_REQUIRED")
+
+    def test_fixed_render_protocol_metadata_is_enforced(self) -> None:
+        metadata = {
+            "context_profile_request": "core",
+            "context_sample_count": "1",
+            "context_version_request": "3.3",
+            "sample_count": "4",
+        }
+        calibrate.validate_fixed_render_protocol(metadata, "test-scenario")
+        invalid_values = {
+            "context_profile_request": "compatibility",
+            "context_sample_count": "4",
+            "context_version_request": "4.3",
+            "sample_count": "1",
+        }
+        for name, invalid in invalid_values.items():
+            with self.subTest(name=name):
+                tampered = dict(metadata)
+                tampered[name] = invalid
+                with self.assertRaisesRegex(RuntimeError, name):
+                    calibrate.validate_fixed_render_protocol(tampered, "test-scenario")
 
     def test_timeout_output_is_json_serializable_text(self) -> None:
         self.assertEqual(calibrate.captured_text(b"partial\xff"), "partial�")

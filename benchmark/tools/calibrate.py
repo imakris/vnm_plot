@@ -141,6 +141,11 @@ STATIC_DETERMINISTIC_ZERO_METRICS = frozenset(
     }
 )
 
+FIXED_CONTEXT_PROFILE_REQUEST = "core"
+FIXED_CONTEXT_SAMPLE_COUNT = 1
+FIXED_CONTEXT_VERSION_REQUEST = "3.3"
+FIXED_MEASURED_RENDER_SAMPLE_COUNT = 4
+
 FINGERPRINT_FIELDS = (
     "actual_graphics_backend",
     "build_cpu_architecture",
@@ -276,7 +281,7 @@ def write_immutable_json(path: Path, value: dict[str, Any]) -> dict[str, Any]:
 
 def scenario_manifest(args: argparse.Namespace) -> dict[str, Any]:
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "status": "CALIBRATION_REVIEW_REQUIRED",
         "runner": {
@@ -295,13 +300,31 @@ def scenario_manifest(args: argparse.Namespace) -> dict[str, Any]:
             "finish_each_frame": True,
             "framebuffer": {"width": args.width, "height": args.height},
             "static_samples_per_series": FIXED_STATIC_SAMPLE_COUNT,
-            "sample_count": 4,
+            "context_profile_request": FIXED_CONTEXT_PROFILE_REQUEST,
+            "context_sample_count": FIXED_CONTEXT_SAMPLE_COUNT,
+            "context_version_request": FIXED_CONTEXT_VERSION_REQUEST,
+            "measured_render_sample_count": FIXED_MEASURED_RENDER_SAMPLE_COUNT,
             "text_mode": "enabled",
             "outlier_policy": "retain-all",
             "stability_review_threshold": args.unstable_drift_threshold,
         },
         "scenarios": make_scenarios(),
     }
+
+
+def validate_fixed_render_protocol(metadata: dict[str, Any], scenario_id: str) -> None:
+    expectations = {
+        "context_profile_request": FIXED_CONTEXT_PROFILE_REQUEST,
+        "context_sample_count": str(FIXED_CONTEXT_SAMPLE_COUNT),
+        "context_version_request": FIXED_CONTEXT_VERSION_REQUEST,
+        "sample_count": str(FIXED_MEASURED_RENDER_SAMPLE_COUNT),
+    }
+    for name, expected in expectations.items():
+        if metadata.get(name) != expected:
+            raise RuntimeError(
+                f"{scenario_id} metadata {name}={metadata.get(name)!r}, "
+                f"expected {expected!r}"
+            )
 
 
 def validate_artifact(
@@ -315,6 +338,7 @@ def validate_artifact(
     metadata = payload["metadata"]
     if metadata["actual_graphics_backend"].lower() == "null":
         raise RuntimeError(f"{scenario['id']} unexpectedly used Null QRhi")
+    validate_fixed_render_protocol(metadata, scenario["id"])
     expectations = {
         "data_type": scenario["data_type"].capitalize(),
         "finish_state": "enabled",
@@ -324,7 +348,6 @@ def validate_artifact(
         "render_style": scenario["render_style"].capitalize(),
         "requested_graphics_backend": args.graphics_backend,
         "scenario": scenario["id"],
-        "sample_count": "4",
         "seed": str(scenario["seed"]),
         "series_count": str(scenario["series_count"]),
         "show_text": "true",
