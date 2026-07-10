@@ -214,16 +214,11 @@ std::string sample_expression_for_offset(float offset)
 std::string lcd_order_bool_name(lcd::Resolved_lcd_subpixel_order order)
 {
     switch (order) {
-    case lcd::Resolved_lcd_subpixel_order::RGB:
-        return "lcd_rgb";
-    case lcd::Resolved_lcd_subpixel_order::BGR:
-        return "lcd_bgr";
-    case lcd::Resolved_lcd_subpixel_order::VRGB:
-        return "lcd_vrgb";
-    case lcd::Resolved_lcd_subpixel_order::VBGR:
-        return "lcd_vbgr";
-    case lcd::Resolved_lcd_subpixel_order::NONE:
-        break;
+        case lcd::Resolved_lcd_subpixel_order::RGB:  return "lcd_rgb";
+        case lcd::Resolved_lcd_subpixel_order::BGR:  return "lcd_bgr";
+        case lcd::Resolved_lcd_subpixel_order::VRGB: return "lcd_vrgb";
+        case lcd::Resolved_lcd_subpixel_order::VBGR: return "lcd_vbgr";
+        case lcd::Resolved_lcd_subpixel_order::NONE: break;
     }
 
     return {};

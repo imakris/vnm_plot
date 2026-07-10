@@ -91,7 +91,7 @@ int builtin_primitive_z_order(Display_style primitive_style)
 int view_band_order(Series_view_kind view_kind)
 {
     switch (view_kind) {
-        case Series_view_kind::MAIN: return 0;
+        case Series_view_kind::MAIN:    return 0;
         case Series_view_kind::PREVIEW: return 1;
     }
     return 1;

@@ -44,14 +44,10 @@ struct time_window_candidates_t
 Data_query_status status_from_snapshot(snapshot_result_t::Snapshot_status status)
 {
     switch (status) {
-    case snapshot_result_t::Snapshot_status::READY:
-        return Data_query_status::READY;
-    case snapshot_result_t::Snapshot_status::EMPTY:
-        return Data_query_status::EMPTY;
-    case snapshot_result_t::Snapshot_status::BUSY:
-        return Data_query_status::BUSY;
-    case snapshot_result_t::Snapshot_status::FAILED:
-        return Data_query_status::FAILED;
+        case snapshot_result_t::Snapshot_status::READY:  return Data_query_status::READY;
+        case snapshot_result_t::Snapshot_status::EMPTY:  return Data_query_status::EMPTY;
+        case snapshot_result_t::Snapshot_status::BUSY:   return Data_query_status::BUSY;
+        case snapshot_result_t::Snapshot_status::FAILED: return Data_query_status::FAILED;
     }
     return Data_query_status::FAILED;
 }
@@ -386,13 +382,10 @@ time_window_candidates_t time_window_candidates(
     const data_query_context_t& query)
 {
     switch (source.time_order(lod)) {
-    case Time_order::ASCENDING:
-        return ascending_candidates(snapshot, access, query);
-    case Time_order::DESCENDING:
-        return descending_candidates(snapshot, access, query);
-    case Time_order::UNKNOWN:
-    case Time_order::UNORDERED:
-        return linear_candidates(snapshot, access, query);
+        case Time_order::ASCENDING:  return ascending_candidates(snapshot, access, query);
+        case Time_order::DESCENDING: return descending_candidates(snapshot, access, query);
+        case Time_order::UNKNOWN:
+        case Time_order::UNORDERED:  return linear_candidates(snapshot, access, query);
     }
     return linear_candidates(snapshot, access, query);
 }
