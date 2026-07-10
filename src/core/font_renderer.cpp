@@ -37,14 +37,14 @@ namespace vnm::plot {
 
 namespace {
 
-constexpr std::uint32_t k_cache_version = 4;
-constexpr double k_min_atlas_font_size = 48.0;
-constexpr float k_atlas_px_range = 10.0f;
+constexpr std::uint32_t k_cache_version       = 4;
+constexpr double        k_min_atlas_font_size = 48.0;
+constexpr float         k_atlas_px_range      = 10.0f;
 // 1.0 is a one-output-pixel anti-aliasing ramp now that vnm_msdf_text encodes
 // atlas_px_range in true atlas pixels; 2.5 compensated for the shallow
 // font-dependent encode the builder produced before that conversion.
-constexpr float k_sharpness_bias = 1.0f;
-constexpr int k_atlas_texture_size = 2048;
+constexpr float k_sharpness_bias     = 1.0f;
+constexpr int   k_atlas_texture_size = 2048;
 // Hashed into the font digest so a change in the builder's bake semantics
 // re-keys the cache. The atlas_px_range suffix marks the corrected encode
 // (range converted to msdfgen shape units, so SDF slope is font-independent).
@@ -298,17 +298,16 @@ void add_text_to_vectors(
     std::vector<rhi_text_vertex_t> vertices;
     vertices.reserve(source_vertices.size());
     for (std::size_t i = 0; i < source_vertices.size(); i += 4u) {
-        const text_vertex_t& a = source_vertices[i + 0u];
-        const text_vertex_t& b = source_vertices[i + 1u];
-        const text_vertex_t& c = source_vertices[i + 2u];
-        const text_vertex_t& d = source_vertices[i + 3u];
-
-        const float frame_left = std::min(std::min(a.x, b.x), std::min(c.x, d.x));
-        const float frame_top = std::min(std::min(a.y, b.y), std::min(c.y, d.y));
-        const float frame_right = std::max(std::max(a.x, b.x), std::max(c.x, d.x));
-        const float frame_bottom = std::max(std::max(a.y, b.y), std::max(c.y, d.y));
-        const float frame_width = frame_right - frame_left;
-        const float frame_height = frame_bottom - frame_top;
+        const text_vertex_t& a            = source_vertices[i + 0u];
+        const text_vertex_t& b            = source_vertices[i + 1u];
+        const text_vertex_t& c            = source_vertices[i + 2u];
+        const text_vertex_t& d            = source_vertices[i + 3u];
+        const float          frame_left   = std::min(std::min(a.x, b.x), std::min(c.x, d.x));
+        const float          frame_top    = std::min(std::min(a.y, b.y), std::min(c.y, d.y));
+        const float          frame_right  = std::max(std::max(a.x, b.x), std::max(c.x, d.x));
+        const float          frame_bottom = std::max(std::max(a.y, b.y), std::max(c.y, d.y));
+        const float          frame_width  = frame_right - frame_left;
+        const float          frame_height = frame_bottom - frame_top;
 
         const auto append_vertex = [&](const text_vertex_t& vertex) {
             vertices.push_back(rhi_text_vertex_t{
@@ -340,11 +339,11 @@ void add_text_to_vectors(
         return;
     }
 
-    std::size_t added_float_count = 0;
-    std::size_t new_float_count = 0;
-    std::size_t new_index_count = 0;
-    std::size_t new_vertex_count = 0;
-    quint32 checked_qrhi_value = 0;
+    std::size_t added_float_count  = 0;
+    std::size_t new_float_count    = 0;
+    std::size_t new_index_count    = 0;
+    std::size_t new_vertex_count   = 0;
+    quint32     checked_qrhi_value = 0;
     if (!detail::checked_size_product(
             vertices.size(), k_text_vertex_float_count, added_float_count) ||
         !detail::checked_size_add(vertex_data.size(), added_float_count, new_float_count) ||
@@ -488,9 +487,9 @@ std::shared_ptr<cached_font_data_t> load_cached_font_from_disk(
         return bool(in);
     };
 
-    std::uint32_t magic = 0;
+    std::uint32_t magic   = 0;
     std::uint32_t version = 0;
-    std::uint32_t height = 0;
+    std::uint32_t height  = 0;
     if (!read(magic) || !read(version) || !read(height)) {
         return nullptr;
     }
@@ -559,8 +558,8 @@ std::shared_ptr<cached_font_data_t> load_cached_font_from_disk(
         return nullptr;
     }
     for (std::uint32_t i = 0; i < glyph_count; ++i) {
-        std::uint32_t code = 0;
-        std::uint8_t visible = 0;
+        std::uint32_t code    = 0;
+        std::uint8_t  visible = 0;
         msdf_glyph_t g{};
         if (!read(code) ||
             !read(g.advance_units) ||
@@ -743,7 +742,7 @@ std::shared_ptr<cached_font_data_t> load_or_build_font_cache(
     }
 
     const auto font_digest = compute_font_digest();
-    const bool disk_cache = s_disk_cache_enabled.load(std::memory_order_relaxed);
+    const bool disk_cache  = s_disk_cache_enabled.load(std::memory_order_relaxed);
 
     auto cached = get_cached_font(pixel_height, font_digest);
     if (!cached && disk_cache) {
@@ -1066,9 +1065,9 @@ float Font_renderer::compute_numeric_bottom() const
     if (!atlas) {
         return 0.0f;
     }
-    static const char* k_sample = "0123456789-+.,";
-    const int draw_px = m_impl->current_draw_pixel_height();
-    float max_bottom = -std::numeric_limits<float>::infinity();
+    static const char* k_sample   = "0123456789-+.,";
+    const int          draw_px    = m_impl->current_draw_pixel_height();
+    float              max_bottom = -std::numeric_limits<float>::infinity();
     for (const char* p = k_sample; *p; ++p) {
         const auto it = atlas->glyphs.find(static_cast<unsigned char>(*p));
         if (it != atlas->glyphs.end()) {
@@ -1181,9 +1180,9 @@ void Font_renderer::rhi_queue_draw(
     }
 
     std::size_t new_vertex_float_count = 0;
-    std::size_t new_index_count = 0;
-    std::size_t queued_vertex_count = 0;
-    quint32 checked_qrhi_bytes = 0;
+    std::size_t new_index_count        = 0;
+    std::size_t queued_vertex_count    = 0;
+    quint32     checked_qrhi_bytes     = 0;
     if (!detail::checked_size_add(
             m_impl->m_rhi_frame_vertex_data.size(),
             m_impl->m_rhi_vertex_data.size(),
@@ -1217,7 +1216,8 @@ void Font_renderer::rhi_queue_draw(
     }
 
     auto& rhi_state = m_impl->m_rhi;
-    QRhi* rhi = ctx.rhi;
+    QRhi* rhi       = ctx.rhi;
+
     QRhiResourceUpdateBatch* updates = ctx.rhi_updates;
 
     if (rhi_state.last_rhi != rhi) {
@@ -1280,7 +1280,7 @@ void Font_renderer::rhi_queue_draw(
             rhi_state.calls.emplace_back();
         }
         const std::size_t call_index = rhi_state.call_used++;
-        auto& call = rhi_state.calls[call_index];
+        auto&             call       = rhi_state.calls[call_index];
 
         if (!call.ubo) {
             call.ubo.reset(rhi->newBuffer(
@@ -1327,7 +1327,7 @@ void Font_renderer::rhi_queue_draw(
         return call_index;
     };
 
-    const bool has_shadow = shadow.radius_px > 0.0f && shadow.color.a > 0.0f;
+    const bool has_shadow    = shadow.radius_px > 0.0f && shadow.color.a > 0.0f;
     text_lcd_t effective_lcd = lcd;
     if (has_shadow) {
         effective_lcd.subpixel_order = text_lcd_resolved_subpixel_order_t::NONE;
@@ -1340,7 +1340,7 @@ void Font_renderer::rhi_queue_draw(
         return;
     }
 
-    std::size_t shadow_call_index = std::numeric_limits<std::size_t>::max();
+    std::size_t shadow_call_index     = std::numeric_limits<std::size_t>::max();
     std::size_t foreground_call_index = first_call_index;
     if (has_shadow) {
         shadow_call_index = first_call_index;
@@ -1354,8 +1354,8 @@ void Font_renderer::rhi_queue_draw(
 
     auto& first_call = rhi_state.calls[first_call_index];
 
-    QRhiRenderPassDescriptor* current_rpd = ctx.render_target->renderPassDescriptor();
-    const int current_samples = ctx.render_target->sampleCount();
+    QRhiRenderPassDescriptor* current_rpd     = ctx.render_target->renderPassDescriptor();
+    const int                 current_samples = ctx.render_target->sampleCount();
     if (rhi_state.pipeline &&
         (rhi_state.pipeline_rpd != current_rpd ||
          rhi_state.pipeline_samples != current_samples))
@@ -1504,10 +1504,10 @@ void Font_renderer::rhi_finalize_frame(const frame_context_t& ctx)
     QRhi* rhi = ctx.rhi;
     QRhiResourceUpdateBatch* updates = ctx.rhi_updates;
 
-    std::size_t vertex_bytes = 0;
-    std::size_t index_bytes = 0;
-    quint32 qrhi_vertex_bytes = 0;
-    quint32 qrhi_index_bytes = 0;
+    std::size_t vertex_bytes      = 0;
+    std::size_t index_bytes       = 0;
+    quint32     qrhi_vertex_bytes = 0;
+    quint32     qrhi_index_bytes  = 0;
     if (!detail::qrhi_byte_size(
             m_impl->m_rhi_frame_vertex_data.size(), sizeof(float),
             vertex_bytes, qrhi_vertex_bytes) ||
@@ -1520,8 +1520,8 @@ void Font_renderer::rhi_finalize_frame(const frame_context_t& ctx)
     }
 
     if (!rhi_state.vbo || rhi_state.vbo_capacity_bytes < vertex_bytes) {
-        std::size_t alloc = 0;
-        quint32 qrhi_alloc = 0;
+        std::size_t alloc      = 0;
+        quint32     qrhi_alloc = 0;
         if (!detail::qrhi_grown_capacity_bytes(vertex_bytes, alloc, qrhi_alloc)) {
             rhi_reset_frame();
             return;
@@ -1539,8 +1539,8 @@ void Font_renderer::rhi_finalize_frame(const frame_context_t& ctx)
     }
 
     if (!rhi_state.ibo || rhi_state.ibo_capacity_bytes < index_bytes) {
-        std::size_t alloc = 0;
-        quint32 qrhi_alloc = 0;
+        std::size_t alloc      = 0;
+        quint32     qrhi_alloc = 0;
         if (!detail::qrhi_grown_capacity_bytes(index_bytes, alloc, qrhi_alloc)) {
             rhi_reset_frame();
             return;

@@ -245,10 +245,10 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
     }
     QRhi* const rhi_ptr = rhi();
 
-    const auto& snapshot = m_impl->snapshot;
-    const Plot_config& config = snapshot.config;
-    vnm::plot::Profiler* profiler = config.profiler.get();
-    const auto callback_now = std::chrono::steady_clock::now();
+    const auto&          snapshot     = m_impl->snapshot;
+    const Plot_config&   config       = snapshot.config;
+    vnm::plot::Profiler* profiler     = config.profiler.get();
+    const auto           callback_now = std::chrono::steady_clock::now();
     if (profiler && m_impl->last_render_callback.time_since_epoch().count() != 0) {
         const double elapsed_ms =
             std::chrono::duration<double, std::milli>(
@@ -299,8 +299,8 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
         config,
         snapshot.v_auto,
         preview_enabled);
-    const float v_min = frame_plan.main_v_range.min;
-    const float v_max = frame_plan.main_v_range.max;
+    const float v_min         = frame_plan.main_v_range.min;
+    const float v_max         = frame_plan.main_v_range.max;
     const float preview_v_min = frame_plan.preview_v_range.min;
     const float preview_v_max = frame_plan.preview_v_range.max;
 

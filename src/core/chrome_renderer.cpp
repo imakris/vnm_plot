@@ -79,8 +79,9 @@ grid_layer_params_t Chrome_renderer::calculate_grid_params(
     }
 
     static const std::array<int, 2> om_div = {5, 2};
-    double step = 1.0;
-    int idx = 16;
+
+    double step  = 1.0;
+    int    idx   = 16;
     double probe = 0.0;
     for (; (probe = step * om_div[circular_index(om_div, idx)]) < range; ++idx) {
         step = probe;
@@ -90,11 +91,11 @@ grid_layer_params_t Chrome_renderer::calculate_grid_params(
     }
 
     const double cell_span_min = font_px * k_cell_span_min_factor;
-    const double fade_den = std::max<double>(1e-6, font_px * (k_cell_span_max_factor - k_cell_span_min_factor));
-    const double px_per_unit = pixel_span / range;
+    const double fade_den      = std::max<double>(1e-6, font_px * (k_cell_span_max_factor - k_cell_span_min_factor));
+    const double px_per_unit   = pixel_span / range;
 
     while (levels.count < grid_layer_params_t::k_max_levels && step * px_per_unit >= cell_span_min) {
-        const float spacing_px = static_cast<float>(step * px_per_unit);
+        const float  spacing_px  = static_cast<float>(step * px_per_unit);
         const double shift_units = get_shift(step, min);
         append_grid_level(levels, spacing_px,
             static_cast<float>(pixel_span - shift_units * px_per_unit), cell_span_min, fade_den);
@@ -114,20 +115,20 @@ void Chrome_renderer::render_grid_and_backgrounds(
         profiler,
         "renderer.frame.chrome.grid_and_backgrounds");
 
-    const auto& pl = ctx.layout;
+    const auto&         pl      = ctx.layout;
     const Color_palette palette = resolved_color_palette(ctx.config, ctx.dark_mode);
 
-    const glm::vec4 h_label_color = palette.h_label_background;
-    const glm::vec4 v_label_color = palette.v_label_background;
-    const double grid_visibility = ctx.config ? ctx.config->grid_visibility : 1.0;
+    const glm::vec4 h_label_color   = palette.h_label_background;
+    const glm::vec4 v_label_color   = palette.v_label_background;
+    const double    grid_visibility = ctx.config ? ctx.config->grid_visibility : 1.0;
     const glm::vec4 grid_rgb = glm::vec4(
         palette.grid_line.r,
         palette.grid_line.g,
         palette.grid_line.b,
         palette.grid_line.a * static_cast<float>(grid_visibility));
-    const glm::vec4 tick_rgb = grid_rgb;
+    const glm::vec4 tick_rgb           = grid_rgb;
     const glm::vec4 preview_background = palette.preview_background;
-    const glm::vec4 separator_color = palette.separator;
+    const glm::vec4 separator_color    = palette.separator;
 
     // Background panes and separators (batch_rect is CPU work)
     prims.batch_rect(preview_background,
@@ -158,10 +159,10 @@ void Chrome_renderer::render_grid_and_backgrounds(
         double(ctx.v0), double(ctx.v1), pl.usable_height, ctx.adjusted_font_px);
     // Grid spacing math runs in fp64 seconds; the shift origin is the
     // (rebased) seconds-domain t_min that the axis uniforms already use.
-    constexpr double k_seconds_per_ns = 1.0e-9;
-    const double t0_seconds = static_cast<double>(ctx.t0) * k_seconds_per_ns;
-    const double t1_seconds = static_cast<double>(ctx.t1) * k_seconds_per_ns;
-    bool dropped_non_multiple_step = false;
+    constexpr double k_seconds_per_ns          = 1.0e-9;
+    const double     t0_seconds                = static_cast<double>(ctx.t0) * k_seconds_per_ns;
+    const double     t1_seconds                = static_cast<double>(ctx.t1) * k_seconds_per_ns;
+    bool             dropped_non_multiple_step = false;
     const grid_layer_params_t horizontal_levels = build_time_grid_layers(
         t0_seconds,
         t1_seconds,
@@ -208,8 +209,8 @@ void Chrome_renderer::render_grid_and_backgrounds(
             if (ticks.count >= grid_layer_params_t::k_max_levels) {
                 break;
             }
-            const float pos = get_pos(label);
-            const auto props = match_level_properties(pos, main_levels);
+            const float pos   = get_pos(label);
+            const auto  props = match_level_properties(pos, main_levels);
             ticks.spacing_px[ticks.count] = 1e6f;
             ticks.start_px[ticks.count] = pos;
             ticks.alpha[ticks.count] = props.first;
@@ -259,7 +260,7 @@ void Chrome_renderer::render_zero_line(
     }
 
     const Color_palette palette = resolved_color_palette(ctx.config, ctx.dark_mode);
-    const glm::vec4 color = palette.grid_line;
+    const glm::vec4     color   = palette.grid_line;
 
     const auto& pl = ctx.layout;
     const glm::vec2 main_top_left{0.0f, 0.0f};
@@ -305,10 +306,10 @@ void Chrome_renderer::render_preview_overlay(
     }
     const long double t_avail_span = *t_avail_span_ns;
 
-    const Color_palette palette = resolved_color_palette(ctx.config, ctx.dark_mode);
-    const glm::vec4 cover_color = palette.preview_cover;
-    const glm::vec4 cover_color2 = palette.preview_cover_secondary;
-    const glm::vec4 separator_color = palette.separator;
+    const Color_palette palette         = resolved_color_palette(ctx.config, ctx.dark_mode);
+    const glm::vec4     cover_color     = palette.preview_cover;
+    const glm::vec4     cover_color2    = palette.preview_cover_secondary;
+    const glm::vec4     separator_color = palette.separator;
 
     // CPU calculations
     const double x0 = static_cast<double>(
@@ -318,7 +319,7 @@ void Chrome_renderer::render_preview_overlay(
         static_cast<long double>(ctx.win_w) *
         (1.0L - span_ns_as_long_double(ctx.t1, ctx.t_available_max) / t_avail_span));
 
-    const double dd = x1 - x0;
+    const double dd    = x1 - x0;
     const double win_w = ctx.win_w;
     // Top of the preview band, derived directly from win_h and the band's
     // own height. The earlier formulation went via usable_height + label

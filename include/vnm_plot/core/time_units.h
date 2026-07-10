@@ -10,7 +10,7 @@
 
 namespace vnm::plot {
 
-inline constexpr std::int64_t k_ns_per_ms = 1'000'000;
+inline constexpr std::int64_t k_ns_per_ms     = 1'000'000;
 inline constexpr std::int64_t k_ns_per_second = 1'000'000'000;
 
 struct time_range_t
@@ -89,15 +89,15 @@ inline std::int64_t saturating_add_duration_ns(
     std::int64_t   value_ns,
     std::uint64_t  duration_ns) noexcept
 {
-    std::int64_t result = value_ns;
+    std::int64_t  result    = value_ns;
     std::uint64_t remaining = duration_ns;
     constexpr std::uint64_t k_max_chunk =
         static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max());
 
     while (remaining > 0) {
         const std::uint64_t chunk_u = (remaining > k_max_chunk) ? k_max_chunk : remaining;
-        const auto chunk = static_cast<std::int64_t>(chunk_u);
-        const auto next = checked_add_ns(result, chunk);
+        const auto          chunk   = static_cast<std::int64_t>(chunk_u);
+        const auto          next    = checked_add_ns(result, chunk);
         if (!next) {
             return std::numeric_limits<std::int64_t>::max();
         }
@@ -112,15 +112,15 @@ inline std::int64_t saturating_sub_duration_ns(
     std::int64_t   value_ns,
     std::uint64_t  duration_ns) noexcept
 {
-    std::int64_t result = value_ns;
+    std::int64_t  result    = value_ns;
     std::uint64_t remaining = duration_ns;
     constexpr std::uint64_t k_max_chunk =
         static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max());
 
     while (remaining > 0) {
         const std::uint64_t chunk_u = (remaining > k_max_chunk) ? k_max_chunk : remaining;
-        const auto chunk = static_cast<std::int64_t>(chunk_u);
-        const auto next = checked_sub_ns(result, chunk);
+        const auto          chunk   = static_cast<std::int64_t>(chunk_u);
+        const auto          next    = checked_sub_ns(result, chunk);
         if (!next) {
             return std::numeric_limits<std::int64_t>::min();
         }
@@ -210,7 +210,7 @@ inline time_range_t centered_time_range_ns(
         };
     }
 
-    const std::uint64_t left_span_ns = span_ns / 2;
+    const std::uint64_t left_span_ns  = span_ns / 2;
     const std::uint64_t right_span_ns = span_ns - left_span_ns;
     time_range_t range{
         saturating_sub_duration_ns(center_ns, left_span_ns),

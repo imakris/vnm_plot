@@ -207,7 +207,7 @@ std::string lcd_order_bool_name(lcd::Resolved_lcd_subpixel_order order)
 std::string decode_threshold_statement(const ref::decode_threshold_t& threshold)
 {
     const std::string condition(threshold.glsl_condition);
-    const std::string separator = " && ";
+    const std::string separator     = " && ";
     const std::size_t separator_pos = condition.find(separator);
     if (separator_pos == std::string::npos) {
         return {};
@@ -229,7 +229,7 @@ std::string decode_threshold_statement(const ref::decode_threshold_t& threshold)
 std::string sample_statement_for_offset(float offset)
 {
     const std::string sample_name = sample_name_for_offset(offset);
-    const std::string expression = sample_expression_for_offset(offset);
+    const std::string expression  = sample_expression_for_offset(offset);
     return expression.empty()
         ? std::string{}
         : "float " + sample_name + " = glyph_alpha_at_ratio(" +
@@ -247,9 +247,9 @@ std::string filter_window_statement(const ref::filter_window_t& window)
         "float " + std::string(window.channel_name) + "_coverage =\n";
 
     for (std::size_t i = 0; i < window.taps.size(); ++i) {
-        const ref::filter_tap_t& tap = window.taps[i];
-        const std::string sample_name = sample_name_for_offset(tap.offset);
-        const std::string weight_name = weight_name_for_value(tap.weight);
+        const ref::filter_tap_t& tap         = window.taps[i];
+        const std::string        sample_name = sample_name_for_offset(tap.offset);
+        const std::string        weight_name = weight_name_for_value(tap.weight);
         if (weight_name.empty()) {
             return {};
         }

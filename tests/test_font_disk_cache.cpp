@@ -19,12 +19,12 @@ namespace plot = vnm::plot;
 
 namespace {
 
-constexpr std::uint32_t k_magic = 0x4d534446; // 'MSDF'
-constexpr std::uint32_t k_cache_version = 4;
+constexpr std::uint32_t k_magic                  = 0x4d534446; // 'MSDF'
+constexpr std::uint32_t k_cache_version          = 4;
 constexpr std::uint32_t k_previous_cache_version = 3;
-constexpr std::uint32_t k_pixel_height = 18;
-constexpr std::uint32_t k_atlas_texture_size = 2048;
-constexpr std::uint32_t k_expected_atlas_bytes =
+constexpr std::uint32_t k_pixel_height           = 18;
+constexpr std::uint32_t k_atlas_texture_size     = 2048;
+constexpr std::uint32_t k_expected_atlas_bytes   =
     k_atlas_texture_size * k_atlas_texture_size * 4u;
 
 using digest_t = plot::detail::font_disk_cache_digest_t;
@@ -96,17 +96,17 @@ void write_valid_glyph(std::ofstream& out)
     // Scale-independent geometry in font units: bounds_right >= bounds_left and
     // bounds_top >= bounds_bottom, with the visibility flag last (matches the
     // renderer's on-disk glyph layout).
-    const std::uint32_t codepoint = static_cast<std::uint32_t>('A');
-    const float advance_units = 10.0f;
-    const float bounds_left_units = 0.0f;
-    const float bounds_bottom_units = 0.0f;
-    const float bounds_right_units = 1.0f;
-    const float bounds_top_units = 1.0f;
-    const float uv_left = 0.0f;
-    const float uv_bottom = 1.0f;
-    const float uv_right = 1.0f;
-    const float uv_top = 0.0f;
-    const std::uint8_t visible = 1u;
+    const std::uint32_t codepoint           = static_cast<std::uint32_t>('A');
+    const float         advance_units       = 10.0f;
+    const float         bounds_left_units   = 0.0f;
+    const float         bounds_bottom_units = 0.0f;
+    const float         bounds_right_units  = 1.0f;
+    const float         bounds_top_units    = 1.0f;
+    const float         uv_left             = 0.0f;
+    const float         uv_bottom           = 1.0f;
+    const float         uv_right            = 1.0f;
+    const float         uv_top              = 0.0f;
+    const std::uint8_t  visible             = 1u;
 
     write_value(out, codepoint);
     write_value(out, advance_units);
@@ -142,13 +142,14 @@ bool write_cache_file(
     // projection parameters. atlas_px_range, bitmap_scale, and ascender must be
     // strictly positive for the loader to accept the file.
     const std::uint32_t baked_pixel_height = 48u;
-    const double atlas_px_range = 10.0;
-    const double bitmap_scale = 1.0;
-    const float sharpness_bias = 2.5f;
-    const float ascender = 14.0f;
-    const float descender = -4.0f;
-    const float line_height = 20.0f;
-    const float em_size = 18.0f;
+    const double        atlas_px_range     = 10.0;
+    const double        bitmap_scale       = 1.0;
+    const float         sharpness_bias     = 2.5f;
+    const float         ascender           = 14.0f;
+    const float         descender          = -4.0f;
+    const float         line_height        = 20.0f;
+
+    const float em_size            = 18.0f;
     const float zero_advance_units = 9.0f;
     write_value(out, baked_pixel_height);
     write_value(out, atlas_px_range);
@@ -247,7 +248,7 @@ bool test_corrupt_atlas_size_and_bytes_are_rejected()
 bool test_same_height_changed_digest_does_not_reuse_old_cache()
 {
     Scoped_temp_dir tmp;
-    const auto old_digest = make_digest(0x50u);
+    const auto old_digest     = make_digest(0x50u);
     const auto changed_digest = make_digest(0x90u);
 
     cache_file_options_t options;

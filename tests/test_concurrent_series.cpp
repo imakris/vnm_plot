@@ -415,9 +415,9 @@ bool test_ring_source_snapshots_are_consistent_under_concurrent_writes()
             if (!result) {
                 continue;
             }
-            const auto& snap = result.snapshot;
+            const auto& snap  = result.snapshot;
             const auto* first = reinterpret_cast<const sample_t*>(snap.data);
-            double prev = first->t;
+            double      prev  = first->t;
             for (std::size_t i = 1; i < snap.count; ++i) {
                 const auto* cur = reinterpret_cast<const sample_t*>(
                     reinterpret_cast<const std::uint8_t*>(snap.data) + i * snap.stride);

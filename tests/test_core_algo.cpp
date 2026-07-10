@@ -471,7 +471,7 @@ bool test_snapshot_truthiness_requires_usable_stride()
 
 bool test_snapshot_count1_clamps_malformed_count2()
 {
-    std::vector<sample_t> first = {{0, 1.0f}};
+    std::vector<sample_t> first  = {{0, 1.0f}};
     std::vector<sample_t> second = {{1, 2.0f}};
 
     plot::data_snapshot_t snap;
@@ -669,10 +669,10 @@ bool test_horizontal_label_fade_keys_preserve_int64_timestamps()
     TEST_ASSERT(full_span && std::isfinite(*full_span),
         "horizontal label span math should represent the full int64 range");
 
-    const long double center_delta = plot::span_ns_as_long_double(k_min, -1);
-    const long double right_delta = plot::span_ns_as_long_double(k_min, k_max);
+    const long double center_delta    = plot::span_ns_as_long_double(k_min, -1);
+    const long double right_delta     = plot::span_ns_as_long_double(k_min, k_max);
     const long double center_fraction = center_delta / *full_span;
-    const long double right_fraction = right_delta / *full_span;
+    const long double right_fraction  = right_delta / *full_span;
 
     TEST_ASSERT(center_fraction > 0.499999999999999L
         && center_fraction < 0.500000000000001L,
@@ -691,7 +691,7 @@ bool test_text_lcd_policy_helpers()
 
     const request_t auto_request = plot::text_lcd_auto_request();
     const request_t none_request = plot::text_lcd_none_request();
-    const request_t bgr_request = plot::text_lcd_explicit_request(resolved_t::BGR);
+    const request_t bgr_request  = plot::text_lcd_explicit_request(resolved_t::BGR);
     const request_t invalid_request{false, static_cast<resolved_t>(255)};
 
     TEST_ASSERT(auto_request.automatic, "LCD request should model AUTO as request state");
@@ -814,9 +814,9 @@ bool test_text_lcd_policy_helpers()
 
 bool test_built_in_label_backgrounds_are_opaque_for_lcd()
 {
-    const plot::Color_palette dark = plot::Color_palette::dark();
-    const plot::Color_palette light = plot::Color_palette::light();
-    const auto expected_light_vertical = plot::hex_to_vec4("ff959595");
+    const plot::Color_palette dark                    = plot::Color_palette::dark();
+    const plot::Color_palette light                   = plot::Color_palette::light();
+    const auto                expected_light_vertical = plot::hex_to_vec4("ff959595");
 
     TEST_ASSERT(dark.h_label_background.a >= 0.999f,
         "dark horizontal label background should be opaque for LCD backing");

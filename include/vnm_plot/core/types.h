@@ -538,8 +538,8 @@ inline std::pair<float, float> std_function_access_range(
 inline erased_access_policy_t make_erased_access_policy_view(
     const Data_access_policy& policy)
 {
-    erased_access_policy_t view = policy.internal_access;
-    bool uses_std_function = false;
+    erased_access_policy_t view              = policy.internal_access;
+    bool                   uses_std_function = false;
 
     if (!view.get_timestamp && policy.get_timestamp) {
         view.get_timestamp = &std_function_access_timestamp;

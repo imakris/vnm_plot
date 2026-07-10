@@ -119,8 +119,8 @@ bool test_format_timestamp_receives_nanosecond_units()
     // confirms ns scale (a seconds-scale unit slip would compress the
     // values into a ~60 ns range starting near zero, far below the
     // expected ~1.7e18 magnitude).
-    const std::int64_t margin_ns = (k_t_max_ns - k_t_min_ns);
-    bool saw_label_in_window = false;
+    const std::int64_t margin_ns           = (k_t_max_ns - k_t_min_ns);
+    bool               saw_label_in_window = false;
     for (const auto& call : recorded) {
         if (call.timestamp_ns >= k_t_min_ns - margin_ns &&
             call.timestamp_ns <= k_t_max_ns + margin_ns)
@@ -225,10 +225,10 @@ bool test_horizontal_axis_handles_full_int64_time_span()
     TEST_ASSERT(result.h_labels.size() > 1,
         "formatter-enabled full int64 timestamp range should emit multiple horizontal labels");
 
-    bool saw_signature_zero = false;
+    bool saw_signature_zero      = false;
     bool saw_signature_subsecond = false;
-    bool saw_signature_large = false;
-    bool saw_saturated_step = false;
+    bool saw_signature_large     = false;
+    bool saw_saturated_step      = false;
     for (const auto& call : recorded) {
         saw_signature_zero = saw_signature_zero || call.timestamp_ns == 0;
         saw_signature_subsecond =

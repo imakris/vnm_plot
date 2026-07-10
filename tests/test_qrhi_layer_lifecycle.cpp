@@ -636,9 +636,9 @@ bool assert_drawable_span(
 bool test_layer_only_zero_style_prepare_record_order()
 {
     std::vector<layer_event_t> events;
-    int low_create_count = 0;
+    int low_create_count  = 0;
     int high_create_count = 0;
-    auto low_layer = std::make_shared<Recording_layer>(
+    auto low_layer        = std::make_shared<Recording_layer>(
         "low", 1, -5, events, low_create_count);
     auto high_layer = std::make_shared<Recording_layer>(
         "high", 1, 10, events, high_create_count);
@@ -665,11 +665,11 @@ bool test_layer_only_zero_style_prepare_record_order()
 
     TEST_ASSERT(low_create_count == 1, "low z-order layer state should be created once");
     TEST_ASSERT(high_create_count == 1, "high z-order layer state should be created once");
-    const std::size_t low_prepare = find_event_index(events, "low", "prepare");
+    const std::size_t low_prepare  = find_event_index(events, "low", "prepare");
     const std::size_t high_prepare = find_event_index(events, "high", "prepare");
-    const std::size_t begin_pass = find_event_index(events, "frame", "begin_pass");
-    const std::size_t low_record = find_event_index(events, "low", "record");
-    const std::size_t high_record = find_event_index(events, "high", "record");
+    const std::size_t begin_pass   = find_event_index(events, "frame", "begin_pass");
+    const std::size_t low_record   = find_event_index(events, "low", "record");
+    const std::size_t high_record  = find_event_index(events, "high", "record");
 
     TEST_ASSERT(low_prepare < events.size(), "expected low layer prepare event");
     TEST_ASSERT(high_prepare < events.size(), "expected high layer prepare event");
@@ -884,8 +884,8 @@ bool test_builtin_upload_stages_visible_window_only()
 
 bool test_builtin_upload_reuses_vbo_capacity_headroom()
 {
-    constexpr std::int64_t k_second_ns = 1'000'000'000LL;
-    constexpr std::size_t k_gpu_sample_bytes = sizeof(float) * 4u;
+    constexpr std::int64_t k_second_ns        = 1'000'000'000LL;
+    constexpr std::size_t  k_gpu_sample_bytes = sizeof(float) * 4u;
 
     std::vector<layer_event_t> events;
     int create_count = 0;
@@ -967,8 +967,8 @@ bool test_builtin_upload_reuses_vbo_capacity_headroom()
 
 bool test_combined_builtin_uploads_samples_once_per_view()
 {
-    constexpr std::int64_t k_second_ns = 1'000'000'000LL;
-    constexpr std::size_t k_gpu_sample_bytes = sizeof(float) * 4u;
+    constexpr std::int64_t k_second_ns        = 1'000'000'000LL;
+    constexpr std::size_t  k_gpu_sample_bytes = sizeof(float) * 4u;
 
     std::vector<layer_event_t> events;
     int create_count = 0;
@@ -1092,7 +1092,7 @@ bool test_direct_member_policy_uses_member_dispatch_in_renderer_staging()
         make_fallback_access_policy_with_counted_public_accessors(fallback_calls);
 
     std::map<int, std::shared_ptr<const plot::series_data_t>> series_map;
-    const int direct_series_id = 51;
+    const int direct_series_id   = 51;
     const int fallback_series_id = 52;
     series_map[direct_series_id] = direct_series;
     series_map[fallback_series_id] = fallback_series;
@@ -1276,7 +1276,7 @@ bool test_builtin_staging_normalizes_finite_reversed_ranges()
     TEST_ASSERT(view_state.last_staged_sample_count == 4,
         "reversed-range series should stage all visible samples");
     for (std::size_t i = 0; i < view_state.last_staged_sample_count; ++i) {
-        const float expected_low = static_cast<float>(i + 1u);
+        const float expected_low  = static_cast<float>(i + 1u);
         const float expected_high = static_cast<float>(i + 3u);
         TEST_ASSERT(view_state.staging[i].y_min == expected_low,
             "staged finite reversed range low endpoint should be normalized exactly");
@@ -2202,7 +2202,7 @@ bool test_global_draw_order_sorts_builtins_across_series_and_custom_layers()
         {});
 
     std::map<int, std::shared_ptr<const plot::series_data_t>> series_map;
-    const int first_series_id = 70;
+    const int first_series_id  = 70;
     const int second_series_id = 80;
     series_map[first_series_id] = first_series;
     series_map[second_series_id] = second_series;
@@ -2271,10 +2271,10 @@ bool test_builtin_draw_commands_sort_relative_to_custom_layers()
     constexpr std::int64_t k_second_ns = 1'000'000'000LL;
 
     std::vector<layer_event_t> events;
-    int under_create_count = 0;
+    int under_create_count  = 0;
     int middle_create_count = 0;
-    int top_create_count = 0;
-    auto under_layer = std::make_shared<Recording_layer>(
+    int top_create_count    = 0;
+    auto under_layer        = std::make_shared<Recording_layer>(
         "under", 1, -20, events, under_create_count);
     auto middle_layer = std::make_shared<Recording_layer>(
         "middle", 1, 5, events, middle_create_count);
@@ -2795,8 +2795,8 @@ bool test_resources_changed_tracks_hold_timestamp_changes()
             first_prepare->gpu_count == 2,
         "first hold-forward prepare should draw one real and one synthetic sample");
 
-    const layer_event_t first = *first_prepare;
-    const std::int64_t first_origin = first.t_origin_ns;
+    const layer_event_t first        = *first_prepare;
+    const std::int64_t  first_origin = first.t_origin_ns;
 
     events.clear();
     ctx.t1 = 13LL * k_second_ns;
@@ -3032,7 +3032,7 @@ bool test_busy_hold_forward_does_not_prepare_stale_tmax()
         "initial hold-forward frame should prepare at its visible t_max");
 
     const std::int64_t prepared_t_max = initial_view_state.last_prepared_t_max_ns;
-    const std::size_t vbo_generation = initial_view_state.last_vbo_generation;
+    const std::size_t  vbo_generation = initial_view_state.last_vbo_generation;
     source->return_busy_once();
     ctx.t1 = 13LL * k_second_ns;
     ctx.t_available_max = ctx.t1;

@@ -163,9 +163,9 @@ std::size_t ascending_first_ge(
     std::size_t first = 0;
     std::size_t count = snapshot.count;
     while (count > 0) {
-        const std::size_t step = count / 2;
-        const std::size_t index = first + step;
-        std::int64_t timestamp_ns = 0;
+        const std::size_t step         = count / 2;
+        const std::size_t index        = first + step;
+        std::int64_t      timestamp_ns = 0;
         if (!timestamp_at(snapshot, access, index, timestamp_ns)) {
             valid = false;
             return 0;
@@ -190,9 +190,9 @@ std::size_t ascending_first_gt(
     std::size_t first = 0;
     std::size_t count = snapshot.count;
     while (count > 0) {
-        const std::size_t step = count / 2;
-        const std::size_t index = first + step;
-        std::int64_t timestamp_ns = 0;
+        const std::size_t step         = count / 2;
+        const std::size_t index        = first + step;
+        std::int64_t      timestamp_ns = 0;
         if (!timestamp_at(snapshot, access, index, timestamp_ns)) {
             valid = false;
             return 0;
@@ -217,9 +217,9 @@ std::size_t descending_first_le(
     std::size_t first = 0;
     std::size_t count = snapshot.count;
     while (count > 0) {
-        const std::size_t step = count / 2;
-        const std::size_t index = first + step;
-        std::int64_t timestamp_ns = 0;
+        const std::size_t step         = count / 2;
+        const std::size_t index        = first + step;
+        std::int64_t      timestamp_ns = 0;
         if (!timestamp_at(snapshot, access, index, timestamp_ns)) {
             valid = false;
             return 0;
@@ -244,9 +244,9 @@ std::size_t descending_first_lt(
     std::size_t first = 0;
     std::size_t count = snapshot.count;
     while (count > 0) {
-        const std::size_t step = count / 2;
-        const std::size_t index = first + step;
-        std::int64_t timestamp_ns = 0;
+        const std::size_t step         = count / 2;
+        const std::size_t index        = first + step;
+        std::int64_t      timestamp_ns = 0;
         if (!timestamp_at(snapshot, access, index, timestamp_ns)) {
             valid = false;
             return 0;
@@ -315,11 +315,12 @@ time_window_candidates_t linear_candidates(
     const Data_access_policy&      access,
     const data_query_context_t&    query)
 {
-    bool found = false;
-    bool gap_after_match = false;
-    bool discontinuous = false;
-    bool held_found = false;
-    std::size_t held_index = 0;
+    bool        found           = false;
+    bool        gap_after_match = false;
+    bool        discontinuous   = false;
+    bool        held_found      = false;
+    std::size_t held_index      = 0;
+
     std::int64_t held_timestamp_ns = 0;
     time_window_candidates_t out;
     const bool hold_forward = wants_hold_forward(query);
@@ -419,11 +420,11 @@ bool scan_value_range(
     bool&                          has_value)
 {
     value_range_t held_range;
-    bool has_held_candidate = false;
-    bool has_held_value = false;
-    bool held_candidate_failed = false;
-    std::int64_t held_timestamp_ns = 0;
-    const bool hold_forward = wants_hold_forward(query);
+    bool         has_held_candidate    = false;
+    bool         has_held_value        = false;
+    bool         held_candidate_failed = false;
+    std::int64_t held_timestamp_ns     = 0;
+    const bool   hold_forward          = wants_hold_forward(query);
 
     for (std::size_t index = 0; index < snapshot.count; ++index) {
         const void* sample = snapshot.at(index);
@@ -431,9 +432,9 @@ bool scan_value_range(
             return false;
         }
 
-        const std::int64_t timestamp_ns = query.access->get_timestamp(sample);
-        const bool in_window = time_window_contains(query.time_window, timestamp_ns);
-        const bool before_window = timestamp_ns < query.time_window.min_ns;
+        const std::int64_t timestamp_ns  = query.access->get_timestamp(sample);
+        const bool         in_window     = time_window_contains(query.time_window, timestamp_ns);
+        const bool         before_window = timestamp_ns < query.time_window.min_ns;
         if (!in_window && !(hold_forward && before_window)) {
             continue;
         }
@@ -635,8 +636,8 @@ validated_time_window_t validated_time_window(
         return out;
     }
 
-    bool held_accepted = false;
-    std::size_t held_index = candidates.held_index;
+    bool        held_accepted = false;
+    std::size_t held_index    = candidates.held_index;
     if (candidates.has_held) {
         bool held_failed = false;
         held_accepted = select_held_sample_index(
@@ -733,7 +734,7 @@ sample_draw_status_t read_sample_draw_value(
         return status_for_nonfinite(policy);
     }
 
-    float low = y;
+    float low  = y;
     float high = y;
     if (access.has_range()) {
         std::tie(low, high) = access.range(sample);
@@ -870,8 +871,8 @@ data_query_result_t<value_range_t> Data_source::query_v_range(
     }
 
     value_range_t range;
-    bool has_value = false;
-    const Time_order order = time_order(lod);
+    bool             has_value = false;
+    const Time_order order     = time_order(lod);
     if (order == Time_order::UNKNOWN || order == Time_order::UNORDERED) {
         if (!scan_value_range(
                 snapshot_result.snapshot,

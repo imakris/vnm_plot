@@ -29,7 +29,7 @@ using detail::k_value_decimals;
 
 namespace {
 
-constexpr float k_text_shadow_alpha = 0.76f;
+constexpr float k_text_shadow_alpha         = 0.76f;
 constexpr float k_text_shadow_min_radius_px = 1.05f;
 constexpr float k_text_shadow_max_radius_px = 2.25f;
 constexpr float k_text_shadow_radius_factor = 0.19f;
@@ -120,8 +120,8 @@ bool update_and_draw_faded_labels(
 {
     using key_t = typename Tracker::key_type;
 
-    const auto now = std::chrono::steady_clock::now();
-    float dt_ms = 0.0f;
+    const auto now   = std::chrono::steady_clock::now();
+    float      dt_ms = 0.0f;
     if (tracker.initialized) {
         dt_ms = std::chrono::duration_cast<std::chrono::duration<float, std::milli>>(now - tracker.last_update).count();
     }
@@ -252,10 +252,10 @@ bool Text_renderer::render_axis_labels(
     bool                   fade_labels,
     bool                   vertical_axis_label_pane_is_opaque)
 {
-    const auto& pl = ctx.layout;
-    const bool dark_mode = ctx.dark_mode;
-    const glm::vec4 font_color = text_color_for_theme(dark_mode);
-    const Color_palette palette = resolved_color_palette(ctx.config, dark_mode);
+    const auto&                              pl          = ctx.layout;
+    const bool                               dark_mode   = ctx.dark_mode;
+    const glm::vec4                          font_color  = text_color_for_theme(dark_mode);
+    const Color_palette                      palette     = resolved_color_palette(ctx.config, dark_mode);
     const text_lcd_resolved_subpixel_order_t frame_order = text_lcd_frame_order(ctx);
     const bool label_lcd_possible = detail::text_lcd_draw_is_eligible(
         detail::text_lcd_draw_surface_t::VERTICAL_AXIS_LABEL,
@@ -265,9 +265,9 @@ bool Text_renderer::render_axis_labels(
 
     const float right_edge_x = static_cast<float>(
         pl.usable_width + pl.v_bar_width - k_v_label_horizontal_padding_px);
-    const float min_x = static_cast<float>(pl.usable_width + k_text_margin_px);
-    const float baseline_off = m_fonts->baseline_offset_px();
-    const double v_span = double(ctx.v1) - double(ctx.v0);
+    const float  min_x        = static_cast<float>(pl.usable_width + k_text_margin_px);
+    const float  baseline_off = m_fonts->baseline_offset_px();
+    const double v_span       = double(ctx.v1) - double(ctx.v0);
 
     text_scissor_t label_scissor;
     glm::vec4 label_backing_rect;
@@ -300,7 +300,7 @@ bool Text_renderer::render_axis_labels(
         }
 
         const double px_per_unit = pl.usable_height / v_span;
-        const float label_y = static_cast<float>(pl.usable_height - (value - double(ctx.v0)) * px_per_unit);
+        const float  label_y     = static_cast<float>(pl.usable_height - (value - double(ctx.v0)) * px_per_unit);
 
         const float baseline_target =
             label_y - k_scissor_pad_px
@@ -308,7 +308,7 @@ bool Text_renderer::render_axis_labels(
         const float pen_y = baseline_target - baseline_off;
 
         const float text_width = m_fonts->measure_text_px(state.text.c_str());
-        float pen_x = right_edge_x - text_width;
+        float       pen_x      = right_edge_x - text_width;
         if (pen_x < min_x) {
             pen_x = min_x;
         }
@@ -317,7 +317,7 @@ bool Text_renderer::render_axis_labels(
         const float snapped_y = std::floor(pen_y + k_pixel_snap);
 
         glm::vec4 text_bounds;
-        bool have_text_bounds = false;
+        bool have_text_bounds        = false;
         bool text_fits_label_backing = false;
         if (label_lcd_possible &&
             label_scissor.enabled &&
@@ -380,10 +380,10 @@ bool Text_renderer::render_info_overlay(
     bool                   fade_labels,
     bool                   horizontal_axis_label_pane_is_opaque)
 {
-    const auto& pl = ctx.layout;
-    const bool dark_mode = ctx.dark_mode;
-    const glm::vec4 font_color = text_color_for_theme(dark_mode);
-    const Color_palette palette = resolved_color_palette(ctx.config, dark_mode);
+    const auto&                              pl          = ctx.layout;
+    const bool                               dark_mode   = ctx.dark_mode;
+    const glm::vec4                          font_color  = text_color_for_theme(dark_mode);
+    const Color_palette                      palette     = resolved_color_palette(ctx.config, dark_mode);
     const text_lcd_resolved_subpixel_order_t frame_order = text_lcd_frame_order(ctx);
     const bool label_lcd_possible = detail::text_lcd_draw_is_eligible(
         detail::text_lcd_draw_surface_t::HORIZONTAL_AXIS_LABEL,
@@ -420,7 +420,7 @@ bool Text_renderer::render_info_overlay(
             pl.usable_height + k_h_label_vertical_nudge_px * ctx.adjusted_font_px);
 
         glm::vec4 text_bounds;
-        bool have_text_bounds = false;
+        bool have_text_bounds        = false;
         bool text_fits_label_scissor = false;
         bool text_fits_label_backing = false;
         if (ctx.rhi && label_scissor.enabled && have_label_backing) {

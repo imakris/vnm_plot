@@ -186,9 +186,9 @@ void Plot_interaction_item::apply_zoom_step(std::chrono::steady_clock::time_poin
         return;
     }
 
-    constexpr qreal eps = 1e-3;
-    bool active = false;
-    qreal elapsed_ms = std::chrono::duration<qreal, std::milli>(now - m_last_zoom_step_time).count();
+    constexpr qreal eps        = 1e-3;
+    bool            active     = false;
+    qreal           elapsed_ms = std::chrono::duration<qreal, std::milli>(now - m_last_zoom_step_time).count();
     m_last_zoom_step_time = now;
 
     if (elapsed_ms <= 0.0) {
@@ -244,8 +244,8 @@ void Plot_interaction_item::mousePressEvent(QMouseEvent* event)
         return;
     }
 
-    const qreal y = event->position().y();
-    const qreal x = event->position().x();
+    const qreal y  = event->position().y();
+    const qreal x  = event->position().x();
     const qreal uw = usable_width();
     const qreal uh = usable_height();
     const qreal ph = preview_height();
@@ -304,9 +304,9 @@ void Plot_interaction_item::mouseMoveEvent(QMouseEvent* event)
             m_click_candidate = false;
         }
 
-        const auto mods = event->modifiers();
+        const auto mods      = event->modifiers();
         const bool ctrl_held = mods & Qt::ControlModifier;
-        const bool alt_held = mods & Qt::AltModifier;
+        const bool alt_held  = mods & Qt::AltModifier;
 
         if (ctrl_held || alt_held) {
             const qreal dy = y - m_drag_last_y;
@@ -332,8 +332,8 @@ void Plot_interaction_item::mouseMoveEvent(QMouseEvent* event)
 
 void Plot_interaction_item::mouseReleaseEvent(QMouseEvent* event)
 {
-    const qreal x = event->position().x();
-    const qreal y = event->position().y();
+    const qreal x       = event->position().x();
+    const qreal y       = event->position().y();
     const qreal move_dx = x - m_press_x;
     const qreal move_dy = y - m_press_y;
     const bool within_click_tolerance =
@@ -408,17 +408,17 @@ bool Plot_interaction_item::handle_wheel(
     if (dy == 0.0) { dy = pixel_delta_x; }
     if (dy == 0.0) { return false;       }
 
-    const auto mods = Qt::KeyboardModifiers::fromInt(modifiers);
-    const qreal steps = dy / 120.0;
-    const qreal impulse = -steps * k_zoom_impulse_per_step;
-    const bool zoom_both = mods.testFlag(Qt::ControlModifier);
-    const bool zoom_alt = mods.testFlag(Qt::AltModifier);
-    const bool zoom_value = zoom_both || zoom_alt;
-    const bool zoom_time = zoom_both || !zoom_value;
+    const auto  mods       = Qt::KeyboardModifiers::fromInt(modifiers);
+    const qreal steps      = dy / 120.0;
+    const qreal impulse    = -steps * k_zoom_impulse_per_step;
+    const bool  zoom_both  = mods.testFlag(Qt::ControlModifier);
+    const bool  zoom_alt   = mods.testFlag(Qt::AltModifier);
+    const bool  zoom_value = zoom_both || zoom_alt;
+    const bool  zoom_time  = zoom_both || !zoom_value;
 
-    Plot_widget* time_target = time_target_widget();
-    const bool time_allowed = zoom_time && time_target && (impulse >= 0 || time_target->can_zoom_in());
-    const bool value_allowed = zoom_value;
+    Plot_widget* time_target   = time_target_widget();
+    const bool   time_allowed  = zoom_time && time_target && (impulse >= 0 || time_target->can_zoom_in());
+    const bool   value_allowed = zoom_value;
     if (!time_allowed && !value_allowed) {
         return false;
     }

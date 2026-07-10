@@ -19,7 +19,7 @@ template<typename>
 struct always_false : std::false_type {};
 
 constexpr std::uint64_t k_fnv_offset_basis = 1469598103934665603ULL;
-constexpr std::uint64_t k_fnv_prime = 1099511628211ULL;
+constexpr std::uint64_t k_fnv_prime        = 1099511628211ULL;
 
 // Member-pointer policies derive offsets from a real object; keep support to
 // sample shapes whose default-initialization cannot execute user code.
@@ -147,10 +147,10 @@ template<typename Member>
 constexpr std::uint64_t member_semantics_tag()
 {
     using member_t = std::decay_t<Member>;
-    constexpr std::uint64_t k_floating_tag = 1ULL << 56;
-    constexpr std::uint64_t k_signed_integral_tag = 2ULL << 56;
+    constexpr std::uint64_t k_floating_tag          = 1ULL << 56;
+    constexpr std::uint64_t k_signed_integral_tag   = 2ULL << 56;
     constexpr std::uint64_t k_unsigned_integral_tag = 3ULL << 56;
-    constexpr std::uint64_t k_other_arithmetic_tag = 4ULL << 56;
+    constexpr std::uint64_t k_other_arithmetic_tag  = 4ULL << 56;
 
     if constexpr (std::is_floating_point_v<member_t>) {
         return k_floating_tag | sizeof(member_t);
@@ -397,13 +397,13 @@ inline Data_access_policy_typed<Sample> make_access_policy(
 {
     Data_access_policy_typed<Sample> policy;
     const std::size_t timestamp_offset = detail::member_offset(timestamp_member);
-    const std::size_t value_offset = detail::member_offset(value_member);
+    const std::size_t value_offset     = detail::member_offset(value_member);
     const std::size_t range_min_offset = detail::member_offset(range_min_member);
     const std::size_t range_max_offset = detail::member_offset(range_max_member);
 
     assign_standard_accessors(policy, timestamp_member, value_member);
     policy.get_range = [range_min_member, range_max_member](const Sample& sample) {
-        const float low = static_cast<float>(sample.*range_min_member);
+        const float low  = static_cast<float>(sample.*range_min_member);
         const float high = static_cast<float>(sample.*range_max_member);
         return std::make_pair(low, high);
     };
@@ -451,7 +451,7 @@ inline Data_access_policy_typed<Sample> make_access_policy(
 {
     Data_access_policy_typed<Sample> policy;
     const std::size_t timestamp_offset = detail::member_offset(timestamp_member);
-    const std::size_t value_offset = detail::member_offset(value_member);
+    const std::size_t value_offset     = detail::member_offset(value_member);
 
     assign_standard_accessors(policy, timestamp_member, value_member);
     policy.layout_key = detail::compute_sample_layout_key(

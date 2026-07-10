@@ -62,11 +62,12 @@ bool scan_series_range(
         return false;
     }
 
-    bool have_any = false;
-    const void* held_sample = nullptr;
-    bool have_held_sample = false;
-    bool have_held_candidate = false;
-    std::int64_t held_timestamp_ns = 0;
+    bool         have_any            = false;
+    const void*  held_sample         = nullptr;
+    bool         have_held_sample    = false;
+    bool         have_held_candidate = false;
+    std::int64_t held_timestamp_ns   = 0;
+
     bool have_sample_at_or_after_visible_start = false;
     for (std::size_t i = 0; i < snapshot.count; ++i) {
         const void* sample = snapshot.at(i);
@@ -164,7 +165,7 @@ void apply_auto_v_range_padding(
     if (config.auto_v_range_extra_scale > 0.0) {
         const double span = double(v_max) - double(v_min);
         if (span > 0.0) {
-            const double center = 0.5 * (double(v_min) + double(v_max));
+            const double center      = 0.5 * (double(v_min) + double(v_max));
             const double padded_span = span * (1.0 + config.auto_v_range_extra_scale);
             v_min = static_cast<float>(center - padded_span * 0.5);
             v_max = static_cast<float>(center + padded_span * 0.5);
@@ -321,6 +322,7 @@ bool query_or_scan_series_range(
 
     std::map<int, auto_range_cache_entry_t>* entries = cache_entries(cache, preview);
     const std::uint64_t current_sequence = source.current_sequence(level);
+
     const bool cacheable_query =
         entries && current_sequence != 0 && !query.semantics_key.conservative;
     if (cacheable_query) {
@@ -408,7 +410,7 @@ bool resolve_series_collection_range(
     float&                 out_min,
     float&                 out_max)
 {
-    bool have_any = false;
+    bool      have_any = false;
     Profiler* profiler = config.profiler.get();
     const bool visible_only =
         !preview && config.auto_v_range_mode == Auto_v_range_mode::VISIBLE;

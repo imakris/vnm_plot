@@ -23,7 +23,7 @@ float expected_alpha(float spacing_px)
     constexpr double k_cell_span_min = 1.0;
     constexpr double k_fade_den      = 59.0;
     constexpr double k_alpha_base    = 0.75;
-    const double fade = (double(spacing_px) - k_cell_span_min) / k_fade_den;
+    const double     fade            = (double(spacing_px) - k_cell_span_min) / k_fade_den;
     return static_cast<float>(std::clamp(fade, 0.0, 1.0) * k_alpha_base);
 }
 

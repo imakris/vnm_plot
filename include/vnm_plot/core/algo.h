@@ -41,7 +41,7 @@ inline std::string format_axis_fixed_or_int(double v, int digits)
     }
 
     if (digits <= 0) {
-        const double rounded = std::round(v);
+        const double      rounded    = std::round(v);
         const long double rounded_ld = static_cast<long double>(rounded);
         if (rounded_ld < static_cast<long double>(std::numeric_limits<std::int64_t>::min()) ||
             rounded_ld > static_cast<long double>(std::numeric_limits<std::int64_t>::max()))
@@ -60,7 +60,7 @@ inline std::string format_axis_fixed_or_int(double v, int digits)
         return "0";
     }
     const long double scale_ld = static_cast<long double>(scale);
-    const long double scaled = static_cast<long double>(v) * scale_ld;
+    const long double scaled   = static_cast<long double>(v) * scale_ld;
     if (!std::isfinite(scaled) ||
         std::abs(scaled) > static_cast<long double>(std::numeric_limits<double>::max()))
     {
@@ -68,14 +68,14 @@ inline std::string format_axis_fixed_or_int(double v, int digits)
     }
 
     const long double rounded_scaled = std::round(scaled);
-    const long double rounded = rounded_scaled / scale_ld;
+    const long double rounded        = rounded_scaled / scale_ld;
     if (!std::isfinite(rounded) ||
         std::abs(rounded) > static_cast<long double>(std::numeric_limits<double>::max()))
     {
         return "0";
     }
 
-    double r = static_cast<double>(rounded);
+    double       r   = static_cast<double>(rounded);
     const double eps = 0.5 / scale;
 
     if (std::abs(r) < eps) {
@@ -131,7 +131,7 @@ inline bool any_fractional_at_precision(const std::vector<double>& values, int d
             return false;
         }
 
-        const double r = rounded_scaled / scale;
+        const double r       = rounded_scaled / scale;
         const double rounded = std::round(r);
         if (!std::isfinite(r) || !std::isfinite(rounded)) {
             return false;
@@ -190,7 +190,7 @@ inline std::size_t circular_index(const ContainerT& c, int index)
     }
 
     const auto size_as_int = static_cast<int>(c.size());
-    int remainder = index % size_as_int;
+    int        remainder   = index % size_as_int;
     if (remainder < 0) {
         remainder += size_as_int;
     }
@@ -221,7 +221,7 @@ inline double get_shift(double section_size, double minval)
         }
     }
 
-    const double denom = section_size * m;
+    const double denom      = section_size * m;
     const double scaled_min = minval * m;
     if (!(denom > 0.0) || !std::isfinite(denom) || !std::isfinite(scaled_min)) {
         return 0.0;
@@ -266,7 +266,7 @@ inline std::vector<double> build_time_steps_covering(double max_span)
     steps.insert(steps.end(), std::begin(exact), std::end(exact));
 
     // Power-of-two chain beyond 2 days to keep exact multiples.
-    double s = 172800.0; // 2 days
+    double       s     = 172800.0; // 2 days
     const double limit = std::max(max_span * 2.0, s * 2.0);
     while (s < limit && s < 1e12) {
         s *= 2.0;
@@ -296,8 +296,8 @@ inline int find_time_step_start_index(const std::vector<double>& steps, double t
 // Minimal usable span for the vertical axis (prevents float precision collapse).
 inline float min_v_span_for(float a, float b)
 {
-    float mag = std::max(std::abs(a), std::abs(b));
-    float ulps = 64.0f * std::numeric_limits<float>::epsilon() * std::max(1.0f, mag);
+    float mag       = std::max(std::abs(a), std::abs(b));
+    float ulps      = 64.0f * std::numeric_limits<float>::epsilon() * std::max(1.0f, mag);
     float floor_abs = 1e-6f * std::max(1.0f, mag);
     return std::max(ulps, floor_abs);
 }
@@ -346,7 +346,7 @@ std::optional<std::size_t> bsearch_ts_impl(
     std::size_t lo = 0;
     std::size_t hi = count;
     while (lo < hi) {
-        std::size_t mid = lo + (hi - lo) / 2;
+        std::size_t mid    = lo + (hi - lo) / 2;
         const void* sample = addr(mid);
         if (!sample) {
             return std::nullopt;
@@ -482,7 +482,7 @@ visible_sample_window_t select_visible_sample_window(
 
     if (!timestamps_monotonic) {
         std::size_t match_first = snapshot.count;
-        std::size_t match_last = 0;
+        std::size_t match_last  = 0;
         for (std::size_t i = 0; i < snapshot.count; ++i) {
             const void* sample = snapshot.at(i);
             if (!sample) {
@@ -550,7 +550,7 @@ visible_sample_aggregate_t aggregate_visible_sample_range(
             if (!std::isfinite(low) || !std::isfinite(high)) {
                 return;
             }
-            const double dlow = std::min(low, high);
+            const double dlow  = std::min(low, high);
             const double dhigh = std::max(low, high);
             if (!aggregate.valid) {
                 aggregate = {dlow, dhigh, ts_ns, ts_ns, true};
@@ -562,8 +562,8 @@ visible_sample_aggregate_t aggregate_visible_sample_range(
             aggregate.tmax_ns = std::max(aggregate.tmax_ns, ts_ns);
         };
 
-    const void* held_sample = nullptr;
-    bool have_sample_at_or_after_window_start = false;
+    const void* held_sample                          = nullptr;
+    bool        have_sample_at_or_after_window_start = false;
     for (std::size_t i = 0; i < snapshot.count; ++i) {
         const void* sample = snapshot.at(i);
         if (!sample) {
@@ -616,20 +616,20 @@ timestamp_bracket_t bracket_timestamp_impl(
     }
 
     const void* first_sample = addr(0);
-    const void* last_sample = addr(count - 1);
+    const void* last_sample  = addr(count - 1);
     if (!first_sample || !last_sample) {
         return {};
     }
 
-    const double first_ts = get_timestamp(first_sample);
-    const double last_ts = get_timestamp(last_sample);
-    const bool ascending = first_ts <= last_ts;
+    const double first_ts  = get_timestamp(first_sample);
+    const double last_ts   = get_timestamp(last_sample);
+    const bool   ascending = first_ts <= last_ts;
 
     std::size_t lo = 0;
     std::size_t hi = count - 1;
     while (lo < hi) {
-        const std::size_t mid = lo + (hi - lo) / 2;
-        const void* mid_sample = addr(mid);
+        const std::size_t mid        = lo + (hi - lo) / 2;
+        const void*       mid_sample = addr(mid);
         if (!mid_sample) {
             return {};
         }
@@ -708,7 +708,7 @@ inline std::int64_t choose_snap_ns(std::int64_t span_ns)
     constexpr std::int64_t k_ns_per_us     = 1000LL;
     constexpr std::int64_t k_ns_per_ms     = 1000000LL;
     constexpr std::int64_t k_ns_per_second = 1000000000LL;
-    constexpr std::int64_t k_ns_per_hour   = 3600LL * k_ns_per_second;
+    constexpr std::int64_t k_ns_per_hour   =  3600LL * k_ns_per_second;
     constexpr std::int64_t k_ns_per_day    = 86400LL * k_ns_per_second;
     constexpr std::int64_t k_ns_per_year   = 365LL * k_ns_per_day;
 
@@ -742,9 +742,9 @@ inline std::int64_t floor_div_i64(std::int64_t a, std::int64_t b)
 // on signed wrap.
 inline std::int64_t choose_origin_ns(std::int64_t t_view_min_ns, std::int64_t span_ns)
 {
-    const std::int64_t snap_ns = choose_snap_ns(span_ns);
-    const std::int64_t q       = floor_div_i64(t_view_min_ns, snap_ns);
-    constexpr std::int64_t k_min = std::numeric_limits<std::int64_t>::min();
+    const std::int64_t     snap_ns = choose_snap_ns(span_ns);
+    const std::int64_t     q       = floor_div_i64(t_view_min_ns, snap_ns);
+    constexpr std::int64_t k_min   = std::numeric_limits<std::int64_t>::min();
     if (snap_ns > 1 && q < k_min / snap_ns) {
         return k_min;
     }
@@ -766,11 +766,11 @@ inline std::size_t choose_lod_level(
     }
 
     constexpr double target_pps = 1.0;
-    std::size_t best_level = 0;
-    double best_error = std::abs(base_pps * static_cast<double>(scales[0]) - target_pps);
+    std::size_t      best_level = 0;
+    double           best_error = std::abs(base_pps * static_cast<double>(scales[0]) - target_pps);
 
     for (std::size_t i = 1; i < scales.size(); ++i) {
-        const double pps = base_pps * static_cast<double>(scales[i]);
+        const double pps   = base_pps * static_cast<double>(scales[i]);
         const double error = std::abs(pps - target_pps);
         if (error < best_error) {
             best_error = error;

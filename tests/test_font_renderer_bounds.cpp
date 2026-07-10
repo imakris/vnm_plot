@@ -15,7 +15,7 @@ namespace plot = vnm::plot;
 
 namespace {
 
-constexpr int k_test_font_px = 18;
+constexpr int   k_test_font_px   = 18;
 constexpr float k_bounds_epsilon = 1.0e-4f;
 
 bool finite_ordered(const glm::vec4& bounds)
@@ -92,10 +92,10 @@ bool test_visible_bounds_are_finite_ordered_and_translation_invariant()
     renderer.initialize_metrics(loader, k_test_font_px, true);
 
     constexpr const char* k_text = "Axis 123";
-    constexpr float x = 12.25f;
-    constexpr float y = 34.5f;
-    constexpr float dx = 7.75f;
-    constexpr float dy = -3.5f;
+    constexpr float       x      = 12.25f;
+    constexpr float       y      = 34.5f;
+    constexpr float       dx     = 7.75f;
+    constexpr float       dy     = -3.5f;
 
     glm::vec4 first;
     glm::vec4 translated;

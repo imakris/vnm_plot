@@ -152,7 +152,7 @@ inline void adjust_t_from_pivot_and_scale_impl(
         return;
     }
 
-    const auto left_span_ns = positive_span_ns(view.t_min, *t_pivot_ns);
+    const auto left_span_ns  = positive_span_ns(view.t_min, *t_pivot_ns);
     const auto right_span_ns = positive_span_ns(*t_pivot_ns, view.t_max);
     const std::uint64_t left_ns = left_span_ns
         ? scaled_duration_ns(*left_span_ns, static_cast<long double>(scale))

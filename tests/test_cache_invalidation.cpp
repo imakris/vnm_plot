@@ -381,7 +381,7 @@ bool test_unsupported_query_falls_back_to_snapshot_scan()
 bool test_ready_query_profiler_counts_query_without_scan()
 {
     auto profiler = std::make_shared<Counting_profiler>();
-    auto source = std::make_shared<Query_range_source>();
+    auto source   = std::make_shared<Query_range_source>();
     source->query_status = Data_query_status::READY;
     source->query_range = {2.0f, 5.0f};
 
@@ -410,7 +410,7 @@ bool test_ready_query_profiler_counts_query_without_scan()
 bool test_default_query_profiler_counts_snapshot_scan()
 {
     auto profiler = std::make_shared<Counting_profiler>();
-    auto source = std::make_shared<Snapshot_range_source>();
+    auto source   = std::make_shared<Snapshot_range_source>();
     source->samples = {
         { 0,  6.0f  },
         { 5,  8.0f  },
@@ -646,7 +646,7 @@ bool test_ready_query_result_is_cached_by_current_sequence()
     source->query_sequence = 5;
     source->current_sequence_value = 5;
 
-    auto series = make_stable_series(source);
+    auto series     = make_stable_series(source);
     auto series_map = make_series_map(series);
     plot::detail::auto_range_cache_t cache;
     Plot_config config;
@@ -683,7 +683,7 @@ bool test_conservative_query_result_is_not_cached()
     source->query_sequence = 5;
     source->current_sequence_value = 5;
 
-    auto series = make_series(source);
+    auto series     = make_series(source);
     auto series_map = make_series_map(series);
     plot::detail::auto_range_cache_t cache;
     Plot_config config;
@@ -717,7 +717,7 @@ bool test_empty_query_result_is_cached_by_current_sequence()
     source->query_sequence = 5;
     source->current_sequence_value = 5;
 
-    auto series = make_stable_series(source);
+    auto series     = make_stable_series(source);
     auto series_map = make_series_map(series);
     plot::detail::auto_range_cache_t cache;
     Plot_config config;
@@ -755,7 +755,7 @@ bool test_sequence_change_invalidates_auto_range_cache()
     source->query_sequence = 5;
     source->current_sequence_value = 5;
 
-    auto series = make_stable_series(source);
+    auto series     = make_stable_series(source);
     auto series_map = make_series_map(series);
     plot::detail::auto_range_cache_t cache;
     Plot_config config;
@@ -794,7 +794,7 @@ bool test_visible_window_change_invalidates_auto_range_cache()
     source->query_sequence = 5;
     source->current_sequence_value = 5;
 
-    auto series = make_stable_series(source);
+    auto series     = make_stable_series(source);
     auto series_map = make_series_map(series);
     plot::detail::auto_range_cache_t cache;
     Plot_config config;
@@ -938,7 +938,7 @@ bool test_removed_series_prunes_auto_range_cache()
 
 bool test_preview_auto_range_uses_preview_query_source()
 {
-    auto main_source = std::make_shared<Query_range_source>();
+    auto main_source    = std::make_shared<Query_range_source>();
     auto preview_source = std::make_shared<Query_range_source>();
     preview_source->query_status = Data_query_status::READY;
     preview_source->query_range = {-2.0f, 11.0f};

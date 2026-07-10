@@ -165,8 +165,8 @@ bool test_ready_value_range_scan_populates_sequence()
     source.set_sequence(123);
 
     const plot::Data_access_policy access = make_value_access();
-    const auto query = make_query(access, 0, 2);
-    const auto result = source.query_v_range(0, query);
+    const auto                     query  = make_query(access, 0, 2);
+    const auto                     result = source.query_v_range(0, query);
     TEST_ASSERT(result.status == plot::Data_query_status::READY,
         "finite value-range query should be READY");
     TEST_ASSERT(result.sequence == 123,
@@ -189,7 +189,8 @@ bool test_ascending_value_range_scans_only_selected_time_window()
     source.set_time_order(plot::Time_order::ASCENDING);
 
     int timestamp_calls = 0;
-    int value_calls = 0;
+    int value_calls     = 0;
+
     const plot::Data_access_policy access =
         make_value_access(&timestamp_calls, &value_calls);
     const auto result = source.query_v_range(0, make_query(access, 500, 501));
@@ -220,7 +221,8 @@ bool test_ascending_skip_hold_value_range_scans_bounded_prefix()
     source.set_time_order(plot::Time_order::ASCENDING);
 
     int timestamp_calls = 0;
-    int value_calls = 0;
+    int value_calls     = 0;
+
     const plot::Data_access_policy access =
         make_value_access(&timestamp_calls, &value_calls);
     auto query = make_hold_query(access, 500, 501);
@@ -314,6 +316,7 @@ bool test_nonfinite_values_are_skipped_or_zeroed_by_policy()
 {
     const float nan = std::numeric_limits<float>::quiet_NaN();
     const float inf = std::numeric_limits<float>::infinity();
+
     const plot::Data_access_policy access = make_value_access();
 
     Query_source mixed_source({
@@ -365,9 +368,9 @@ bool test_query_time_window_returns_simple_ascending_window()
     source.set_sequence(321);
     source.set_time_order(plot::Time_order::ASCENDING);
 
-    int timestamp_calls = 0;
-    const plot::Data_access_policy access = make_timestamp_access(&timestamp_calls);
-    const auto result = source.query_time_window(0, make_draw_query(access, 20, 30));
+    int                            timestamp_calls = 0;
+    const plot::Data_access_policy access          = make_timestamp_access(&timestamp_calls);
+    const auto                     result          = source.query_time_window(0, make_draw_query(access, 20, 30));
     TEST_ASSERT(result.status == plot::Data_query_status::READY,
         "query_time_window should be READY for matching ascending samples");
     TEST_ASSERT(result.sequence == 321,

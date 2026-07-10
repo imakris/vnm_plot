@@ -148,8 +148,8 @@ inline bool qrhi_grown_capacity_bytes(
 
     const std::size_t max_qrhi_bytes =
         static_cast<std::size_t>(std::numeric_limits<quint32>::max());
-    const std::size_t headroom = bytes_needed / 4u;
-    std::size_t capacity_bytes = 0;
+    const std::size_t headroom       = bytes_needed / 4u;
+    std::size_t       capacity_bytes = 0;
     if (!checked_size_add(bytes_needed, headroom, capacity_bytes) ||
         capacity_bytes > max_qrhi_bytes)
     {

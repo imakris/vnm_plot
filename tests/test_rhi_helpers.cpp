@@ -59,8 +59,8 @@ bool test_qrhi_byte_size_rejects_size_t_product_overflow()
 
 bool test_qrhi_grown_capacity_bytes_checks_headroom_overflow()
 {
-    std::size_t capacity = 0;
-    quint32 qrhi_capacity = 0;
+    std::size_t capacity      = 0;
+    quint32     qrhi_capacity = 0;
     const std::size_t max_qrhi =
         static_cast<std::size_t>(std::numeric_limits<quint32>::max());
 

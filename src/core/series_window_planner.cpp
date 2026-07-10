@@ -153,7 +153,7 @@ bool select_hold_source_index(
 
     if (nonfinite_policy == Nonfinite_sample_policy::SKIP) {
         for (std::size_t offset = candidate_index + 1u; offset > 0; --offset) {
-            const std::size_t index = offset - 1u;
+            const std::size_t          index  = offset - 1u;
             const sample_draw_status_t status = status_at(index);
             if (status == sample_draw_status_t::DRAWABLE) {
                 out_index = index;
@@ -202,9 +202,10 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
         return plan;
     }
 
-    auto& state = *request.planner_state;
-    auto& snapshot_cache = *request.snapshot_cache;
-    Data_source& data_source = *request.data_source;
+    auto&        state          = *request.planner_state;
+    auto&        snapshot_cache = *request.snapshot_cache;
+    Data_source& data_source    = *request.data_source;
+
     const Data_access_policy& access = *request.access;
     const erased_access_policy_t access_view =
         make_erased_access_policy_view(access);
@@ -224,7 +225,7 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
         reset_snapshot_cache(snapshot_cache);
     }
 
-    const std::size_t level_count = scales.size();
+    const std::size_t level_count     = scales.size();
     const std::size_t max_level_index = level_count > 0 ? level_count - 1 : 0;
     std::size_t target_level = std::min<std::size_t>(
         state.has_last_lod_level ? state.last_lod_level : 0,
@@ -358,8 +359,8 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
             break;
         }
         mark_tried(applied_level);
-        const std::size_t applied_scale = scales[applied_level];
-        bool hold_last_forward = false;
+        const std::size_t applied_scale     = scales[applied_level];
+        bool              hold_last_forward = false;
 
         const std::uint64_t current_seq = data_source.current_sequence(applied_level);
         if (current_seq != 0 &&
@@ -420,13 +421,13 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
             break;
         }
 
-        const auto& snapshot = snapshot_result.snapshot;
-        bool have_direct_time_window = false;
-        bool direct_time_window_empty = false;
-        bool direct_time_window_failed = false;
-        std::size_t direct_first_idx = 0;
-        std::size_t direct_last_idx = 0;
-        bool direct_hold_last_forward = false;
+        const auto& snapshot                  = snapshot_result.snapshot;
+        bool        have_direct_time_window   = false;
+        bool        direct_time_window_empty  = false;
+        bool        direct_time_window_failed = false;
+        std::size_t direct_first_idx          = 0;
+        std::size_t direct_last_idx           = 0;
+        bool        direct_hold_last_forward  = false;
         if (direct_time_window.attempted &&
             direct_time_window.result.sequence != 0 &&
             direct_time_window.result.sequence == snapshot.sequence)
@@ -438,9 +439,9 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
             }
             else
             if (direct_time_window.result.status == Data_query_status::READY) {
-                const std::size_t first = direct_time_window.result.value.first;
-                const std::size_t count = direct_time_window.result.value.count;
-                std::size_t last_exclusive = first;
+                const std::size_t first          = direct_time_window.result.value.first;
+                const std::size_t count          = direct_time_window.result.value.count;
+                std::size_t       last_exclusive = first;
                 if (count == 0) {
                     have_direct_time_window = true;
                     direct_time_window_empty = true;
@@ -455,7 +456,7 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
                     direct_last_idx = last_exclusive;
                     if (access_view.has_timestamp()) {
                         bool has_match_in_requested_window = false;
-                        bool direct_window_valid = true;
+                        bool direct_window_valid           = true;
                         for (std::size_t index = first;
                              index < last_exclusive;
                              ++index)
@@ -569,8 +570,8 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
         }
         else
         if (access_view.has_timestamp()) {
-            const void* current_identity = data_source.identity();
-            const Time_order source_order = data_source.time_order(applied_level);
+            const void*      current_identity = data_source.identity();
+            const Time_order source_order     = data_source.time_order(applied_level);
             if (source_order == Time_order::ASCENDING) {
                 state.last_timestamp_order_sequence = snapshot.sequence;
                 state.last_timestamp_order_identity = current_identity;
@@ -631,10 +632,10 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
             timestamps_monotonic = state.last_timestamps_monotonic;
         }
 
-        std::size_t first_idx = 0;
-        std::size_t last_idx = snapshot.count;
-        std::int64_t last_ts = 0;
-        bool have_last_ts = false;
+        std::size_t  first_idx    = 0;
+        std::size_t  last_idx     = snapshot.count;
+        std::int64_t last_ts      = 0;
+        bool         have_last_ts = false;
         if (have_direct_time_window) {
             if (direct_time_window_empty) {
                 first_idx = snapshot.count;
@@ -700,7 +701,7 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
         if (first_idx >= last_idx) {
             if (can_hold_last_forward) {
                 std::size_t hold_source_index = 0;
-                bool hold_failed = false;
+                bool        hold_failed       = false;
                 if (select_hold_source_index(
                         snapshot,
                         access_view,
@@ -749,7 +750,7 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
             first_idx < last_idx)
         {
             bool has_drawable_sample_in_requested_window = false;
-            bool failed_sample_in_requested_window = false;
+            bool failed_sample_in_requested_window       = false;
             for (std::size_t index = first_idx; index < last_idx; ++index) {
                 const void* sample = snapshot.at(index);
                 if (!sample) {
@@ -783,7 +784,7 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
                 get_timestamp(first_sample) < request.t_min_ns)
             {
                 std::size_t hold_source_index = 0;
-                bool hold_failed = false;
+                bool        hold_failed       = false;
                 if (select_hold_source_index(
                         snapshot,
                         access_view,
@@ -827,7 +828,7 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
             last_idx > 0)
         {
             std::size_t hold_source_index = 0;
-            bool hold_failed = false;
+            bool        hold_failed       = false;
             if (select_hold_source_index(
                     snapshot,
                     access_view,
@@ -855,8 +856,8 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
             break;
         }
 
-        const std::size_t source_count = last_idx - first_idx;
-        std::size_t count_for_lod = 0;
+        const std::size_t source_count  = last_idx - first_idx;
+        std::size_t       count_for_lod = 0;
         if (!checked_size_add(
                 source_count,
                 hold_last_forward ? 1u : 0u,

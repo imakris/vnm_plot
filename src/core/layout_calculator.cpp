@@ -484,15 +484,16 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
             "renderer.frame.calculate_layout.impl.cache_miss.pass1.vertical_axis");
 
         const int divs[2] = {5, 2};
-        double step = 1.0;
-        double test = 0.0;
-        int i = 16;
-        int initial_level_index = 0;
-        double initial_level_step = 0.0;
-        double px_per_unit = 0.0;
-        float label_box_height_px = 0.0f;
-        float label_gap_px = 0.0f;
-        float min_label_spacing_px = 0.0f;
+        double step                = 1.0;
+        double test                = 0.0;
+        int    i                   = 16;
+        int    initial_level_index = 0;
+
+        double initial_level_step   = 0.0;
+        double px_per_unit          = 0.0;
+        float  label_box_height_px  = 0.0f;
+        float  label_gap_px         = 0.0f;
+        float  min_label_spacing_px = 0.0f;
         double finest_step_accepted = 0.0;
 
         auto& accepted_boxes = m_scratch_accepted_boxes;
@@ -557,11 +558,12 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
         };
 
         for (int guard = 0; guard < 64; ++guard) {
-            double shift = 0.0;
-            double extend = 0.0;
-            int j_min = 0;
-            int j_max = 0;
-            auto& this_vals = m_scratch_vals;
+            double shift     = 0.0;
+            double extend    = 0.0;
+            int    j_min     = 0;
+            int    j_max     = 0;
+            auto&  this_vals = m_scratch_vals;
+
             bool skip_level_due_to_conflict = false;
 
             {
@@ -583,7 +585,7 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
                     "renderer.frame.calculate_layout.impl.cache_miss.pass1.vertical_axis.scan");
                 for (int j = j_min; j <= j_max; ++j) {
                     const double v = double(params.v_min) + shift + j * step;
-                    const float y = y_of(v);
+                    const float  y = y_of(v);
 
                     if (y <= 0.f || y >= float(params.label_visible_height)) {
                         continue;
@@ -703,8 +705,8 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
         }
 
         // Format and measure labels
-        float advance = 0.f;
-        bool use_monospace = false;
+        float advance       = 0.f;
+        bool  use_monospace = false;
         {
             VNM_PLOT_PROFILE_SCOPE(
                 profiler,
@@ -761,8 +763,8 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
     // timestamp bounds cannot overflow before the double-domain layout math.
     constexpr double k_ns_per_second_d = 1.0e9;
     constexpr double k_seconds_per_ns  = 1.0 / k_ns_per_second_d;
-    double t_range = 0.0;
-    const double t_min_seconds = static_cast<double>(params.t_min) * k_seconds_per_ns;
+    double           t_range           = 0.0;
+    const double     t_min_seconds     = static_cast<double>(params.t_min) * k_seconds_per_ns;
     {
         VNM_PLOT_PROFILE_SCOPE(
             profiler,
@@ -779,11 +781,11 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
             "renderer.frame.calculate_layout.impl.cache_miss.pass1.horizontal_axis");
 
         constexpr float k_coincide = 1.0f;
-        const float min_gap = 10.0f;
+        const float     min_gap    = 10.0f;
 
-        double px_per_t = 0.0;
-        float advance = 0.f;
-        bool use_monospace = false;
+        double px_per_t      = 0.0;
+        float  advance       = 0.f;
+        bool   use_monospace = false;
         std::vector<double> steps;
         {
             VNM_PLOT_PROFILE_SCOPE(
@@ -834,11 +836,11 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
             level.reserve(32);
         }
 
-        const int start_si     = si;
+        const int    start_si   = si;
         const double start_step = (si >= 0 && si < static_cast<int>(steps.size())) ? steps[si] : 0.0;
 
-        bool any_level  = false;
-        bool any_subsec = false;
+        bool   any_level   = false;
+        bool   any_subsec  = false;
         double finest_step = 0.0;
 
         for (; si >= 0; --si) {
@@ -861,11 +863,11 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
                 float  x_anchor;
             };
             std::vector<cand> candidates;
-            float right_vis = 0.0f;
-            float pixel_step = 0.0f;
-            float optimistic_width = 0.0f;
-            float estimated_label_width = 0.0f;
-            double t_start = 0.0;
+            float  right_vis             = 0.0f;
+            float  pixel_step            = 0.0f;
+            float  optimistic_width      = 0.0f;
+            float  estimated_label_width = 0.0f;
+            double t_start               = 0.0;
             {
                 VNM_PLOT_PROFILE_SCOPE(
                     profiler,
@@ -920,13 +922,13 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
                     format_signature);
             }
 
-            int64_t tick_index = 0;
-            double t = t_start;
-            const double t_max_seconds = static_cast<double>(params.t_max) * k_seconds_per_ns;
-            float last_width = estimated_label_width;
-            bool have_prev_candidate = false;
-            float prev_candidate_x1 = std::numeric_limits<float>::lowest();
-            bool step_invalid = false;
+            int64_t      tick_index          = 0;
+            double       t                   = t_start;
+            const double t_max_seconds       = static_cast<double>(params.t_max) * k_seconds_per_ns;
+            float        last_width          = estimated_label_width;
+            bool         have_prev_candidate = false;
+            float        prev_candidate_x1   = std::numeric_limits<float>::lowest();
+            bool         step_invalid        = false;
 
             {
                 VNM_PLOT_PROFILE_SCOPE(
@@ -975,9 +977,9 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
                         break;
                     }
 
-                    float w = 0.0f;
-                    const Cached_label* cached = nullptr;
-                    const bool cache_hit = timestamp_label_cache().try_get(t, cached);
+                    float               w         = 0.0f;
+                    const Cached_label* cached    = nullptr;
+                    const bool          cache_hit = timestamp_label_cache().try_get(t, cached);
 
                     if (cache_hit) {
                         VNM_PLOT_PROFILE_SCOPE(
@@ -1049,7 +1051,7 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
                     prev_candidate_x1 = x + w;
 
                     const float required_spacing = w + min_gap;
-                    const int skip = std::max(1, int(std::ceil(required_spacing / pixel_step)));
+                    const int   skip             = std::max(1, int(std::ceil(required_spacing / pixel_step)));
                     tick_index += skip;
                     t = t_start + tick_index * step;
                 }
@@ -1188,7 +1190,7 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
                 });
 
             float prev_right = -std::numeric_limits<float>::max();
-            auto write = res.h_labels.begin();
+            auto  write      = res.h_labels.begin();
             for (auto it = res.h_labels.begin(); it != res.h_labels.end(); ++it) {
                 float w = 0.f;
                 if (use_monospace && advance > 0.f) {

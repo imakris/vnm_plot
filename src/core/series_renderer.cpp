@@ -39,8 +39,8 @@ constexpr float k_default_color_epsilon = 0.01f;
 
 std::vector<std::size_t> source_lod_scales(const Data_source& source)
 {
-    const std::size_t level_count = source.lod_levels();
-    std::vector<std::size_t> scales = source.lod_scales();
+    const std::size_t        level_count = source.lod_levels();
+    std::vector<std::size_t> scales      = source.lod_scales();
     if (scales.size() != level_count) {
         scales = compute_lod_scales(source);
     }
@@ -701,7 +701,7 @@ void Series_renderer::prepare(
     VNM_PLOT_PROFILE_SCOPE(profiler,
         "renderer.frame.execute_passes.render_data_series.prepare");
 
-    QRhi*                    rhi         = ctx.rhi;
+    QRhi* rhi = ctx.rhi;
     QRhiResourceUpdateBatch* rhi_updates = ctx.rhi_updates;
     if (m_rhi_state->last_rhi && m_rhi_state->last_rhi != rhi) {
         for (auto& [key, entry] : m_rhi_state->qrhi_layer_cache) {
@@ -730,7 +730,7 @@ void Series_renderer::prepare(
     draw_states.reserve(series.size());
 
     const double preview_visibility = ctx.config ? ctx.config->preview_visibility : 1.0;
-    const bool preview_visible = ctx.adjusted_preview_height > 0.0 && preview_visibility > 0.0;
+    const bool   preview_visible    = ctx.adjusted_preview_height > 0.0 && preview_visibility > 0.0;
     m_rhi_state->frame_preview_visible = preview_visible;
 
     const std::int64_t main_span_ns = positive_span_ns_for_signed_api(ctx.t0, ctx.t1);
@@ -774,9 +774,9 @@ void Series_renderer::prepare(
 
         const Data_access_policy& main_access = s->main_access();
 
-        Display_style main_style = s->style;
+        Display_style        main_style         = s->style;
         Series_interpolation main_interpolation = s->interpolation;
-        const auto& qrhi_layers = qrhi_layers_for(*s);
+        const auto&          qrhi_layers        = qrhi_layers_for(*s);
         const auto has_layer_for_view = [&](Series_view_kind view_kind) {
             return std::any_of(
                 qrhi_layers.begin(),
@@ -790,13 +790,14 @@ void Series_renderer::prepare(
             continue;
         }
 
-        const bool has_preview_config = s->has_preview_config();
-        Data_source* preview_source = nullptr;
-        const Data_access_policy* preview_access = nullptr;
-        Display_style preview_style = Display_style::NONE;
-        Series_interpolation preview_interpolation = Series_interpolation::LINEAR;
-        bool preview_matches_main = false;
-        bool preview_valid = false;
+        const bool                has_preview_config    = s->has_preview_config();
+        Data_source*              preview_source        = nullptr;
+        const Data_access_policy* preview_access        = nullptr;
+        Display_style             preview_style         = Display_style::NONE;
+        Series_interpolation      preview_interpolation = Series_interpolation::LINEAR;
+        bool                      preview_matches_main  = false;
+
+        bool preview_valid     = false;
         bool has_preview_layer = false;
 
         if (preview_visible) {
@@ -1326,8 +1327,8 @@ void Series_renderer::prepare(
                 hash_drawable_spans(window.drawable_spans);
             data_key.access_key = layer_access_key;
 
-            auto& cache_entry = m_rhi_state->qrhi_layer_cache[program_key];
-            bool resources_changed = false;
+            auto& cache_entry       = m_rhi_state->qrhi_layer_cache[program_key];
+            bool  resources_changed = false;
             if (!cache_entry.state) {
                 cache_entry.state = layer->create_state(*rhi);
                 resources_changed = true;
@@ -1439,9 +1440,9 @@ void Series_renderer::prepare(
                 return false;
             }
 
-            const series_data_t& series_data = *series_it->second;
-            const Data_source* source = nullptr;
-            const Data_access_policy* access = nullptr;
+            const series_data_t&      series_data = *series_it->second;
+            const Data_source*        source      = nullptr;
+            const Data_access_policy* access      = nullptr;
             if (key.view_kind == Series_view_kind::MAIN) {
                 source = series_data.main_source();
                 access = &series_data.main_access();
@@ -1650,8 +1651,8 @@ bool Series_renderer::rhi_prepare_series_view_samples(
             return false;
         }
 
-        std::size_t expected_gpu_count = 0;
-        bool synthetic_hold_seen = false;
+        std::size_t expected_gpu_count  = 0;
+        bool        synthetic_hold_seen = false;
         for (std::size_t span_index = 0;
              span_index < window.drawable_spans.size();
              ++span_index)
@@ -1703,8 +1704,8 @@ bool Series_renderer::rhi_prepare_series_view_samples(
         }
 
         std::size_t needed_elements = 0;
-        std::size_t needed_bytes = 0;
-        quint32 upload_bytes = 0;
+        std::size_t needed_bytes    = 0;
+        quint32     upload_bytes    = 0;
         if (!detail::checked_size_add(window.gpu_count, 0u, needed_elements) ||
             !detail::qrhi_byte_size(
                 needed_elements, sizeof(gpu_sample_t),
@@ -1739,7 +1740,7 @@ bool Series_renderer::rhi_prepare_series_view_samples(
         for (const drawable_sample_span_t& span : window.drawable_spans) {
             for (std::size_t i = 0; i < span.source_count; ++i) {
                 const std::size_t source_index = span.source_first + i;
-                const void* src = snapshot.at(source_index);
+                const void*       src          = snapshot.at(source_index);
                 if (!src ||
                     !stage_one_sample(
                         staging[span.gpu_first + i],
@@ -1766,8 +1767,8 @@ bool Series_renderer::rhi_prepare_series_view_samples(
             }
         }
 
-        std::size_t alloc_bytes = 0;
-        quint32 qrhi_alloc_bytes = 0;
+        std::size_t alloc_bytes      = 0;
+        quint32     qrhi_alloc_bytes = 0;
         if (!detail::qrhi_grown_capacity_bytes(
                 needed_bytes, alloc_bytes, qrhi_alloc_bytes))
         {
@@ -1830,9 +1831,9 @@ bool Series_renderer::rhi_prepare_series_primitive(
     QRhi* rhi = ctx.rhi;
     QRhiResourceUpdateBatch* updates = ctx.rhi_updates;
 
-    const bool is_dots = (primitive_style == Display_style::DOTS);
-    const bool is_area = (primitive_style == Display_style::AREA);
-    const std::size_t count = window.gpu_count;
+    const bool        is_dots = (primitive_style == Display_style::DOTS);
+    const bool        is_area = (primitive_style == Display_style::AREA);
+    const std::size_t count   = window.gpu_count;
     if (count == 0) {
         return false;
     }
@@ -1951,15 +1952,15 @@ bool Series_renderer::rhi_prepare_series_primitive(
         }
 
         std::size_t needed_bytes = 0;
-        quint32 upload_bytes = 0;
+        quint32     upload_bytes = 0;
         if (!detail::qrhi_byte_size(
                 total_padded_count, sizeof(gpu_sample_t),
                 needed_bytes, upload_bytes))
         {
             return false;
         }
-        std::size_t alloc_bytes = 0;
-        quint32 qrhi_alloc_bytes = 0;
+        std::size_t alloc_bytes      = 0;
+        quint32     qrhi_alloc_bytes = 0;
         if (!detail::qrhi_grown_capacity_bytes(
                 needed_bytes, alloc_bytes, qrhi_alloc_bytes))
         {
@@ -2079,8 +2080,8 @@ bool Series_renderer::rhi_prepare_series_primitive(
     // the FBO can swap the descriptor out from under us, leaving the cached
     // pipeline incompatible with the new pass; rebuild when the descriptor
     // or sample count moves.
-    QRhiRenderPassDescriptor* current_rpd = rt->renderPassDescriptor();
-    const int current_samples = rt->sampleCount();
+    QRhiRenderPassDescriptor* current_rpd     = rt->renderPassDescriptor();
+    const int                 current_samples = rt->sampleCount();
     if (cached.pipeline
         && (cached.last_rpd != current_rpd
             || cached.last_sample_count != current_samples))
@@ -2288,9 +2289,9 @@ void Series_renderer::rhi_record_series_primitive(
         return;
     }
 
-    const bool is_dots = (primitive_style == Display_style::DOTS);
-    const bool is_area = (primitive_style == Display_style::AREA);
-    const std::size_t count = window.gpu_count;
+    const bool        is_dots = (primitive_style == Display_style::DOTS);
+    const bool        is_area = (primitive_style == Display_style::AREA);
+    const std::size_t count   = window.gpu_count;
     if (count == 0) {
         return;
     }
@@ -2351,8 +2352,8 @@ void Series_renderer::rhi_record_series_primitive(
                 return;
             }
             quint32 instance_count = 0;
-            quint32 first_offset = 0;
-            quint32 next_offset = 0;
+            quint32 first_offset   = 0;
+            quint32 next_offset    = 0;
             if (!detail::to_qrhi_count(span.gpu_count - 1u, instance_count) ||
                 !detail::qrhi_buffer_offset(
                     span.gpu_first,
@@ -2390,15 +2391,15 @@ void Series_renderer::rhi_record_series_primitive(
             if (line_span.line_count < 2) {
                 continue;
             }
-            const std::size_t offset0 = line_span.line_first;
-            std::size_t offset1 = 0;
-            std::size_t offset2 = 0;
-            std::size_t offset3 = 0;
-            quint32 qrhi_offset0 = 0;
-            quint32 qrhi_offset1 = 0;
-            quint32 qrhi_offset2 = 0;
-            quint32 qrhi_offset3 = 0;
-            quint32 instance_count = 0;
+            const std::size_t offset0        = line_span.line_first;
+            std::size_t       offset1        = 0;
+            std::size_t       offset2        = 0;
+            std::size_t       offset3        = 0;
+            quint32           qrhi_offset0   = 0;
+            quint32           qrhi_offset1   = 0;
+            quint32           qrhi_offset2   = 0;
+            quint32           qrhi_offset3   = 0;
+            quint32           instance_count = 0;
             if (!detail::checked_size_add(
                     line_span.line_first,
                     1u,

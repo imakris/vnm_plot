@@ -18,7 +18,7 @@ namespace {
 constexpr std::int64_t k_ns_per_us     = 1000LL;
 constexpr std::int64_t k_ns_per_ms     = 1000000LL;
 constexpr std::int64_t k_ns_per_second = 1000000000LL;
-constexpr std::int64_t k_ns_per_hour   = 3600LL * k_ns_per_second;
+constexpr std::int64_t k_ns_per_hour   =  3600LL * k_ns_per_second;
 constexpr std::int64_t k_ns_per_day    = 86400LL * k_ns_per_second;
 constexpr std::int64_t k_ns_per_year   = 365LL * k_ns_per_day;
 
@@ -146,7 +146,7 @@ bool test_fp32_round_trip_within_2e24_for_bounded_spans()
         for (std::int64_t t_view_min_ns : t_view_min_candidates) {
             const std::int64_t origin_ns = plot::detail::choose_origin_ns(t_view_min_ns, span_ns);
             const std::int64_t t_end_ns  = t_view_min_ns + span_ns;
-            const float t_end_rel = static_cast<float>(t_end_ns - origin_ns) * 1e-9f;
+            const float        t_end_rel = static_cast<float>(t_end_ns - origin_ns) * 1e-9f;
 
             TEST_ASSERT(std::fabs(t_end_rel) < k_fp32_integer_bound,
                 "rebased end-of-view seconds must fit inside fp32's exact-integer range");
@@ -187,11 +187,11 @@ bool test_fp32_snap_step_resolution_at_bucket_boundaries()
 
         const std::int64_t origin_ns = plot::detail::choose_origin_ns(c.t_view_min_ns, c.span_ns);
         const std::int64_t t_end_ns  = c.t_view_min_ns + c.span_ns;
-        const float t_end_rel = static_cast<float>(t_end_ns - origin_ns) * 1e-9f;
+        const float        t_end_rel = static_cast<float>(t_end_ns - origin_ns) * 1e-9f;
 
         // ulp at |t_end_rel| in fp32. std::nextafter gives the next
         // representable float; subtracting yields the local step size.
-        const float ulp = std::nextafter(t_end_rel, std::numeric_limits<float>::infinity()) - t_end_rel;
+        const float ulp          = std::nextafter(t_end_rel, std::numeric_limits<float>::infinity()) - t_end_rel;
         const float snap_seconds = static_cast<float>(snap_ns) * 1e-9f;
 
         TEST_ASSERT(ulp <= snap_seconds,

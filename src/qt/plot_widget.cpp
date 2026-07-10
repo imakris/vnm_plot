@@ -99,7 +99,7 @@ void apply_time_axis_model_to_data_config(
 template<typename Update>
 bool apply_time_axis_update_to_data_config(data_config_t& cfg, Update&& update)
 {
-    auto model = widget_time_axis_model(cfg);
+    auto       model  = widget_time_axis_model(cfg);
     const auto result = std::forward<Update>(update)(model);
     if (!result.accepted) {
         return false;
@@ -222,9 +222,9 @@ void Plot_widget::set_config(const Plot_config& config)
 
     {
         std::unique_lock lock(m_config_mutex);
-        const double prev_grid_visibility = m_config.grid_visibility;
+        const double prev_grid_visibility    = m_config.grid_visibility;
         const double prev_preview_visibility = m_config.preview_visibility;
-        const double prev_line_width_px = m_config.line_width_px;
+        const double prev_line_width_px      = m_config.line_width_px;
         m_config = config;
         m_config.grid_visibility = prev_grid_visibility;      // Preserve QML-controlled setting
         m_config.preview_visibility = prev_preview_visibility; // Preserve QML-controlled setting
@@ -863,7 +863,7 @@ void Plot_widget::handle_window_changed(QQuickWindow* window)
 void Plot_widget::set_visible_info(int flags)
 {
     const int visible_flags = flags & k_visible_info_all;
-    const int prev = m_visible_info_flags.exchange(visible_flags, std::memory_order_acq_rel);
+    const int prev          = m_visible_info_flags.exchange(visible_flags, std::memory_order_acq_rel);
     if (prev != visible_flags) {
         update();
     }
@@ -1002,7 +1002,7 @@ void Plot_widget::adjust_v_from_mouse_diff(float ref_height, float diff)
     }
 
     const auto [vmin, vmax] = current_v_range();
-    const float span = vmax - vmin;
+    const float span  = vmax - vmin;
     const float delta = diff * span / ref_height;
     adjust_v_to_target(vmin + delta, vmax + delta);
 }
@@ -1015,8 +1015,8 @@ void Plot_widget::adjust_v_from_pivot_and_scale(float pivot, float scale)
 
     const auto [vmin, vmax] = current_v_range();
     const float v_pivot = vmin + (vmax - vmin) * (1.0f - pivot);
-    const float v0 = v_pivot - (v_pivot - vmin) * scale;
-    const float v1 = v_pivot + (vmax - v_pivot) * scale;
+    const float v0      = v_pivot - (v_pivot - vmin) * scale;
+    const float v1      = v_pivot + (vmax - v_pivot) * scale;
     adjust_v_to_target(v0, v1);
 }
 
@@ -1049,7 +1049,7 @@ void Plot_widget::auto_adjust_view(bool adjust_t, double extra_v_scale)
 
 void Plot_widget::auto_adjust_view(bool adjust_t, double extra_v_scale, bool anchor_zero)
 {
-    const auto cfg = data_cfg_snapshot();
+    const auto   cfg            = data_cfg_snapshot();
     const qint64 window_tmin_ns = cfg.t_min;
     const qint64 window_tmax_ns = cfg.t_max;
 
@@ -1111,7 +1111,7 @@ void Plot_widget::auto_adjust_view(bool adjust_t, double extra_v_scale, bool anc
 
         const auto read_range =
             [series](const void* sample) -> std::optional<std::pair<double, double>> {
-                float low = 0.0f;
+                float low  = 0.0f;
                 float high = 0.0f;
                 if (series->access.get_range) {
                     std::tie(low, high) = series->get_range(sample);
@@ -1151,9 +1151,9 @@ void Plot_widget::auto_adjust_view(bool adjust_t, double extra_v_scale, bool anc
         agg.vmax = std::max(agg.vmax, 0.0);
     }
 
-    const double scale = std::max(0.0, 1.0 + extra_v_scale);
+    const double scale     = std::max(0.0, 1.0 + extra_v_scale);
     const double base_span = std::max(0.0, agg.vmax - agg.vmin);
-    double span = base_span * scale;
+    double       span      = base_span * scale;
     const double min_span = static_cast<double>(
         min_v_span_for(static_cast<float>(agg.vmin), static_cast<float>(agg.vmax)));
     if (!(span > min_span)) {
@@ -1260,9 +1260,9 @@ QVariantList Plot_widget::get_samples_for_time(
         return result;
     }
 
-    const auto cfg = data_cfg_snapshot();
-    qint64 tmin_ns = 0;
-    qint64 tmax_ns = 0;
+    const auto cfg     = data_cfg_snapshot();
+    qint64     tmin_ns = 0;
+    qint64     tmax_ns = 0;
     if (!rendered_t_range(tmin_ns, tmax_ns)) {
         tmin_ns = cfg.t_min;
         tmax_ns = cfg.t_max;
@@ -1272,11 +1272,11 @@ QVariantList Plot_widget::get_samples_for_time(
     // onto the same axis up front. entry["x"] is converted back to ms at the
     // end so the QML side stays on the ms surface end-to-end.
     constexpr double k_ns_per_ms = 1'000'000.0;
-    double x = x_ms * k_ns_per_ms;
-    const double tmin = static_cast<double>(tmin_ns);
-    const double tmax = static_cast<double>(tmax_ns);
-    float vmin = 0.0f;
-    float vmax = 0.0f;
+    double           x           = x_ms * k_ns_per_ms;
+    const double     tmin        = static_cast<double>(tmin_ns);
+    const double     tmax        = static_cast<double>(tmax_ns);
+    float            vmin        = 0.0f;
+    float            vmax        = 0.0f;
     if (m_v_auto.load(std::memory_order_acquire)) {
         if (!rendered_v_range(vmin, vmax)) {
             vmin = cfg.v_min;
@@ -1289,7 +1289,7 @@ QVariantList Plot_widget::get_samples_for_time(
     }
 
     const double t_span = tmax - tmin;
-    const float v_span = vmax - vmin;
+    const float  v_span = vmax - vmin;
 
     if (t_span <= 0.0 || v_span <= 0.0f) {
         return result;
@@ -1302,9 +1302,9 @@ QVariantList Plot_widget::get_samples_for_time(
         x = tmin + (mouse_px / plot_width) * t_span;
     }
 
-    const auto plot_cfg = config();
+    const auto plot_cfg        = config();
     const auto value_formatter = plot_cfg.format_value;
-    auto series_map = get_series_snapshot();
+    auto       series_map      = get_series_snapshot();
 
     for (const auto& [id, series] : series_map) {
         if (!series || !series->enabled) {
@@ -1344,7 +1344,7 @@ QVariantList Plot_widget::get_samples_for_time(
         const double y0 = static_cast<double>(series->get_value(sample0));
         const double y1 = static_cast<double>(series->get_value(sample1));
 
-        double y = y0;
+        double y          = y0;
         double resolved_x = x;
 
         if (mode == Indicator_sample_mode::Nearest) {
@@ -1405,7 +1405,7 @@ QVariantList Plot_widget::get_samples_for_time(
 
 QString Plot_widget::format_timestamp_precise(qint64 timestamp_ms) const
 {
-    const auto cfg = config();
+    const auto cfg       = config();
     const auto formatter = cfg.format_timestamp ? cfg.format_timestamp : default_format_timestamp;
     // QML passes timestamp_ms (milliseconds-since-epoch); the formatter
     // expects nanoseconds. Convert at the boundary.
@@ -1451,7 +1451,7 @@ void Plot_widget::sync_time_axis_state()
     // attached axis has no initialized ranges; pulling default values into
     // m_data_cfg would silently overwrite a view that was set via set_view
     // before the axis was attached.
-    const bool view_init = m_time_axis->view_initialized();
+    const bool view_init      = m_time_axis->view_initialized();
     const bool available_init = m_time_axis->available_initialized();
     if (!view_init && !available_init) {
         return;
@@ -1564,7 +1564,7 @@ double Plot_widget::compute_preview_height_px(double widget_height_px) const
         return 0.0;
     }
 
-    const double font_h = m_base_label_height;
+    const double font_h    = m_base_label_height;
     const double available = std::max(0.0, widget_height_px - font_h);
     if (available <= 0.0) {
         return 0.0;
@@ -1594,12 +1594,12 @@ double Plot_widget::compute_preview_height_px(double widget_height_px) const
     }
 
     if (m_preview_height_steps > 0 && max_px > min_px) {
-        const int steps = m_preview_height_steps;
+        const int    steps = m_preview_height_steps;
         const double delta = (max_px - min_px) / static_cast<double>(steps);
         if (delta > 0.0) {
-            double clamped = std::clamp(preview_px, min_px, max_px);
-            const double t = (clamped - min_px) / delta;
-            int idx = static_cast<int>(std::floor(t));
+            double       clamped = std::clamp(preview_px, min_px, max_px);
+            const double t       = (clamped - min_px) / delta;
+            int          idx     = static_cast<int>(std::floor(t));
             if (idx < 0) {
                 idx = 0;
             }
@@ -1617,9 +1617,8 @@ double Plot_widget::compute_preview_height_px(double widget_height_px) const
 
 void Plot_widget::recalculate_preview_height()
 {
-    const double widget_h_dp = height();
-    const double widget_h_px = widget_h_dp * m_scaling_factor;
-
+    const double widget_h_dp  = height();
+    const double widget_h_px  = widget_h_dp * m_scaling_factor;
     const double new_adjusted = compute_preview_height_px(widget_h_px);
     const double new_dp = (m_scaling_factor > 0.0)
         ? new_adjusted / m_scaling_factor

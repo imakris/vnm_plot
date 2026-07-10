@@ -341,10 +341,11 @@ bool test_erased_access_view_uses_direct_member_accessors()
     TEST_ASSERT(timestamp_calls == 1,
         "fallback erased accessor should invoke the public callable once");
 
-    plot::Data_access_policy mutated = erased;
-    int mutated_timestamp_calls = 0;
-    int mutated_value_calls = 0;
-    int mutated_range_calls = 0;
+    plot::Data_access_policy mutated                 = erased;
+    int                      mutated_timestamp_calls = 0;
+    int                      mutated_value_calls     = 0;
+    int                      mutated_range_calls     = 0;
+
     constexpr std::int64_t k_replacement_timestamp_ns = 21'000'000'000;
     mutated.get_timestamp = [&mutated_timestamp_calls](const void*) {
         ++mutated_timestamp_calls;
@@ -418,8 +419,8 @@ bool test_erased_access_view_uses_direct_member_accessors()
             k_sample_timestamp_ns,
         "detached accessor mutation must not affect source policy semantics");
 
-    plot::Data_access_policy move_source = erased;
-    auto moved_timestamp_slot = std::move(move_source.get_timestamp);
+    plot::Data_access_policy move_source          = erased;
+    auto                     moved_timestamp_slot = std::move(move_source.get_timestamp);
     (void)moved_timestamp_slot;
     const auto after_slot_move_view =
         plot::detail::make_erased_access_policy_view(move_source);
@@ -441,8 +442,8 @@ bool test_erased_access_view_uses_direct_member_accessors()
             k_sample_timestamp_ns,
         "whole-policy move should preserve direct timestamp semantics");
 
-    auto typed_mutated = policy;
-    int typed_mutated_timestamp_calls = 0;
+    auto typed_mutated                 = policy;
+    int  typed_mutated_timestamp_calls = 0;
     typed_mutated.get_timestamp = [&typed_mutated_timestamp_calls](
         const sample_t& sample) {
         ++typed_mutated_timestamp_calls;

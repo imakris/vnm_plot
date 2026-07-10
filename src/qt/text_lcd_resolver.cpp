@@ -22,9 +22,9 @@ constexpr unsigned int k_win_spi_get_font_smoothing_type        = 0x200AU;
 constexpr unsigned int k_win_spi_get_font_smoothing_orientation = 0x2012U;
 #endif
 
-constexpr unsigned int k_win_font_smoothing_cleartype           = 0x0002U;
-constexpr unsigned int k_win_font_smoothing_orientation_bgr     = 0x0000U;
-constexpr unsigned int k_win_font_smoothing_orientation_rgb     = 0x0001U;
+constexpr unsigned int k_win_font_smoothing_cleartype       = 0x0002U;
+constexpr unsigned int k_win_font_smoothing_orientation_bgr = 0x0000U;
+constexpr unsigned int k_win_font_smoothing_orientation_rgb = 0x0001U;
 
 text_lcd_resolved_subpixel_order_t text_lcd_subpixel_order_from_qt(QQuickWindow* window)
 {

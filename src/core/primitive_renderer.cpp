@@ -404,9 +404,9 @@ void Primitive_renderer::flush_rects(const frame_context_t& ctx, const glm::mat4
             return;
         }
 
-        std::size_t bytes_needed = 0;
-        quint32 upload_bytes = 0;
-        quint32 instance_count = 0;
+        std::size_t bytes_needed   = 0;
+        quint32     upload_bytes   = 0;
+        quint32     instance_count = 0;
         if (!detail::qrhi_byte_size(
                 m_cpu_buffer.size(), sizeof(rect_vertex_t),
                 bytes_needed, upload_bytes) ||
@@ -430,8 +430,8 @@ void Primitive_renderer::flush_rects(const frame_context_t& ctx, const glm::mat4
             // where the rect count drifts slightly. The grow reseats call.vbo,
             // which invalidates the SRB's last_ubo handle (UBO is unchanged),
             // and forces ensure-* to upload fresh contents.
-            std::size_t alloc = 0;
-            quint32 qrhi_alloc = 0;
+            std::size_t alloc      = 0;
+            quint32     qrhi_alloc = 0;
             if (!detail::qrhi_grown_capacity_bytes(
                     bytes_needed, alloc, qrhi_alloc))
             {

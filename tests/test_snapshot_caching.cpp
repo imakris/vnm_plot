@@ -1025,7 +1025,7 @@ bool test_access_policy_change_invalidates_planner_fast_path_cache()
     }
 
     const int series_id = 63;
-    auto series = std::make_shared<series_data_t>();
+    auto      series    = std::make_shared<series_data_t>();
     series->style = Display_style::LINE;
     series->data_source = data_source;
     series->access = make_direct_member_policy();
@@ -1083,7 +1083,7 @@ bool test_frame_scoped_cache_reuse()
     }
 
     const int series_id = 7;
-    auto series = std::make_shared<series_data_t>();
+    auto      series    = std::make_shared<series_data_t>();
     series->style = Display_style::LINE;
     series->data_source = data_source;
     series->access = make_policy();
@@ -1118,7 +1118,7 @@ bool test_frame_scoped_cache_reuse()
 
 bool test_preview_uses_distinct_source_snapshot()
 {
-    auto main_source = std::make_shared<Single_level_source>();
+    auto main_source    = std::make_shared<Single_level_source>();
     auto preview_source = std::make_shared<Single_level_source>();
     main_source->samples.resize(8, Test_sample{});
     preview_source->samples.resize(8, Test_sample{});
@@ -1130,7 +1130,7 @@ bool test_preview_uses_distinct_source_snapshot()
     }
 
     const int series_id = 14;
-    auto series = std::make_shared<series_data_t>();
+    auto      series    = std::make_shared<series_data_t>();
     series->style = Display_style::LINE;
     series->data_source = main_source;
     series->access = make_policy();
@@ -1169,13 +1169,13 @@ bool test_preview_uses_distinct_source_snapshot()
 
 bool test_preview_disabled_skips_preview_snapshot()
 {
-    auto main_source = std::make_shared<Single_level_source>();
+    auto main_source    = std::make_shared<Single_level_source>();
     auto preview_source = std::make_shared<Single_level_source>();
     main_source->samples.resize(8);
     preview_source->samples.resize(8);
 
     const int series_id = 15;
-    auto series = std::make_shared<series_data_t>();
+    auto      series    = std::make_shared<series_data_t>();
     series->style = Display_style::LINE;
     series->data_source = main_source;
     series->access = make_policy();
@@ -1222,7 +1222,7 @@ bool test_frame_change_invalidates_snapshot_cache()
     }
 
     const int series_id = 8;
-    auto series = std::make_shared<series_data_t>();
+    auto      series    = std::make_shared<series_data_t>();
     series->style = Display_style::LINE;
     series->data_source = data_source;
     series->access = make_policy();
@@ -1261,7 +1261,7 @@ bool test_empty_window_behavior_invalidates_fast_path_cache()
     }
 
     const int series_id = 18;
-    auto series = std::make_shared<series_data_t>();
+    auto      series    = std::make_shared<series_data_t>();
     series->style = Display_style::LINE;
     series->data_source = data_source;
     series->access = make_policy();
@@ -1313,7 +1313,7 @@ bool test_preview_honors_hold_last_forward()
     }
 
     const int series_id = 19;
-    auto series = std::make_shared<series_data_t>();
+    auto      series    = std::make_shared<series_data_t>();
     series->style = Display_style::LINE;
     series->data_source = data_source;
     series->access = make_policy();
@@ -1355,7 +1355,7 @@ bool test_lod_level_separation()
     fill_lod_samples(*data_source);
 
     const int series_id = 9;
-    auto series = std::make_shared<series_data_t>();
+    auto      series    = std::make_shared<series_data_t>();
     series->style = Display_style::LINE;
     series->data_source = data_source;
     series->access = make_policy();
@@ -1409,7 +1409,7 @@ bool test_lod_selection_has_no_hysteresis()
     Two_level_source source;
     fill_lod_samples(source);
 
-    const Data_access_policy access = make_policy();
+    const Data_access_policy       access = make_policy();
     const std::vector<std::size_t> scales = {1, 4};
     plot::detail::series_window_planner_state_t state;
     plot::detail::Series_window_snapshot_cache cache;
@@ -1453,7 +1453,7 @@ bool test_snapshot_released_after_render()
     }
 
     const int series_id = 3;
-    auto series = std::make_shared<series_data_t>();
+    auto      series    = std::make_shared<series_data_t>();
     series->style = Display_style::LINE;
     series->data_source = data_source;
     series->access = make_policy();
@@ -1498,7 +1498,7 @@ bool test_upload_origin_records_per_view_origin()
     }
 
     const int series_id = 41;
-    auto series = std::make_shared<series_data_t>();
+    auto      series    = std::make_shared<series_data_t>();
     series->style = Display_style::LINE;
     series->data_source = data_source;
     series->access = make_policy();
@@ -1565,7 +1565,7 @@ bool test_upload_invalidates_when_origin_changes_across_snap_bucket()
     }
 
     const int series_id = 42;
-    auto series = std::make_shared<series_data_t>();
+    auto      series    = std::make_shared<series_data_t>();
     series->style = Display_style::LINE;
     series->data_source = data_source;
     series->access = make_policy();
@@ -1602,7 +1602,7 @@ bool test_upload_invalidates_when_origin_changes_across_snap_bucket()
         }
     };
 
-    constexpr std::int64_t k_one_hour_ns = 3'600LL * 1'000'000'000LL;
+    constexpr std::int64_t k_one_hour_ns   = 3'600LL * 1'000'000'000LL;
     constexpr std::int64_t k_one_second_ns = 1'000'000'000LL;
 
     // Frame 1: bucket-aligned origin = 0.
@@ -1673,9 +1673,9 @@ bool test_renderer_assigns_distinct_origins_to_main_and_preview()
     // Sparse 10-year coverage: one sample per day is enough for the
     // renderer to find data within both windows without ballooning memory.
     constexpr std::int64_t k_ns_per_second = 1'000'000'000LL;
-    constexpr std::int64_t k_ns_per_day = 86'400LL * k_ns_per_second;
-    constexpr std::int64_t k_ns_per_hour = 3'600LL * k_ns_per_second;
-    constexpr int k_num_samples = 365 * 10;
+    constexpr std::int64_t k_ns_per_day    = 86'400LL * k_ns_per_second;
+    constexpr std::int64_t k_ns_per_hour   =  3'600LL * k_ns_per_second;
+    constexpr int          k_num_samples   = 365 * 10;
     data_source->samples.resize(k_num_samples);
     for (int i = 0; i < k_num_samples; ++i) {
         data_source->samples[i].t = static_cast<std::int64_t>(i) * k_ns_per_day;
@@ -1683,7 +1683,7 @@ bool test_renderer_assigns_distinct_origins_to_main_and_preview()
     }
 
     const int series_id = 43;
-    auto series = std::make_shared<series_data_t>();
+    auto      series    = std::make_shared<series_data_t>();
     series->style = Display_style::LINE;
     series->data_source = data_source;
     series->access = make_policy();
@@ -1762,15 +1762,15 @@ bool test_render_skips_invalid_series()
     auto data_source = std::make_shared<Single_level_source>();
     data_source->samples.resize(4, Test_sample{});
 
-    const int disabled_id = 12;
-    auto disabled_series = std::make_shared<series_data_t>();
+    const int disabled_id     = 12;
+    auto      disabled_series = std::make_shared<series_data_t>();
     disabled_series->enabled = false;
     disabled_series->style = Display_style::LINE;
     disabled_series->data_source = data_source;
     disabled_series->access = make_policy();
 
-    const int null_source_id = 13;
-    auto null_source_series = std::make_shared<series_data_t>();
+    const int null_source_id     = 13;
+    auto      null_source_series = std::make_shared<series_data_t>();
     null_source_series->enabled = true;
     null_source_series->style = Display_style::LINE;
     null_source_series->data_source.reset();

@@ -128,7 +128,7 @@ void configure_indicator_widget(
 bool test_zoom_math_is_invariant_to_timer_cadence()
 {
     const zoom_state_t single_gap = advance_zoom(4.0, {10.0});
-    const zoom_state_t split_gap = advance_zoom(4.0, {4.0, 6.0});
+    const zoom_state_t split_gap  = advance_zoom(4.0, {4.0, 6.0});
     const zoom_state_t fine_steps = advance_zoom(
         4.0,
         {1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0});
@@ -157,7 +157,7 @@ bool test_zoom_math_stays_composable_across_small_velocity_decay()
 bool test_zoom_math_handles_negative_velocity()
 {
     const zoom_state_t single_gap = advance_zoom(-4.0, {10.0});
-    const zoom_state_t split_gap = advance_zoom(-4.0, {4.0, 6.0});
+    const zoom_state_t split_gap  = advance_zoom(-4.0, {4.0, 6.0});
     const zoom_state_t fractional_steps = advance_zoom(
         -4.0,
         {0.3, 0.7, 1.5, 2.5, 5.0});
