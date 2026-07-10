@@ -168,7 +168,8 @@ bool test_zoom_math_handles_negative_velocity()
         nearly_equal(single_gap.velocity, split_gap.velocity), "negative velocity should match for split elapsed time");
     TEST_ASSERT(
         nearly_equal(single_gap.scale, fractional_steps.scale), "negative scale should match for fractional steps");
-    TEST_ASSERT(nearly_equal(single_gap.velocity, fractional_steps.velocity), "negative velocity should match for fractional steps");
+    TEST_ASSERT(nearly_equal(single_gap.velocity, fractional_steps.velocity), "negative velocity should "
+        "match for fractional steps");
 
     return true;
 }
