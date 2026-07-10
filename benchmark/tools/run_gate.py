@@ -20,6 +20,9 @@ from typing import Any
 from phase_trace import parse_and_validate_phase_trace
 
 
+RENDERER_ENVIRONMENT_FIELDS = ("GALLIUM_DRIVER", "LP_NUM_THREADS")
+
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -260,6 +263,21 @@ def source_identity(source_root: Path) -> dict[str, Any]:
     }
 
 
+def unavailable_source_identity(error: Exception) -> dict[str, Any]:
+    reason = f"{type(error).__name__}: {error}"
+    return {
+        "commit": "unavailable",
+        "git_tree": "unavailable",
+        "dirty": True,
+        "status": f"unavailable: {reason}",
+        "diff": "",
+        "diff_sha256": hashlib.sha256(b"").hexdigest(),
+        "exact_tree_sha256": "unavailable",
+        "retained_path_count": 0,
+        "slug": "unavailable-source",
+    }
+
+
 def parse_cache(build_dir: Path) -> dict[str, str]:
     cache_path = build_dir / "CMakeCache.txt"
     if not cache_path.is_file():
@@ -321,6 +339,7 @@ def preflight(
             "GITHUB_REPOSITORY",
             "GITHUB_RUN_ATTEMPT",
             "GITHUB_RUN_ID",
+            "GALLIUM_DRIVER",
             "LP_NUM_THREADS",
             "QT_QPA_PLATFORM",
             "QSG_RHI_BACKEND",
@@ -516,7 +535,8 @@ class Gate:
                     validation["phase_trace_error"] = str(exc)
                     continue
                 expected_source = self.manifest["inputs"]["source"]
-                dependency = self.manifest["inputs"]["preflight"].get("dependency", {})
+                preflight = self.manifest["inputs"]["preflight"]
+                dependency = preflight.get("dependency", {})
                 expected = {
                     "build_source_dirty": "false" if not expected_source["dirty"] else "true",
                     "build_source_commit": expected_source["commit"],
@@ -540,14 +560,16 @@ class Gate:
                             ),
                         }
                     )
+                environment = preflight.get("environment", {})
+                expected.update(renderer_environment_fingerprint(environment))
                 mismatches = {
                     field: {"expected": value, "actual": metadata.get(field)}
                     for field, value in expected.items()
                     if metadata.get(field) != value
                 }
                 if mismatches:
-                    validation["gate_error"] = "source-fingerprint-mismatch"
-                    validation["source_mismatches"] = mismatches
+                    validation["gate_error"] = "execution-fingerprint-mismatch"
+                    validation["fingerprint_mismatches"] = mismatches
                 graphics.append(
                     {
                         field: metadata.get(field, "")
@@ -630,6 +652,19 @@ class Gate:
         self.write_manifest()
 
 
+def retain_gate_failure(gate: Gate, error: Exception) -> None:
+    failure = f"{type(error).__name__}: {error}\n"
+    (gate.attempt_dir / "failure.txt").write_text(failure, encoding="utf-8")
+    gate.finalize("FAIL", 1, str(error))
+
+
+def renderer_environment_fingerprint(environment: dict[str, Any]) -> dict[str, str]:
+    return {
+        f"env.{name}": str(environment.get(name, "") or "unset")
+        for name in RENDERER_ENVIRONMENT_FIELDS
+    }
+
+
 def parse_args() -> argparse.Namespace:
     default_source = Path(__file__).resolve().parents[2]
     parser = argparse.ArgumentParser(description=__doc__)
@@ -686,18 +721,46 @@ def main() -> int:
     args.build_dir = args.build_dir.resolve()
     args.standards_root = args.standards_root.resolve()
     args.build_dir.mkdir(parents=True, exist_ok=True)
-    source = source_identity(args.source_root)
+    attempt = attempt_identity()
+    try:
+        source = source_identity(args.source_root)
+    except Exception as exc:  # noqa: BLE001 - retain bootstrap failure evidence.
+        source = unavailable_source_identity(exc)
+        attempt_dir = (
+            args.build_dir
+            / "gate-artifacts"
+            / args.batch
+            / source["slug"]
+            / attempt
+        )
+        attempt_dir.mkdir(parents=True, exist_ok=False)
+        bootstrap = {
+            "status": "SOURCE_IDENTITY_FAILED",
+            "recorded_at_utc": utc_now(),
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+        gate = Gate(args, attempt_dir, source, bootstrap)
+        retain_gate_failure(gate, exc)
+        print(f"gate failed: {exc}; retained {attempt_dir}", file=sys.stderr)
+        return 1
     attempt_dir = (
         args.build_dir
         / "gate-artifacts"
         / args.batch
         / source["slug"]
-        / attempt_identity()
+        / attempt
     )
     attempt_dir.mkdir(parents=True, exist_ok=False)
-    preflight_payload = preflight(args, source, attempt_dir)
-    gate = Gate(args, attempt_dir, source, preflight_payload)
+    gate = Gate(
+        args,
+        attempt_dir,
+        source,
+        {"status": "COLLECTING", "recorded_at_utc": utc_now()},
+    )
     try:
+        preflight_payload = preflight(args, source, attempt_dir)
+        gate.manifest["inputs"]["preflight"] = preflight_payload
+        gate.write_manifest()
         if args.mode == "ci-retain":
             gate.retain_smoke()
             if args.upstream_status.lower() != "success":
@@ -779,7 +842,7 @@ def main() -> int:
         print(f"proposal_sha256={proposal_sha256}")
         return 2
     except Exception as exc:  # noqa: BLE001 - retain the exact failed phase.
-        gate.finalize("FAIL", 1, str(exc))
+        retain_gate_failure(gate, exc)
         print(f"gate failed: {exc}; retained {attempt_dir}", file=sys.stderr)
         return 1
 

@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import subprocess
 import sys
 import uuid
@@ -66,6 +67,7 @@ def validate(
     if payload.get("invocation_args") != expected_command:
         raise RuntimeError("structured smoke invocation mismatch")
     expected_metadata = {
+        "context_sample_count": "1",
         "data_type": "Bars",
         "finish_state": "enabled",
         "framebuffer": "1200x720",
@@ -169,6 +171,10 @@ def main() -> int:
         "--output-dir", str(attempt.resolve()),
         "--scenario", f"ci-{args.graphics_backend}-smoke",
     ]
+    renderer_environment = {
+        name: os.environ.get(name, "")
+        for name in ("GALLIUM_DRIVER", "LP_NUM_THREADS")
+    }
     try:
         completed = subprocess.run(
             command,
@@ -181,6 +187,7 @@ def main() -> int:
             attempt / "smoke_invocation.json",
             {
                 "command": command,
+                "renderer_environment": renderer_environment,
                 "returncode": completed.returncode,
                 "stdout": completed.stdout,
                 "stderr": completed.stderr,
@@ -216,6 +223,7 @@ def main() -> int:
         if not (attempt / "smoke_invocation.json").exists():
             timeout_payload = {
                 "command": command,
+                "renderer_environment": renderer_environment,
                 "returncode": None,
                 "timeout_seconds": 60,
                 "stdout": captured_text(getattr(exc, "stdout", "")),

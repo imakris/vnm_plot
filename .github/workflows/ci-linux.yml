@@ -12,6 +12,10 @@ defaults:
 
 env:
   CMAKE_BUILD_TYPE: Release
+  # Hosted Xvfb has no hardware renderer. Keep Qt's native QRhi API choice,
+  # but use Mesa's lower-memory software rasterizer for smoke evidence.
+  GALLIUM_DRIVER: softpipe
+  LP_NUM_THREADS: "1"
   LINUX_SYSTEM_DEPS: >-
     libgl-dev libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev
     libxi-dev libxext-dev libwayland-dev libxkbcommon-dev libvulkan-dev
@@ -66,10 +70,6 @@ jobs:
 
       - name: Run tests
         working-directory: build
-        env:
-          # Hosted Xvfb uses Mesa's CPU renderer. Bound its worker count to the
-          # job memory limit without selecting a graphics API.
-          LP_NUM_THREADS: "1"
         run: xvfb-run -a ctest --output-on-failure
 
       - name: Package checkpoint evidence

@@ -9,6 +9,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 MODULE_PATH = Path(__file__).with_name("run_gate.py")
@@ -20,6 +21,21 @@ SPEC.loader.exec_module(run_gate)
 
 
 class GateEvidenceTests(unittest.TestCase):
+    @staticmethod
+    def main_args(root: Path) -> argparse.Namespace:
+        return argparse.Namespace(
+            source_root=root / "source",
+            build_dir=root / "build",
+            standards_root=root / "standards",
+            batch="batch-2",
+            checkpoint="2.1",
+            config="Release",
+            mode="ci-retain",
+            recovery_of=None,
+            upstream_status="success",
+            actionlint=None,
+        )
+
     def test_actionlint_version_pin_is_exact(self) -> None:
         self.assertEqual(
             run_gate.actionlint_version_token("1.7.12\nbuild metadata\n"),
@@ -37,6 +53,17 @@ class GateEvidenceTests(unittest.TestCase):
         self.assertEqual(
             run_gate.parse_environment_block("A=one=two\r\nB=three\r\n"),
             {"A": "one=two", "B": "three"},
+        )
+
+    def test_renderer_environment_fingerprint_preserves_unset_and_values(self) -> None:
+        self.assertEqual(
+            run_gate.renderer_environment_fingerprint(
+                {"GALLIUM_DRIVER": "softpipe", "LP_NUM_THREADS": ""}
+            ),
+            {
+                "env.GALLIUM_DRIVER": "softpipe",
+                "env.LP_NUM_THREADS": "unset",
+            },
         )
 
     def test_msvc_initialized_environment_must_target_x64(self) -> None:
@@ -150,6 +177,59 @@ class GateEvidenceTests(unittest.TestCase):
                 executable.write_bytes(b"benchmark")
             with self.assertRaises(RuntimeError):
                 run_gate.resolve_benchmark_executable(build, "Release")
+
+    def test_source_identity_failure_retains_fail_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            args = self.main_args(root)
+            args.source_root.mkdir()
+            with (
+                mock.patch.object(run_gate, "parse_args", return_value=args),
+                mock.patch.object(
+                    run_gate,
+                    "source_identity",
+                    side_effect=RuntimeError("source unavailable"),
+                ),
+            ):
+                self.assertEqual(run_gate.main(), 1)
+            manifests = list(args.build_dir.rglob("gate_manifest.json"))
+            self.assertEqual(len(manifests), 1)
+            manifest = json.loads(manifests[0].read_text(encoding="utf-8"))
+            self.assertEqual(manifest["status"], "FAIL")
+            self.assertEqual(
+                manifest["inputs"]["preflight"]["status"],
+                "SOURCE_IDENTITY_FAILED",
+            )
+            self.assertIn("source unavailable", manifest["reason"])
+            self.assertIn("failure.txt", manifest["artifact_hashes"])
+
+    def test_preflight_failure_retains_fail_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            args = self.main_args(root)
+            args.source_root.mkdir()
+            source = {
+                "commit": "a" * 40,
+                "slug": "source-clean",
+                "dirty": False,
+                "diff": "",
+            }
+            with (
+                mock.patch.object(run_gate, "parse_args", return_value=args),
+                mock.patch.object(run_gate, "source_identity", return_value=source),
+                mock.patch.object(
+                    run_gate,
+                    "preflight",
+                    side_effect=RuntimeError("preflight unavailable"),
+                ),
+            ):
+                self.assertEqual(run_gate.main(), 1)
+            manifests = list(args.build_dir.rglob("gate_manifest.json"))
+            self.assertEqual(len(manifests), 1)
+            manifest = json.loads(manifests[0].read_text(encoding="utf-8"))
+            self.assertEqual(manifest["status"], "FAIL")
+            self.assertIn("preflight unavailable", manifest["reason"])
+            self.assertIn("failure.txt", manifest["artifact_hashes"])
 
 
 if __name__ == "__main__":

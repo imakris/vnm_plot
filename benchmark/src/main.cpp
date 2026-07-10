@@ -608,7 +608,10 @@ int main(int argc, char* argv[])
     format.setVersion(4, 3);
     format.setProfile(QSurfaceFormat::CoreProfile);
     format.setDepthBufferSize(24);
-    format.setSamples(4);  // MSAA
+    const int context_sample_count = config.backend == "qrhi-offscreen"
+        ? 1
+        : static_cast<int>(config.sample_count);
+    format.setSamples(context_sample_count);
     format.setSwapBehavior(QSurfaceFormat::DoubleBuffer);
     format.setSwapInterval(0);
     QSurfaceFormat::setDefaultFormat(format);
@@ -660,12 +663,17 @@ int main(int argc, char* argv[])
             std::to_string(graphics.vendor_id) + "|" +
             std::to_string(graphics.device_id) + "|" + graphics.device_name;
         meta.reproduction["driver_version"] = "unavailable-from-QRhi";
+        const std::string gallium_driver = bytes_to_string(qgetenv("GALLIUM_DRIVER"));
+        meta.reproduction["env.GALLIUM_DRIVER"] = gallium_driver.empty()
+            ? "unset"
+            : gallium_driver;
         meta.reproduction["executable_sha256"] = executable_sha256;
         meta.reproduction["finish_state"] = config.finish
             ? "enabled"
             : config.capture_pixel_checksum ? "forced-by-pixel-readback" : "disabled";
         meta.reproduction["framebuffer"] = std::to_string(config.framebuffer_width) + "x" +
             std::to_string(config.framebuffer_height);
+        meta.reproduction["context_sample_count"] = std::to_string(context_sample_count);
         const std::string mesa_thread_limit = bytes_to_string(qgetenv("LP_NUM_THREADS"));
         meta.reproduction["env.LP_NUM_THREADS"] = mesa_thread_limit.empty()
             ? "unset"

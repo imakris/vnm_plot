@@ -63,8 +63,10 @@ device, driver, and actual backend fingerprint.
 The fixed protocol performs two calibration sets. Each set has two complete
 untimed warm-up runs followed by seven measured runs. Every run itself has two
 runner warm-up frames followed by 120 measured, GPU-finished frames at 1200x720
-with 4x sampling and text enabled. `LP_NUM_THREADS` is recorded as part of the
-fingerprint when Mesa software rendering is used. Across six scenarios this is
+with a 4x offscreen render buffer and text enabled. The fallback/context surface
+is single-sample because it is not the measured render target. `GALLIUM_DRIVER`
+and `LP_NUM_THREADS` are recorded as part of the fingerprint when Mesa software
+rendering is used. Across six scenarios this is
 24 warm-up plus 84 measured
 executions; the separate native environment probe is diagnostic and is not part
 of those 108 scenario executions. It writes `scenario_manifest.json`, every raw run artifact
