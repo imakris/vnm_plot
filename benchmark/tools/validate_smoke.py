@@ -7,9 +7,12 @@ import argparse
 import hashlib
 import json
 import subprocess
+import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+
+from phase_trace import parse_and_validate_phase_trace
 
 
 def parse_args() -> argparse.Namespace:
@@ -53,8 +56,37 @@ def observation_total(payload: dict, name: str) -> float:
     return float(payload["observations"][name]["total"])
 
 
-def validate(payload: dict, args: argparse.Namespace, attempt_dir: Path) -> None:
+def validate(
+    payload: dict,
+    args: argparse.Namespace,
+    attempt_dir: Path,
+    expected_command: list[str],
+) -> Path:
     metadata = payload["metadata"]
+    if payload.get("invocation_args") != expected_command:
+        raise RuntimeError("structured smoke invocation mismatch")
+    expected_metadata = {
+        "data_type": "Bars",
+        "finish_state": "enabled",
+        "framebuffer": "1200x720",
+        "rate": "1000.000000",
+        "render_style": "Line",
+        "requested_graphics_backend": args.graphics_backend,
+        "scenario": f"ci-{args.graphics_backend}-smoke",
+        "seed": "12345",
+        "series_count": "1",
+        "show_text": "true",
+        "static_data": "true",
+        "static_sample_count": "10000",
+        "warmup_frames": "2",
+    }
+    mismatches = {
+        field: {"expected": expected, "actual": metadata.get(field)}
+        for field, expected in expected_metadata.items()
+        if metadata.get(field) != expected
+    }
+    if mismatches:
+        raise RuntimeError(f"smoke workload metadata mismatch: {mismatches}")
     actual = normalized_backend(metadata["actual_graphics_backend"])
     if args.graphics_backend == "native":
         if actual in {"", "null", "uninitialized"}:
@@ -105,13 +137,12 @@ def validate(payload: dict, args: argparse.Namespace, attempt_dir: Path) -> None
         raise RuntimeError("phase trace escapes its smoke attempt")
     if not trace_path.is_file():
         raise RuntimeError("phase trace is missing")
-    phases = [
-        json.loads(line)
-        for line in trace_path.read_text(encoding="utf-8").splitlines()
-        if line
-    ]
-    if not phases or phases[-1].get("phase") != "complete":
-        raise RuntimeError("phase trace does not end at complete")
+    parse_and_validate_phase_trace(
+        trace_path.read_text(encoding="utf-8"),
+        int(metadata["warmup_frames"]),
+        args.frames,
+    )
+    return trace_path
 
 
 def main() -> int:
@@ -166,13 +197,15 @@ def main() -> int:
         if len(artifacts) != 1:
             raise RuntimeError(f"expected one raw artifact, found {len(artifacts)}")
         payload = json.loads(artifacts[0].read_text(encoding="utf-8"))
-        validate(payload, args, attempt)
+        trace_path = validate(payload, args, attempt, command)
         write_json(
             attempt / "smoke_validation.json",
             {
                 "status": "PASS",
                 "artifact": artifacts[0].name,
                 "artifact_sha256": sha256_file(artifacts[0]),
+                "phase_trace": trace_path.name,
+                "phase_trace_sha256": sha256_file(trace_path),
                 "backend": payload["metadata"]["actual_graphics_backend"],
                 "pixel_checksum": payload["metadata"]["pixel_checksum"],
                 "pixel_nonuniform_count": payload["metadata"]["pixel_nonuniform_count"],

@@ -65,6 +65,21 @@ class CalibrationArithmeticTests(unittest.TestCase):
         self.assertEqual(rule["status"], "CALIBRATION_REVIEW_REQUIRED")
         self.assertEqual(rule["nonzero_run_count"], 6)
 
+    def test_sparse_nonzero_total_cannot_hide_behind_zero_percentiles(self) -> None:
+        rule = calibrate.propose_rule(
+            {
+                "unit": "count",
+                "deterministic_zero": True,
+                "reducers": ("p99",),
+            },
+            [[0.0] * 7, [0.0] * 7],
+            resolution=1.0,
+            unstable_threshold=0.25,
+            deterministic_values=[[0.0] * 7, [0.0] * 6 + [1.0]],
+        )
+        self.assertEqual(rule["rule"], "exact_zero_violation")
+        self.assertEqual(rule["nonzero_run_count"], 1)
+
     def test_value_equal_to_resolution_is_not_sub_resolution(self) -> None:
         rule = calibrate.propose_rule(
             {"unit": "ns"},
@@ -226,7 +241,8 @@ class CalibrationProtocolTests(unittest.TestCase):
                                 "mean": 1.0,
                             }
                         }
-                        for metric, policy in calibrate.METRIC_POLICIES.items():
+                        for metric in calibrate.METRIC_POLICIES:
+                            policy = calibrate.policy_for_scenario(scenario, metric)
                             value = 0.0 if policy.get("deterministic_zero") else 10.0
                             if policy.get("exact_expected"):
                                 value = float(args.frames)
@@ -257,8 +273,29 @@ class CalibrationProtocolTests(unittest.TestCase):
                 first["benchmark.ring.overwritten_samples"]["total"]["rule"],
                 "exact_zero",
             )
-            self.assertNotEqual(
+            self.assertEqual(
                 first["renderer.frame.gpu_buffer_allocation_count"]["total"]["rule"],
+                "exact_zero",
+            )
+            self.assertEqual(
+                first["renderer.series_window.monotonicity_scan_count"]["total"]["rule"],
+                "exact_zero",
+            )
+            self.assertEqual(
+                first["benchmark.ring.published_samples"]["total"]["rule"],
+                "exact_zero",
+            )
+            live = proposal["scenarios"]["live-trades-line-1"]
+            self.assertNotEqual(
+                live["renderer.frame.gpu_buffer_allocation_count"]["total"]["rule"],
+                "exact_zero",
+            )
+            self.assertNotEqual(
+                live["renderer.series_window.monotonicity_scan_count"]["total"]["rule"],
+                "exact_zero",
+            )
+            self.assertNotEqual(
+                live["benchmark.ring.published_samples"]["total"]["rule"],
                 "exact_zero",
             )
 
@@ -266,23 +303,49 @@ class CalibrationProtocolTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             attempt = Path(temporary)
             trace = attempt / "trace.jsonl"
-            trace.write_text(
-                '{"phase":"measure.frame.end"}\n',
-                encoding="utf-8",
-            )
-            with self.assertRaises(RuntimeError):
-                calibrate.validate_phase_trace(
-                    {"phase_trace_path": str(trace)},
-                    attempt,
+            metadata = {
+                "phase_trace_path": str(trace),
+                "warmup_frames": "0",
+                "measured_frames": "1",
+            }
+            expected = calibrate.expected_phases(0, 1)
+            records = [
+                json.dumps(
+                    {"elapsed_ms": float(index), "phase": phase, "frame": frame}
                 )
-            trace.write_text('{"phase":"complete"}\n', encoding="utf-8")
+                for index, (phase, frame) in enumerate(expected)
+            ]
+            trace.write_text("\n".join(records[:-1]) + "\n", encoding="utf-8")
+            with self.assertRaises(RuntimeError):
+                calibrate.validate_phase_trace(metadata, attempt)
+            trace.write_text("\n".join(records) + "\n", encoding="utf-8")
             self.assertEqual(
-                calibrate.validate_phase_trace(
-                    {"phase_trace_path": str(trace)},
-                    attempt,
-                ),
+                calibrate.validate_phase_trace(metadata, attempt),
                 trace.resolve(),
             )
+
+    def test_phase_trace_rejects_malformed_intermediate_record(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            attempt = Path(temporary)
+            trace = attempt / "trace.jsonl"
+            expected = calibrate.expected_phases(0, 1)
+            records = [
+                json.dumps(
+                    {"elapsed_ms": float(index), "phase": phase, "frame": frame}
+                )
+                for index, (phase, frame) in enumerate(expected)
+            ]
+            records[2] = "{malformed"
+            trace.write_text("\n".join(records) + "\n", encoding="utf-8")
+            with self.assertRaisesRegex(RuntimeError, "malformed JSON"):
+                calibrate.validate_phase_trace(
+                    {
+                        "phase_trace_path": str(trace),
+                        "warmup_frames": "0",
+                        "measured_frames": "1",
+                    },
+                    attempt,
+                )
 
 
 if __name__ == "__main__":

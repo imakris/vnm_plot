@@ -34,8 +34,8 @@ not sampled.
 Snapshot accounting distinguishes logical `benchmark.snapshot.view_bytes` from
 physical `benchmark.snapshot.copied_bytes`; direct ring views require the latter
 to remain exactly zero. Render-thread CPU allocation count/bytes cover the full
-measured frame, while `renderer.frame.gpu_buffer_allocation_*` separately counts
-QRhi buffer creation.
+measured frame while excluding the benchmark profiler's own map/sample storage;
+`renderer.frame.gpu_buffer_allocation_*` separately counts QRhi buffer creation.
 
 The phase trace is flushed at cold setup, backend creation, every warmup and
 measured frame boundary, generator shutdown, and completion. If an external
@@ -52,8 +52,10 @@ work and total publication counters.
 Static scenarios contain 10,000 deterministic samples per series; live
 scenarios publish 1,000 samples per series per second so the fixed 100,000
 sample rings remain below overwrite capacity during the measured workload. GPU
-buffer growth in a live run is measured and calibrated rather than declared a
-deterministic zero. The runner
+buffer growth and order scans in a changing live source are measured and
+calibrated rather than declared deterministic zeros. The corresponding static
+scenario counters, including measured publications, remain exact-zero rules
+across every retained run. The runner
 first executes and retains a native environment probe, then binds every new or
 resumed run to its source, executable, dependency, machine, OS/CPU, Qt,
 device, driver, and actual backend fingerprint.
@@ -109,6 +111,12 @@ python benchmark\tools\approve_gate.py `
 Only that explicit second step can transition a complete, clean checkpoint gate
 to `PASS`. CI smoke packaging is labeled `DIAGNOSTIC_PASS` and is never a
 checkpoint approval.
+
+On Windows the full runner initializes the Visual Studio x64 environment when
+the current shell has not done so. It resolves pinned `actionlint` 1.7.12 from
+`PATH`, `--actionlint`, or `<build>/tools/actionlint-1.7.12/actionlint.exe` and
+records its version and SHA-256; an absent or differently versioned executable
+is an explicit environment-bootstrap failure.
 
 Every invocation creates a new
 `<build>/gate-artifacts/batch-2/<source-identity>/<timestamp>/` directory. Its

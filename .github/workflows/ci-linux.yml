@@ -66,6 +66,10 @@ jobs:
 
       - name: Run tests
         working-directory: build
+        env:
+          # Hosted Xvfb uses Mesa's CPU renderer. Bound its worker count to the
+          # job memory limit without selecting a graphics API.
+          LP_NUM_THREADS: "1"
         run: xvfb-run -a ctest --output-on-failure
 
       - name: Package checkpoint evidence

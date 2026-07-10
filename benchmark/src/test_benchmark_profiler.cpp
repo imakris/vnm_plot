@@ -1,6 +1,7 @@
 // vnm_plot Benchmark - Profiler Tests
 
 #include "benchmark_profiler.h"
+#include "allocation_tracker.h"
 
 #include <chrono>
 #include <cmath>
@@ -34,6 +35,37 @@ using vnm::benchmark::Report_metadata;
             ++failed; \
         } \
     } while(0)
+
+bool test_profiler_allocations_are_excluded_from_frame_measurement()
+{
+    Benchmark_profiler profiler;
+    vnm::benchmark::begin_thread_allocation_measurement();
+    for (int i = 0; i < 64; ++i) {
+        profiler.begin_scope("instrumentation.scope");
+        profiler.record_observation("instrumentation.observation", double(i));
+        profiler.end_scope();
+    }
+    const auto measurement = vnm::benchmark::end_thread_allocation_measurement();
+    TEST_ASSERT(measurement.count == 0,
+        "profiler storage allocations must not contaminate frame allocation counts");
+    TEST_ASSERT(measurement.bytes == 0,
+        "profiler storage allocations must not contaminate frame allocation bytes");
+    return true;
+}
+
+bool test_allocation_tracker_counts_ordinary_allocation()
+{
+    vnm::benchmark::begin_thread_allocation_measurement();
+    void* memory = ::operator new(257);
+    static_cast<volatile unsigned char*>(memory)[0] = 1;
+    const auto measurement = vnm::benchmark::end_thread_allocation_measurement();
+    ::operator delete(memory);
+    TEST_ASSERT(measurement.count == 1,
+        "allocation tracker positive control should count an ordinary allocation");
+    TEST_ASSERT(measurement.bytes >= 257,
+        "allocation tracker positive control should retain allocated bytes");
+    return true;
+}
 
 // Test: Basic scope timing
 bool test_basic_scope() {
@@ -508,6 +540,8 @@ int main() {
     int failed = 0;
 
     RUN_TEST(test_basic_scope);
+    RUN_TEST(test_allocation_tracker_counts_ordinary_allocation);
+    RUN_TEST(test_profiler_allocations_are_excluded_from_frame_measurement);
     RUN_TEST(test_nested_scopes);
     RUN_TEST(test_scope_aggregation);
     RUN_TEST(test_min_max);

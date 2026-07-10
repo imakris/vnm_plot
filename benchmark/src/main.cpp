@@ -627,7 +627,10 @@ int main(int argc, char* argv[])
         QString::fromUtf8(VNM_PLOT_BENCHMARK_DEPENDENCY_ROOT));
     const bool dependency_dirty = !dependency_status.trimmed().isEmpty();
     const std::string executable_sha256 = sha256_file(QCoreApplication::applicationFilePath());
-    const std::string machine_id_sha256 = sha256_bytes(QSysInfo::machineUniqueId());
+    const QByteArray machine_id = QSysInfo::machineUniqueId();
+    const std::string machine_id_sha256 = machine_id.isEmpty()
+        ? std::string{}
+        : sha256_bytes(machine_id);
 
     const auto add_reproduction_metadata = [&](auto& meta, const auto& benchmark) {
         const auto graphics = benchmark.graphics_device_info();

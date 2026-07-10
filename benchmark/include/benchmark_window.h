@@ -7,6 +7,7 @@
 #include "benchmark_constants.h"
 #include "benchmark_data_source.h"
 #include "benchmark_profiler.h"
+#include "publication_rate_clock.h"
 #include "brownian_generator.h"
 #include "ring_buffer.h"
 #include "sample_types.h"
@@ -201,7 +202,8 @@ private:
     void stop_generator_thread();
     void pause_generator_publication();
     void resume_generator_publication();
-    bool wait_for_generator_permission();
+    bool wait_for_generator_permission(
+        Publication_rate_clock::duration& paused_duration);
     void fill_static_data();
     bool initialize_rhi(std::string& error_message);
     bool render_frame(std::string& error_message, bool measured);

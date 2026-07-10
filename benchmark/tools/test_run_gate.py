@@ -20,6 +20,43 @@ SPEC.loader.exec_module(run_gate)
 
 
 class GateEvidenceTests(unittest.TestCase):
+    def test_actionlint_version_pin_is_exact(self) -> None:
+        self.assertEqual(
+            run_gate.actionlint_version_token("1.7.12\nbuild metadata\n"),
+            "1.7.12",
+        )
+        self.assertNotEqual(
+            run_gate.actionlint_version_token("1.7.120\nbuild metadata\n"),
+            "1.7.12",
+        )
+
+    def test_timeout_output_is_retained_as_text(self) -> None:
+        self.assertEqual(run_gate.captured_text(b"partial\xff"), "partial�")
+
+    def test_environment_block_parser_preserves_values_containing_equals(self) -> None:
+        self.assertEqual(
+            run_gate.parse_environment_block("A=one=two\r\nB=three\r\n"),
+            {"A": "one=two", "B": "three"},
+        )
+
+    def test_msvc_initialized_environment_must_target_x64(self) -> None:
+        common = {
+            "INCLUDE": "include",
+            "LIB": "lib",
+            "VCToolsInstallDir": "tools",
+        }
+        self.assertFalse(run_gate.msvc_environment_is_x64(common))
+        self.assertFalse(
+            run_gate.msvc_environment_is_x64(
+                {**common, "VSCMD_ARG_TGT_ARCH": "x86"}
+            )
+        )
+        self.assertTrue(
+            run_gate.msvc_environment_is_x64(
+                {**common, "VSCMD_ARG_TGT_ARCH": "x64"}
+            )
+        )
+
     def test_attempt_identity_is_unique(self) -> None:
         first = run_gate.attempt_identity()
         second = run_gate.attempt_identity()

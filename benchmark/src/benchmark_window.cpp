@@ -742,24 +742,24 @@ void Benchmark_rhi_offscreen_runner::setup_series()
 
 void Benchmark_rhi_offscreen_runner::generator_thread_func()
 {
-    const double samples_per_second = m_config.rate;
-    const double ns_per_sample = 1e9 / samples_per_second;
-
-    auto start_time = std::chrono::steady_clock::now();
+    Publication_rate_clock rate_clock;
 
     while (!m_stop_generator.load()) {
-        if (!wait_for_generator_permission()) {
+        Publication_rate_clock::duration paused_duration{};
+        if (!wait_for_generator_permission(paused_duration)) {
             break;
         }
+        rate_clock.exclude_pause(paused_duration);
         auto now = std::chrono::steady_clock::now();
-        double elapsed_ns = std::chrono::duration<double, std::nano>(now - start_time).count();
-        double target_samples = elapsed_ns / ns_per_sample;
+        const std::size_t target_samples = rate_clock.target_samples(now, m_config.rate);
         std::size_t current_count = m_samples_generated.load();
 
-        while (current_count < static_cast<std::size_t>(target_samples) && !m_stop_generator.load()) {
-            if (!wait_for_generator_permission()) {
+        while (current_count < target_samples && !m_stop_generator.load()) {
+            paused_duration = {};
+            if (!wait_for_generator_permission(paused_duration)) {
                 break;
             }
+            rate_clock.exclude_pause(paused_duration);
             if (m_config.data_type == "Trades") {
                 const Trade_sample sample = m_generator.next_trade();
                 for (auto& buffer : m_trade_buffers) {
@@ -816,11 +816,13 @@ void Benchmark_rhi_offscreen_runner::resume_generator_publication()
     });
 }
 
-bool Benchmark_rhi_offscreen_runner::wait_for_generator_permission()
+bool Benchmark_rhi_offscreen_runner::wait_for_generator_permission(
+    Publication_rate_clock::duration& paused_duration)
 {
     if (!m_generator_pause_requested.load(std::memory_order_acquire)) {
         return !m_stop_generator.load();
     }
+    const auto pause_started = Publication_rate_clock::clock::now();
     std::unique_lock lock(m_generator_control_mutex);
     m_generator_paused = true;
     m_generator_control_cv.notify_all();
@@ -830,6 +832,7 @@ bool Benchmark_rhi_offscreen_runner::wait_for_generator_permission()
     });
     m_generator_paused = false;
     m_generator_control_cv.notify_all();
+    paused_duration += Publication_rate_clock::clock::now() - pause_started;
     return !m_stop_generator.load();
 }
 

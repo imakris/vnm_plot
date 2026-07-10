@@ -14,6 +14,24 @@ struct Thread_allocation_measurement {
 
 void begin_thread_allocation_measurement() noexcept;
 Thread_allocation_measurement end_thread_allocation_measurement() noexcept;
+void suspend_thread_allocation_measurement() noexcept;
+void resume_thread_allocation_measurement() noexcept;
+
+class Thread_allocation_suppression {
+public:
+    Thread_allocation_suppression() noexcept
+    {
+        suspend_thread_allocation_measurement();
+    }
+
+    ~Thread_allocation_suppression()
+    {
+        resume_thread_allocation_measurement();
+    }
+
+    Thread_allocation_suppression(const Thread_allocation_suppression&) = delete;
+    Thread_allocation_suppression& operator=(const Thread_allocation_suppression&) = delete;
+};
 
 class Thread_allocation_scope {
 public:

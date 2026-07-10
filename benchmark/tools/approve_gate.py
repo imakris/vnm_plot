@@ -30,12 +30,41 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def retained_hashes(attempt_dir: Path) -> dict[str, str]:
+def retained_hashes(
+    attempt_dir: Path,
+    excluded: set[str] | None = None,
+) -> dict[str, str]:
+    exclusions = excluded or set()
     return {
         path.relative_to(attempt_dir).as_posix(): sha256_file(path)
         for path in sorted(attempt_dir.rglob("*"))
-        if path.is_file() and path.name != "gate_manifest.json"
+        if path.is_file()
+        and path.name != "gate_manifest.json"
+        and path.relative_to(attempt_dir).as_posix() not in exclusions
     }
+
+
+def validate_approval_record(
+    approval: dict[str, Any],
+    proposal_path: str,
+    proposal_sha256: str,
+    approved_by: str,
+    source_commit: str,
+) -> None:
+    expected = {
+        "status": "OWNER_APPROVED",
+        "approved_by": approved_by,
+        "proposal": proposal_path,
+        "proposal_sha256": proposal_sha256,
+        "source_commit": source_commit,
+    }
+    mismatches = {
+        field: {"expected": value, "actual": approval.get(field)}
+        for field, value in expected.items()
+        if approval.get(field) != value
+    }
+    if mismatches or not approval.get("recorded_at_utc"):
+        raise RuntimeError(f"existing owner approval does not match request: {mismatches}")
 
 
 def approve(
@@ -46,6 +75,20 @@ def approve(
     attempt_dir = attempt_dir.resolve()
     manifest_path = attempt_dir / "gate_manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    approval_path = attempt_dir / "calibration" / "owner_approval.json"
+    if manifest.get("status") == "PASS" and approval_path.is_file():
+        existing = json.loads(approval_path.read_text(encoding="utf-8"))
+        proposal_entry = manifest.get("inputs", {}).get("calibration_proposal", {})
+        validate_approval_record(
+            existing,
+            str(proposal_entry.get("path", "")),
+            proposal_sha256,
+            approved_by,
+            manifest["inputs"]["source"]["commit"],
+        )
+        if retained_hashes(attempt_dir) != manifest.get("artifact_hashes"):
+            raise RuntimeError("approved gate artifacts no longer match retained hashes")
+        return manifest
     if manifest.get("status") != "CALIBRATION_REVIEW_REQUIRED":
         raise RuntimeError("gate is not awaiting calibration approval")
     if manifest.get("inputs", {}).get("source", {}).get("dirty"):
@@ -75,22 +118,41 @@ def approve(
     if expected_sha256 != actual_sha256:
         raise RuntimeError("gate manifest proposal SHA256 does not match retained evidence")
 
-    approval_path = attempt_dir / "calibration" / "owner_approval.json"
+    approval_relative = approval_path.relative_to(attempt_dir).as_posix()
+    preapproval_hashes = retained_hashes(attempt_dir, {approval_relative})
+    if preapproval_hashes != manifest.get("artifact_hashes"):
+        recorded = manifest.get("artifact_hashes", {})
+        changed = sorted(
+            path
+            for path in set(preapproval_hashes) | set(recorded)
+            if preapproval_hashes.get(path) != recorded.get(path)
+        )
+        raise RuntimeError(f"retained gate artifacts changed before approval: {changed}")
+
     if approval_path.exists():
-        raise RuntimeError("owner approval is already recorded")
-    recorded_at = utc_now()
-    approval = {
-        "schema_version": 1,
-        "status": "OWNER_APPROVED",
-        "approved_by": approved_by,
-        "recorded_at_utc": recorded_at,
-        "proposal": relative_proposal.as_posix(),
-        "proposal_sha256": actual_sha256,
-        "source_commit": manifest["inputs"]["source"]["commit"],
-    }
-    approval_path.parent.mkdir(parents=True, exist_ok=True)
-    with approval_path.open("x", encoding="utf-8") as output:
-        output.write(json.dumps(approval, indent=2, sort_keys=True) + "\n")
+        approval = json.loads(approval_path.read_text(encoding="utf-8"))
+        validate_approval_record(
+            approval,
+            relative_proposal.as_posix(),
+            actual_sha256,
+            approved_by,
+            manifest["inputs"]["source"]["commit"],
+        )
+        recorded_at = str(approval["recorded_at_utc"])
+    else:
+        recorded_at = utc_now()
+        approval = {
+            "schema_version": 1,
+            "status": "OWNER_APPROVED",
+            "approved_by": approved_by,
+            "recorded_at_utc": recorded_at,
+            "proposal": relative_proposal.as_posix(),
+            "proposal_sha256": actual_sha256,
+            "source_commit": manifest["inputs"]["source"]["commit"],
+        }
+        approval_path.parent.mkdir(parents=True, exist_ok=True)
+        with approval_path.open("x", encoding="utf-8") as output:
+            output.write(json.dumps(approval, indent=2, sort_keys=True) + "\n")
 
     manifest["status"] = "PASS"
     manifest["exit_status"] = 0
@@ -113,7 +175,7 @@ def approve(
         {"status": "PASS", "recorded_at_utc": recorded_at}
     )
     manifest["inputs"]["owner_approval"] = {
-        "path": approval_path.relative_to(attempt_dir).as_posix(),
+        "path": approval_relative,
         "sha256": sha256_file(approval_path),
     }
     manifest["artifact_hashes"] = retained_hashes(attempt_dir)

@@ -4,6 +4,8 @@
 #ifndef VNM_PLOT_BENCHMARK_PROFILER_H
 #define VNM_PLOT_BENCHMARK_PROFILER_H
 
+#include "allocation_tracker.h"
+
 #include <vnm_plot/core/plot_config.h>
 
 #include <algorithm>
@@ -63,6 +65,7 @@ public:
     /// Begin a named scope. Nested calls create child scopes.
     void begin_scope(const char* name) override
     {
+        Thread_allocation_suppression suppress_instrumentation_allocations;
         auto start_time = std::chrono::steady_clock::now();
         const char* scope_name = name ? name : "";
 
@@ -83,6 +86,7 @@ public:
     /// End the current scope and record timing.
     void end_scope() override
     {
+        Thread_allocation_suppression suppress_instrumentation_allocations;
         auto end_time = std::chrono::steady_clock::now();
 
         std::lock_guard<std::mutex> lock(m_mutex);
@@ -108,6 +112,7 @@ public:
 
     void record_observation(const char* name, double value) override
     {
+        Thread_allocation_suppression suppress_instrumentation_allocations;
         if (!name || !std::isfinite(value)) {
             return;
         }
@@ -123,6 +128,7 @@ public:
         double min,
         double max)
     {
+        Thread_allocation_suppression suppress_instrumentation_allocations;
         if (!name || call_count == 0 ||
             !std::isfinite(total) || !std::isfinite(min) || !std::isfinite(max))
         {
@@ -135,6 +141,7 @@ public:
 
     void ensure_observation(const char* name, double value = 0.0)
     {
+        Thread_allocation_suppression suppress_instrumentation_allocations;
         if (!name || !std::isfinite(value)) {
             return;
         }

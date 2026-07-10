@@ -16,6 +16,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from phase_trace import expected_phases, parse_and_validate_phase_trace
+
 
 FIXED_WIDTH = 1200
 FIXED_HEIGHT = 720
@@ -58,12 +60,10 @@ METRIC_POLICIES: dict[str, dict[str, Any]] = {
     "renderer.series_window.monotonicity_scan_count": {
         "reducers": ("total",),
         "unit": "count",
-        "deterministic_zero": True,
     },
     "renderer.series_window.monotonicity_scan_samples": {
         "reducers": ("total",),
         "unit": "count",
-        "deterministic_zero": True,
     },
     "renderer.frame.gpu_buffer_allocation_count": {
         "reducers": ("total",),
@@ -129,6 +129,17 @@ METRIC_POLICIES: dict[str, dict[str, Any]] = {
         "exact_expected": True,
     },
 }
+
+STATIC_DETERMINISTIC_ZERO_METRICS = frozenset(
+    {
+        "benchmark.ring.published_samples",
+        "benchmark.ring.published_samples_per_second",
+        "renderer.series_window.monotonicity_scan_count",
+        "renderer.series_window.monotonicity_scan_samples",
+        "renderer.frame.gpu_buffer_allocation_count",
+        "renderer.frame.gpu_buffer_allocation_bytes",
+    }
+)
 
 FINGERPRINT_FIELDS = (
     "actual_graphics_backend",
@@ -223,6 +234,16 @@ def make_scenarios() -> list[dict[str, Any]]:
                 }
             )
     return scenarios
+
+
+def policy_for_scenario(
+    scenario: dict[str, Any],
+    metric: str,
+) -> dict[str, Any]:
+    policy = dict(METRIC_POLICIES[metric])
+    if scenario["mode"] == "static" and metric in STATIC_DETERMINISTIC_ZERO_METRICS:
+        policy["deterministic_zero"] = True
+    return policy
 
 
 def write_json(path: Path, value: Any) -> None:
@@ -381,12 +402,16 @@ def validate_phase_trace(metadata: dict[str, Any], attempt_dir: Path) -> Path:
         raise RuntimeError("phase trace escapes its retained attempt")
     if not trace_path.is_file():
         raise RuntimeError("phase trace is missing")
-    lines = [line for line in trace_path.read_text(encoding="utf-8").splitlines() if line]
-    if not lines:
-        raise RuntimeError("phase trace is empty")
-    final_phase = json.loads(lines[-1])
-    if final_phase.get("phase") != "complete":
-        raise RuntimeError("phase trace does not end at complete")
+    try:
+        warmup_frames = int(metadata["warmup_frames"])
+        measured_frames = int(metadata["measured_frames"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise RuntimeError("phase trace frame-count metadata is invalid") from exc
+    parse_and_validate_phase_trace(
+        trace_path.read_text(encoding="utf-8"),
+        warmup_frames,
+        measured_frames,
+    )
     return trace_path
 
 
@@ -412,7 +437,15 @@ def retained_success(
             )
             if validation.get("status") != "PASS":
                 continue
-            if validation.get("artifact_sha256") != sha256_file(artifacts[0]):
+            if validation.get("artifact") != artifacts[0].name or validation.get(
+                "artifact_sha256"
+            ) != sha256_file(artifacts[0]):
+                continue
+            trace_relative = Path(validation.get("phase_trace", ""))
+            trace_path = (attempt / trace_relative).resolve()
+            if trace_path.parent != attempt.resolve() or not trace_path.is_file():
+                continue
+            if validation.get("phase_trace_sha256") != sha256_file(trace_path):
                 continue
             expected_command = make_command(args, scenario, run_id, attempt)
             invocation = json.loads(
@@ -422,7 +455,15 @@ def retained_success(
                 continue
             if invocation.get("command") != expected_command:
                 continue
-            validate_artifact(args, scenario, artifacts[0], run_id, expected_command)
+            payload = validate_artifact(
+                args,
+                scenario,
+                artifacts[0],
+                run_id,
+                expected_command,
+            )
+            if validate_phase_trace(payload["metadata"], attempt) != trace_path:
+                continue
         except (KeyError, OSError, TypeError, ValueError, RuntimeError):
             continue
         return artifacts[0]
@@ -755,6 +796,7 @@ def propose_rule(
     calibration_sets: list[list[float]],
     resolution: float,
     unstable_threshold: float,
+    deterministic_values: list[list[float]] | None = None,
 ) -> dict[str, Any]:
     set_medians = [statistics.median(values) for values in calibration_sets]
     center = statistics.median(set_medians)
@@ -771,7 +813,8 @@ def propose_rule(
         result.update({"rule": "exact", "expected": center, "relative_margin": None})
         return result
     if policy.get("deterministic_zero"):
-        all_values = [value for values in calibration_sets for value in values]
+        exact_sets = deterministic_values or calibration_sets
+        all_values = [value for values in exact_sets for value in values]
         nonzero_values = [value for value in all_values if value != 0.0]
         if not nonzero_values:
             result.update(
@@ -858,8 +901,25 @@ def calculate_margins(
             for field in FINGERPRINT_FIELDS:
                 fingerprint[field].add(str(run["metadata"][field]))
         scenario_proposal: dict[str, Any] = {}
-        for metric, policy in METRIC_POLICIES.items():
+        for metric in METRIC_POLICIES:
+            policy = policy_for_scenario(scenario, metric)
             metric_proposal: dict[str, Any] = {}
+            deterministic_values: list[list[float]] | None = None
+            if policy.get("deterministic_zero"):
+                deterministic_values = []
+                for calibration_set in loaded_sets:
+                    raw_totals = [
+                        reducer_value(run["observations"][metric], "total")
+                        for run in calibration_set
+                    ]
+                    retained_totals = [
+                        value for value in raw_totals if value is not None
+                    ]
+                    if len(retained_totals) != args.runs_per_set:
+                        raise RuntimeError(
+                            f"{scenario_id}/{metric}/total has incomplete exact-zero values"
+                        )
+                    deterministic_values.append(retained_totals)
             for reducer in policy["reducers"]:
                 calibration_sets: list[list[float]] = []
                 for calibration_set in loaded_sets:
@@ -880,6 +940,7 @@ def calculate_margins(
                     calibration_sets,
                     resolution,
                     args.unstable_drift_threshold,
+                    deterministic_values,
                 )
                 if rule["status"] == "CALIBRATION_REVIEW_REQUIRED":
                     review_required.append(f"{scenario_id}/{metric}/{reducer}")

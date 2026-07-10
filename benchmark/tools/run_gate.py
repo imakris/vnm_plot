@@ -12,9 +12,12 @@ import shutil
 import subprocess
 import sys
 import uuid
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from phase_trace import parse_and_validate_phase_trace
 
 
 def utc_now() -> str:
@@ -39,6 +42,12 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def captured_text(value: object) -> str:
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return str(value or "")
+
+
 def run_capture(command: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         command,
@@ -60,6 +69,145 @@ def command_output(command: list[str], cwd: Path) -> str:
     if completed.returncode != 0:
         return f"unavailable (exit {completed.returncode}): {output}"
     return output
+
+
+def actionlint_candidates(args: argparse.Namespace) -> list[Path]:
+    executable_name = "actionlint.exe" if os.name == "nt" else "actionlint"
+    candidates: list[Path] = []
+    if args.actionlint:
+        candidates.append(args.actionlint)
+    discovered = shutil.which("actionlint")
+    if discovered:
+        candidates.append(Path(discovered))
+    candidates.append(
+        args.build_dir / "tools" / "actionlint-1.7.12" / executable_name
+    )
+    return candidates
+
+
+def actionlint_version_token(output: str) -> str:
+    lines = output.splitlines()
+    return lines[0].strip() if lines else ""
+
+
+def resolve_actionlint(args: argparse.Namespace) -> tuple[Path, dict[str, str]]:
+    for candidate in actionlint_candidates(args):
+        if not candidate.is_file():
+            continue
+        resolved = candidate.resolve()
+        version = command_output([str(resolved), "-version"], args.source_root)
+        if actionlint_version_token(version) != "1.7.12":
+            raise RuntimeError(
+                f"actionlint must be pinned to 1.7.12, got {version!r} from {resolved}"
+            )
+        return resolved, {
+            "path": str(resolved),
+            "version": version,
+            "sha256": sha256_file(resolved),
+        }
+    raise RuntimeError(
+        "actionlint 1.7.12 bootstrap is missing; supply --actionlint or place the "
+        "verified binary below <build>/tools/actionlint-1.7.12"
+    )
+
+
+def parse_environment_block(output: str) -> dict[str, str]:
+    environment: dict[str, str] = {}
+    for line in output.splitlines():
+        if "=" not in line:
+            continue
+        name, value = line.split("=", 1)
+        if name:
+            environment[name] = value
+    return environment
+
+
+def find_vcvars64(source_root: Path) -> Path:
+    install_root = os.environ.get("VSINSTALLDIR")
+    if install_root:
+        candidate = Path(install_root) / "VC" / "Auxiliary" / "Build" / "vcvars64.bat"
+        if candidate.is_file():
+            return candidate.resolve()
+
+    program_files_x86 = os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
+    vswhere = (
+        Path(program_files_x86)
+        / "Microsoft Visual Studio"
+        / "Installer"
+        / "vswhere.exe"
+    )
+    if vswhere.is_file():
+        completed = run_capture(
+            [
+                str(vswhere),
+                "-latest",
+                "-products",
+                "*",
+                "-requires",
+                "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+                "-property",
+                "installationPath",
+            ],
+            source_root,
+        )
+        if completed.returncode == 0 and completed.stdout.strip():
+            candidate = (
+                Path(completed.stdout.strip())
+                / "VC"
+                / "Auxiliary"
+                / "Build"
+                / "vcvars64.bat"
+            )
+            if candidate.is_file():
+                return candidate.resolve()
+    raise RuntimeError("Visual Studio x64 environment bootstrap is unavailable")
+
+
+def msvc_environment_is_x64(environment: Mapping[str, str]) -> bool:
+    return (
+        all(environment.get(name) for name in ("INCLUDE", "LIB", "VCToolsInstallDir"))
+        and environment.get("VSCMD_ARG_TGT_ARCH", "").lower() in {"x64", "amd64"}
+    )
+
+
+def initialize_msvc_environment(source_root: Path) -> dict[str, str]:
+    if os.name != "nt":
+        return {"status": "not-applicable"}
+    if msvc_environment_is_x64(os.environ):
+        return {
+            "status": "already-initialized",
+            "target_architecture": os.environ["VSCMD_ARG_TGT_ARCH"],
+            "vctools_version": os.environ.get("VCToolsVersion", "unavailable"),
+            "windows_sdk_version": os.environ.get("WindowsSDKVersion", "unavailable"),
+        }
+
+    vcvars = find_vcvars64(source_root)
+    completed = subprocess.run(
+        f'call "{vcvars}" >nul && set',
+        cwd=source_root,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        shell=True,
+        executable=os.environ.get("COMSPEC", "cmd.exe"),
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(
+            completed.stderr.strip() or "Visual Studio x64 environment bootstrap failed"
+        )
+    initialized = parse_environment_block(completed.stdout)
+    if not msvc_environment_is_x64(initialized):
+        raise RuntimeError("Visual Studio bootstrap did not return an x64 environment")
+    os.environ.update(initialized)
+    return {
+        "status": "initialized",
+        "target_architecture": initialized["VSCMD_ARG_TGT_ARCH"],
+        "vcvars64": str(vcvars),
+        "vctools_version": initialized.get("VCToolsVersion", "unavailable"),
+        "windows_sdk_version": initialized.get("WindowsSDKVersion", "unavailable"),
+    }
 
 
 def git_output(source_root: Path, *arguments: str) -> str:
@@ -178,7 +326,6 @@ def preflight(
             "VULKAN_SDK",
         )
     }
-    actionlint = shutil.which("actionlint")
     payload: dict[str, Any] = {
         "recorded_at_utc": utc_now(),
         "source": {key: value for key, value in source.items() if key != "diff"},
@@ -200,13 +347,7 @@ def preflight(
         },
         "dependency": repository_identity(dependency_root),
         "actionlint": {
-            "path": actionlint or "unavailable",
-            "version": (
-                command_output([actionlint, "-version"], args.source_root)
-                if actionlint
-                else "ENVIRONMENT_BOOTSTRAP_REQUIRED"
-            ),
-            "sha256": sha256_file(Path(actionlint)) if actionlint else "unavailable",
+            "status": "ENVIRONMENT_BOOTSTRAP_REQUIRED",
         },
         "environment": relevant_environment,
         "invocation": list(sys.argv),
@@ -308,8 +449,8 @@ class Gate:
             phase["returncode"] = completed.returncode
             phase["status"] = "PASS" if completed.returncode == 0 else "FAIL"
         except subprocess.TimeoutExpired as exc:
-            stdout = exc.stdout or ""
-            stderr = exc.stderr or ""
+            stdout = captured_text(exc.stdout)
+            stderr = captured_text(exc.stderr)
             phase["status"] = "TIMEOUT"
             phase["timeout_seconds"] = timeout
         except OSError as exc:
@@ -345,9 +486,34 @@ class Gate:
                 if len(artifacts) != 1:
                     validation["gate_error"] = "missing-or-ambiguous-raw-artifact"
                     continue
+                if validation.get("artifact") != artifacts[0].name or validation.get(
+                    "artifact_sha256"
+                ) != sha256_file(artifacts[0]):
+                    validation["gate_error"] = "raw-artifact-hash-mismatch"
+                    continue
                 metadata = json.loads(
                     artifacts[0].read_text(encoding="utf-8")
                 )["metadata"]
+                traces = list(path.parent.glob("benchmark_phase_trace_*.jsonl"))
+                if len(traces) != 1:
+                    validation["gate_error"] = "missing-or-ambiguous-phase-trace"
+                    continue
+                trace = traces[0]
+                if validation.get("phase_trace") != trace.name or validation.get(
+                    "phase_trace_sha256"
+                ) != sha256_file(trace):
+                    validation["gate_error"] = "phase-trace-hash-mismatch"
+                    continue
+                try:
+                    parse_and_validate_phase_trace(
+                        trace.read_text(encoding="utf-8"),
+                        int(metadata["warmup_frames"]),
+                        int(metadata["measured_frames"]),
+                    )
+                except (KeyError, TypeError, ValueError, RuntimeError) as exc:
+                    validation["gate_error"] = "incomplete-phase-trace"
+                    validation["phase_trace_error"] = str(exc)
+                    continue
                 expected_source = self.manifest["inputs"]["source"]
                 dependency = self.manifest["inputs"]["preflight"].get("dependency", {})
                 expected = {
@@ -448,6 +614,10 @@ class Gate:
         preflight_payload["compiler"] = cache.get("CMAKE_CXX_COMPILER", "unavailable")
         preflight_payload["compiler_id"] = cache.get("CMAKE_CXX_COMPILER_ID", "unavailable")
         preflight_payload["cmake_generator"] = cache.get("CMAKE_GENERATOR", "unavailable")
+        preflight_payload["cmake_generator_platform"] = cache.get(
+            "CMAKE_GENERATOR_PLATFORM",
+            "",
+        )
         preflight_payload["qt_directory"] = cache.get("Qt6_DIR", "unavailable")
         dependency_value = cache.get("vnm_msdf_text_SOURCE_DIR", "")
         if dependency_value:
@@ -475,6 +645,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--mode", choices=("full", "ci-retain"), default="full")
     parser.add_argument("--recovery-of")
     parser.add_argument("--upstream-status", default="success")
+    parser.add_argument("--actionlint", type=Path)
     return parser.parse_args()
 
 
@@ -538,6 +709,15 @@ def main() -> int:
                 raise RuntimeError("the full retained gate currently implements checkpoint 2.1")
             if source["dirty"]:
                 raise RuntimeError("full checkpoint gate requires a clean source tree")
+            actionlint, actionlint_metadata = resolve_actionlint(args)
+            bootstrap_metadata = initialize_msvc_environment(args.source_root)
+            gate.manifest["inputs"]["preflight"]["actionlint"] = actionlint_metadata
+            gate.manifest["inputs"]["preflight"]["msvc_environment"] = bootstrap_metadata
+            write_json(
+                gate.attempt_dir / "preflight" / "preflight.json",
+                gate.manifest["inputs"]["preflight"],
+            )
+            gate.write_manifest()
             pipeline = args.standards_root / "tools" / "style_pipeline.py"
             if not pipeline.is_file():
                 raise RuntimeError(f"style pipeline bootstrap is missing: {pipeline}")
@@ -545,8 +725,7 @@ def main() -> int:
                 "style",
                 [sys.executable, str(pipeline), "--root", str(args.source_root)],
             )
-            actionlint = shutil.which("actionlint") or "actionlint"
-            gate.run_phase("actionlint", [actionlint])
+            gate.run_phase("actionlint", [str(actionlint)])
             gate.run_phase("configure", configure_command(args), timeout=300)
             gate.refresh_configured_preflight()
             dependency = gate.manifest["inputs"]["preflight"]["dependency"]

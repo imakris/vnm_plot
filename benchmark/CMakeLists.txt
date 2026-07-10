@@ -110,6 +110,7 @@ set(BENCHMARK_SOURCES
 set(BENCHMARK_HEADERS
     include/ring_buffer.h
     include/allocation_tracker.h
+    include/publication_rate_clock.h
     include/sample_types.h
     include/brownian_generator.h
     include/benchmark_profiler.h
@@ -266,6 +267,7 @@ message(STATUS "vnm_plot: Building Brownian generator tests")
 # -----------------------------------------------------------------------------
 
 add_executable(test_benchmark_profiler
+    src/allocation_tracker.cpp
     src/test_benchmark_profiler.cpp
     ${BENCHMARK_HEADERS}
 )
