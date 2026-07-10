@@ -223,6 +223,7 @@ private:
     std::thread m_generator_thread;
     std::atomic<bool> m_stop_generator{false};
     std::atomic<bool> m_generator_pause_requested{false};
+    std::atomic<bool> m_generator_rate_rebase_requested{false};
     std::mutex m_generator_control_mutex;
     std::condition_variable m_generator_control_cv;
     bool m_generator_paused = false;

@@ -25,16 +25,24 @@ public:
         m_started_at += paused;
     }
 
+    void rebase(time_point now, std::size_t generated_samples) noexcept
+    {
+        m_started_at = now;
+        m_base_samples = generated_samples;
+    }
+
     std::size_t target_samples(time_point now, double samples_per_second) const noexcept
     {
         const double elapsed_seconds = std::max(
             0.0,
             std::chrono::duration<double>(now - m_started_at).count());
-        return static_cast<std::size_t>(elapsed_seconds * samples_per_second);
+        return m_base_samples +
+            static_cast<std::size_t>(elapsed_seconds * samples_per_second);
     }
 
 private:
     time_point m_started_at;
+    std::size_t m_base_samples = 0;
 };
 
 }  // namespace vnm::benchmark

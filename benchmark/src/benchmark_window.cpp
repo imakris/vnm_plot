@@ -751,7 +751,10 @@ void Benchmark_rhi_offscreen_runner::generator_thread_func()
         }
         rate_clock.exclude_pause(paused_duration);
         auto now = std::chrono::steady_clock::now();
-        const std::size_t target_samples = rate_clock.target_samples(now, m_config.rate);
+        if (m_generator_rate_rebase_requested.exchange(false, std::memory_order_acq_rel)) {
+            rate_clock.rebase(now, m_samples_generated.load());
+        }
+        std::size_t target_samples = rate_clock.target_samples(now, m_config.rate);
         std::size_t current_count = m_samples_generated.load();
 
         while (current_count < target_samples && !m_stop_generator.load()) {
@@ -760,6 +763,15 @@ void Benchmark_rhi_offscreen_runner::generator_thread_func()
                 break;
             }
             rate_clock.exclude_pause(paused_duration);
+            now = std::chrono::steady_clock::now();
+            if (m_generator_rate_rebase_requested.exchange(
+                    false,
+                    std::memory_order_acq_rel)) {
+                current_count = m_samples_generated.load();
+                rate_clock.rebase(now, current_count);
+                target_samples = rate_clock.target_samples(now, m_config.rate);
+                continue;
+            }
             if (m_config.data_type == "Trades") {
                 const Trade_sample sample = m_generator.next_trade();
                 for (auto& buffer : m_trade_buffers) {
@@ -808,6 +820,7 @@ void Benchmark_rhi_offscreen_runner::resume_generator_publication()
     if (!m_generator_thread.joinable()) {
         return;
     }
+    m_generator_rate_rebase_requested.store(true, std::memory_order_release);
     m_generator_pause_requested.store(false, std::memory_order_release);
     m_generator_control_cv.notify_all();
     std::unique_lock lock(m_generator_control_mutex);

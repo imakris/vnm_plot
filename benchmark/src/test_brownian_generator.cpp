@@ -261,6 +261,24 @@ bool test_publication_rate_clock_excludes_paused_time()
     return true;
 }
 
+bool test_publication_rate_clock_rebases_without_schedule_debt()
+{
+    using clock = vnm::benchmark::Publication_rate_clock;
+    const clock::time_point origin{};
+    clock rate_clock(origin);
+    TEST_ASSERT(
+        rate_clock.target_samples(origin + std::chrono::seconds(2), 1000.0) == 2000,
+        "rate clock should expose accumulated schedule debt before a rebase");
+    rate_clock.rebase(origin + std::chrono::seconds(2), 1250);
+    TEST_ASSERT(
+        rate_clock.target_samples(origin + std::chrono::seconds(2), 1000.0) == 1250,
+        "rebase must discard pre-epoch schedule debt");
+    TEST_ASSERT(
+        rate_clock.target_samples(origin + std::chrono::seconds(3), 1000.0) == 2250,
+        "rebased schedule should advance from the current publication count");
+    return true;
+}
+
 int main() {
     std::cout << "Brownian Generator Test Suite\n";
     std::cout << "=============================\n\n";
@@ -279,6 +297,7 @@ int main() {
     RUN_TEST(test_different_seeds);
     RUN_TEST(test_volatility_effect);
     RUN_TEST(test_publication_rate_clock_excludes_paused_time);
+    RUN_TEST(test_publication_rate_clock_rebases_without_schedule_debt);
 
     std::cout << "\n=============================\n";
     std::cout << "Results: " << passed << " passed, " << failed << " failed\n";

@@ -128,6 +128,10 @@ Remediation through `0dbbb41` requests Qt's native QRhi backend without imposing
 
 The benchmark now distinguishes logical zero-copy view bytes from physical copied bytes, measures render-thread CPU allocations separately from QRhi buffer creation, keeps producer counters inside an exact paused measurement epoch but outside the writer mutex, opens one buffered phase-trace stream, and uses 10,000 static samples rather than the superseded five-point visual fixture. The old 84-run artifacts are obsolete and cannot approve Checkpoint 2.1. Clean CI, unanimous iterative three-worker review, the new 108-execution baseline, and explicit owner approval of its exact proposal hash remain open at this addendum.
 
+Later focused review found that the initial pause-aware rate clock still carried pre-epoch scheduling debt into a short live measurement. The corrected producer rebases its schedule to the current logical publication count while paused at measurement start and rechecks the target before publishing. A 10-frame proof now imports zero warm-up publications; the canonical 120-frame, 64-series workload publishes 154 logical samples at an aggregate 57,924 samples/s with zero overwrites and zero copied snapshot bytes. This is evidence that the epoch boundary is clean, not an approved numeric performance margin. The runner will calculate the complete two-set margin proposal after clean CI and unanimous reviewer closure, and only the owner can approve that exact retained proposal hash.
+
+The `049587c` native Unix rerun also exposed hosted software-renderer memory pressure during backend creation, not a product requirement for a particular graphics API. The next attempt keeps Qt's native non-Null selection, records the actual backend, and limits only Mesa's worker count with `LP_NUM_THREADS=1`. FreeBSD evidence packaging now occurs inside an NFS-shared guest workspace so a failing guest test cannot leave the host with a misleading preflight-only bundle.
+
 ## Prioritized architecture and performance findings
 
 ### P0 — The intentional cross-repository `master` oracle exposed delivery order; dependent CI recovered, dependency Windows CI remains open
