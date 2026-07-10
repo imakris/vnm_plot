@@ -148,8 +148,8 @@ public:
         ++m_sequence;
     }
 
-    int snapshot_calls() const { return m_snapshot_calls; }
-    std::weak_ptr<void> last_hold() const { return m_last_hold; }
+    int                 snapshot_calls() const { return m_snapshot_calls; }
+    std::weak_ptr<void> last_hold()      const { return m_last_hold;      }
     void return_busy_once() { m_busy_snapshots_remaining = 1; }
     void advance_during_next_snapshot() { m_advance_during_next_snapshot = true; }
 
@@ -355,9 +355,9 @@ public:
         m_create_count(create_count)
     {}
 
-    std::string_view id() const override { return m_id; }
-    std::uint64_t revision() const override { return m_revision; }
-    int z_order() const override { return m_z_order; }
+    std::string_view id()       const override { return m_id;       }
+    std::uint64_t    revision() const override { return m_revision; }
+    int              z_order()  const override { return m_z_order;  }
 
     bool draws_view(plot::Series_view_kind view_kind) const override
     {
@@ -422,7 +422,7 @@ public:
         return true;
     }
 
-    QRhi* rhi() const { return m_rhi.get(); }
+    QRhi*                    rhi()           const { return m_rhi.get();           }
     QRhiTextureRenderTarget* render_target() const { return m_render_target.get(); }
 
     bool render_layer_frame(

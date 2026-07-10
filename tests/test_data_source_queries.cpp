@@ -51,7 +51,7 @@ public:
     }
 
     std::size_t sample_stride() const override { return sizeof(sample_t); }
-    std::size_t lod_levels() const override { return m_scales.size(); }
+    std::size_t lod_levels()    const override { return m_scales.size();  }
     std::size_t lod_scale(std::size_t level) const override
     {
         return level < m_scales.size() ? m_scales[level] : 1;

@@ -203,9 +203,9 @@ public:
         m_z_order(z_order)
     {}
 
-    std::string_view id() const override { return m_id; }
-    std::uint64_t revision() const override { return m_revision; }
-    int z_order() const override { return m_z_order; }
+    std::string_view id()       const override { return m_id;       }
+    std::uint64_t    revision() const override { return m_revision; }
+    int              z_order()  const override { return m_z_order;  }
 
     bool draws_view(plot::Series_view_kind view_kind) const override
     {

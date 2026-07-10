@@ -209,13 +209,13 @@ public:
             true);
     }
 
-    qint64 t_min() const { return m_t_min; }
-    qint64 t_max() const { return m_t_max; }
+    qint64 t_min()           const { return m_t_min;           }
+    qint64 t_max()           const { return m_t_max;           }
     qint64 t_available_min() const { return m_t_available_min; }
     qint64 t_available_max() const { return m_t_available_max; }
 
-    bool t_min_initialized() const { return m_t_min_initialized; }
-    bool t_max_initialized() const { return m_t_max_initialized; }
+    bool t_min_initialized()           const { return m_t_min_initialized;           }
+    bool t_max_initialized()           const { return m_t_max_initialized;           }
     bool t_available_min_initialized() const { return m_t_available_min_initialized; }
     bool t_available_max_initialized() const { return m_t_available_max_initialized; }
 
