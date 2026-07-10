@@ -204,13 +204,13 @@ bool test_sequence_tracking() {
     buffer.push(bar);
     source.try_snapshot();
 
-    TEST_ASSERT(source.sequence() == 1, "sequence should be 1 after one push");
+    TEST_ASSERT(source.sequence() == 2, "snapshot should expose revision 2 after one push");
 
     buffer.push(bar);
     buffer.push(bar);
     source.try_snapshot();
 
-    TEST_ASSERT(source.sequence() == 3, "sequence should be 3 after three pushes");
+    TEST_ASSERT(source.sequence() == 4, "snapshot should expose revision 4 after three pushes");
 
     return true;
 }
@@ -262,44 +262,55 @@ bool test_query_metadata_single_lod_unknown_order() {
     return true;
 }
 
-// Test: current_sequence remains unsupported because ring sequence can reset
+// Test: current_sequence exposes the same stable nonzero ring revision
 bool test_current_sequence_metadata() {
     Ring_buffer<Trade_sample> buffer(4);
     Benchmark_data_source<Trade_sample> source(buffer);
 
-    TEST_ASSERT(source.current_sequence(0) == 0,
-                "initial LOD 0 current_sequence should be 0");
+    TEST_ASSERT(source.current_sequence(0) == 1,
+                "initial LOD 0 current_sequence should expose stable revision 1");
     TEST_ASSERT(source.current_sequence(1) == 0,
                 "unsupported LOD current_sequence should be 0");
     TEST_ASSERT(source.sequence() == 0,
                 "last snapshot sequence should start at 0");
 
+    auto empty_result = source.try_snapshot();
+    TEST_ASSERT(empty_result.status == vnm::plot::snapshot_result_t::Snapshot_status::EMPTY,
+                "initial snapshot should be EMPTY");
+    TEST_ASSERT(empty_result.snapshot.sequence == source.current_sequence(0),
+                "EMPTY snapshot and current_sequence should expose the same revision");
+
     Trade_sample trade{};
     buffer.push(trade);
     buffer.push(trade);
 
-    TEST_ASSERT(source.current_sequence(0) == 0,
-                "current_sequence should stay unsupported before snapshot");
+    TEST_ASSERT(source.current_sequence(0) == 3,
+                "current_sequence should advance independently of snapshots");
     TEST_ASSERT(source.current_sequence(1) == 0,
                 "unsupported LOD current_sequence should stay 0");
-    TEST_ASSERT(source.sequence() == 0,
-                "last snapshot sequence should not update before try_snapshot");
+    TEST_ASSERT(source.sequence() == 1,
+                "last snapshot sequence should retain the initial EMPTY revision");
 
     auto result = source.try_snapshot();
     TEST_ASSERT(result.status == vnm::plot::snapshot_result_t::Snapshot_status::READY,
                 "snapshot should be READY after pushes");
-    TEST_ASSERT(result.snapshot.sequence == 2,
+    TEST_ASSERT(result.snapshot.sequence == 3,
                 "snapshot sequence should match ring sequence");
-    TEST_ASSERT(source.sequence() == 2,
+    TEST_ASSERT(source.sequence() == 3,
                 "last snapshot sequence should update after try_snapshot");
     result = {};
 
     buffer.clear();
-    TEST_ASSERT(source.current_sequence(0) == 0,
-                "current_sequence should stay unsupported after clear");
+    TEST_ASSERT(source.current_sequence(0) == 4,
+                "clear should advance current_sequence without resetting it");
+    empty_result = source.try_snapshot();
+    TEST_ASSERT(empty_result.status == vnm::plot::snapshot_result_t::Snapshot_status::EMPTY,
+                "snapshot after clear should be EMPTY");
+    TEST_ASSERT(empty_result.snapshot.sequence == source.current_sequence(0),
+                "cleared snapshot and current_sequence should expose the same revision");
     buffer.push(trade);
-    TEST_ASSERT(source.current_sequence(0) == 0,
-                "current_sequence should not expose reset ring sequence after clear and push");
+    TEST_ASSERT(source.current_sequence(0) == 5,
+                "push after clear should continue the stable revision");
     TEST_ASSERT(source.current_sequence(1) == 0,
                 "unsupported LOD current_sequence should stay 0 after reset");
 

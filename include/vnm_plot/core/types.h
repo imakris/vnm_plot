@@ -745,9 +745,12 @@ public:
     virtual size_t sample_stride() const = 0;
     virtual const void* identity() const { return this; }
 
-    /// Returns current sequence for the given LOD level without taking a snapshot.
-    /// Useful for skip optimization when data hasn't changed.
-    /// Returns 0 if not supported or unknown.
+    /// Returns the current content revision for the given LOD level without
+    /// taking a snapshot. A supported revision must remain nonzero, change
+    /// whenever the logical snapshot content changes (including clear/reset),
+    /// and equal the sequence returned by try_snapshot() while that content is
+    /// current. Returning 0, or a revision that cannot satisfy this contract,
+    /// disables sequence-based reuse.
     virtual uint64_t current_sequence(size_t lod_level = 0) const { (void)lod_level; return 0; }
 
     virtual Time_order time_order(std::size_t lod) const;

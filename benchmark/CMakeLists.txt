@@ -21,7 +21,7 @@ if(NOT VNM_PLOT_ENABLE_TEXT)
     message(FATAL_ERROR "vnm_plot benchmark requires text rendering. Configure with -DVNM_PLOT_ENABLE_TEXT=ON or disable the benchmark.")
 endif()
 
-option(VNM_PLOT_BUILD_BENCHMARK_TESTS "Build benchmark helper tests" OFF)
+option(VNM_PLOT_BUILD_BENCHMARK_TESTS "Build benchmark helper tests" ON)
 
 # -----------------------------------------------------------------------------
 # Benchmark executable

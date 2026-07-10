@@ -9,6 +9,8 @@
 
 #include <vnm_plot/core/types.h>
 
+#include <atomic>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 
@@ -42,11 +44,18 @@ public:
             return {vnm::plot::data_snapshot_t{}, Status::FAILED};
         }
 
+        const auto started = std::chrono::steady_clock::now();
         auto view = m_buffer.view();
-        m_snapshot_sequence = view.sequence;
+        m_snapshot_sequence.store(view.sequence, std::memory_order_release);
 
-        if (view.count == 0) {
-            return {vnm::plot::data_snapshot_t{}, Status::EMPTY};
+        if (m_profiler) {
+            const double snapshot_ns = std::chrono::duration<double, std::nano>(
+                std::chrono::steady_clock::now() - started).count();
+            m_profiler->record_observation("benchmark.snapshot.time_ns", snapshot_ns);
+            m_profiler->record_counter("benchmark.snapshot.count");
+            m_profiler->record_observation(
+                "benchmark.snapshot.bytes",
+                static_cast<double>(view.count * sizeof(T)));
         }
 
         vnm::plot::data_snapshot_t snapshot;
@@ -56,6 +65,11 @@ public:
         snapshot.sequence = view.sequence;
         snapshot.data2 = view.data2;
         snapshot.count2 = view.count2;
+
+        if (view.count == 0) {
+            return {snapshot, Status::EMPTY};
+        }
+
         snapshot.hold = view.lock;
 
         return {
@@ -82,20 +96,22 @@ public:
     }
 
     uint64_t current_sequence(size_t lod_level = 0) const override {
-        (void)lod_level;
-        // Ring_buffer::clear() resets its sequence, so it cannot be exposed
-        // as the monotonic skip key required by Data_source::current_sequence.
-        return 0;
+        return lod_level == 0 ? m_buffer.sequence() : 0;
     }
 
     /// Get current sequence for change detection
     uint64_t sequence() const {
-        return m_snapshot_sequence;
+        return m_snapshot_sequence.load(std::memory_order_acquire);
+    }
+
+    void set_profiler(vnm::plot::Profiler* profiler) noexcept {
+        m_profiler = profiler;
     }
 
 private:
     Ring_buffer<T>& m_buffer;
-    uint64_t m_snapshot_sequence = 0;
+    std::atomic<uint64_t> m_snapshot_sequence{0};
+    vnm::plot::Profiler* m_profiler = nullptr;
 };
 
 /// Create a Data_access_policy for Bar_sample. The renderer owns the GPU-side

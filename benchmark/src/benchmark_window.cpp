@@ -143,11 +143,13 @@ Benchmark_rhi_window::Benchmark_rhi_window(const Benchmark_config& config)
         m_trade_buffer = std::make_unique<Ring_buffer<Trade_sample>>(m_config.ring_capacity);
         m_trade_buffer->set_profiler(&m_profiler);
         m_trade_source = std::make_unique<Benchmark_data_source<Trade_sample>>(*m_trade_buffer);
+        m_trade_source->set_profiler(&m_profiler);
     }
     else {
         m_bar_buffer = std::make_unique<Ring_buffer<Bar_sample>>(m_config.ring_capacity);
         m_bar_buffer->set_profiler(&m_profiler);
         m_bar_source = std::make_unique<Benchmark_data_source<Bar_sample>>(*m_bar_buffer);
+        m_bar_source->set_profiler(&m_profiler);
     }
 
     m_render_config.dark_mode = true;
@@ -390,11 +392,13 @@ void Benchmark_rhi_offscreen_runner::setup_data_source()
         m_trade_buffer = std::make_unique<Ring_buffer<Trade_sample>>(m_config.ring_capacity);
         m_trade_buffer->set_profiler(&m_profiler);
         m_trade_source = std::make_unique<Benchmark_data_source<Trade_sample>>(*m_trade_buffer);
+        m_trade_source->set_profiler(&m_profiler);
     }
     else {
         m_bar_buffer = std::make_unique<Ring_buffer<Bar_sample>>(m_config.ring_capacity);
         m_bar_buffer->set_profiler(&m_profiler);
         m_bar_source = std::make_unique<Benchmark_data_source<Bar_sample>>(*m_bar_buffer);
+        m_bar_source->set_profiler(&m_profiler);
     }
 }
 

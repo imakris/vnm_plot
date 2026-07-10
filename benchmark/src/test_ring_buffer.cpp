@@ -39,12 +39,12 @@ bool test_empty_buffer() {
     TEST_ASSERT(buf.capacity() == 10, "capacity should be 10");
     TEST_ASSERT(buf.size() == 0, "size should be 0");
     TEST_ASSERT(buf.empty(), "should be empty");
-    TEST_ASSERT(buf.sequence() == 0, "sequence should be 0");
+    TEST_ASSERT(buf.sequence() == 1, "stable revision should start at 1");
 
     std::vector<int> dest;
     auto result = buf.copy_to(dest);
     TEST_ASSERT(result.count == 0, "copy count should be 0");
-    TEST_ASSERT(result.sequence == 0, "copy sequence should be 0");
+    TEST_ASSERT(result.sequence == 1, "empty copy should expose stable revision 1");
     TEST_ASSERT(dest.empty(), "dest should be empty");
 
     return true;
@@ -57,7 +57,7 @@ bool test_basic_push() {
     buf.push(42);
     TEST_ASSERT(buf.size() == 1, "size should be 1 after push");
     TEST_ASSERT(!buf.empty(), "should not be empty");
-    TEST_ASSERT(buf.sequence() == 1, "sequence should be 1");
+    TEST_ASSERT(buf.sequence() == 2, "revision should advance after one push");
 
     std::vector<int> dest;
     auto result = buf.copy_to(dest);
@@ -77,7 +77,7 @@ bool test_multiple_pushes() {
     }
 
     TEST_ASSERT(buf.size() == 5, "size should be 5");
-    TEST_ASSERT(buf.sequence() == 5, "sequence should be 5");
+    TEST_ASSERT(buf.sequence() == 6, "revision should advance for every push");
 
     std::vector<int> dest;
     auto result = buf.copy_to(dest);
@@ -99,7 +99,7 @@ bool test_batch_push() {
     buf.push_batch(data, 5);
 
     TEST_ASSERT(buf.size() == 5, "size should be 5");
-    TEST_ASSERT(buf.sequence() == 5, "sequence should be 5");
+    TEST_ASSERT(buf.sequence() == 6, "batch push should advance revision per sample");
 
     std::vector<int> dest;
     auto result = buf.copy_to(dest);
@@ -122,14 +122,14 @@ bool test_overwrite() {
     }
 
     TEST_ASSERT(buf.size() == 5, "size should be 5 (full)");
-    TEST_ASSERT(buf.sequence() == 5, "sequence should be 5");
+    TEST_ASSERT(buf.sequence() == 6, "filled buffer revision should be 6");
 
     // Push more, should overwrite oldest
     buf.push(100);
     buf.push(101);
 
     TEST_ASSERT(buf.size() == 5, "size should still be 5");
-    TEST_ASSERT(buf.sequence() == 7, "sequence should be 7");
+    TEST_ASSERT(buf.sequence() == 8, "overwrite pushes should advance revision");
 
     std::vector<int> dest;
     auto result = buf.copy_to(dest);
@@ -141,6 +141,15 @@ bool test_overwrite() {
     TEST_ASSERT(dest[2] == 4, "dest[2] should be 4");
     TEST_ASSERT(dest[3] == 100, "dest[3] should be 100");
     TEST_ASSERT(dest[4] == 101, "dest[4] should be 101");
+
+    const auto stats = buf.statistics();
+    TEST_ASSERT(stats.occupancy == 5, "statistics should report full occupancy");
+    TEST_ASSERT(stats.high_water_occupancy == 5,
+        "statistics should retain full occupancy as the high-water mark");
+    TEST_ASSERT(stats.published_samples == 7,
+        "statistics should report all published samples");
+    TEST_ASSERT(stats.overwritten_samples == 2,
+        "statistics should report overwritten samples");
 
     return true;
 }
@@ -182,7 +191,20 @@ bool test_clear() {
 
     TEST_ASSERT(buf.size() == 0, "size should be 0 after clear");
     TEST_ASSERT(buf.empty(), "should be empty after clear");
-    TEST_ASSERT(buf.sequence() == 0, "sequence should be 0 after clear");
+    TEST_ASSERT(buf.sequence() == 7, "clear should advance rather than reset revision");
+
+    buf.push(17);
+    TEST_ASSERT(buf.size() == 1, "push after clear should restore one occupied slot");
+    TEST_ASSERT(buf.sequence() == 8, "push after clear should keep revision monotonic");
+
+    const auto stats = buf.statistics();
+    TEST_ASSERT(stats.occupancy == 1, "statistics should report current occupancy");
+    TEST_ASSERT(stats.high_water_occupancy == 5,
+        "statistics should retain lifetime occupancy high-water");
+    TEST_ASSERT(stats.published_samples == 6,
+        "statistics should retain lifetime published sample count");
+    TEST_ASSERT(stats.overwritten_samples == 0,
+        "clear test should not report overwritten samples");
 
     return true;
 }

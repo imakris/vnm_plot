@@ -108,6 +108,9 @@ class Qrhi_series_layer_state
 public:
     virtual ~Qrhi_series_layer_state() = default;
     virtual void cleanup_qrhi_resources(QRhi* rhi) { (void)rhi; }
+    // Called for every planned custom-layer draw, even when renderer-owned
+    // sample resources are reused. `resources_changed` only describes whether
+    // the renderer-visible layer inputs changed; it does not suppress prepare.
     virtual bool prepare(const qrhi_series_prepare_context_t& ctx) = 0;
     virtual void record(const qrhi_series_record_context_t& ctx) = 0;
 };
