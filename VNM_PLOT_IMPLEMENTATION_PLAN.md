@@ -202,11 +202,16 @@ Batch 1A is closed and no longer blocks local or merge work. The combined Batch 
 
 ### Batch 1C — Explicit non-behavioral style-gate token repairs
 
-Batch 1B remains formatting-only. If the ordered no-write checks still report governed naming findings that cannot be satisfied without changing tokens, isolate only the checker-enumerated private identifiers here. The initially known scope is the `_pad0`, `_pad1`, and `_pad2` members in `src/core/series_renderer.cpp`; rename them to the checker-approved private names without changing declaration order, field types, initialization values, buffer packing, public headers, or exported symbols. Do not use this checkpoint for unrelated cleanup.
+Batch 1B remains formatting-only. Isolate here only the two checker-enumerated cases that cannot be made green safely without changing tokens:
+
+1. Rewrite `tests/test_msdf_lcd_shader_reference.cpp::sample_statement_for_offset()` from its ternary return to an equivalent empty-expression early return followed by the existing non-empty string construction. This avoids the proven `std::string`/ternary parser collision without changing generated shader text; retain the focused LCD shader-reference assertions.
+2. If the ordered naming check still reports them, rename only the private `_pad0`, `_pad1`, and `_pad2` members in `src/core/series_renderer.cpp` to checker-approved names without changing declaration order, field types, initialization values, buffer packing, public headers, or exported symbols.
+
+Do not use this checkpoint for unrelated cleanup.
 
 Gate:
 
-- retain the exact naming-checker findings before the change and prove that no old identifier use remains;
+- retain the exact checker findings before each change and prove that no old padding identifier use remains;
 - inspect the complete token-changing diff and preserve the existing uniform-layout `static_assert` coverage;
 - initialized Release build and CTest pass 21/21;
 - complete canonical style pipeline passes without `--write`;
