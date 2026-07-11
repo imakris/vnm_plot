@@ -113,16 +113,16 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
 
 struct stacked_sample_t
 {
-    std::int64_t timestamp_ns = 0;
-    float        value        = 0.0f;
-    float        base         = 0.0f;
+    std::int64_t   timestamp_ns = 0;
+    float          value        = 0.0f;
+    float          base         = 0.0f;
 };
 
 // Compose independently planned LOD windows onto their timestamp union.
 // Output layers match input order and contain cumulative tops plus bases.
 bool compose_stacked_series(
-    const std::vector<const Series_view_plan*>& plans,
-    std::vector<std::vector<stacked_sample_t>>& layers);
+    const std::vector<const Series_view_plan*>&    plans,
+    std::vector<std::vector<stacked_sample_t>>&    layers);
 
 const Data_access_policy& stacked_sample_access();
 

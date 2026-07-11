@@ -1147,8 +1147,8 @@ bool test_stacked_auto_range_includes_cumulative_envelope()
     auto lower = std::make_shared<Query_range_source>();
     auto upper = std::make_shared<Query_range_source>();
     lower->query_status = upper->query_status = Data_query_status::READY;
-    lower->query_range = {1.0f, 2.0f};
-    upper->query_range = {10.0f, 20.0f};
+    lower->query_range  = {1.0f, 2.0f};
+    upper->query_range  = {10.0f, 20.0f};
     auto lower_series = make_series(lower);
     auto upper_series = make_series(upper);
     lower_series->stack_group = upper_series->stack_group = 1;

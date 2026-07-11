@@ -232,7 +232,8 @@ void update_view_range_from_source(
     std::int64_t& t_max,
     std::int64_t& t_available_min,
     float& v_min,
-    float& v_max)
+    float& v_max,
+    std::size_t stack_size)
 {
     if (!source) {
         return;
@@ -300,6 +301,11 @@ void update_view_range_from_source(
         }
         v_min = lo - padding;
         v_max = hi + padding;
+        if (stack_size > 1) {
+            const float scale = static_cast<float>(stack_size);
+            v_min = std::min(0.0f, v_min * scale);
+            v_max = std::max(0.0f, v_max * scale);
+        }
     }
 }
 
@@ -545,7 +551,8 @@ void Benchmark_rhi_window::update_plot_view()
         m_t_max,
         m_t_available_min,
         m_v_min,
-        m_v_max);
+        m_v_max,
+        1);
 
     vnm::plot::Plot_view view;
     view.t_range = std::pair<qint64, qint64>{m_t_min, m_t_max};
@@ -730,6 +737,7 @@ void Benchmark_rhi_offscreen_runner::setup_series()
     for (std::size_t index = 0; index < m_config.series_count; ++index) {
         auto series = std::make_shared<vnm::plot::series_data_t>();
         series->enabled = true;
+        series->stack_group = m_config.stack_series ? 1 : 0;
         const float blend = static_cast<float>(index % 8) / 8.0f;
         series->color = glm::vec4(0.2f + 0.5f * blend, 0.7f, 0.9f - 0.5f * blend, 1.0f);
 
@@ -871,15 +879,33 @@ void Benchmark_rhi_offscreen_runner::fill_static_data()
     if (m_config.data_type == "Trades") {
         std::vector<Trade_sample> samples(m_config.static_sample_count);
         m_generator.generate_trades(samples.data(), samples.size());
-        for (auto& buffer : m_trade_buffers) {
+        const std::int64_t timestamp_offset =
+            (samples[1].timestamp - samples[0].timestamp) /
+            static_cast<std::int64_t>(m_trade_buffers.size());
+        for (std::size_t index = 0; index < m_trade_buffers.size(); ++index) {
+            auto& buffer = m_trade_buffers[index];
             buffer->push_batch(samples.data(), samples.size());
+            if (m_config.stack_series && index + 1 < m_trade_buffers.size()) {
+                for (auto& sample : samples) {
+                    sample.timestamp += timestamp_offset;
+                }
+            }
         }
     }
     else {
         std::vector<Bar_sample> samples(m_config.static_sample_count);
         m_generator.generate_bars(samples.data(), samples.size());
-        for (auto& buffer : m_bar_buffers) {
+        const std::int64_t timestamp_offset =
+            (samples[1].timestamp - samples[0].timestamp) /
+            static_cast<std::int64_t>(m_bar_buffers.size());
+        for (std::size_t index = 0; index < m_bar_buffers.size(); ++index) {
+            auto& buffer = m_bar_buffers[index];
             buffer->push_batch(samples.data(), samples.size());
+            if (m_config.stack_series && index + 1 < m_bar_buffers.size()) {
+                for (auto& sample : samples) {
+                    sample.timestamp += timestamp_offset;
+                }
+            }
         }
     }
     m_samples_generated.store(m_config.static_sample_count);
@@ -1089,7 +1115,8 @@ bool Benchmark_rhi_offscreen_runner::render_frame(
             m_t_max,
             m_t_available_min,
             m_v_min,
-            m_v_max);
+            m_v_max,
+            m_config.stack_series ? m_config.series_count : 1);
     }
 
     const double adjusted_reserved_height = k_base_label_height_px + k_adjusted_preview_height;

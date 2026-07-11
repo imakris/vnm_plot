@@ -476,10 +476,10 @@ bool resolve_series_collection_range(
         }
 
         if (item->stack_group != 0 && stack_members[item->stack_group] > 1) {
-            auto& cumulative = stack_ranges[item->stack_group];
-            out_min = std::min(out_min, std::min(cumulative.first,
+            auto& cumulative   = stack_ranges[item->stack_group];
+            out_min            = std::min(out_min, std::min(cumulative.first,
                 cumulative.first + series_min));
-            out_max = std::max(out_max, std::max(cumulative.second,
+            out_max            = std::max(out_max, std::max(cumulative.second,
                 cumulative.second + series_max));
             cumulative.first  += series_min;
             cumulative.second += series_max;

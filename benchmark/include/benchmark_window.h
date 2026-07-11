@@ -64,6 +64,7 @@ struct Benchmark_config {
     double rate = 1000.0;  // samples per second
     std::size_t ring_capacity = 100000;
     std::size_t series_count = 1;
+    bool stack_series = false;
     bool extended_metadata = false;
     bool quiet = false;  // Suppress console output during benchmark
     bool show_text = true;  // Text/font rendering (default: on)

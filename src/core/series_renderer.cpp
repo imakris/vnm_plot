@@ -1049,10 +1049,13 @@ void Series_renderer::prepare(
             }
 
             const bool cache_hit = cacheable && std::all_of(
-                members.begin(), members.end(), [&](auto* member) {
+                members.begin(),
+                members.end(),
+                [&](auto* member) {
                     const auto& state = view_state_for(*member);
-                    return state.stack_cache_key == cache_key &&
-                           state.stack_cache_snapshot;
+                    return
+                        state.stack_cache_key == cache_key &&
+                        state.stack_cache_snapshot;
                 });
             std::vector<std::vector<detail::stacked_sample_t>> layers;
             if (!cache_hit && !detail::compose_stacked_series(plans, layers)) {
@@ -1073,7 +1076,8 @@ void Series_renderer::prepare(
                     log_error_once(
                         Error_cat::STACK_COMPOSITION,
                         members.front()->id,
-                        "Stack composition requires finite value samples, monotonic timestamps, and matching interpolation (group "
+                        "Stack composition requires finite value samples, "
+                        "monotonic timestamps, and matching interpolation (group "
                             + std::to_string(group) + ")");
                     continue;
             }
@@ -1091,21 +1095,21 @@ void Series_renderer::prepare(
                         sizeof(detail::stacked_sample_t),
                         m_frame_id,
                         nullptr, 0, samples};
-                    view_state.stack_cache_key = cache_key;
+                    view_state.stack_cache_key      = cache_key;
                 }
                 const data_snapshot_t snapshot = view_state.stack_cache_snapshot;
-                const std::size_t count = snapshot.count;
-                output_samples += count;
-                plan.access                  = &detail::stacked_sample_access();
-                plan.snapshot.snapshot       = snapshot;
-                plan.snapshot.sequence       = snapshot.sequence;
-                plan.source_first         = 0;
-                plan.source_count         = count;
-                plan.synthetic_hold_count = 0;
-                plan.gpu_count            = count;
-                plan.drawable_spans       = {{0, count, 0, count}};
-                plan.hold_last_forward    = false;
-                plan.stacked              = true;
+                const std::size_t     count    = snapshot.count;
+                output_samples                += count;
+                plan.access                    = &detail::stacked_sample_access();
+                plan.snapshot.snapshot         = snapshot;
+                plan.snapshot.sequence         = snapshot.sequence;
+                plan.source_first              = 0;
+                plan.source_count              = count;
+                plan.synthetic_hold_count      = 0;
+                plan.gpu_count                 = count;
+                plan.drawable_spans            = {{0, count, 0, count}};
+                plan.hold_last_forward         = false;
+                plan.stacked                   = true;
 
                 const bool has_custom_layer = std::any_of(
                     qrhi_layers_for(*members[i]->series).begin(),
@@ -2369,7 +2373,7 @@ bool Series_renderer::rhi_prepare_series_primitive(
                 1, 7, QRhiVertexInputAttribute::Float,
                 static_cast<quint32>(offsetof(gpu_sample_t, y_max)));
             vlayout.setAttributes({a_x0, a_y0, a_min0, a_max0,
-                                   a_x1, a_y1, a_min1, a_max1});
+                a_x1, a_y1, a_min1, a_max1});
         }
         else {
             // LINE binds the line_window_vbo four times at element offsets 0,

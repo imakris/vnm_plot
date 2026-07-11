@@ -1464,16 +1464,16 @@ bool test_stacking_composes_different_timestamps_from_independent_lods()
     fill_lod_samples(upper_source);
     for (auto& sample : upper_source.lod0) {
         sample.t += 2;
-        sample.v = 10.0f;
+        sample.v  = 10.0f;
     }
     for (auto& sample : upper_source.lod1) {
         sample.t += 2;
-        sample.v = 10.0f;
+        sample.v  = 10.0f;
     }
 
     const Data_access_policy       lower_access = make_policy();
     const Data_access_policy       upper_access = make_policy();
-    const std::vector<std::size_t> scales = {1, 4};
+    const std::vector<std::size_t> scales       = {1, 4};
     plot::detail::series_window_planner_state_t lower_state;
     plot::detail::series_window_planner_state_t upper_state;
     plot::detail::Series_window_snapshot_cache lower_cache;
@@ -1488,12 +1488,12 @@ bool test_stacking_composes_different_timestamps_from_independent_lods()
 
     std::vector<std::vector<plot::detail::stacked_sample_t>> layers;
     TEST_ASSERT(plot::detail::compose_stacked_series(
-            {&lower_plan, &upper_plan}, layers),
+        {&lower_plan, &upper_plan}, layers),
         "different timestamp grids should compose");
     TEST_ASSERT(layers.size() == 2 && layers[0].size() == layers[1].size(),
         "stack layers should share the timestamp union");
     TEST_ASSERT(layers[0].front().timestamp_ns == 2 &&
-                layers[0].back().timestamp_ns == 98,
+        layers[0].back().timestamp_ns == 98,
         "stack output must stay inside the common selected-sample domain");
 
     const auto sample = std::find_if(
@@ -1502,27 +1502,27 @@ bool test_stacking_composes_different_timestamps_from_independent_lods()
     TEST_ASSERT(sample != layers[1].end(),
         "full-resolution lower timestamps should remain in the union");
     TEST_ASSERT(std::abs(sample->base - 4.0f) < 1e-5f &&
-                std::abs(sample->value - 14.0f) < 1e-5f,
+        std::abs(sample->value - 14.0f) < 1e-5f,
         "upper layer should use the lower value and interpolate its own selected LOD");
 
     auto lower_series = std::make_shared<series_data_t>();
     lower_series->data_source.set_ref(lower_source);
-    lower_series->access = lower_access;
+    lower_series->access      = lower_access;
     lower_series->stack_group = 1;
     auto upper_series = std::make_shared<series_data_t>();
     upper_series->data_source.set_ref(upper_source);
-    upper_series->access = upper_access;
+    upper_series->access      = upper_access;
     upper_series->stack_group = 1;
     std::map<int, std::shared_ptr<const series_data_t>> series{
         {1, lower_series}, {2, upper_series}};
     frame_layout_result_t layout;
-    layout.usable_width = 50.0;
+    layout.usable_width  = 50.0;
     layout.usable_height = 50.0;
     Plot_config config;
     auto profiler = std::make_shared<Observation_profiler>();
     config.profiler = profiler;
     auto ctx = make_context(layout, config);
-    ctx.t1 = 99;
+    ctx.t1   = 99;
     Series_renderer renderer;
     Asset_loader assets;
     renderer.initialize(assets);

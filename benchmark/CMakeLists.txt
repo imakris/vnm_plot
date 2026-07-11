@@ -272,6 +272,21 @@ set_tests_properties(benchmark_native_smoke PROPERTIES
 )
 
 add_test(
+    NAME benchmark_native_stacked_area_smoke
+    COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/validate_smoke.py"
+        --executable "$<TARGET_FILE:vnm_plot_benchmark>"
+        --output-dir "${CMAKE_CURRENT_BINARY_DIR}/smoke-reports/native-stacked-area"
+        --graphics-backend native
+        --frames 3
+        --stacked
+)
+set_tests_properties(benchmark_native_stacked_area_smoke PROPERTIES
+    TIMEOUT 60
+    ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1"
+)
+
+add_test(
     NAME benchmark_phase_trace_flush
     COMMAND "${Python3_EXECUTABLE}"
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/test_phase_trace_flush.py"

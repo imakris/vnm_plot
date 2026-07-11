@@ -102,6 +102,7 @@ void print_usage(const char* program_name)
               << "  --rate <samples/sec>    Data generation rate (default: 1000, min: 1)\n"
               << "  --ring-size <count>     Ring buffer capacity (default: 100000, min: 100)\n"
               << "  --series-count <count>  Number of ordinary series (default: 1)\n"
+              << "  --stack-series          Stack ordinary series in plot order\n"
               << "  --extended-metadata     Include benchmark-specific metadata in report\n"
               << "  --quiet                 Suppress progress output (report still written)\n"
               << "  --no-text               Disable text/font rendering\n"
@@ -252,6 +253,10 @@ Parse_result parse_args(int argc, char* argv[])
                 config.series_count = std::stoull(argv[++i]);
             }
             else
+            if (arg == "--stack-series") {
+                config.stack_series = true;
+            }
+            else
             if (arg == "--extended-metadata") {
                 config.extended_metadata = true;
             }
@@ -368,6 +373,9 @@ std::string validate_config(const vnm::benchmark::Benchmark_config& config)
     }
     if (config.series_count == 0 || config.series_count > 4096) {
         return "Series count must be between 1 and 4096";
+    }
+    if (config.stack_series && config.series_count < 2) {
+        return "Stacking requires at least two series";
     }
     if (config.static_sample_count < 2 || config.static_sample_count > config.ring_capacity) {
         return "Static sample count must be between 2 and the ring capacity";

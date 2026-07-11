@@ -21,6 +21,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--graphics-backend", default="native")
     parser.add_argument("--frames", type=int, default=3)
+    parser.add_argument("--stacked", action="store_true")
     return parser.parse_args()
 
 
@@ -64,12 +65,13 @@ def validate(
         "finish_state": "enabled",
         "framebuffer": "1200x720",
         "rate": "1000.000000",
-        "render_style": "Line",
+        "render_style": "Area" if args.stacked else "Line",
         "requested_graphics_backend": args.graphics_backend,
         "sample_count": "4",
-        "scenario": f"ci-{args.graphics_backend}-smoke",
+        "scenario": f"ci-{args.graphics_backend}-stacked-area-smoke"
+        if args.stacked else f"ci-{args.graphics_backend}-smoke",
         "seed": "12345",
-        "series_count": "1",
+        "series_count": "2" if args.stacked else "1",
         "show_text": "true",
         "static_data": "true",
         "static_sample_count": "10000",
@@ -108,10 +110,14 @@ def validate(
         raise RuntimeError("output counter mismatch")
     if observation_total(payload, "benchmark.ring.published_samples") != 0:
         raise RuntimeError("static smoke includes pre-measurement publications")
-    if observation_total(payload, "renderer.frame.upload.primary_count") != 0:
-        raise RuntimeError("static unchanged primary uploads are not zero")
-    if observation_total(payload, "renderer.frame.upload.line_window_count") <= 0:
-        raise RuntimeError("LINE-window upload counter is missing")
+    if args.stacked:
+        if observation_total(payload, "renderer.stacking.output_sample_count") <= 0:
+            raise RuntimeError("stacked AREA composition was not exercised")
+    else:
+        if observation_total(payload, "renderer.frame.upload.primary_count") != 0:
+            raise RuntimeError("static unchanged primary uploads are not zero")
+        if observation_total(payload, "renderer.frame.upload.line_window_count") <= 0:
+            raise RuntimeError("LINE-window upload counter is missing")
     if observation_total(payload, "renderer.frame.upload.total_bytes") <= 0:
         raise RuntimeError("total upload bytes are missing")
     if observation_total(payload, "benchmark.snapshot.count") <= 0:
@@ -157,7 +163,7 @@ def main() -> int:
         "--graphics-backend", args.graphics_backend,
         "--static",
         "--data-type", "bars",
-        "--render-style", "line",
+        "--render-style", "area" if args.stacked else "line",
         "--seed", "12345",
         "--static-samples", "10000",
         "--warmup-frames", "2",
@@ -166,8 +172,11 @@ def main() -> int:
         "--pixel-checksum",
         "--quiet",
         "--output-dir", str(attempt.resolve()),
-        "--scenario", f"ci-{args.graphics_backend}-smoke",
+        "--scenario", f"ci-{args.graphics_backend}-stacked-area-smoke"
+        if args.stacked else f"ci-{args.graphics_backend}-smoke",
     ]
+    if args.stacked:
+        command += ["--series-count", "2", "--stack-series"]
     renderer_environment = {
         name: os.environ.get(name, "")
         for name in ("GALLIUM_DRIVER", "LP_NUM_THREADS")
