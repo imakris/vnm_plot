@@ -14,33 +14,6 @@ SpinBox {
 
     editable: true
 
-    function commit_editor_text() {
-        if (contentItem.acceptableInput) {
-            value = valueFromText(contentItem.text, locale)
-            return true
-        }
-        contentItem.text = textFromValue(value, locale)
-        return false
-    }
-
-    function step_by(delta) {
-        if (!commit_editor_text()) {
-            return
-        }
-        value = Math.max(from, Math.min(to, value + delta))
-        valueModified()
-    }
-
-    Keys.onUpPressed: function(event) {
-        step_by(stepSize)
-        event.accepted = true
-    }
-
-    Keys.onDownPressed: function(event) {
-        step_by(-stepSize)
-        event.accepted = true
-    }
-
     contentItem: TextInput {
         text: root.textFromValue(root.value, root.locale)
         font: root.font
@@ -51,23 +24,13 @@ SpinBox {
         validator: root.validator
         inputMethodHints: Qt.ImhFormattedNumbersOnly
         selectByMouse: true
-
-        Keys.onUpPressed: function(event) {
-            root.step_by(root.stepSize)
-            event.accepted = true
-        }
-
-        Keys.onDownPressed: function(event) {
-            root.step_by(-root.stepSize)
-            event.accepted = true
-        }
     }
 
     up.indicator: Rectangle {
         x: parent.width - width
         width: root.indicatorWidth
         height: parent.height / 2
-        color: upArea.pressed ? root.buttonPressed : upArea.containsMouse ? root.buttonHover : root.surfaceBright
+        color: root.up.pressed ? root.buttonPressed : root.up.hovered ? root.buttonHover : root.surfaceBright
         border.color: root.surfaceLight
 
         Text {
@@ -76,13 +39,6 @@ SpinBox {
             color: root.textColor
             font.pixelSize: root.indicatorFontPixelSize
         }
-
-        MouseArea {
-            id: upArea
-            anchors.fill: parent
-            hoverEnabled: true
-            onClicked: root.step_by(root.stepSize)
-        }
     }
 
     down.indicator: Rectangle {
@@ -90,7 +46,7 @@ SpinBox {
         y: parent.height / 2
         width: root.indicatorWidth
         height: parent.height / 2
-        color: downArea.pressed ? root.buttonPressed : downArea.containsMouse ? root.buttonHover : root.surfaceBright
+        color: root.down.pressed ? root.buttonPressed : root.down.hovered ? root.buttonHover : root.surfaceBright
         border.color: root.surfaceLight
 
         Text {
@@ -98,13 +54,6 @@ SpinBox {
             text: "-"
             color: root.textColor
             font.pixelSize: root.indicatorFontPixelSize
-        }
-
-        MouseArea {
-            id: downArea
-            anchors.fill: parent
-            hoverEnabled: true
-            onClicked: root.step_by(-root.stepSize)
         }
     }
 

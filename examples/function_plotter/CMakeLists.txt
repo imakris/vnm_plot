@@ -111,6 +111,19 @@ if(VNM_PLOT_BUILD_TESTS)
         ${CMAKE_CURRENT_SOURCE_DIR}
     )
     add_test(NAME FunctionPlotterStacking COMMAND test_function_plotter_stacking)
+
+    get_target_property(_qt_qmake_executable Qt6::qmake IMPORTED_LOCATION)
+    get_filename_component(_qt_bin_dir "${_qt_qmake_executable}" DIRECTORY)
+    find_program(QMLTESTRUNNER_EXECUTABLE qmltestrunner HINTS "${_qt_bin_dir}")
+    if(QMLTESTRUNNER_EXECUTABLE)
+        add_test(NAME FunctionPlotterControls
+            COMMAND "${QMLTESTRUNNER_EXECUTABLE}"
+                -input "${CMAKE_CURRENT_SOURCE_DIR}/tests"
+        )
+        set_tests_properties(FunctionPlotterControls PROPERTIES
+            ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+        )
+    endif()
 endif()
 
 # windows.h ships min/max as macros; std::min / std::max in this TU expand
