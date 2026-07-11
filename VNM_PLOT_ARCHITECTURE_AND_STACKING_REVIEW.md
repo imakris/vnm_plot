@@ -25,9 +25,12 @@ The plan has one consolidated ratification record,
 eight pending proposals—P-S1, P-D7, P-Q1, P-D6, P-C1, P-D2, P-R1, and P-D15—
 in a dependency-consistent set: P-R1 may be ratified only with P-C1 ratified
 before or in the same disposition. Its exact documentation hash must pass three
-reviews before any affected implementation. It is not split or reused and
-numbers RU-4A actions only for ratified stack contracts. D4 remains a later
-nondelegated evidence decision outside A1.
+reviews before any affected implementation. It is not split or reused. A1
+numbers RU-4A source actions if and only if P-C1, P-D2, P-R1, and P-D15 are all
+owner-ratified consistently; otherwise it records the RU-4A stop and numbers no
+RU-4A action. Every individual proposal disposition remains recorded for a
+later separately reviewed amendment. D4 remains a later nondelegated evidence
+decision outside A1.
 
 ## Executive conclusion
 

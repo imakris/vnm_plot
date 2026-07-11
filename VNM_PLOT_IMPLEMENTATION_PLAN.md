@@ -157,8 +157,8 @@ be reviewed or merged as one undifferentiated batch.
 | `RU-3C1` | Parity actions 2–4 form `FRAME_TRUTH_PARITY`; separate producers may be deleted only in the same change that installs their production replacement/evidence entry. Its cursor/result action and therefore the atomic cluster are blocked until P-C1 is owner-ratified and recorded in the review-clean consolidated `RU-contract-ratification-record/A1`. |
 | `RU-3C2` | Scheduler/reuse/docs actions 5–8 form `SHARED_ACQUISITION_SCHEDULER`; sharing, keys, cache migration, and normative production behavior move together so there is exactly one documented scheduler. Its P-D6 work requires owner-ratified P-D6 recorded in the review-clean consolidated `RU-contract-ratification-record/A1`. |
 | `RU-3D` | Numbered Qt publication actions, one action per unit unless a future pre-delegation amendment names a necessary cluster. |
-| `RU-contract-ratification-record/A1` | The single consolidated documentation source unit runs only after the owner explicitly ratifies or rejects all eight pending proposals in a dependency-consistent set: P-S1, P-D7, P-Q1, P-D6, P-C1, P-D2, P-R1, and P-D15. P-R1 may be ratified only when P-C1 is ratified before or in the same owner disposition. A1 records all eight exact texts and statuses, updates every affected prerequisite/stop, and numbers now-authorized RU-4A actions only for ratified stack contracts. Its exact hash receives the ordinary three-reviewer loop before any affected implementation. It is neither reusable nor divisible into waves. D4 is outside A1. |
-| `RU-4A` | Numbered private core-contract actions created only by review-clean `RU-contract-ratification-record/A1` for the owner-ratified P-C1/P-D2/P-R1/P-D15 stack contracts, with P-C1 ratified before or together with P-R1. |
+| `RU-contract-ratification-record/A1` | The single consolidated documentation source unit runs only after the owner explicitly ratifies or rejects all eight pending proposals in a dependency-consistent set: P-S1, P-D7, P-Q1, P-D6, P-C1, P-D2, P-R1, and P-D15. P-R1 may be ratified only when P-C1 is ratified before or in the same owner disposition. A1 records all eight exact texts and individual statuses and updates every affected prerequisite/stop. It numbers RU-4A source actions if and only if P-C1, P-D2, P-R1, and P-D15 are all owner-ratified consistently; otherwise it records the RU-4A stop and numbers no RU-4A action. Every individual disposition remains recorded for a later separately reviewed amendment. A1's exact hash receives the ordinary three-reviewer loop before any affected implementation. It is neither reusable nor divisible into waves. D4 is outside A1. |
+| `RU-4A` | Private core-contract actions exist only when review-clean `RU-contract-ratification-record/A1` records P-C1, P-D2, P-R1, and P-D15 all owner-ratified consistently and numbers those actions. Otherwise A1 records the RU-4A stop and no RU-4A action exists. |
 | `RU-4B-common` | Numbered common selector/adapter/scenario implementation action, independently reviewed. |
 | `RU-4B-A` | Numbered private Candidate A implementation action, independently reviewed. |
 | `RU-4B-B` | Numbered private Candidate B implementation action, independently reviewed. |
@@ -278,10 +278,13 @@ P-Q1, P-D6, P-C1, P-D2, P-R1, and P-D15—before the one consolidated
 `RU-contract-ratification-record/A1` runs. A1 is documentation-only: it records
 the exact ratified/rejected text and status of all eight, updates every affected
 prerequisite or stop, and receives the three-reviewer exact-hash loop. A1 cannot
-begin on a set that ratifies P-R1 inconsistently with P-C1. It numbers now-
-authorized RU-4A actions only for ratified stack contracts; no Stage 3 proposal
-creates a second record or separately unnumbered wave. A1 is a one-time
-consolidated unit, not a record that later decisions reuse.
+begin on a set that ratifies P-R1 inconsistently with P-C1. A1 numbers RU-4A
+source actions if and only if P-C1, P-D2, P-R1, and P-D15 are all owner-ratified
+consistently. Otherwise A1 records the RU-4A stop and numbers no RU-4A action.
+Each proposal's individual disposition remains recorded for any later separately
+reviewed amendment. No Stage 3 proposal creates a second record or separately
+unnumbered wave. A1 is a one-time consolidated unit, not a record that later
+decisions reuse.
 
 No affected implementation begins before A1's exact hash is review-clean and
 its own controlling proposal is owner-ratified: RU-3A requires P-S1; RU-3B
@@ -1646,15 +1649,17 @@ may be ratified only when P-C1 is ratified before or in the same owner
 disposition. A1 records all eight exact accepted or rejected texts and statuses
 in one documentation change and updates every affected prerequisite or stop.
 
-A1 numbers now-authorized RU-4A source actions only for the ratified stack
-contracts. Stage 3 proposals remain governed by their existing named units and
-gain no separate action-numbering wave. A1 receives the normal three-reviewer
-exact-hash loop, and no affected implementation begins until that exact hash is
-review-clean and its specific controlling proposal is ratified. A1 is not
-partially run, reused, or followed by an unnumbered ratification record. D4
-remains the later nondelegated evidence decision and is outside A1. No RU-4A or
-stack candidate implementation may infer actions directly from the current
-scope bullets.
+A1 numbers RU-4A source actions if and only if P-C1, P-D2, P-R1, and P-D15 are
+all owner-ratified consistently. Otherwise A1 records the RU-4A stop and numbers
+no RU-4A action. Each proposal's individual disposition remains recorded for
+any later separately reviewed amendment. Stage 3 proposals remain governed by
+their existing named units and gain no separate action-numbering wave. A1
+receives the normal three-reviewer exact-hash loop, and no affected
+implementation begins until that exact hash is review-clean and its specific
+controlling proposal is ratified. A1 is not partially run, reused, or followed
+by an unnumbered ratification record. D4 remains the later nondelegated evidence
+decision and is outside A1. No RU-4A or stack candidate implementation may
+infer actions directly from the current scope bullets.
 
 ### Batch 4A — Core stack contract implementation
 
