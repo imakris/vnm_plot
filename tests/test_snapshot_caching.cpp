@@ -1606,6 +1606,146 @@ bool test_stacking_interpolates_sub_256ns_epoch_intervals()
     return true;
 }
 
+bool test_stacking_cursor_matches_equivalent_source_representations()
+{
+    const Data_access_policy callback_access = make_policy();
+    const Data_access_policy member_access = plot::make_access_policy<Test_sample>(
+        &Test_sample::t,
+        &Test_sample::v
+    ).erase();
+    const auto make_plan = [](std::vector<Test_sample>& samples,
+        const Data_access_policy& access, bool hold = false,
+        std::int64_t hold_timestamp = 0) {
+        plot::Series_view_plan plan;
+        plan.access            = &access;
+        plan.snapshot.snapshot = {
+            samples.data(), samples.size(), sizeof(Test_sample), 1};
+        plan.snapshot.sequence = 1;
+        plan.source_count      = samples.size();
+        plan.gpu_count         = samples.size() + (hold ? 1u : 0u);
+        plan.drawable_spans    = {{0, samples.size(), 0, plan.gpu_count}};
+        plan.interpolation     = plot::Series_interpolation::LINEAR;
+        plan.hold_timestamp_ns = hold_timestamp;
+        return plan;
+    };
+    const auto same_layers = [](
+        const std::vector<std::vector<plot::detail::stacked_sample_t>>& lhs,
+        const std::vector<std::vector<plot::detail::stacked_sample_t>>& rhs) {
+        if (lhs.size() != rhs.size()) {
+            return false;
+        }
+        for (std::size_t layer = 0; layer < lhs.size(); ++layer) {
+            if (lhs[layer].size() != rhs[layer].size()) {
+                return false;
+            }
+            for (std::size_t i = 0; i < lhs[layer].size(); ++i) {
+                if (lhs[layer][i].timestamp_ns != rhs[layer][i].timestamp_ns ||
+                    lhs[layer][i].value        != rhs[layer][i].value        ||
+                    lhs[layer][i].base         != rhs[layer][i].base)
+                {
+                    return false;
+                }
+            }
+        }
+        return true;
+    };
+
+    std::vector<Test_sample> canonical{{-2, 0.0f}, {0, 0.0f}, {5, 5.0f}, {10, 11.0f}};
+    std::vector<Test_sample> descending{{10, 10.0f}, {10, 11.0f}, {5, 5.0f}, {0, 0.0f}};
+    std::vector<Test_sample> upper{{-2, 1.0f}, {4, 2.0f}, {10, 3.0f}};
+    auto canonical_plan  = make_plan(canonical, callback_access);
+    auto descending_plan = make_plan(descending, member_access, true, -2);
+    auto upper_plan      = make_plan(upper, callback_access);
+    std::vector<std::vector<plot::detail::stacked_sample_t>> expected;
+    std::vector<std::vector<plot::detail::stacked_sample_t>> actual;
+    TEST_ASSERT(plot::detail::compose_stacked_series(
+        {&canonical_plan, &upper_plan}, expected, 32u) ==
+            plot::Stack_rejection_reason::NONE,
+        "canonical ascending stack should compose");
+    TEST_ASSERT(plot::detail::compose_stacked_series(
+        {&descending_plan, &upper_plan}, actual, 32u) ==
+            plot::Stack_rejection_reason::NONE && same_layers(actual, expected),
+        "descending member access, last duplicate, and synthetic hold should match explicit ascending samples");
+
+    std::vector<Test_sample> canonical_no_hold{{0, 0.0f}, {5, 5.0f}, {10, 11.0f}};
+    canonical_plan  = make_plan(canonical_no_hold, callback_access);
+    descending_plan = make_plan(descending, member_access, true, 0);
+    TEST_ASSERT(plot::detail::compose_stacked_series(
+        {&canonical_plan, &upper_plan}, expected, 32u) ==
+            plot::Stack_rejection_reason::NONE &&
+        plot::detail::compose_stacked_series(
+        {&descending_plan, &upper_plan}, actual, 32u) ==
+            plot::Stack_rejection_reason::NONE && same_layers(actual, expected),
+        "a hold at the last physical timestamp should remain elided after reversal");
+
+    constexpr std::int64_t k_min = std::numeric_limits<std::int64_t>::min();
+    constexpr std::int64_t k_max = std::numeric_limits<std::int64_t>::max();
+    std::vector<Test_sample> full_ascending{{k_min, 0.0f}, {-1, 2.0f}, {k_max, 4.0f}};
+    std::vector<Test_sample> full_descending(full_ascending.rbegin(), full_ascending.rend());
+    std::vector<Test_sample> full_upper{{k_min, 1.0f}, {1, 3.0f}, {k_max, 5.0f}};
+    canonical_plan  = make_plan(full_ascending,  callback_access);
+    descending_plan = make_plan(full_descending, member_access);
+    upper_plan      = make_plan(full_upper,      callback_access);
+    TEST_ASSERT(plot::detail::compose_stacked_series(
+        {&canonical_plan, &upper_plan}, expected, 3u) ==
+            plot::Stack_rejection_reason::NONE &&
+        plot::detail::compose_stacked_series(
+        {&descending_plan, &upper_plan}, actual, 3u) ==
+            plot::Stack_rejection_reason::NONE && same_layers(actual, expected),
+        "descending cursor evaluation should match ascending input across the full int64 range");
+
+    std::vector<Test_sample> invalid_ascending{
+        {0, std::numeric_limits<float>::quiet_NaN()}, {1, 1.0f}};
+    std::vector<Test_sample> invalid_descending(
+        invalid_ascending.rbegin(), invalid_ascending.rend());
+    canonical_plan                   = make_plan(invalid_ascending,  callback_access);
+    descending_plan                  = make_plan(invalid_descending, member_access);
+    canonical_plan.nonfinite_policy  = plot::Nonfinite_sample_policy::REJECT_WINDOW;
+    descending_plan.nonfinite_policy = plot::Nonfinite_sample_policy::REJECT_WINDOW;
+    TEST_ASSERT(plot::detail::compose_stacked_series(
+        {&canonical_plan, &upper_plan}, expected, 16u) ==
+            plot::Stack_rejection_reason::INCOMPATIBLE_DATA &&
+        plot::detail::compose_stacked_series(
+        {&descending_plan, &upper_plan}, actual, 16u) ==
+            plot::Stack_rejection_reason::INCOMPATIBLE_DATA,
+        "nonfinite rejection status should be independent of traversal and access dispatch");
+
+    plot::Series_view_plan missing_plan;
+    TEST_ASSERT(plot::detail::compose_stacked_series(
+        {&canonical_plan, &missing_plan}, actual, 16u) ==
+            plot::Stack_rejection_reason::INCOMPATIBLE_DATA,
+        "an earlier invalid source should retain precedence over a later missing source");
+    std::vector<Test_sample> unordered{{0, 1.0f}, {2, 2.0f}, {1, 3.0f}};
+    canonical_plan = make_plan(unordered, callback_access);
+    TEST_ASSERT(plot::detail::compose_stacked_series(
+        {&canonical_plan, &missing_plan}, actual, 16u) ==
+            plot::Stack_rejection_reason::NONMONOTONIC_TIMESTAMPS,
+        "an earlier nonmonotonic source should retain precedence over a later missing source");
+
+    std::vector<Test_sample> invalid_tail{
+        {0, 1.0f},
+        {10, 2.0f},
+        {15, 3.0f},
+        {20, 4.0f},
+        {30, std::numeric_limits<float>::quiet_NaN()}};
+    std::vector<Test_sample> shorter_domain{{0, 3.0f}, {10, 4.0f}};
+    canonical_plan                  = make_plan(invalid_tail,   callback_access);
+    upper_plan                      = make_plan(shorter_domain, callback_access);
+    canonical_plan.nonfinite_policy = plot::Nonfinite_sample_policy::REJECT_WINDOW;
+    TEST_ASSERT(plot::detail::compose_stacked_series(
+        {&canonical_plan, &upper_plan}, actual, 16u) ==
+            plot::Stack_rejection_reason::INCOMPATIBLE_DATA,
+        "a nonfinite sample outside the common overlap should still reject composition");
+
+    canonical_plan = make_plan(canonical, callback_access);
+    canonical_plan.drawable_spans.front().source_count = canonical.size() + 1u;
+    TEST_ASSERT(plot::detail::compose_stacked_series(
+        {&canonical_plan, &upper_plan}, actual, 16u) ==
+            plot::Stack_rejection_reason::INCOMPATIBLE_DATA,
+        "a drawable span outside its snapshot should be rejected without materialization");
+    return true;
+}
+
 bool test_stacking_bounds_independent_timestamp_grids()
 {
     constexpr std::size_t k_layer_count       = 32;
@@ -1858,9 +1998,12 @@ bool test_stacking_reports_specific_rejection_reasons()
     b      = {{0, maximum}, {1, maximum}};
     a_plan = make_plan(a);
     b_plan = make_plan(b);
+    plot::detail::stack_composition_stats_t overflow_stats;
     TEST_ASSERT(plot::detail::compose_stacked_series(
-        {&a_plan, &b_plan}, layers, 16u) == plot::Stack_rejection_reason::CUMULATIVE_OVERFLOW,
-        "nonfinite cumulative output should report overflow");
+        {&a_plan, &b_plan}, layers, 16u, &overflow_stats) ==
+            plot::Stack_rejection_reason::CUMULATIVE_OVERFLOW &&
+        layers.empty() && overflow_stats.timestamp_count == 0 && !overflow_stats.resampled,
+        "nonfinite cumulative output should report overflow and clear partial results");
 
     return true;
 }
@@ -2257,6 +2400,7 @@ int main()
     RUN_TEST(test_lod_selection_has_no_hysteresis);
     RUN_TEST(test_stacking_composes_different_timestamps_from_independent_lods);
     RUN_TEST(test_stacking_interpolates_sub_256ns_epoch_intervals);
+    RUN_TEST(test_stacking_cursor_matches_equivalent_source_representations);
     RUN_TEST(test_stacking_bounds_independent_timestamp_grids);
     RUN_TEST(test_stacking_bounded_grid_handles_interpolation_and_integer_extremes);
     RUN_TEST(test_stacking_uses_separate_view_budgets_and_invalidates_resized_cache);

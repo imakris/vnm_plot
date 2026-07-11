@@ -963,14 +963,263 @@ std::size_t stack_timestamp_budget(double width_px, std::size_t layer_count)
 
 namespace {
 
+struct stack_point_t
+{
+    std::int64_t               t = 0;
+    float                      v = 0.0f;
+};
+
+struct stack_source_view_t
+{
+    const Series_view_plan*    plan         = nullptr;
+    erased_access_policy_t     access;
+    std::size_t                source_first = 0;
+    std::size_t                source_count = 0;
+    bool                       reversed     = false;
+    bool                       has_hold     = false;
+    stack_point_t              hold;
+    std::int64_t               first_t      = 0;
+    std::int64_t               last_t       = 0;
+
+    bool read(std::size_t offset, bool with_value, stack_point_t& out) const
+    {
+        const void* sample = plan->snapshot.snapshot.at(source_first + offset);
+        if (!sample) {
+            return false;
+        }
+        out.t = access.timestamp(sample);
+        if (!with_value) {
+            return true;
+        }
+        sample_draw_value_t value;
+        if (read_sample_draw_value(
+                access, sample, plan->nonfinite_policy, value) !=
+            sample_draw_status_t::DRAWABLE)
+        {
+            return false;
+        }
+        out.v = value.y;
+        return true;
+    }
+};
+
+Stack_rejection_reason make_stack_source_view(
+    const Series_view_plan&    plan,
+    stack_source_view_t&       view)
+{
+    if (!plan.snapshot.snapshot || !plan.access || !plan.access->get_value) {
+        return Stack_rejection_reason::NO_DRAWABLE_DATA;
+    }
+    if (plan.drawable_spans.size() != 1) {
+        return Stack_rejection_reason::INCOMPATIBLE_DATA;
+    }
+
+    const drawable_sample_span_t& span = plan.drawable_spans.front();
+    if (span.source_count == 0) {
+        return Stack_rejection_reason::NO_DRAWABLE_DATA;
+    }
+    std::size_t source_end = 0;
+    if (!checked_size_add(span.source_first, span.source_count, source_end) ||
+        source_end > plan.snapshot.snapshot.count)
+    {
+        return Stack_rejection_reason::INCOMPATIBLE_DATA;
+    }
+
+    view.plan         = &plan;
+    view.access       = make_erased_access_policy_view(*plan.access);
+    view.source_first = span.source_first;
+    view.source_count = span.source_count;
+
+    stack_point_t first;
+    stack_point_t last;
+    if (!view.read(0, false, first) ||
+        !view.read(span.source_count - 1u, false, last))
+    {
+        return Stack_rejection_reason::INCOMPATIBLE_DATA;
+    }
+
+    if (span.gpu_count == span.source_count + 1u &&
+        last.t         != plan.hold_timestamp_ns)
+    {
+        if (!view.read(span.source_count - 1u, true, last)) {
+            return Stack_rejection_reason::INCOMPATIBLE_DATA;
+        }
+        view.has_hold = true;
+        view.hold     = {plan.hold_timestamp_ns, last.v};
+        last          = view.hold;
+    }
+
+    view.reversed = first.t > last.t;
+    view.first_t  = view.reversed ? last.t  : first.t;
+    view.last_t   = view.reversed ? first.t : last.t;
+    return Stack_rejection_reason::NONE;
+}
+
+struct stack_source_cursor_t
+{
+    const stack_source_view_t* source       = nullptr;
+    std::size_t                raw_offset   = 0;
+    bool                       hold_pending = false;
+    bool                       with_value   = false;
+    bool                       failed       = false;
+    bool                       nonmonotonic = false;
+    bool                       emitted      = false;
+    bool                       has_pending  = false;
+    std::int64_t               last_t       = 0;
+    bool                       has_current  = false;
+    bool                       has_next     = false;
+    stack_point_t              current;
+    stack_point_t              next;
+    stack_point_t              pending;
+
+    bool accept(stack_point_t& out)
+    {
+        if (emitted && out.t < last_t) {
+            nonmonotonic = true;
+        }
+        emitted = true;
+        last_t  = out.t;
+        return true;
+    }
+
+    bool read_next(stack_point_t& out)
+    {
+        if (source->reversed && hold_pending) {
+            hold_pending = false;
+            out          = source->hold;
+            return accept(out);
+        }
+
+        if (!source->reversed &&
+            (has_pending || raw_offset < source->source_count))
+        {
+            if (has_pending) {
+                out         = pending;
+                has_pending = false;
+            }
+            else
+            if (!source->read(raw_offset++, with_value, out)) {
+                failed = true;
+                return false;
+            }
+            while (raw_offset < source->source_count) {
+                stack_point_t candidate;
+                if (!source->read(raw_offset++, with_value, candidate)) {
+                    failed = true;
+                    return false;
+                }
+                if (candidate.t != out.t) {
+                    pending     = candidate;
+                    has_pending = true;
+                    break;
+                }
+                if (with_value) {
+                    out.v = candidate.v;
+                }
+            }
+            return accept(out);
+        }
+
+        if (source->reversed && (has_pending || raw_offset > 0)) {
+            if (has_pending) {
+                out         = pending;
+                has_pending = false;
+            }
+            else
+            if (!source->read(--raw_offset, with_value, out)) {
+                failed = true;
+                return false;
+            }
+            while (raw_offset > 0) {
+                stack_point_t candidate;
+                if (!source->read(--raw_offset, with_value, candidate)) {
+                    failed = true;
+                    return false;
+                }
+                if (candidate.t != out.t) {
+                    pending     = candidate;
+                    has_pending = true;
+                    break;
+                }
+            }
+            return accept(out);
+        }
+
+        if (!source->reversed && hold_pending) {
+            hold_pending = false;
+            out          = source->hold;
+            return accept(out);
+        }
+        return false;
+    }
+
+    bool reset(const stack_source_view_t& view, bool read_values)
+    {
+        source       = &view;
+        raw_offset   = view.reversed ? view.source_count : 0;
+        hold_pending = view.has_hold;
+        with_value   = read_values;
+        failed       = false;
+        nonmonotonic = false;
+        emitted      = false;
+        has_pending  = false;
+        last_t       = 0;
+        has_current  = read_next(current);
+        has_next     = has_current && read_next(next);
+        return has_current && !failed;
+    }
+
+    void advance()
+    {
+        current     = next;
+        has_current = has_next;
+        has_next    = has_current && read_next(next);
+    }
+};
+
+Stack_rejection_reason validate_stack_sources(
+    const std::vector<stack_source_view_t>&    sources,
+    std::size_t                                source_count)
+{
+    for (std::size_t i = 0; i < source_count; ++i) {
+        const auto& source = sources[i];
+        stack_source_cursor_t cursor;
+        if (!cursor.reset(source, true)) {
+            return Stack_rejection_reason::INCOMPATIBLE_DATA;
+        }
+        while (cursor.has_next) {
+            cursor.advance();
+        }
+        if (cursor.failed) {
+            return Stack_rejection_reason::INCOMPATIBLE_DATA;
+        }
+        if (cursor.nonmonotonic) {
+            return Stack_rejection_reason::NONMONOTONIC_TIMESTAMPS;
+        }
+    }
+    return Stack_rejection_reason::NONE;
+}
+
+Stack_rejection_reason validate_stack_sources(
+    const std::vector<stack_source_view_t>& sources)
+{
+    return validate_stack_sources(sources, sources.size());
+}
+
+Stack_rejection_reason validated_rejection(
+    const std::vector<stack_source_view_t>&        sources,
+    Stack_rejection_reason                         fallback)
+{
+    const Stack_rejection_reason reason = validate_stack_sources(sources);
+    return reason == Stack_rejection_reason::NONE ? fallback : reason;
+}
+
 Stack_rejection_reason compose_stacked_series_impl(
     const std::vector<const Series_view_plan*>&    plans,
     std::vector<std::vector<stacked_sample_t>>&    layers,
     std::size_t                                    timestamp_budget,
     stack_composition_stats_t*                     stats)
 {
-    struct point_t { std::int64_t t; float v; };
-
     layers.clear();
     if (timestamp_budget == 0) {
         return Stack_rejection_reason::OUTPUT_LIMIT;
@@ -988,90 +1237,55 @@ Stack_rejection_reason compose_stacked_series_impl(
         return Stack_rejection_reason::MIXED_INTERPOLATION;
     }
 
-    std::vector<std::vector<point_t>> points(plans.size());
+    std::vector<stack_source_view_t> sources(plans.size());
     for (std::size_t layer = 0; layer < plans.size(); ++layer) {
-        const Series_view_plan* plan = plans[layer];
-        if (!plan->snapshot.snapshot || !plan->access || !plan->access->get_value)
-        {
-            return Stack_rejection_reason::NO_DRAWABLE_DATA;
-        }
-        if (plan->drawable_spans.size() != 1) {
-            return Stack_rejection_reason::INCOMPATIBLE_DATA;
-        }
-
-        const drawable_sample_span_t& span = plan->drawable_spans.front();
-        const auto access = make_erased_access_policy_view(*plan->access);
-
-        auto& out = points[layer];
-        out.reserve(span.gpu_count);
-        for (std::size_t i = 0; i < span.source_count; ++i) {
-            const void* sample = plan->snapshot.snapshot.at(span.source_first + i);
-            sample_draw_value_t value;
-            if (!sample || read_sample_draw_value(
-                access, sample, plan->nonfinite_policy, value) !=
-                sample_draw_status_t::DRAWABLE)
-            {
-                return Stack_rejection_reason::INCOMPATIBLE_DATA;
-            }
-            const std::int64_t timestamp = access.timestamp(sample);
-            if (!out.empty() && out.back().t == timestamp) {
-                out.back().v = value.y;
-            }
-            else {
-                out.push_back({timestamp, value.y});
-            }
-        }
-        if (span.gpu_count == span.source_count + 1u) {
-            if (out.empty()) {
-                return Stack_rejection_reason::NO_DRAWABLE_DATA;
-            }
-            if (out.back().t != plan->hold_timestamp_ns) {
-                out.push_back({plan->hold_timestamp_ns, out.back().v});
-            }
-        }
-        if (out.empty()) {
-            return Stack_rejection_reason::NO_DRAWABLE_DATA;
-        }
-        if (out.size() > 1 && out.front().t > out.back().t) {
-            std::reverse(out.begin(), out.end());
-        }
-        if (!std::is_sorted(out.begin(), out.end(),
-            [](const point_t& a, const point_t& b) { return a.t < b.t; }))
-        {
-            return Stack_rejection_reason::NONMONOTONIC_TIMESTAMPS;
+        const Stack_rejection_reason reason =
+            make_stack_source_view(*plans[layer], sources[layer]);
+        if (reason != Stack_rejection_reason::NONE) {
+            const Stack_rejection_reason prior_reason =
+                validate_stack_sources(sources, layer);
+            return prior_reason == Stack_rejection_reason::NONE
+                ? reason
+                : prior_reason;
         }
     }
 
     std::vector<std::int64_t> timestamps;
-    std::int64_t overlap_start = points.front().front().t;
-    std::int64_t overlap_end   = points.front().back().t;
-    for (const auto& source : points) {
-        overlap_start = std::max(overlap_start, source.front().t);
-        overlap_end   = std::min(overlap_end, source.back().t);
+    std::int64_t overlap_start = sources.front().first_t;
+    std::int64_t overlap_end   = sources.front().last_t;
+    for (const auto& source : sources) {
+        overlap_start = std::max(overlap_start, source.first_t);
+        overlap_end   = std::min(overlap_end, source.last_t);
     }
     if (overlap_end < overlap_start) {
-        return Stack_rejection_reason::NO_COMMON_DOMAIN;
+        return validated_rejection(
+            sources, Stack_rejection_reason::NO_COMMON_DOMAIN);
     }
 
     bool                     resampled = false;
-    std::vector<std::size_t> merge_indices(points.size(), 0);
-    for (std::size_t i = 0; i < points.size(); ++i) {
-        merge_indices[i] = static_cast<std::size_t>(std::lower_bound(
-            points[i].begin(),
-            points[i].end(),
-            overlap_start,
-            [](const point_t& point, std::int64_t timestamp) {
-                return point.t < timestamp;
-            }) - points[i].begin());
+    std::vector<stack_source_cursor_t> merge_cursors(sources.size());
+    for (std::size_t i = 0; i < sources.size(); ++i) {
+        if (!merge_cursors[i].reset(sources[i], false)) {
+            return Stack_rejection_reason::INCOMPATIBLE_DATA;
+        }
+        while (merge_cursors[i].has_current &&
+            merge_cursors[i].current.t < overlap_start)
+        {
+            merge_cursors[i].advance();
+        }
+        if (merge_cursors[i].failed || merge_cursors[i].nonmonotonic) {
+            return validated_rejection(
+                sources, Stack_rejection_reason::INCOMPATIBLE_DATA);
+        }
     }
     for (;;) {
         bool         found = false;
         std::int64_t next  = 0;
-        for (std::size_t i = 0; i < points.size(); ++i) {
-            if (merge_indices[i] == points[i].size()) {
+        for (const auto& cursor : merge_cursors) {
+            if (!cursor.has_current) {
                 continue;
             }
-            const std::int64_t candidate = points[i][merge_indices[i]].t;
+            const std::int64_t candidate = cursor.current.t;
             if (!found || candidate < next) {
                 next  = candidate;
                 found = true;
@@ -1086,11 +1300,13 @@ Stack_rejection_reason compose_stacked_series_impl(
             }
             timestamps.push_back(next);
         }
-        for (std::size_t i = 0; i < points.size(); ++i) {
-            while (merge_indices[i]           <  points[i].size() &&
-                points[i][merge_indices[i]].t == next)
-            {
-                ++merge_indices[i];
+        for (auto& cursor : merge_cursors) {
+            while (cursor.has_current && cursor.current.t == next) {
+                cursor.advance();
+            }
+            if (cursor.failed || cursor.nonmonotonic) {
+                return validated_rejection(
+                    sources, Stack_rejection_reason::INCOMPATIBLE_DATA);
             }
         }
     }
@@ -1102,11 +1318,13 @@ Stack_rejection_reason compose_stacked_series_impl(
         }
         else {
             if (timestamp_budget < 2) {
-                return Stack_rejection_reason::OUTPUT_LIMIT;
+                return validated_rejection(
+                    sources, Stack_rejection_reason::OUTPUT_LIMIT);
             }
             const auto span = positive_span_ns(overlap_start, overlap_end);
             if (!span) {
-                return Stack_rejection_reason::OUTPUT_LIMIT;
+                return validated_rejection(
+                    sources, Stack_rejection_reason::OUTPUT_LIMIT);
             }
             const auto          denominator = static_cast<std::uint64_t>(timestamp_budget - 1u);
             const std::uint64_t step        = *span / denominator;
@@ -1127,7 +1345,8 @@ Stack_rejection_reason compose_stacked_series_impl(
                 }
             }
             if (timestamps.back() != overlap_end) {
-                return Stack_rejection_reason::OUTPUT_LIMIT;
+                return validated_rejection(
+                    sources, Stack_rejection_reason::OUTPUT_LIMIT);
             }
         }
     }
@@ -1136,7 +1355,8 @@ Stack_rejection_reason compose_stacked_series_impl(
     if (!checked_size_product(plans.size(), timestamps.size(), output_samples) ||
         output_samples > k_stack_max_output_samples_per_view)
     {
-        return Stack_rejection_reason::OUTPUT_LIMIT;
+        return validated_rejection(
+            sources, Stack_rejection_reason::OUTPUT_LIMIT);
     }
     if (stats) {
         stats->timestamp_count = timestamps.size();
@@ -1147,36 +1367,69 @@ Stack_rejection_reason compose_stacked_series_impl(
     for (auto& layer : layers) {
         layer.reserve(timestamps.size());
     }
-    std::vector<std::size_t> cursors(points.size(), 0);
-    for (const std::int64_t timestamp : timestamps) {
-        float cumulative = 0.0f;
-        for (std::size_t layer = 0; layer < points.size(); ++layer) {
-            const auto& source = points[layer];
-            while (cursors[layer] + 1u        <  source.size() &&
-                source[cursors[layer] + 1u].t <= timestamp)
-            {
-                ++cursors[layer];
+    for (std::size_t layer = 0; layer < sources.size(); ++layer) {
+        stack_source_cursor_t cursor;
+        if (!cursor.reset(sources[layer], true)) {
+            layers.clear();
+            if (stats) {
+                *stats = {};
+            }
+            return validate_stack_sources(sources);
+        }
+        for (std::size_t sample = 0; sample < timestamps.size(); ++sample) {
+            const std::int64_t timestamp = timestamps[sample];
+            while (cursor.has_next && cursor.next.t <= timestamp) {
+                cursor.advance();
+            }
+            if (cursor.failed || cursor.nonmonotonic || !cursor.has_current) {
+                layers.clear();
+                if (stats) {
+                    *stats = {};
+                }
+                return validate_stack_sources(sources);
             }
 
-            float value = source[cursors[layer]].v;
+            float value = cursor.current.v;
             if (plans[layer]->interpolation == Series_interpolation::LINEAR &&
-                cursors[layer] + 1u         <  source.size()                &&
-                timestamp                   >  source[cursors[layer]].t)
+                cursor.has_next && timestamp > cursor.current.t)
             {
-                const point_t& a = source[cursors[layer]];
-                const point_t& b = source[cursors[layer] + 1u];
-                const double position =
+                const stack_point_t& a = cursor.current;
+                const stack_point_t& b = cursor.next;
+                const double position  =
                     normalized_time_position_ns(a.t, timestamp, b.t);
                 value = static_cast<float>(a.v + position * (b.v - a.v));
             }
 
-            const float base = cumulative;
-            cumulative += value;
+            const float base = layer == 0
+                ? 0.0f
+                : layers[layer - 1u][sample].value;
+            const float cumulative = base + value;
             if (!std::isfinite(cumulative)) {
                 layers.clear();
+                const Stack_rejection_reason input_reason =
+                    validate_stack_sources(sources);
+                if (input_reason != Stack_rejection_reason::NONE) {
+                    if (stats) {
+                        *stats = {};
+                    }
+                    return input_reason;
+                }
+                if (stats) {
+                    *stats = {};
+                }
                 return Stack_rejection_reason::CUMULATIVE_OVERFLOW;
             }
             layers[layer].push_back({timestamp, cumulative, base});
+        }
+        while (cursor.has_next) {
+            cursor.advance();
+        }
+        if (cursor.failed || cursor.nonmonotonic) {
+            layers.clear();
+            if (stats) {
+                *stats = {};
+            }
+            return validate_stack_sources(sources);
         }
     }
     return timestamps.empty()
