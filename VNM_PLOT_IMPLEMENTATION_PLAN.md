@@ -157,9 +157,9 @@ be reviewed or merged as one undifferentiated batch.
 | `RU-3C1` | Parity actions 2–4 form `FRAME_TRUTH_PARITY`; separate producers may be deleted only in the same change that installs their production replacement/evidence entry. Its cursor/result action and therefore the atomic cluster are blocked until P-C1 is owner-ratified and recorded in the review-clean consolidated `RU-contract-ratification-record/A1`. |
 | `RU-3C2` | Scheduler/reuse/docs actions 5–8 form `SHARED_ACQUISITION_SCHEDULER`; sharing, keys, cache migration, and normative production behavior move together so there is exactly one documented scheduler. Its P-D6 work requires owner-ratified P-D6 recorded in the review-clean consolidated `RU-contract-ratification-record/A1`. |
 | `RU-3D` | Numbered Qt publication actions, one action per unit unless a future pre-delegation amendment names a necessary cluster. |
-| `RU-contract-ratification-record/A1` | The single consolidated documentation source unit runs only after the owner explicitly ratifies or rejects all eight pending proposals in a dependency-consistent set: P-S1, P-D7, P-Q1, P-D6, P-C1, P-D2, P-R1, and P-D15. P-R1 may be ratified only when P-C1 is ratified before or in the same owner disposition. A1 records all eight exact texts and individual statuses and updates every affected prerequisite/stop. It numbers RU-4A source actions if and only if P-C1, P-D2, P-R1, and P-D15 are all owner-ratified consistently; otherwise it records the RU-4A stop and numbers no RU-4A action. Every individual disposition remains recorded for a later separately reviewed amendment. A1's exact hash receives the ordinary three-reviewer loop before any affected implementation. It is neither reusable nor divisible into waves. D4 is outside A1. |
-| `RU-4A` | Private core-contract actions exist only when review-clean `RU-contract-ratification-record/A1` records P-C1, P-D2, P-R1, and P-D15 all owner-ratified consistently and numbers those actions. Otherwise A1 records the RU-4A stop and no RU-4A action exists. |
-| `RU-4B-common` | Numbered common selector/adapter/scenario implementation action, independently reviewed. |
+| `RU-contract-ratification-record/A1` | The single consolidated documentation source unit runs only after the owner explicitly ratifies or rejects all eight pending proposals in a dependency-consistent set: P-S1, P-D7, P-Q1, P-D6, P-C1, P-D2, P-R1, and P-D15. P-R1 may be ratified only when P-C1 is ratified before or in the same owner disposition. A1 records all eight exact texts and individual statuses and updates every affected prerequisite/stop. It numbers RU-4A source actions if and only if P-D6, P-C1, P-D2, P-R1, and P-D15 are all owner-ratified consistently; otherwise it records the RU-4A stop and numbers no RU-4A action. Every individual disposition remains recorded for a later separately reviewed amendment. A1's exact hash receives the ordinary three-reviewer loop before any affected implementation. It is neither reusable nor divisible into waves. D4 is outside A1. |
+| `RU-4A` | Private core-contract actions exist only when review-clean `RU-contract-ratification-record/A1` records P-D6, P-C1, P-D2, P-R1, and P-D15 all owner-ratified consistently and numbers those actions. Otherwise A1 records the RU-4A stop and no RU-4A action exists. RU-4A consumes the P-D6 contract, keys, and retention semantics; RU-3C2 remains the sole owner of their source/cache implementation. |
+| `RU-4B-common` | Numbered common selector/adapter/scenario implementation action, independently reviewed. It cannot begin unless the same A1 records all five P-D6/P-C1/P-D2/P-R1/P-D15 contracts consistently ratified and the authorized RU-4A units are clean. |
 | `RU-4B-A` | Numbered private Candidate A implementation action, independently reviewed. |
 | `RU-4B-B` | Numbered private Candidate B implementation action, independently reviewed. |
 | `RU-4B-evidence` | Evidence-only comparison, identified by `(exact candidate source hash, evidence-manifest SHA-256)` after the common/A/B source units are independently clean; it changes no semantic code and a clean review does not approve D4. |
@@ -279,8 +279,9 @@ P-Q1, P-D6, P-C1, P-D2, P-R1, and P-D15—before the one consolidated
 the exact ratified/rejected text and status of all eight, updates every affected
 prerequisite or stop, and receives the three-reviewer exact-hash loop. A1 cannot
 begin on a set that ratifies P-R1 inconsistently with P-C1. A1 numbers RU-4A
-source actions if and only if P-C1, P-D2, P-R1, and P-D15 are all owner-ratified
-consistently. Otherwise A1 records the RU-4A stop and numbers no RU-4A action.
+source actions if and only if P-D6, P-C1, P-D2, P-R1, and P-D15 are all owner-
+ratified consistently. Otherwise A1 records the RU-4A stop, numbers no RU-4A
+action, and no RU-4B unit begins.
 Each proposal's individual disposition remains recorded for any later separately
 reviewed amendment. No Stage 3 proposal creates a second record or separately
 unnumbered wave. A1 is a one-time consolidated unit, not a record that later
@@ -290,9 +291,12 @@ No affected implementation begins before A1's exact hash is review-clean and
 its own controlling proposal is owner-ratified: RU-3A requires P-S1; RU-3B
 requires P-D7 and P-Q1; RU-3C1 cursor/result and therefore
 `FRAME_TRUTH_PARITY` require P-C1; RU-3C2 reuse requires P-D6; and RU-4A,
-RU-4B-common/A/B/evidence/cleanup, plus stack-related Stage 5 require P-C1,
-P-D2, P-R1, and P-D15. Rejection of a controlling proposal preserves the
-affected stop until a separately reviewed plan amendment replaces that work.
+RU-4B-common/A/B/evidence/cleanup, plus stack-related Stage 5 require P-D6,
+P-C1, P-D2, P-R1, and P-D15. RU-3C2 remains the sole source/cache implementation
+owner for P-D6; stack units consume its contract, keys, and retention semantics
+without duplicating that implementation. Rejection of a controlling proposal
+preserves the affected stop until a separately reviewed plan amendment replaces
+that work.
 D4 is a later nondelegated evidence decision and is not part of A1.
 
 #### P-S1 — Snapshot-result sequence and factories
@@ -1069,7 +1073,8 @@ review owns findings and rationale. Before Batch 3 public implementation:
   all eight only after their owner dispositions, P-C1 governs a consistent P-R1
   disposition, and no affected RU starts before its controlling proposal is
   ratified and A1's exact hash is review-clean. D4 remains separately evidence-
-  gated and outside A1;
+  gated and outside A1. RU-4A/4B authorization is all-or-none across
+  P-D6/P-C1/P-D2/P-R1/P-D15;
 - governed Markdown/style, `actionlint`, and `git diff --check` pass, and the
   exact documentation commit receives the delegated three-reviewer closure
   required above before Batch 3 coding.
@@ -1649,12 +1654,13 @@ may be ratified only when P-C1 is ratified before or in the same owner
 disposition. A1 records all eight exact accepted or rejected texts and statuses
 in one documentation change and updates every affected prerequisite or stop.
 
-A1 numbers RU-4A source actions if and only if P-C1, P-D2, P-R1, and P-D15 are
-all owner-ratified consistently. Otherwise A1 records the RU-4A stop and numbers
-no RU-4A action. Each proposal's individual disposition remains recorded for
-any later separately reviewed amendment. Stage 3 proposals remain governed by
-their existing named units and gain no separate action-numbering wave. A1
-receives the normal three-reviewer exact-hash loop, and no affected
+A1 numbers RU-4A source actions if and only if P-D6, P-C1, P-D2, P-R1, and
+P-D15 are all owner-ratified consistently. Otherwise A1 records the RU-4A stop
+and numbers no RU-4A action, and no RU-4B unit begins. Each proposal's individual
+disposition remains recorded for any later separately reviewed amendment. Stage
+3 proposals remain governed by their existing named units and gain no separate
+action-numbering wave. A1 receives the normal three-reviewer exact-hash loop,
+and no affected
 implementation begins until that exact hash is review-clean and its specific
 controlling proposal is ratified. A1 is not partially run, reused, or followed
 by an unnumbered ratification record. D4 remains the later nondelegated evidence
@@ -1663,8 +1669,8 @@ infer actions directly from the current scope bullets.
 
 ### Batch 4A — Core stack contract implementation
 
-Batch 4A cannot begin until P-C1, P-D2, P-R1, and P-D15 are owner-ratified in
-the required dependency order and review-clean consolidated
+Batch 4A cannot begin until P-D6, P-C1, P-D2, P-R1, and P-D15 are all owner-
+ratified consistently and review-clean consolidated
 `RU-contract-ratification-record/A1` has numbered its executable actions. The
 bullets below are a scope inventory only, not review units or implementation
 authority.
@@ -1672,6 +1678,10 @@ Authorized actions implement the approved backend-independent semantics and
 typed results without public RHI/Qt exposure; D4 remains separately open for
 evidence. D3 uses `std::optional<int> stack_group_id` with ascending existing
 series ID and caller-batched topology; do not add a group descriptor. Scope:
+
+RU-4A consumes the ratified P-D6 contract plus its keys and retention semantics,
+but RU-3C2 remains the sole owner of the P-D6 source/cache implementation; RU-4A
+must not duplicate it.
 
 - component order;
 - scalar/range projection;
@@ -1924,13 +1934,14 @@ Numbered review units:
    manifest change restarts all three evidence reviews. A clean evidence unit
    establishes trustworthy comparison evidence; it does not select D4.
 
-The three source units implement exactly the P-C1/P-D2/P-R1/P-D15 text ratified
-and recorded by review-clean consolidated A1; the evidence unit verifies that
-implementation without changing
-it. The register is the sole formula, admission, result, and resident resource
-authority; this batch creates no duplicate definitions. The fixed scenario
-manifest supplies `C`, frame totals, workloads, and all other evidence inputs
-identically for both candidates.
+The three source units implement exactly the P-D6/P-C1/P-D2/P-R1/P-D15 text
+ratified and recorded by review-clean consolidated A1. They consume the P-D6
+contract, keys, and retention semantics owned by RU-3C2 and do not duplicate its
+source/cache implementation. The evidence unit verifies that implementation
+without changing it. The register is the sole formula, admission, result, and
+resident resource authority; this batch creates no duplicate definitions. The
+fixed scenario manifest supplies `C`, frame totals, workloads, and all other
+evidence inputs identically for both candidates.
 
 Both prototypes call the same benchmark-local wrapper around the production LOD/window selector with explicit `max_visible_samples`; only composition differs. P-D2 semantic selected source timestamps, required brackets, and a synthetic hold endpoint consume B/N. Separately, `V_observed` counts every physical inspection across all attempted and selected LODs under the prospective visit limit; no physical inspection is ever a selected-input position. D12 applies: attempted status/sequence/counters are retained, rejected holds release immediately, and selected observations are consumed sequentially with no hold in the final plan or prototype result.
 
@@ -2076,7 +2087,8 @@ merged, split, or left unnumbered.
    production producer, and delete all benchmark-local winner copies in the
    same source unit.
 2. **A2 — internal frame integration:** integrate the selected bounded planner, exact
-   A1-recorded ratified P-D6/P-C1/P-D2/P-R1/P-D15 contracts, VISIBLE plan identity, bounded
+   A1-recorded ratified P-D6/P-C1/P-D2/P-R1/P-D15 contracts, VISIBLE plan
+   identity, bounded
    GLOBAL/GLOBAL_LOD scalar range, cache identities, and stack observations into
    an internal frame producer immediately consumed by the benchmark/internal
    entry. It has no public metadata or unreachable dormant path.
