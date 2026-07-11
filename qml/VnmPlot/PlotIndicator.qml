@@ -141,6 +141,40 @@ Item {
         return ""
     }
 
+    function wrap_text(ctx, text, max_width) {
+        if (!text || max_width <= 0) {
+            return []
+        }
+        var lines = []
+        var words = text.trim().split(/\s+/)
+        var line = ""
+        for (var i = 0; i < words.length; ++i) {
+            var word = words[i]
+            var candidate = line.length > 0 ? line + " " + word : word
+            if (ctx.measureText(candidate).width <= max_width) {
+                line = candidate
+                continue
+            }
+            if (line.length > 0) {
+                lines.push(line)
+                line = ""
+            }
+            while (word.length > 0 && ctx.measureText(word).width > max_width) {
+                var split = word.length - 1
+                while (split > 1 && ctx.measureText(word.slice(0, split)).width > max_width) {
+                    --split
+                }
+                lines.push(word.slice(0, split))
+                word = word.slice(split)
+            }
+            line = word
+        }
+        if (line.length > 0) {
+            lines.push(line)
+        }
+        return lines
+    }
+
     function refresh_indicator() {
         var in_main_plot = internal.has_mouse_in_plot
             && internal.in_main_plot_at_move
@@ -299,15 +333,15 @@ Item {
                 var bullet_width = show_bullet ? ctx.measureText(bullet_char).width + 4 : 0
                 var text_width = Math.max(
                     ctx.measureText(x_axis_txt).width,
-                    bullet_width + max_value_width,
-                    ctx.measureText(marker_note).width)
+                    bullet_width + max_value_width)
+                var marker_note_lines = root.wrap_text(ctx, marker_note, text_width)
                 var box_width = text_width + box_padding_x * 2
 
                 var x0 = (x_line > width / 2) ? x_line - 10 - box_width : x_line + 10
                 var x1 = x0 + box_width
                 var y0 = 10
                 var y1 = y0 + box_padding_y * 2 + line_height *
-                    (lines.length + 1 + (marker_note.length > 0 ? 1 : 0))
+                    (lines.length + 1 + marker_note_lines.length)
 
                 ctx.strokeStyle = "#ffffff"
                 ctx.fillStyle = "#ccdadada"
@@ -345,12 +379,14 @@ Item {
                     ctx.closePath()
                 }
 
-                if (marker_note.length > 0) {
+                if (marker_note_lines.length > 0) {
                     ctx.fillStyle = "#444444"
-                    ctx.fillText(
-                        marker_note,
-                        x0 + box_padding_x,
-                        y0 + box_padding_y + line_height * (lines.length + 2))
+                    for (var ni = 0; ni < marker_note_lines.length; ++ni) {
+                        ctx.fillText(
+                            marker_note_lines[ni],
+                            x0 + box_padding_x,
+                            y0 + box_padding_y + line_height * (lines.length + 2 + ni))
+                    }
                 }
 
                 for (var di = 0; di < lines.length; ++di) {

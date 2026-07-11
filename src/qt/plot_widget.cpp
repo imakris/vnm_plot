@@ -1092,19 +1092,117 @@ void Plot_widget::auto_adjust_view(bool adjust_t, double extra_v_scale, bool anc
         agg.tmax_ns = std::max(agg.tmax_ns, series_agg.tmax_ns);
     };
 
-    std::vector<std::shared_ptr<const series_data_t>> sources;
+    std::vector<std::pair<int, std::shared_ptr<const series_data_t>>> sources;
+    std::map<int, std::vector<int>> stack_members;
     {
         std::shared_lock lock(m_series_mutex);
         sources.reserve(m_series.size());
-        for (const auto& [_, series] : m_series) {
+        for (const auto& [id, series] : m_series) {
             if (series && series->enabled) {
-                sources.push_back(series);
+                sources.emplace_back(id, series);
+                if (series->stack_group != 0 && series->main_source()) {
+                    stack_members[series->stack_group].push_back(id);
+                }
             }
         }
     }
 
-    for (const auto& series : sources) {
+    {
+        std::lock_guard lock(m_rendered_stack_validity_mutex);
+        const bool current =
+            m_series_revision.load(std::memory_order_acquire) ==
+                m_rendered_stack_series_revision &&
+            window_tmin_ns == m_rendered_stack_t_min &&
+            window_tmax_ns == m_rendered_stack_t_max;
+
+        if (current) {
+            for (const auto& [group, members] : stack_members) {
+                if (members.size() < 2) {
+                    continue;
+                }
+                const auto found = m_rendered_stack_validity.find(group);
+                if (found                == m_rendered_stack_validity.end() ||
+                    found->second.size() != members.size())
+                {
+                    continue;
+                }
+
+                bool visible = true;
+                detail::visible_sample_aggregate_t stacked_agg;
+                for (std::size_t i = 0; i < members.size() && visible; ++i) {
+                    const auto& revision = found->second[i];
+                    const auto series_it = std::find_if(
+                        sources.begin(), sources.end(),
+                        [&](const auto& source) { return source.first == members[i]; });
+                    if (revision.series_id != members[i] ||
+                        series_it == sources.end() || !revision.source ||
+                        revision.sequence == 0 || !revision.cumulative.is_valid() ||
+                        revision.source->current_sequence(revision.lod) != revision.sequence)
+                    {
+                        visible = false;
+                        break;
+                    }
+
+                    const bool include_base =
+                        !!(series_it->second->style & Display_style::AREA);
+                    const auto layer_agg = detail::aggregate_visible_sample_range(
+                        revision.cumulative,
+                        [](const void* sample) {
+                            return static_cast<const detail::stacked_sample_t*>(sample)
+                                ->timestamp_ns;
+                        },
+                        [include_base](const void* sample)
+                            -> std::optional<std::pair<double, double>> {
+                            const auto& value =
+                                *static_cast<const detail::stacked_sample_t*>(sample);
+                            if (!std::isfinite(value.value) ||
+                                (include_base && !std::isfinite(value.base)))
+                            {
+                                return std::nullopt;
+                            }
+                            if (include_base) {
+                                return
+                                    std::make_pair(
+                                        static_cast<double>(std::min(value.base, value.value)),
+                                        static_cast<double>(std::max(value.base, value.value)));
+                            }
+                            return std::make_pair(
+                                static_cast<double>(value.value),
+                                static_cast<double>(value.value));
+                        },
+                        window_tmin_ns,
+                        window_tmax_ns,
+                        revision.interpolation,
+                        Empty_window_behavior::DRAW_NOTHING);
+                    if (!layer_agg) {
+                        visible = false;
+                        break;
+                    }
+                    if (!stacked_agg) {
+                        stacked_agg = layer_agg;
+                    }
+                    else {
+                        stacked_agg.vmin    = std::min(stacked_agg.vmin, layer_agg.vmin);
+                        stacked_agg.vmax    = std::max(stacked_agg.vmax, layer_agg.vmax);
+                        stacked_agg.tmin_ns = std::min(stacked_agg.tmin_ns, layer_agg.tmin_ns);
+                        stacked_agg.tmax_ns = std::max(stacked_agg.tmax_ns, layer_agg.tmax_ns);
+                    }
+                }
+                if (visible) {
+                    include_aggregate(stacked_agg);
+                }
+            }
+        }
+    }
+
+    for (const auto& [_, series] : sources) {
         if (!series || !series->main_source() || !series->access.get_timestamp) {
+            continue;
+        }
+        const auto stack_it = stack_members.find(series->stack_group);
+        if (series->stack_group != 0 &&
+            stack_it != stack_members.end() && stack_it->second.size() > 1)
+        {
             continue;
         }
 

@@ -451,6 +451,34 @@ bool test_auto_adjust_view_includes_step_after_held_sample()
     return true;
 }
 
+bool test_auto_adjust_view_uses_rendered_stack_and_preserves_unstacked_range()
+{
+    indicator_test_widget_t widget;
+    configure_view(widget, 0, 100, -100.0f, 100.0f);
+
+    auto lower = make_sample_series(
+        {{0, 1.0f}, {100, 3.0f}}, plot::Series_interpolation::LINEAR);
+    auto upper = make_sample_series(
+        {{0, 10.0f}, {100, 20.0f}}, plot::Series_interpolation::LINEAR);
+    lower->stack_group = upper->stack_group = 1;
+    widget.add_series(1, lower);
+    widget.add_series(2, upper);
+    publish_rendered_stack_validity(widget, {{1, lower}, {2, upper}}, 0, 100);
+
+    widget.auto_adjust_view(false, 0.0, false);
+    TEST_ASSERT(nearly_equal(widget.v_min(), 1.0) && nearly_equal(widget.v_max(), 23.0),
+        "auto-adjust should fit cumulative rendered stack values rather than raw components");
+
+    lower->stack_group = upper->stack_group = 0;
+    widget.add_series(1, lower);
+    widget.add_series(2, upper);
+    widget.auto_adjust_view(false, 0.0, false);
+    TEST_ASSERT(nearly_equal(widget.v_min(), 1.0) && nearly_equal(widget.v_max(), 20.0),
+        "auto-adjust should preserve ordinary unstacked range fitting");
+
+    return true;
+}
+
 bool test_shared_vbar_explicit_width_publishes_when_sync_enabled()
 {
     plot::Plot_time_axis shared_axis;
@@ -610,6 +638,7 @@ int main(int argc, char** argv)
     RUN_TEST(test_nearest_samples_choose_closer_sample);
     RUN_TEST(test_auto_adjust_view_uses_visible_samples_for_value_and_time_range);
     RUN_TEST(test_auto_adjust_view_includes_step_after_held_sample);
+    RUN_TEST(test_auto_adjust_view_uses_rendered_stack_and_preserves_unstacked_range);
     RUN_TEST(test_shared_vbar_explicit_width_publishes_when_sync_enabled);
     RUN_TEST(test_shared_vbar_attach_publishes_existing_current_width);
     RUN_TEST(test_shared_vbar_enabling_sync_publishes_current_owner_width);
