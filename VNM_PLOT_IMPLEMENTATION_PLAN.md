@@ -150,7 +150,7 @@ be reviewed or merged as one undifferentiated batch.
 | `RU-2.1-remediation` | Remaining Checkpoint 2.1 remediation actions, one action per unit. |
 | `RU-2.1-exact-head` | Evidence-only A1 exact-head closure, identified by `(exact source hash,CI/gate-manifest SHA-256)`; any red causal correction becomes a separately numbered `RU-2.1-remediation/A<n>`, receives source review, and is followed by a fresh A1. |
 | `RU-2.1-calibration` | Evidence-only fixed 108-execution capture/proposal generation, identified by `(exact source hash, proposal-manifest SHA-256)`; owner proposal-hash approval is a separate non-delegated decision. |
-| `RU-2.2` | Numbered Checkpoint 2.2 source actions. Actions 2–4 unconditionally form atomic `CACHE_KEY_MIGRATION` because key, content revision, and LINE derivative must change together to avoid false reuse. A1 and A5–A8 remain individual source units. |
+| `RU-2.2` | Numbered Checkpoint 2.2 source actions. Actions 2–4 plus action 6 unconditionally form atomic `CACHE_KEY_MIGRATION`: owner identity, upload key, content revision, and LINE derivative change together so reuse remains ABA-safe. A1, A5, A7, and A8 remain individual source units. |
 | `RU-2.2-evidence` | Evidence-only A1 after every RU-2.2 source unit is clean, identified by `(exact source hash,before/after-manifest SHA-256)`; it owns the approved-noise comparison and retained raw artifacts and makes no semantic source change. |
 | `RU-3A` | Ordered, non-overlapping units: after P-S1 ratification, `SOURCE_API_BREAK` comprises actions 1–5 and 10 because intermediate public headers/ordinary consumers do not compile; action 6 is independent; `D12_HOLD_BREAK` then comprises actions 7–9 and 11 because publishing D12 or structural custom borrowing while a custom/current renderer path retains a hold would be false. |
 | `RU-3B` | After P-Q1 and P-D7 ratification, `POINT_QUERY_CONTRACT` comprises actions 1, 7–9, 11, and 12 because evaluator/API/default implementation/point consumers/docs must expose one contract. `D7_INGESTION` comprises actions 6 and 13 so public ingestion/member behavior and normative docs cannot diverge. Actions 2–5 and 10 remain individual units. |
@@ -235,10 +235,10 @@ ratification.
 | D3 | Group topology | Optional `stack_group_id` on ordinary series; ascending series ID is order; callers use `apply_series_updates` when topology must change atomically. Individual add/remove may render intermediate membership. | **Approved 2026-07-10.** Caller-disciplined atomicity is the product contract. |
 | D4 | Sampling strategy | Unresolved between bounded exact event union and bounded shared grid. Ship exactly one, not both. | **Open.** Stage 4 A/B native-backend and visual evidence; owner selects the winner. |
 | D5 | Scalar/style contract | Contribution always uses scalar `get_value`; at least two enabled members; individual `NONE` members contribute invisibly; all-NONE and custom-layer groups fail explicitly. | **Approved 2026-07-10.** Retain the status-table tests. |
-| D6 | Busy/failure contract | BUSY may reuse only the last complete group/view for an identical non-content structural request. All members, range, indicators, statuses, and geometry come from that retained complete content; fresh and stale generations never mix. The result reports `STALE_BUSY` and retained sequences/content identity, never READY. READY, EMPTY, FAILED, a budget failure, or structural change replaces or suppresses stale fallback. | **Amended and approved 2026-07-11.** Exact `structure_key`/`content_key` tuples are pending proposal P-D6. |
+| D6 | Busy/failure contract | BUSY may reuse only the last complete group/view for an identical non-content structural request. All members, range, indicators, statuses, and private rendered geometry come from that retained complete content; fresh and stale generations never mix. The public value-only result reports `STALE_BUSY` and retained sequences/content identity, never READY, but exposes no geometry. READY, EMPTY, FAILED, a budget failure, or structural change replaces or suppresses stale fallback. | **Amended and approved 2026-07-11.** Exact `structure_key`/`content_key` tuples are pending proposal P-D6. |
 | D7 | Floating timestamp API | The public `checked_seconds_to_ns(double) -> optional<int64_t>` ingestion helper converts the exact binary64 input value in seconds to the nearest mathematical integral nanosecond, with exact halves away from zero; it range-checks the rounded mathematical result before integer conversion and returns `nullopt` for nonfinite or nonrepresentable input. Typed member-pointer access accepts integral-nanosecond members only; a floating timestamp member pointer is ill-formed at compile time. | **Amended and approved 2026-07-11.** Callers convert once into integral-nanosecond storage. Compile-fail, exact-rational/`nextafter`, UBSan, migration, and no-hot-loop-conversion evidence gate Batch 3B. |
 | D8 | Duplicate timestamps | Treat both `data_snapshot_t` segments as one logical `at(i)` sequence. Among equal timestamps, greatest logical `i` wins before nonfinite, interpolation, and hold processing. If the winner is nonfinite, apply the nonfinite policy without reconsidering an earlier duplicate. | **Amended and approved 2026-07-11.** The exact equidistant NEAREST rule is pending proposal P-Q1. |
-| D9 | Pixel-parity indicators and frame result | Batch 3B defines the canonical evaluator and value result. Batch 3C's single production frame entry creates a snapshot-free immutable frame plan and, after renderer/RHI disposition is known, one immutable frame result. The result copies frame/config/view identities from the plan and contains per-series status, sequence, selected LOD, actual disposition, rendered range, and value-only indicators tagged with cursor request ID. The GUI discards a result whose request ID is not current. No independent indicator snapshot path exists; Batch 3D may optimize copying/publication but may not add a second producer. | **Amended and approved 2026-07-11.** Retain plan/result construction, one-frame latency, disposition, and stale-request rejection tests. |
+| D9 | Pixel-parity indicators and frame result | Batch 3B defines the canonical evaluator and value result. Batch 3C's single production frame entry creates a snapshot-free immutable ordinary frame plan and, after renderer/RHI disposition is known, one immutable ordinary frame result. The result copies frame/config/view identities from the plan and contains per-series status, sequence, selected LOD, actual disposition, rendered range, and value-only indicators tagged with cursor request ID. The GUI discards a result whose request ID is not current. No independent indicator snapshot path exists; Batch 3D may optimize copying/publication but may not add a second producer. This ordinary D9 result is complete without P-R1/P-D15 or any stack section; Stage 5 later adds P-R1's stack extension without changing the ordinary contract. | **Amended and approved 2026-07-11.** Retain plan/result construction, one-frame latency, disposition, stale-request rejection, and ordinary-with-stack-fault independence tests. |
 | D10 | Unchanged-frame reuse | Stable nonzero `current_sequence()` plus stable/non-conservative access semantics authorizes reuse; zero/unstable/conservative inputs rebuild and report why. | **Approved 2026-07-10.** The existing second-frame upload oracle may change after Checkpoint 2.1 retains its baseline. |
 | D11 | Widget threading and render-input publication | `Plot_widget` configuration, registry, and public API reads and mutations are Qt-GUI-thread-only; cross-thread callers use queued invocation. `QQuickRhiItemRenderer::synchronize()` copies the complete render input while the GUI thread is blocked, after which item and renderer share no mutable widget state. `Data_source` contents are separate and support concurrent producer, GUI-query, and render access through the source's own synchronization. | **Approved 2026-07-11.** Public thread-contract, synchronization, and migrated Qt tests gate Batch 3A/3D. |
 | D12 | Source acquisition domain and hold lifetime | Each `Data_source` object is one acquisition domain. Acquisition-taking methods are `try_snapshot`, `time_range`, `query_time_window`, `query_v_range`, planned `query_sample`, and any future method documented as taking a lock, snapshot, or hold. None may begin on a thread while that thread retains any hold from the same object. Metadata operations (`sample_stride`, LOD count/scale/list, `current_sequence`, `time_order`, direct-query-support flags, and equivalent documented metadata) are non-acquiring and safe while a hold is live. Distinct source objects must not return holds backed by the same non-recursive lock; shared backing must provide independent public-acquisition semantics or is nonconforming. Rejected holds release immediately; selected observations are consumed sequentially, and no surviving plan/result/cache/record context owns a snapshot. | **Approved 2026-07-11.** RU-3A publishes the contract and atomically makes every current per-series/custom path hold-free; RU-3C2 alone replaces independent acquisitions with cross-series/shared-key scheduling. No duplicate scheduler, capability enum, or domain token is introduced. |
@@ -261,8 +261,9 @@ that action occurs:
   ordering, and performance contract;
 - **P-R1:** one group disposition, deterministic precedence, and per-series
   observation/stale-presentation vocabulary;
-- **P-D15:** view-major fixed/no-refund admission, `U_limit` accounting, exact
-  resident byte caps, and resource-allocation failure distinction.
+- **P-D15:** MAIN-before-PREVIEW immutable-slice admission, `U_limit`
+  accounting, exact resident byte caps, and resource-allocation failure
+  distinction.
 
 RU-3A `SOURCE_API_BREAK` cannot begin until P-S1 is ratified. RU-3B cannot
 begin until both P-Q1 and P-D7 are ratified. RU-3C2 cannot begin until P-D6 is
@@ -482,45 +483,46 @@ The D2 normalization oracle is:
 
 #### P-R1 — Result authority, stale presentation, and failure precedence
 
-Before any stack processing, the renderer already owns one fixed-size,
-allocation-free `frame_result_t` top-level envelope containing
-`publication_frame_id` and exactly one top disposition: `COMPLETE` or
-`FAILED(reason)`. Its closed top-level failure dispositions are
-`FAILED(RESULT_STORAGE_BUDGET)` and
-`FAILED(RESULT_STORAGE_ALLOCATION_FAILED)`; failure-envelope publication itself
-performs no allocation.
+The D9 `frame_result_t` always contains its ordinary non-stack result section
+under the Batch 3C contract. Stack result storage failure never suppresses,
+relabels, or changes ordinary planning, rendering, pixels, statuses, counters,
+or result publication. The stack extension begins with one fixed-size,
+allocation-free `stack_result_section_t` envelope whose closed dispositions are
+exactly `COMPLETE`, `FAILED(RESULT_STORAGE_BUDGET)`, and
+`FAILED(RESULT_STORAGE_ALLOCATION_FAILED)`.
 
-Before any source acquisition, calculate and attempt the exact group/per-series
-result table allocation, counting its complete instantaneous CPU bytes under
-P-D15. A configured-cap rejection publishes
-`FAILED(RESULT_STORAGE_BUDGET)`; an in-cap allocation failure publishes
-`FAILED(RESULT_STORAGE_ALLOCATION_FAILED)`. Either top failure has no group
-table, performs no acquisition/geometry work, and clears every stack retained-
-content eligibility before publication. Only after the complete table exists
-does the ordinary per-group P-R1 contract below apply under top disposition
-COMPLETE.
+Before any stack source acquisition, calculate and attempt the exact independent
+public stack group/view/member table allocation, counting its complete
+instantaneous CPU bytes under P-D15. A configured-cap rejection sets the stack
+section to `FAILED(RESULT_STORAGE_BUDGET)`; an in-cap allocation failure sets it
+to `FAILED(RESULT_STORAGE_ALLOCATION_FAILED)`. Either stack-section failure has
+no stack table, performs no stack acquisition or geometry work, and clears all
+stack retained-content eligibility before publication. Ordinary work continues
+unchanged. The per-entry P-R1 invariants below apply only when the stack section
+is `COMPLETE`.
 
-Every `(group,view)` has exactly one canonical disposition: `READY`, `EMPTY`,
-`STALE_BUSY`, or `FAILED(reason)`. All dispositions except READY and STALE_BUSY
-emit no geometry; STALE_BUSY emits only a retained complete result. Every result
-always has the current producer's `publication_frame_id`. It also has
-`optional<presented_content_identity_t> presented_content_identity`, whose
-only field is `content_frame_id`. Group/view identity already belongs to the
-enclosing result, and each per-series PRESENTED_CONTENT entry carries its exact
-presented sequence. The optional identity is present exactly for READY and
-STALE_BUSY and absent exactly for EMPTY and FAILED. READY sets
-`content_frame_id=publication_frame_id` only when the complete current result is
-finalized.
+When the stack section is `COMPLETE`, every `(group,view)` public
+`stack_result_entry_t` has exactly one canonical disposition: `READY`, `EMPTY`,
+`STALE_BUSY`, or `FAILED(reason)`. Its complete public field set is the
+disposition; per-series origin, status, sequence, selected LOD and logical
+window; rendered range; value-only indicators and their cursor request IDs; and
+optional `content_frame_id`. It contains no geometry, spans, samples, resources,
+source identities, owner handles, cache keys, or other private backing. The
+enclosing D9 result supplies current frame/config/view identity, including the
+producer's `publication_frame_id`; group/view identity belongs to the table
+position. `content_frame_id` is present exactly for READY and STALE_BUSY and
+absent exactly for EMPTY and FAILED. READY sets
+`content_frame_id=publication_frame_id` only after its complete current result
+is finalized.
 
 Every per-series entry has exactly one origin:
 
 - `NOT_EVALUATED` carries no observation, content, status, sequence, LOD/window,
   value, indicator, frame ID, or key facts;
-- `CURRENT_OBSERVATION` carries only completed current-attempt facts, is tagged
-  `observation_frame_id==publication_frame_id`, and carries no presented-content
-  identity;
-- `PRESENTED_CONTENT` carries only complete presented facts and is tagged with
-  the result's exact `presented_content_identity`.
+- `CURRENT_OBSERVATION` carries only completed current-attempt fields from the
+  enclosing result's `publication_frame_id` and carries no `content_frame_id`;
+- `PRESENTED_CONTENT` carries only complete presented fields associated with
+  the entry's exact `content_frame_id`.
 
 READY entries are current `PRESENTED_CONTENT`; STALE_BUSY entries are retained
 `PRESENTED_CONTENT`; EMPTY/FAILED have no presented identity and may contain
@@ -529,15 +531,16 @@ failure has all entries NOT_EVALUATED. A partial acquisition failure has
 CURRENT_OBSERVATION only for attempts completed through the first FAILED and
 NOT_EVALUATED afterward.
 
-For STALE_BUSY, the outer result keeps the current `publication_frame_id` and
-group disposition, which alone report that a current BUSY attempt caused
-fallback. Every content-bearing fact—per-series presentation entry, range,
-geometry, indicator, cursor request ID, status, sequence, LOD/window,
-and `presented_content_identity`—is copied wholesale from the retained complete
-result. No current partial acquisition enters presentation; current attempts
-exist only in diagnostic trace/counters. The normal GUI current-request check
-therefore rejects an old retained cursor request ID instead of relabelling it as
-current.
+For STALE_BUSY, the enclosing result keeps the current `publication_frame_id`
+and the public entry's group disposition alone reports that a current BUSY
+attempt caused fallback. The renderer reuses private retained geometry and
+copies only its value-only retained presentation record—per-series presentation
+fields, rendered range, indicators, cursor request IDs, and `content_frame_id`—
+into the current independent public stack table. No geometry or private key is
+copied into that table, and no current partial acquisition enters presentation;
+current attempts exist only in diagnostic trace/counters. The normal GUI
+current-request check therefore rejects an old retained cursor request ID
+instead of relabelling it as current.
 
 The group never owns an ordered reason set. Evaluation stops once the
 controlling phase has its required deterministic observations, performs no
@@ -610,41 +613,59 @@ sizeof(actual_stack_uniform_std140)*U_observed`; every add/multiply and
 write excess, or `U_observed>U_limit` returns
 `FAILED(STACK_OUTPUT_BUDGET_EXCEEDED)` before the prohibited side effect.
 
-Hard limits are prospective. Before every physical sample inspection, checked
-arithmetic computes `V_observed+1` against both the per-unit `V_limit` and its
-remaining admitted frame-visit allowance. If the next visit would exceed either,
+Hard limits are prospective. Admission assigns each accepted `(group,view)` an
+immutable reservation slice `{M,V_limit,H_limit}`. Before every physical sample
+inspection, checked arithmetic computes `V_observed+1` against that unit's
+immutable `V_limit` slice. If the next visit would exceed it,
 perform no inspection and return `FAILED(STACK_OUTPUT_BUDGET_EXCEEDED)`;
 `V_observed` never exceeds its limit. Apply the same checked-before-side-effect
-rule before each output-pair creation (`pairs+1` against `M`/its admitted frame
-reservation) and each upload write (`bytes+write_size` against `H_limit`/its
-admitted frame reservation). The rejected limit+1 operation performs no read,
-write, allocation growth, counter increment, geometry emission, or other side
-effect.
+rule before each output-pair creation (`pairs+1` against its immutable `M`
+slice) and each upload write (`bytes+write_size` against its immutable
+`H_limit` slice). The rejected limit+1 operation performs no read, write,
+allocation growth, counter increment, geometry emission, or other side effect.
 
 One metadata-only frame planner charges the fixed checked reservation
 `(M,V_limit,H_limit)` before acquisition/allocation: every MAIN unit in
 ascending `lowest_enabled_series_id`, then every PREVIEW unit in the same
 order, against `FRAME_M_LIMIT`, `FRAME_V_LIMIT`, and `FRAME_H_LIMIT`. A unit
 that cannot fit every total returns `FAILED(FRAME_BUDGET)`, emits no geometry,
-and performs no acquisition/allocation. Actual use never refunds or readmits;
-preview enablement cannot change MAIN admission.
+and performs no acquisition/allocation. Frame totals are consulted only while
+admitting the fixed slices. Runtime work consumes only the admitted unit's own
+slice: actual use never changes a shared remaining balance, transfers slack,
+refunds capacity, or readmits a rejected unit. Consequently an earlier unit's
+low or full actual use cannot change any later admitted unit, and preview
+enablement cannot change MAIN admission.
 
 `STACK_CPU_BYTES_LIMIT` counts only stack-exclusive renderer-owned live bytes:
 composition arrays, normalized stack-only spans, boundary/padding storage,
-uniform/upload staging, and renderer-retained current/stale presentation
-backing. Renderer builder, temporary, current, and stale backing bytes remain
-counted while the renderer owns, references, or aliases them. Each internal
-allocation is counted exactly once until the renderer's final reference is
-released, even if some non-public external handle also shares it.
+uniform/upload staging, the independent public stack-result table while it is
+renderer-owned, and private retained stack entries. A private
+`renderer_retained_stack_entry_t` owns its P-D6 keys, retained geometry and
+resources, and exactly one value-only retained presentation record. Its
+presentation record and geometry/resources remain separately counted until
+their renderer ownership is released. Renderer builders, temporaries, current
+entries, and stale entries remain counted while the renderer owns, references,
+or aliases them. Each private allocation is counted exactly once until the
+renderer's final reference is released, even if some non-public external handle
+also shares it.
 
-The public immutable `frame_result_t` is always an independent value/deep copy
-and never aliases capped internal backing. Its exact table/builder allocation is
-counted while the renderer constructs/owns it; atomic publication makes that
-independent copy solely externally owned and debits it from renderer accounting
-in the same operation. No capped internal allocation is transferred or escapes
-through an alias. Only that solely external independent copy is excluded and
-makes no renderer residency claim. Ordinary Stage 3 per-series arrays remain
-excluded. Capped CPU
+Of frame-result publication storage, only the stack group/view/member table is
+charged to `STACK_CPU_BYTES_LIMIT`; the ordinary D9 section and its backing are
+not.
+
+Before stack work, the renderer allocates the exact independent public stack-
+result table required by the `COMPLETE` section. It is populated in-place with
+no later allocation, including no postprocessing or deep-copy allocation after
+`READY`/`STALE_BUSY` installation. READY atomically installs the private
+geometry/resources and
+its value-only retained presentation record; STALE_BUSY reuses that private
+geometry and copies only the retained value record into the current public
+`stack_result_entry_t`. Atomic frame publication moves the independent public
+stack table to GUI/public ownership and debits its bytes simultaneously; the
+publication operation allocates nothing and the public table never aliases
+private retained backing. Any later external-consumer copy occurs outside
+renderer ownership. Ordinary D9 result storage and Stage 3 per-series arrays
+remain excluded from `STACK_CPU_BYTES_LIMIT`. Capped CPU
 storage uses only a narrow repo-local noncopyable
 exact-size owning contiguous array—equivalent to
 `unique_ptr<T[]>` plus explicit element count—inside stack-exclusive storage.
@@ -902,7 +923,7 @@ Checkpoint gate:
 #### Checkpoint 2.2 — Remove test work and unchanged uploads
 
 `CACHE_KEY_MIGRATION` is unconditionally actions 2–4 plus action 6 and never
-splits; A5, A7, and A8 follow as separate units.
+splits; A1, A5, A7, and A8 remain separate units.
 
 1. Compile test-only vectors/writes only with `VNM_PLOT_ENABLE_TEST_HOOKS`.
 2. Add `sample_upload_key` using source, stable nonzero sequence, selected LOD, origin, access semantics, window/spans, policies, and view kind.
@@ -1131,13 +1152,13 @@ Primary files:
 - benchmark production-planner entry;
 - focused cache/layout tests.
 
-Hypothesis: one production frame entry and snapshot-free immutable plan remove duplicate snapshots/scans and range/render/result disagreement without increasing acquisition cost as retained history grows. The full-path boundary is production planning entry through executed renderer/RHI disposition and immutable frame result.
+Hypothesis: one production frame entry and snapshot-free immutable plan remove duplicate snapshots/scans and ordinary range/render/result disagreement without increasing acquisition cost as retained history grows. The full-path boundary is production planning entry through executed renderer/RHI disposition and the ordinary D9 immutable frame result. RU-3C1 has no P-R1/P-D15 or stack-result-storage prerequisite.
 
 Actions:
 
 1. Use full pre-layout framebuffer width as the deterministic LOD-budget width; final usable width changes transforms, not selected LOD.
 2. **3C1 parity:** add one production frame entry that creates one immutable per-series/per-view plan consumed by VISIBLE range and rendering. The plan owns status, sequence, selected LOD/window/spans, extrema, access/semantic facts, and derived normalized data, but no snapshot or hold.
-3. **3C1 result:** after renderer/RHI disposition is known, construct the sole immutable frame result from the exact executed plan rather than accepting independent frame/config/view identities. Publish D9 value-only indicators with cursor request ID; the GUI discards a non-current request. No independent range, indicator, or status producer remains after parity.
+3. **3C1 result:** after renderer/RHI disposition is known, construct the sole immutable ordinary D9 frame result from the exact executed plan rather than accepting independent frame/config/view identities. Publish D9 value-only indicators with cursor request ID; the GUI discards a non-current request. No independent ordinary range, indicator, or status producer remains after parity. Do not add P-R1's stack envelope or make ordinary publication depend on a stack proposal in this unit.
 4. **3C1 evidence entry:** route the benchmark through the same production frame entry before generating parity evidence. Record the visible full-framebuffer-width LOD change explicitly rather than treating it as an invisible refactor.
 5. **3C2 acquisition/reuse:** implement the sole production D12 scheduler. Cache attempted status, sequence, and counters without retaining rejected holds; acquire each shared `(source,LOD)` observation once across series, then consume distinct same-source LODs/main-preview queries sequentially. Finish extrema/staging/custom prepare and destroy every hold before another acquisition on that source and before render-pass recording. Do not cache direct query results without their complete request/context/expected-sequence key.
 6. Replace RU-3A's truthful hold-free per-series independent acquisitions with the single frame/shared-key schedule from action 5, consuming the existing snapshot-free plan/cache/custom interfaces unchanged. Do not introduce a parallel scheduler or restore a hold-bearing plan.
@@ -1152,7 +1173,7 @@ Actions:
 
 Gate:
 
-- the production benchmark, VISIBLE range, renderer geometry, D9 indicators, and frame result use the same executed plan, LOD, sequence, window, and actual disposition;
+- the production benchmark, ordinary VISIBLE range, renderer geometry, D9 indicators, and ordinary frame result use the same executed plan, LOD, sequence, window, and actual disposition, independently of P-R1/P-D15 stack storage;
 - ten series sharing one source/LOD call `try_snapshot()` once per frame;
 - attempted-LOD counters prove rejected holds release before the next acquisition; same-source main/preview with distinct LODs are consumed sequentially without overlap and may truthfully report different sequences;
 - alternating one-segment/two-segment snapshots with identical logical
@@ -1175,9 +1196,9 @@ Gate allocation:
 - `RU-3C1/A1` owns full-framebuffer-width selection and regular/irregular LOD
   before/after pixel evidence;
 - `FRAME_TRUTH_PARITY` (actions 2–4) owns one production entry, snapshot-free
-  plan, VISIBLE/render/result/indicator identity, benchmark production entry,
+  ordinary plan, ordinary VISIBLE/render/result/indicator identity, benchmark production entry,
   delayed-request rejection, and removal of independent range/indicator/status
-  producers;
+  producers; it neither owns nor waits for the stack result envelope;
 - `SHARED_ACQUISITION_SCHEDULER` (actions 5–8) owns exactly-one-scheduler and
   shared-key acquisition counts, D12 sequential release/writer progress,
   P-D6 logical-key versus physical-segmentation reuse, classification/cache
@@ -1274,7 +1295,10 @@ series ID and caller-batched topology; do not add a group descriptor. Scope:
 - GLOBAL/GLOBAL_LOD common-domain behavior;
 - cross-source/cross-LOD non-atomic snapshot wording;
 - preview and indicator behavior;
-- exactly one D9/D15 disposition per `(group,view)` and the register's deterministic validation/admission/acquisition/domain/output precedence; no failure-reason set or speculative later-stage evaluation.
+- exactly one P-R1/D15 stack disposition per `(group,view)` under a `COMPLETE`
+  stack section and the register's deterministic validation/admission/
+  acquisition/domain/output precedence; no failure-reason set or speculative
+  later-stage evaluation. Ordinary D9 results remain independent.
 
 The focused tests are product oracles for the approved contracts. Include
 reason-peeling/multi-failure cases, FAILED-over-EMPTY-over-BUSY source cases,
@@ -1301,28 +1325,35 @@ The ratified P-R1 gates permute READY/BUSY/EMPTY/FAILED by ascending series ID:
 BUSY/EMPTY continue, the first FAILED stops and marks only later entries
 NOT_EVALUATED, EMPTY outranks BUSY after all required attempts, and no-retained
 BUSY publishes all attempts CURRENT_OBSERVATION as `FAILED(SOURCE_BUSY)`.
-Generation tests prove every result has current publication identity, READY has
-current presented identity, EMPTY/FAILED have none, and STALE has current outer
-publication plus wholly retained presented identity/entries/range/geometry/
-indicators. Origin tests prove NOT_EVALUATED has no facts,
-CURRENT_OBSERVATION has only current facts with
-`observation_frame_id==publication_frame_id` and no presented identity, and
-PRESENTED_CONTENT exactly matches the result presented identity. A retained old
+Generation tests prove every enclosing result has current publication identity,
+READY has current content identity, EMPTY/FAILED have none, and STALE has the
+current outer publication plus wholly retained value-only public entries/range/
+indicators while its geometry remains private. Origin tests prove NOT_EVALUATED
+has no facts, CURRENT_OBSERVATION has only current fields associated with the
+enclosing `publication_frame_id` and no `content_frame_id`, and
+PRESENTED_CONTENT exactly matches the entry's content identity. A retained old
 cursor request ID remains old and is rejected by the GUI current-request check.
-Compile/API gates prove public result/request types contain and accept no weak
-owner handle, alias pointer, `structure_key`, or `content_key`; the private cache
-retains keys only for internal eligibility.
+Compile/API gates prove `stack_result_entry_t` contains only disposition,
+per-series origin/status/sequence/LOD/window, rendered range, value-only
+indicators/request IDs, and `content_frame_id`; it contains and accepts no
+geometry/span/sample/resource type, source identity, weak owner handle, alias
+pointer, `structure_key`, or `content_key`. The private
+`renderer_retained_stack_entry_t` alone owns P-D6 keys, geometry/resources, and
+one retained value-only presentation record.
 Transition gates prove READY→BUSY→BUSY may publish stale, while READY→EMPTY→BUSY,
 READY→source FAILED→BUSY, READY→normalization FAILED→BUSY,
 READY→budget/allocation FAILED→BUSY, and READY(key A)→structural key B→BUSY(key
 A) cannot.
 Each terminal/structural event removes eligibility before its own publication.
 First-frame and replacement result-storage fault gates prove exact-table cap
-rejection versus in-cap allocation failure publish the pre-owned allocation-free
-envelope as `FAILED(RESULT_STORAGE_BUDGET)` or
-`FAILED(RESULT_STORAGE_ALLOCATION_FAILED)` with no table/acquisition/geometry;
-replacement faults clear every stack stale entry. Successful construction
-counts exact instantaneous bytes before ordinary P-R1 entries become available.
+rejection versus in-cap allocation failure publish the fixed allocation-free
+`stack_result_section_t` as `FAILED(RESULT_STORAGE_BUDGET)` or
+`FAILED(RESULT_STORAGE_ALLOCATION_FAILED)` with no stack table/acquisition/
+geometry; replacement faults clear every stack stale entry. Mixed ordinary/
+stack tests prove ordinary pixels, statuses, counters, planning, rendering, and
+results remain identical under either stack-section fault. Successful
+construction counts exact instantaneous stack-table bytes before `COMPLETE`
+P-R1 entries become available and performs no post-install table allocation.
 
 ### Batch 4B — Sampling A/B experiment
 
@@ -1416,14 +1447,20 @@ Decision gate:
 - prospective-limit tests allow exactly `V_limit` inspections, `M` output pairs,
   and `H_limit` upload bytes, then reject the next operation before its read/
   create/write/counter side effect; `V_observed` and other counters never exceed
-  their limits or remaining frame allowances;
+  their immutable per-unit slices;
 - multi-group scenarios use identical proposed P-D15 order and `FRAME_M_LIMIT`/`FRAME_V_LIMIT`/`FRAME_H_LIMIT`; rejected `(group,view)` units report `FAILED(FRAME_BUDGET)`, perform no acquisition/allocation, and leave no partial geometry;
+- a two-unit admitted replay gives the first unit low actual use and then its
+  full slice; the second unit's admission, slice, work, disposition, counters,
+  and output remain identical, proving no shared runtime balance, slack
+  transfer, refund, or readmission;
 - common-adapter tests prove P-D15's stack-exclusive CPU scope, exact requested
   QRhi scope, instantaneous temporary-inclusive caps, preserve-old and
   debit-old replacement paths, narrow exact-array ownership/counting, exclusion
   of ordinary Stage 3 arrays, result construction/publication ownership
-  boundary, independent public deep-copy/no-alias behavior, internal shared-
-  backing counted-once behavior, final renderer-release debit, no
+  boundary, exact independent public stack-table/no-alias behavior, private
+  retained geometry plus value-record ownership, no post-install deep-copy
+  allocation, internal shared-backing counted-once behavior, final renderer-
+  release debit, no
   transient uncounted escape, absent
   entry/stale suppression after every budget/allocation failure, configured-cap
   `FAILED(RESIDENT_BUDGET)`, in-cap CPU/QRhi
@@ -1482,8 +1519,9 @@ merged, split, or left unnumbered.
    stack_group_id` to ordinary descriptors/builders with ascending ID order and
    existing `apply_series_updates` topology semantics, and connect registry/
    frame entry to the already consumed internal production path.
-2. **A2 — activation Qt/result/contract:** expose the immutable ratified P-R1
-   frame result, cumulative indicators, Qt registry/update behavior, and
+2. **A2 — activation Qt/result/contract:** add the immutable ratified P-R1
+   stack-result extension to the already complete ordinary D9 frame result,
+   expose cumulative indicators, Qt registry/update behavior, and
    independent main/preview planning; a missing/failed preview member suppresses
    only the complete preview group. In the same cluster publish all normative
    public API/migration/package documentation and clean install/package consumer
@@ -1521,9 +1559,11 @@ Gate allocation:
   public-to-internal end-to-end rendering, Qt/result/preview/cursor behavior,
   P-R1 publication/presented identity presence, exact per-series origin and
   frame-tagging/sequences, retained stale cursor rejection, and compile/API
-  proof that no owner handle/alias/structure key/content key crosses the public
-  result boundary. Construction/publication tests prove public backing is an
-  independent deep/value copy with no capped-internal alias, plus normative
+  proof that `stack_result_entry_t` exposes only the P-R1 value fields and no
+  geometry/span/sample/resource/source-identity/owner/key fact. Construction/
+  publication tests prove the stack table is independently allocated, populated
+  without later allocation, never aliases private backing, and moves to public
+  ownership without publication allocation, plus normative
   API/migration/package docs and install/package consumer smoke on the same
   source hash;
   public A3 owns only tutorial/example compilation and supplementary package
@@ -1591,23 +1631,27 @@ Performance gate:
   transaction;
 - the narrow exact-size owning array proves exact count/bytes and ownership
   destruction; ordinary Stage 3 vectors remain unchanged. Result-builder and
-  backing counters cover construction, atomic publication, renderer-retained
-  internal backing exactly once despite sharing, an independently allocated
-  public deep/value copy that never aliases internal backing, atomic debit when
-  that copy becomes solely external, and final internal renderer-reference
-  release with no transfer/alias or transient uncounted escape; opaque objects
-  remain excluded;
+  backing counters cover stack-table construction, atomic publication, private
+  `renderer_retained_stack_entry_t` geometry/resources and its one value-only
+  retained presentation record exactly once despite sharing, an independently
+  allocated public stack table that never aliases private backing, no
+  post-install deep-copy allocation, atomic debit when that table moves to
+  GUI/public ownership, and final private renderer-reference release with no
+  transfer/alias or transient uncounted escape; ordinary D9 storage and opaque
+  objects remain excluded;
 - first-frame and replacement exact-table cap/allocation faults publish the
-  allocation-free top envelope with
+  allocation-free `stack_result_section_t` with
   `FAILED(RESULT_STORAGE_BUDGET)`/`FAILED(RESULT_STORAGE_ALLOCATION_FAILED)`, no
-  table/acquisition/geometry, and no surviving stack stale eligibility;
+  stack table/acquisition/geometry, and no surviving stack stale eligibility;
+  mixed ordinary/stack fault replays preserve ordinary pixels, statuses,
+  counters, planning, rendering, and result fields exactly;
 - retained-old-target fit, debit-old-target replacement, configured-cap
   `FAILED(RESIDENT_BUDGET)`, in-cap CPU/QRhi
   `FAILED(RESOURCE_ALLOCATION_FAILED)`, old-target removal and stale suppression
   after every allocation/frame/output/resident-budget failure, and atomic
   complete-install tests all match P-D15 with no partial cache/geometry or
   opaque-residency claim;
-- fixed reservations never exceed `FRAME_M_LIMIT`, `FRAME_V_LIMIT`, or `FRAME_H_LIMIT`; all MAIN units precede all PREVIEW units, each class orders by ascending `lowest_enabled_series_id`, previews cannot change MAIN admission, and rejected units emit no geometry with no refund/readmission from actual use;
+- fixed reservations never exceed `FRAME_M_LIMIT`, `FRAME_V_LIMIT`, or `FRAME_H_LIMIT`; all MAIN units precede all PREVIEW units, each class orders by ascending `lowest_enabled_series_id`, previews cannot change MAIN admission, and rejected units emit no geometry. Every accepted unit receives an immutable `{M,V_limit,H_limit}` slice; low versus full actual use by one unit leaves every later unit identical, with no shared runtime balance, slack transfer, refund, or readmission;
 - zero steady allocation after warm-up where cache reuse is permitted;
 - stable unchanged second frame: zero composition/base/boundary upload;
 - output, composition visits, snapshot bytes, alignment visits, and producer locks satisfy the Stage 3C bounded-history gate;
