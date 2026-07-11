@@ -45,6 +45,7 @@ struct series_window_planner_state_t
     bool                       last_timestamp_order_scan_performed = false;
     std::size_t                last_timestamp_order_scan_samples   = 0;
     bool                       last_timestamps_monotonic           = true;
+    Time_order                 last_selected_time_order            = Time_order::UNKNOWN;
     Timestamp_window_search last_timestamp_window_search =
         Timestamp_window_search::NONE;
     access_dispatch_kind_t last_access_dispatch_kind =
@@ -123,8 +124,9 @@ inline constexpr std::size_t k_stack_max_output_samples_per_view = 1'048'576;
 
 struct stack_composition_stats_t
 {
-    std::size_t    timestamp_count = 0;
-    bool           resampled       = false;
+    std::size_t    timestamp_count   = 0;
+    std::size_t    source_read_count = 0;
+    bool           resampled         = false;
 };
 
 std::size_t stack_timestamp_budget(
@@ -136,6 +138,13 @@ std::size_t stack_timestamp_budget(
 // order and contain cumulative tops plus bases.
 Stack_rejection_reason compose_stacked_series(
     const std::vector<const Series_view_plan*>&    plans,
+    std::vector<std::vector<stacked_sample_t>>&    layers,
+    std::size_t                                    timestamp_budget,
+    stack_composition_stats_t*                     stats = nullptr);
+
+Stack_rejection_reason compose_stacked_series(
+    const std::vector<const Series_view_plan*>&    plans,
+    const std::vector<Time_order>&                 selected_time_orders,
     std::vector<std::vector<stacked_sample_t>>&    layers,
     std::size_t                                    timestamp_budget,
     stack_composition_stats_t*                     stats = nullptr);

@@ -151,6 +151,7 @@ public:
     uint64_t                       query_sequence = 77;
     int                            snapshot_calls = 0;
     int                            query_calls    = 0;
+    plot::Time_order               order          = plot::Time_order::ASCENDING;
     plot::time_range_t             last_query_time_window{};
     plot::sample_semantics_key_t   last_query_semantics_key{};
 
@@ -179,7 +180,7 @@ public:
     uint64_t current_sequence(size_t /*lod_level*/) const override { return sequence; }
     plot::Time_order time_order(std::size_t /*lod*/) const override
     {
-        return plot::Time_order::ASCENDING;
+        return order;
     }
     bool supports_direct_time_window_query(std::size_t /*lod*/) const override
     {
@@ -370,6 +371,7 @@ bool test_direct_time_window_query_drives_renderer_window()
     auto source = make_direct_window_source();
     source->query_window   = {40, 3};
     source->query_sequence = source->sequence;
+    source->order          = plot::Time_order::UNKNOWN;
 
     frame_layout_result_t layout;
     layout.usable_width  = 200.0;
@@ -407,6 +409,8 @@ bool test_direct_time_window_query_drives_renderer_window()
         "renderer planner should expand direct query with a predecessor sample");
     TEST_ASSERT(state->last_source_count == 6,
         "renderer planner should expand direct query with trailing renderer padding");
+    TEST_ASSERT(state->last_selected_time_order == plot::Time_order::ASCENDING,
+        "a direct UNKNOWN source should derive selected order during drawable processing");
 
     return true;
 }
@@ -1723,10 +1727,10 @@ bool test_stacking_cursor_matches_equivalent_source_representations()
         "an earlier nonmonotonic source should retain precedence over a later missing source");
 
     std::vector<Test_sample> invalid_tail{
-        {0, 1.0f},
-        {10, 2.0f},
-        {15, 3.0f},
-        {20, 4.0f},
+        { 0,  1.0f },
+        { 10, 2.0f },
+        { 15, 3.0f },
+        { 20, 4.0f },
         {30, std::numeric_limits<float>::quiet_NaN()}};
     std::vector<Test_sample> shorter_domain{{0, 3.0f}, {10, 4.0f}};
     canonical_plan                  = make_plan(invalid_tail,   callback_access);
@@ -1743,6 +1747,223 @@ bool test_stacking_cursor_matches_equivalent_source_representations()
         {&canonical_plan, &upper_plan}, actual, 16u) ==
             plot::Stack_rejection_reason::INCOMPATIBLE_DATA,
         "a drawable span outside its snapshot should be rejected without materialization");
+    return true;
+}
+
+bool same_stacked_layers(
+    const std::vector<std::vector<plot::detail::stacked_sample_t>>&    lhs,
+    const std::vector<std::vector<plot::detail::stacked_sample_t>>&    rhs)
+{
+    if (lhs.size() != rhs.size()) {
+        return false;
+    }
+    for (std::size_t layer = 0; layer < lhs.size(); ++layer) {
+        if (lhs[layer].size() != rhs[layer].size()) {
+            return false;
+        }
+        for (std::size_t i = 0; i < lhs[layer].size(); ++i) {
+            if (lhs[layer][i].timestamp_ns != rhs[layer][i].timestamp_ns ||
+                lhs[layer][i].value        != rhs[layer][i].value        ||
+                lhs[layer][i].base         != rhs[layer][i].base)
+            {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+bool test_stacking_binary_lookup_bounds_source_reads()
+{
+    constexpr std::size_t    k_timestamp_budget = 129;
+    constexpr std::int64_t   k_epoch            = 1'750'000'000'000'000'000LL;
+    const Data_access_policy access             = make_policy();
+
+    const auto ceil_log2 = [](std::size_t value) {
+        std::size_t result = 0;
+        if (value > 0) {
+            --value;
+        }
+        while (value > 0) {
+            ++result;
+            value >>= 1u;
+        }
+        return result;
+    };
+    const auto compose = [&](std::size_t sample_count) -> std::size_t {
+        std::array<std::vector<Test_sample>, 2> sources;
+        for (std::size_t layer = 0; layer < sources.size(); ++layer) {
+            auto& samples = sources[layer];
+            samples.reserve(sample_count);
+            for (std::size_t i = 0; i < sample_count; ++i) {
+                samples.push_back({
+                    k_epoch + static_cast<std::int64_t>(i * 4u + layer),
+                    static_cast<float>((i % 31u) + layer)});
+            }
+        }
+        std::array<plot::Series_view_plan, 2> plans;
+        std::vector<const plot::Series_view_plan*> plan_ptrs;
+        for (std::size_t layer = 0; layer < plans.size(); ++layer) {
+            auto& plan = plans[layer];
+            plan.access            = &access;
+            plan.snapshot.snapshot = {
+                sources[layer].data(), sources[layer].size(),
+                sizeof(Test_sample), 1};
+            plan.snapshot.sequence = 1;
+            plan.source_count      = sources[layer].size();
+            plan.gpu_count         = sources[layer].size();
+            plan.drawable_spans    = {{
+                0, sources[layer].size(), 0, sources[layer].size()}};
+            plan.interpolation     = plot::Series_interpolation::LINEAR;
+            plan_ptrs.push_back(&plan);
+        }
+
+        plot::detail::stack_composition_stats_t stats;
+        std::vector<std::vector<plot::detail::stacked_sample_t>> layers;
+        const auto reason = plot::detail::compose_stacked_series(
+            plan_ptrs,
+            std::vector<plot::Time_order>(2, plot::Time_order::ASCENDING),
+            layers,
+            k_timestamp_budget,
+            &stats);
+        const std::size_t logarithm = ceil_log2(sample_count);
+        const std::size_t read_bound =
+            2u * k_timestamp_budget * (2u * logarithm + 4u) +
+            2u * k_timestamp_budget + 32u;
+        TEST_ASSERT(reason == plot::Stack_rejection_reason::NONE &&
+            stats.resampled &&
+            stats.timestamp_count == k_timestamp_budget &&
+            stats.source_read_count <= read_bound,
+            "certified resampling should keep physical source reads within its grid-derived binary-search bound");
+        return stats.source_read_count;
+    };
+
+    const std::size_t reads_1x   = compose(10'000);
+    const std::size_t reads_10x  = compose(100'000);
+    const std::size_t reads_100x = compose(1'000'000);
+    TEST_ASSERT(reads_1x < reads_10x && reads_10x < reads_100x &&
+        reads_100x < 20'000,
+        "1x/10x/100x history should add only logarithmic binary-search reads");
+    return true;
+}
+
+bool test_stacking_binary_lookup_matches_streaming_fallback()
+{
+    const Data_access_policy callback_access = make_policy();
+    const Data_access_policy member_access = plot::make_access_policy<Test_sample>(
+        &Test_sample::t,
+        &Test_sample::v
+    ).erase();
+    const auto make_plan = [](std::vector<Test_sample>& samples,
+        const Data_access_policy& access,
+        plot::Series_interpolation interpolation,
+        bool hold = false,
+        std::int64_t hold_timestamp = 0) {
+        plot::Series_view_plan plan;
+        plan.access            = &access;
+        plan.snapshot.snapshot = {
+            samples.data(), samples.size(), sizeof(Test_sample), 1};
+        plan.snapshot.sequence = 1;
+        plan.source_count      = samples.size();
+        plan.gpu_count         = samples.size() + (hold ? 1u : 0u);
+        plan.drawable_spans    = {{0, samples.size(), 0, plan.gpu_count}};
+        plan.interpolation     = interpolation;
+        plan.hold_timestamp_ns = hold_timestamp;
+        return plan;
+    };
+    const auto compare = [](
+        const std::vector<const plot::Series_view_plan*>& plans,
+        const std::vector<plot::Time_order>& orders,
+        std::size_t budget) {
+        plot::detail::stack_composition_stats_t streaming_stats;
+        plot::detail::stack_composition_stats_t binary_stats;
+        std::vector<std::vector<plot::detail::stacked_sample_t>> streaming;
+        std::vector<std::vector<plot::detail::stacked_sample_t>> binary;
+        return
+            plot::detail::compose_stacked_series(
+                plans, streaming, budget, &streaming_stats) ==
+                plot::Stack_rejection_reason::NONE &&
+            plot::detail::compose_stacked_series(
+                plans, orders, binary, budget, &binary_stats) ==
+                plot::Stack_rejection_reason::NONE &&
+            streaming_stats.resampled && binary_stats.resampled &&
+            binary_stats.source_read_count < streaming_stats.source_read_count &&
+            same_stacked_layers(binary, streaming);
+    };
+
+    constexpr std::size_t  k_count = 2'048;
+    constexpr std::int64_t k_epoch = 1'750'000'000'000'000'000LL;
+    std::vector<Test_sample> ascending_a;
+    std::vector<Test_sample> ascending_b;
+    ascending_a.reserve(k_count + 1u);
+    ascending_b.reserve(k_count);
+    for (std::size_t i = 0; i < k_count; ++i) {
+        ascending_a.push_back({
+            k_epoch + static_cast<std::int64_t>(i * 4u),
+            static_cast<float>(i % 29u)});
+        ascending_b.push_back({
+            k_epoch + static_cast<std::int64_t>(i * 4u + 1u),
+            static_cast<float>(10u + i % 17u)});
+    }
+    ascending_a.insert(ascending_a.begin() + 1'001, {
+        ascending_a[1'000].t, 123.0f});
+    auto ascending_plan = make_plan(
+        ascending_a, callback_access, plot::Series_interpolation::LINEAR);
+    auto upper_plan = make_plan(
+        ascending_b, member_access, plot::Series_interpolation::LINEAR);
+    TEST_ASSERT(compare(
+        { &ascending_plan, &upper_plan },
+        { plot::Time_order::ASCENDING, plot::Time_order::ASCENDING },
+        31u),
+        "binary LINEAR lookup should match streaming for epoch "
+        "timestamps, callable/member access, and last physical duplicates");
+
+    std::vector<Test_sample> descending(ascending_a.rbegin(), ascending_a.rend());
+    const auto duplicate = std::find_if(
+        descending.begin(), descending.end(),
+        [](const auto& sample) { return sample.v == 123.0f; });
+    TEST_ASSERT(duplicate != descending.end(),
+        "expected descending duplicate fixture");
+    descending.insert(duplicate + 1, {duplicate->t, 321.0f});
+    auto descending_plan = make_plan(
+        descending, member_access, plot::Series_interpolation::LINEAR,
+        true, k_epoch - 4);
+    ascending_b.insert(ascending_b.begin(), {k_epoch - 4, 9.0f});
+    upper_plan = make_plan(
+        ascending_b, callback_access, plot::Series_interpolation::LINEAR);
+    TEST_ASSERT(compare(
+        { &descending_plan, &upper_plan },
+        { plot::Time_order::DESCENDING, plot::Time_order::ASCENDING },
+        31u),
+        "binary descending lookup should match streaming for physical-last duplicates and synthetic holds");
+
+    ascending_plan.interpolation = plot::Series_interpolation::STEP_AFTER;
+    upper_plan.interpolation     = plot::Series_interpolation::STEP_AFTER;
+    TEST_ASSERT(compare(
+        { &ascending_plan, &upper_plan },
+        { plot::Time_order::ASCENDING, plot::Time_order::ASCENDING },
+        31u),
+        "binary STEP_AFTER lookup should match streaming values");
+
+    constexpr std::int64_t k_min = std::numeric_limits<std::int64_t>::min();
+    constexpr std::int64_t k_max = std::numeric_limits<std::int64_t>::max();
+    std::vector<Test_sample> full_a{{k_min, 0.0f}};
+    std::vector<Test_sample> full_b{{k_min, 1.0f}};
+    for (std::int64_t timestamp = -128; timestamp <= 128; ++timestamp) {
+        full_a.push_back({timestamp, static_cast<float>(timestamp)});
+        full_b.push_back({timestamp, static_cast<float>(timestamp + 1)});
+    }
+    full_a.push_back({k_max, 2.0f});
+    full_b.push_back({k_max, 3.0f});
+    auto full_a_plan = make_plan(
+        full_a, callback_access, plot::Series_interpolation::LINEAR);
+    auto full_b_plan = make_plan(
+        full_b, member_access, plot::Series_interpolation::LINEAR);
+    TEST_ASSERT(compare(
+        { &full_a_plan, &full_b_plan },
+        { plot::Time_order::ASCENDING, plot::Time_order::ASCENDING },
+        3u),
+        "binary lookup should match streaming across the full int64 timestamp range");
     return true;
 }
 
@@ -1906,6 +2127,12 @@ bool test_stacking_uses_separate_view_budgets_and_invalidates_resized_cache()
     TEST_ASSERT(profiler->observations["renderer.stacking.resampled_group_count"] == 1.0 &&
         profiler->observations["renderer.stacking.exact_group_count"] == 1.0,
         "the renderer should report one bounded main grid and one exact preview union");
+    TEST_ASSERT(
+        planner_state(renderer.m_vbo_states.at(1).main_view)
+                .last_selected_time_order == plot::Time_order::ASCENDING &&
+        planner_state(renderer.m_vbo_states.at(1).preview_view)
+                .last_selected_time_order == plot::Time_order::ASCENDING,
+        "main and preview plans should retain the planner-established selected order");
     const void* initial_main_hold    = initial_main.hold.get();
     const void* initial_preview_hold = initial_preview.hold.get();
 
@@ -2401,6 +2628,8 @@ int main()
     RUN_TEST(test_stacking_composes_different_timestamps_from_independent_lods);
     RUN_TEST(test_stacking_interpolates_sub_256ns_epoch_intervals);
     RUN_TEST(test_stacking_cursor_matches_equivalent_source_representations);
+    RUN_TEST(test_stacking_binary_lookup_bounds_source_reads);
+    RUN_TEST(test_stacking_binary_lookup_matches_streaming_fallback);
     RUN_TEST(test_stacking_bounds_independent_timestamp_grids);
     RUN_TEST(test_stacking_bounded_grid_handles_interpolation_and_integer_extremes);
     RUN_TEST(test_stacking_uses_separate_view_budgets_and_invalidates_resized_cache);

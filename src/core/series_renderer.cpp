@@ -1104,15 +1104,21 @@ void Series_renderer::prepare(
             published.sources.reserve(members.size());
             std::vector<const Series_view_plan*> plans;
             plans.reserve(members.size());
+            std::vector<Time_order> selected_time_orders;
+            selected_time_orders.reserve(members.size());
             std::size_t input_samples = 0;
             std::vector<std::uint64_t> cache_key;
             cache_key.reserve(members.size() * 22u + 2u);
             bool cacheable = true;
-            for (const auto* member : members) {
+            for (auto* member : members) {
                 const Series_view_plan* plan = view_kind == Series_view_kind::MAIN
                     ? &member->main_plan
                     : &member->preview_plan;
                 plans.push_back(plan);
+                const auto& view_state = view_state_for(*member);
+                selected_time_orders.push_back(view_state.planner
+                    ? view_state.planner->last_selected_time_order
+                    : Time_order::UNKNOWN);
                 published.status.affected_series_ids.push_back(member->id);
                 const std::uint64_t attempt_sequence = plan->snapshot.sequence != 0
                     ? plan->snapshot.sequence
@@ -1189,6 +1195,7 @@ void Series_renderer::prepare(
                 ? Stack_rejection_reason::NONE
                 : detail::compose_stacked_series(
                     plans,
+                    selected_time_orders,
                     layers,
                     timestamp_budget,
                     &composition_stats);
@@ -1304,6 +1311,9 @@ void Series_renderer::prepare(
                 profiler->record_observation(
                     "renderer.stacking.grid_timestamp_count",
                     static_cast<double>(composition_stats.timestamp_count));
+                profiler->record_observation(
+                    "renderer.stacking.source_read_count",
+                    static_cast<double>(composition_stats.source_read_count));
                 profiler->record_counter(composition_stats.resampled
                     ? "renderer.stacking.resampled_group_count"
                     : "renderer.stacking.exact_group_count");

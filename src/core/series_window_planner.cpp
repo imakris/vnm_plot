@@ -47,6 +47,7 @@ struct drawable_window_result_t
     std::size_t    gpu_count            = 0;
     std::vector<drawable_sample_span_t>
                    spans;
+    Time_order     timestamp_order      = Time_order::UNKNOWN;
     bool           valid                = true;
 };
 
@@ -63,13 +64,18 @@ drawable_window_result_t build_drawable_window(
     Nonfinite_sample_policy        nonfinite_policy,
     std::size_t                    source_first,
     std::size_t                    source_last_exclusive,
-    bool                           hold_last_forward)
+    bool                           hold_last_forward,
+    bool                           derive_timestamp_order)
 {
     drawable_window_result_t result;
     result.source_first = source_first;
     result.source_count = source_last_exclusive > source_first
         ? source_last_exclusive - source_first
         : 0;
+    bool         have_previous_timestamp = false;
+    bool         timestamps_ascending    = true;
+    bool         timestamps_descending   = true;
+    std::int64_t previous_timestamp      = 0;
 
     if (source_first >= source_last_exclusive) {
         return result;
@@ -85,6 +91,18 @@ drawable_window_result_t build_drawable_window(
             ignored);
         if (status == sample_draw_status_t::FAILED)  { return false; }
         if (status == sample_draw_status_t::SKIPPED) { return true;  }
+
+        if (derive_timestamp_order && access.has_timestamp()) {
+            const std::int64_t timestamp = access.timestamp(sample);
+            if (have_previous_timestamp) {
+                timestamps_ascending  = timestamps_ascending  &&
+                    timestamp >= previous_timestamp;
+                timestamps_descending = timestamps_descending &&
+                    timestamp <= previous_timestamp;
+            }
+            previous_timestamp      = timestamp;
+            have_previous_timestamp = true;
+        }
 
         if (result.spans.empty() ||
             result.spans.back().source_first +
@@ -125,6 +143,14 @@ drawable_window_result_t build_drawable_window(
             ++result.gpu_count;
             result.synthetic_hold_count = 1;
         }
+    }
+
+    if (have_previous_timestamp) {
+        result.timestamp_order = timestamps_ascending
+            ? Time_order::ASCENDING
+            : (timestamps_descending
+                ? Time_order::DESCENDING
+                : Time_order::UNKNOWN);
     }
 
     return result;
@@ -432,13 +458,14 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
             break;
         }
 
-        const auto& snapshot                  = snapshot_result.snapshot;
-        bool        have_direct_time_window   = false;
-        bool        direct_time_window_empty  = false;
-        bool        direct_time_window_failed = false;
-        std::size_t direct_first_idx          = 0;
-        std::size_t direct_last_idx           = 0;
-        bool        direct_hold_last_forward  = false;
+        const auto&      snapshot                  = snapshot_result.snapshot;
+        const Time_order source_order              = data_source.time_order(applied_level);
+        bool             have_direct_time_window   = false;
+        bool             direct_time_window_empty  = false;
+        bool             direct_time_window_failed = false;
+        std::size_t      direct_first_idx          = 0;
+        std::size_t      direct_last_idx           = 0;
+        bool             direct_hold_last_forward  = false;
         if (direct_time_window.attempted &&
             direct_time_window.result.sequence != 0 &&
             direct_time_window.result.sequence == snapshot.sequence)
@@ -579,8 +606,7 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
         }
         else
         if (access_view.has_timestamp()) {
-            const void*      current_identity = data_source.identity();
-            const Time_order source_order     = data_source.time_order(applied_level);
+            const void* current_identity = data_source.identity();
             if (source_order == Time_order::ASCENDING) {
                 state.last_timestamp_order_sequence   = snapshot.sequence;
                 state.last_timestamp_order_identity   = current_identity;
@@ -814,13 +840,19 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
             }
         }
 
+        const bool derive_drawable_timestamp_order =
+            access_view.has_timestamp()                       &&
+            source_order != Time_order::ASCENDING             &&
+            source_order != Time_order::DESCENDING            &&
+            (have_direct_time_window || !timestamps_monotonic);
         drawable_window_result_t drawable_window = build_drawable_window(
             snapshot,
             access_view,
             request.nonfinite_policy,
             first_idx,
             last_idx,
-            hold_last_forward);
+            hold_last_forward,
+            derive_drawable_timestamp_order);
         if (drawable_window.valid &&
             drawable_window.gpu_count == 0 &&
             hold_last_forward              &&
@@ -840,7 +872,8 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
                     request.nonfinite_policy,
                     first_idx,
                     last_idx,
-                    hold_last_forward);
+                    hold_last_forward,
+                    derive_drawable_timestamp_order);
             }
             else
             if (hold_failed) {
@@ -903,6 +936,39 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
 
         const bool effective_hold_last_forward =
             drawable_window.synthetic_hold_count > 0;
+        Time_order selected_time_order = Time_order::UNKNOWN;
+        if (access_view.has_timestamp()) {
+            selected_time_order =
+                source_order == Time_order::ASCENDING ||
+                source_order == Time_order::DESCENDING
+                    ? source_order
+                    : (!have_direct_time_window && timestamps_monotonic
+                        ? Time_order::ASCENDING
+                        : drawable_window.timestamp_order);
+        }
+        if (effective_hold_last_forward &&
+            selected_time_order != Time_order::UNKNOWN &&
+            !drawable_window.spans.empty())
+        {
+            const drawable_sample_span_t& final_span =
+                drawable_window.spans.back();
+            const std::size_t final_index =
+                final_span.source_first + final_span.source_count - 1u;
+            const void* final_sample = snapshot.at(final_index);
+            if (!final_sample) {
+                selected_time_order = Time_order::UNKNOWN;
+            }
+            else {
+                const std::int64_t final_timestamp = get_timestamp(final_sample);
+                const bool hold_preserves_order =
+                    selected_time_order == Time_order::ASCENDING
+                        ? request.t_max_ns >= final_timestamp
+                        : request.t_max_ns <= final_timestamp;
+                if (!hold_preserves_order) {
+                    selected_time_order = Time_order::UNKNOWN;
+                }
+            }
+        }
 
         plan.source_first            = state.last_first;
         plan.source_count            = drawable_window.source_count;
@@ -929,6 +995,7 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
         state.last_source_count         = plan.source_count;
         state.last_synthetic_hold_count = plan.synthetic_hold_count;
         state.last_drawable_spans       = plan.drawable_spans;
+        state.last_selected_time_order  = selected_time_order;
         break;
     }
 
@@ -965,24 +1032,31 @@ namespace {
 
 struct stack_point_t
 {
-    std::int64_t               t = 0;
-    float                      v = 0.0f;
+    std::int64_t   t             = 0;
+    float          v             = 0.0f;
 };
 
 struct stack_source_view_t
 {
-    const Series_view_plan*    plan         = nullptr;
+    const Series_view_plan*    plan                = nullptr;
     erased_access_policy_t     access;
-    std::size_t                source_first = 0;
-    std::size_t                source_count = 0;
-    bool                       reversed     = false;
-    bool                       has_hold     = false;
+    std::size_t                source_first        = 0;
+    std::size_t                source_count        = 0;
+    bool                       reversed            = false;
+    bool                       has_hold            = false;
     stack_point_t              hold;
-    std::int64_t               first_t      = 0;
-    std::int64_t               last_t       = 0;
+    std::int64_t               first_t             = 0;
+    std::int64_t               last_t              = 0;
+    Time_order                 selected_time_order = Time_order::UNKNOWN;
+    std::size_t*               source_reads        = nullptr;
 
     bool read(std::size_t offset, bool with_value, stack_point_t& out) const
     {
+        if (source_reads &&
+            *source_reads < std::numeric_limits<std::size_t>::max())
+        {
+            ++*source_reads;
+        }
         const void* sample = plan->snapshot.snapshot.at(source_first + offset);
         if (!sample) {
             return false;
@@ -1001,11 +1075,46 @@ struct stack_source_view_t
         out.v = value.y;
         return true;
     }
+
+    std::size_t logical_count() const
+    {
+        return source_count + (has_hold ? 1u : 0u);
+    }
+
+    bool read_logical(
+        std::size_t    offset,
+        bool           with_value,
+        stack_point_t& out) const
+    {
+        if (!reversed) {
+            if (offset < source_count) {
+                return read(offset, with_value, out);
+            }
+            if (has_hold && offset == source_count) {
+                out = hold;
+                return true;
+            }
+            return false;
+        }
+
+        if (has_hold) {
+            if (offset == 0) {
+                out = hold;
+                return true;
+            }
+            --offset;
+        }
+        return offset < source_count
+            ? read(source_count - 1u - offset, with_value, out)
+            : false;
+    }
 };
 
 Stack_rejection_reason make_stack_source_view(
     const Series_view_plan&    plan,
-    stack_source_view_t&       view)
+    Time_order                 selected_time_order,
+    stack_source_view_t&       view,
+    std::size_t*               source_reads)
 {
     if (!plan.snapshot.snapshot || !plan.access || !plan.access->get_value) {
         return Stack_rejection_reason::NO_DRAWABLE_DATA;
@@ -1025,10 +1134,12 @@ Stack_rejection_reason make_stack_source_view(
         return Stack_rejection_reason::INCOMPATIBLE_DATA;
     }
 
-    view.plan         = &plan;
-    view.access       = make_erased_access_policy_view(*plan.access);
-    view.source_first = span.source_first;
-    view.source_count = span.source_count;
+    view.plan                = &plan;
+    view.access              = make_erased_access_policy_view(*plan.access);
+    view.source_first        = span.source_first;
+    view.source_count        = span.source_count;
+    view.selected_time_order = selected_time_order;
+    view.source_reads        = source_reads;
 
     stack_point_t first;
     stack_point_t last;
@@ -1049,10 +1160,145 @@ Stack_rejection_reason make_stack_source_view(
         last          = view.hold;
     }
 
-    view.reversed = first.t > last.t;
+    view.reversed = selected_time_order == Time_order::DESCENDING ||
+        (selected_time_order == Time_order::UNKNOWN && first.t > last.t);
     view.first_t  = view.reversed ? last.t  : first.t;
     view.last_t   = view.reversed ? first.t : last.t;
     return Stack_rejection_reason::NONE;
+}
+
+std::size_t ceil_log2(std::size_t value)
+{
+    std::size_t result = 0;
+    if (value > 0) {
+        --value;
+    }
+    while (value > 0) {
+        ++result;
+        value >>= 1u;
+    }
+    return result;
+}
+
+bool lower_bound_timestamp(
+    const stack_source_view_t& source,
+    std::int64_t               timestamp,
+    std::size_t&               offset)
+{
+    std::size_t first = 0;
+    std::size_t last  = source.logical_count();
+    while (first < last) {
+        const std::size_t middle = first + (last - first) / 2u;
+        stack_point_t point;
+        if (!source.read_logical(middle, false, point)) { return false;        }
+        if (point.t < timestamp)                        { first = middle + 1u; }
+        else {
+            last = middle;
+        }
+    }
+    offset = first;
+    return true;
+}
+
+bool upper_bound_timestamp(
+    const stack_source_view_t& source,
+    std::int64_t               timestamp,
+    std::size_t&               offset)
+{
+    std::size_t first = 0;
+    std::size_t last  = source.logical_count();
+    while (first < last) {
+        const std::size_t middle = first + (last - first) / 2u;
+        stack_point_t point;
+        if (!source.read_logical(middle, false, point)) { return false;  }
+        if (timestamp < point.t)                        { last = middle; }
+        else {
+            first = middle + 1u;
+        }
+    }
+    offset = first;
+    return true;
+}
+
+bool binary_stack_value(
+    const stack_source_view_t& source,
+    Series_interpolation       interpolation,
+    std::int64_t               timestamp,
+    float&                     value)
+{
+    const std::size_t count       = source.logical_count();
+    std::size_t       current_end = 0;
+    if (!upper_bound_timestamp(source, timestamp, current_end) ||
+        current_end == 0)
+    {
+        return false;
+    }
+
+    stack_point_t current_probe;
+    if (!source.read_logical(current_end - 1u, false, current_probe)) {
+        return false;
+    }
+    std::size_t current_offset = current_end - 1u;
+    if (source.reversed &&
+        !lower_bound_timestamp(source, current_probe.t, current_offset))
+    {
+        return false;
+    }
+
+    stack_point_t current;
+    if (!source.read_logical(current_offset, true, current)) {
+        return false;
+    }
+    value = current.v;
+    if (interpolation != Series_interpolation::LINEAR || current_end >= count ||
+        timestamp <= current.t)
+    {
+        return true;
+    }
+
+    stack_point_t next_probe;
+    if (!source.read_logical(current_end, false, next_probe)) {
+        return false;
+    }
+    std::size_t next_offset = current_end;
+    if (!source.reversed) {
+        std::size_t next_end = 0;
+        if (!upper_bound_timestamp(source, next_probe.t, next_end) ||
+            next_end == 0)
+        {
+            return false;
+        }
+        next_offset = next_end - 1u;
+    }
+
+    stack_point_t next;
+    if (!source.read_logical(next_offset, true, next)) {
+        return false;
+    }
+    const double position =
+        normalized_time_position_ns(current.t, timestamp, next.t);
+    value = static_cast<float>(
+        current.v + position * (next.v - current.v));
+    return true;
+}
+
+bool prefer_binary_stack_lookup(
+    const stack_source_view_t& source,
+    std::size_t                timestamp_count)
+{
+    if (source.selected_time_order == Time_order::UNKNOWN) {
+        return false;
+    }
+    const std::size_t search_steps = std::max<std::size_t>(
+        ceil_log2(source.logical_count()), 1u);
+    std::size_t reads_per_timestamp = 0;
+    std::size_t estimated_reads     = 0;
+    return
+        checked_size_product(search_steps, 2u, reads_per_timestamp)    &&
+        checked_size_add(reads_per_timestamp, 4u, reads_per_timestamp) &&
+        checked_size_product(
+            timestamp_count, reads_per_timestamp, estimated_reads) &&
+        estimated_reads < source.source_count;
 }
 
 struct stack_source_cursor_t
@@ -1216,6 +1462,7 @@ Stack_rejection_reason validated_rejection(
 
 Stack_rejection_reason compose_stacked_series_impl(
     const std::vector<const Series_view_plan*>&    plans,
+    const std::vector<Time_order>*                 selected_time_orders,
     std::vector<std::vector<stacked_sample_t>>&    layers,
     std::size_t                                    timestamp_budget,
     stack_composition_stats_t*                     stats)
@@ -1237,10 +1484,18 @@ Stack_rejection_reason compose_stacked_series_impl(
         return Stack_rejection_reason::MIXED_INTERPOLATION;
     }
 
+    std::size_t                      source_read_count = 0;
     std::vector<stack_source_view_t> sources(plans.size());
     for (std::size_t layer = 0; layer < plans.size(); ++layer) {
-        const Stack_rejection_reason reason =
-            make_stack_source_view(*plans[layer], sources[layer]);
+        const Time_order selected_time_order =
+            selected_time_orders && layer < selected_time_orders->size()
+                ? (*selected_time_orders)[layer]
+                : Time_order::UNKNOWN;
+        const Stack_rejection_reason reason = make_stack_source_view(
+            *plans[layer],
+            selected_time_order,
+            sources[layer],
+            &source_read_count);
         if (reason != Stack_rejection_reason::NONE) {
             const Stack_rejection_reason prior_reason =
                 validate_stack_sources(sources, layer);
@@ -1368,6 +1623,37 @@ Stack_rejection_reason compose_stacked_series_impl(
         layer.reserve(timestamps.size());
     }
     for (std::size_t layer = 0; layer < sources.size(); ++layer) {
+        if (resampled &&
+            prefer_binary_stack_lookup(sources[layer], timestamps.size()))
+        {
+            for (std::size_t sample = 0; sample < timestamps.size(); ++sample) {
+                float value = 0.0f;
+                if (!binary_stack_value(
+                        sources[layer], plans[layer]->interpolation, timestamps[sample], value))
+                {
+                    layers.clear();
+                    if (stats) {
+                        *stats = {};
+                    }
+                    return Stack_rejection_reason::INCOMPATIBLE_DATA;
+                }
+                const float base = layer == 0
+                    ? 0.0f
+                    : layers[layer - 1u][sample].value;
+                const float cumulative = base + value;
+                if (!std::isfinite(cumulative)) {
+                    layers.clear();
+                    if (stats) {
+                        *stats = {};
+                    }
+                    return Stack_rejection_reason::CUMULATIVE_OVERFLOW;
+                }
+                layers[layer].push_back({
+                    timestamps[sample], cumulative, base});
+            }
+            continue;
+        }
+
         stack_source_cursor_t cursor;
         if (!cursor.reset(sources[layer], true)) {
             layers.clear();
@@ -1432,15 +1718,18 @@ Stack_rejection_reason compose_stacked_series_impl(
             return validate_stack_sources(sources);
         }
     }
-    return timestamps.empty()
-        ? Stack_rejection_reason::NO_DRAWABLE_DATA
-        : Stack_rejection_reason::NONE;
+    if (timestamps.empty()) {
+        return Stack_rejection_reason::NO_DRAWABLE_DATA;
+    }
+    if (stats) {
+        stats->source_read_count = source_read_count;
+    }
+    return Stack_rejection_reason::NONE;
 }
 
-} // anonymous namespace
-
-Stack_rejection_reason compose_stacked_series(
+Stack_rejection_reason compose_stacked_series_checked(
     const std::vector<const Series_view_plan*>&    plans,
+    const std::vector<Time_order>*                 selected_time_orders,
     std::vector<std::vector<stacked_sample_t>>&    layers,
     std::size_t                                    timestamp_budget,
     stack_composition_stats_t*                     stats)
@@ -1449,7 +1738,8 @@ Stack_rejection_reason compose_stacked_series(
         *stats = {};
     }
     try {
-        return compose_stacked_series_impl(plans, layers, timestamp_budget, stats);
+        return compose_stacked_series_impl(
+            plans, selected_time_orders, layers, timestamp_budget, stats);
     }
     catch (const std::bad_alloc&) {
         layers.clear();
@@ -1465,6 +1755,29 @@ Stack_rejection_reason compose_stacked_series(
         }
         return Stack_rejection_reason::OUTPUT_LIMIT;
     }
+}
+
+} // anonymous namespace
+
+Stack_rejection_reason compose_stacked_series(
+    const std::vector<const Series_view_plan*>&    plans,
+    std::vector<std::vector<stacked_sample_t>>&    layers,
+    std::size_t                                    timestamp_budget,
+    stack_composition_stats_t*                     stats)
+{
+    return compose_stacked_series_checked(
+        plans, nullptr, layers, timestamp_budget, stats);
+}
+
+Stack_rejection_reason compose_stacked_series(
+    const std::vector<const Series_view_plan*>&    plans,
+    const std::vector<Time_order>&                 selected_time_orders,
+    std::vector<std::vector<stacked_sample_t>>&    layers,
+    std::size_t                                    timestamp_budget,
+    stack_composition_stats_t*                     stats)
+{
+    return compose_stacked_series_checked(
+        plans, &selected_time_orders, layers, timestamp_budget, stats);
 }
 
 const Data_access_policy& stacked_sample_access()
