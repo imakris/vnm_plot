@@ -230,7 +230,7 @@ ratification.
 
 | ID | Decision | Approved contract | Status and remaining evidence |
 |---|---|---|---|
-| D1 | Negative values | Algebraic cumulative stacking; a negative component descends from the previous cumulative value, preserving `h=f+g`. | **Approved 2026-07-10.** Retain visible cancellation/negative verification. |
+| D1 | Negative values | Algebraic cumulative stacking uses one private checked cumulative-step addition per member/position; a negative component descends from the previous cumulative value, preserving `h=f+g`. The returned immutable component/base/cumulative record is the sole composition/range/indicator truth. | **Approved 2026-07-10.** Retain absorption, signed-zero, cancellation, negative, and ordinary-rounding verification. |
 | D2 | Defined domain | Process each member in logical source order; collapse equal timestamps under D8; apply the nonfinite policy; construct its piecewise function and defined interval set; apply explicit right hold; intersect member interval sets; compose each resulting interval without bridging gaps. If mandatory interval endpoints exceed the bounded candidate representation, the complete group/view fails with no geometry. | **Amended and approved 2026-07-11.** Exact interval normalization and candidate capacities are pending proposal P-D2. |
 | D3 | Group topology | Optional `stack_group_id` on ordinary series; ascending series ID is order; callers use `apply_series_updates` when topology must change atomically. Individual add/remove may render intermediate membership. | **Approved 2026-07-10.** Caller-disciplined atomicity is the product contract. |
 | D4 | Sampling strategy | Unresolved between bounded exact event union and bounded shared grid. Ship exactly one, not both. | **Open.** Stage 4 A/B native-backend and visual evidence; owner selects the winner. |
@@ -238,7 +238,7 @@ ratification.
 | D6 | Busy/failure contract | BUSY may reuse only the last complete group/view for an identical non-content structural request. All members, range, indicators, statuses, and private rendered geometry come from that retained complete content; fresh and stale generations never mix. The public value-only result reports `STALE_BUSY` and retained sequences/content identity, never READY, but exposes no geometry. READY, EMPTY, FAILED, a budget failure, or structural change replaces or suppresses stale fallback. | **Amended and approved 2026-07-11.** Exact `structure_key`/`content_key` tuples are pending proposal P-D6. |
 | D7 | Floating timestamp API | The public `checked_seconds_to_ns(double) -> optional<int64_t>` ingestion helper converts the exact binary64 input value in seconds to the nearest mathematical integral nanosecond, with exact halves away from zero; it range-checks the rounded mathematical result before integer conversion and returns `nullopt` for nonfinite or nonrepresentable input. Typed member-pointer access accepts integral-nanosecond members only; a floating timestamp member pointer is ill-formed at compile time. | **Amended and approved 2026-07-11.** Callers convert once into integral-nanosecond storage. Compile-fail, exact-rational/`nextafter`, UBSan, migration, and no-hot-loop-conversion evidence gate Batch 3B. |
 | D8 | Duplicate timestamps | Treat both `data_snapshot_t` segments as one logical `at(i)` sequence. Among equal timestamps, greatest logical `i` wins before nonfinite, interpolation, and hold processing. If the winner is nonfinite, apply the nonfinite policy without reconsidering an earlier duplicate. | **Amended and approved 2026-07-11.** The exact equidistant NEAREST rule is pending proposal P-Q1. |
-| D9 | Pixel-parity indicators and frame result | Batch 3B defines the canonical evaluator and value result. Batch 3C's single production frame entry creates a snapshot-free immutable ordinary frame plan and, after renderer/RHI disposition is known, one immutable ordinary frame result. The result copies frame/config/view identities from the plan and contains per-series status, sequence, selected LOD, actual disposition, rendered range, and value-only indicators tagged with cursor request ID. The GUI discards a result whose request ID is not current. No independent indicator snapshot path exists; Batch 3D may optimize copying/publication but may not add a second producer. This ordinary D9 result is complete without P-R1/P-D15 or any stack section; Stage 5 later adds P-R1's stack extension without changing the ordinary contract. | **Amended and approved 2026-07-11.** Retain plan/result construction, one-frame latency, disposition, stale-request rejection, and ordinary-with-stack-fault independence tests. |
+| D9 | Pixel-parity indicators and frame result | Batch 3B defines the canonical evaluator and value result. A monotonic `cursor_state_id` increments on activation, every movement/request replacement, and deactivation. Batch 3C's single production frame entry copies it into the snapshot-free immutable ordinary frame plan and enclosing frame result, then constructs that result only after renderer/RHI disposition is known. READY presented content carries `content_cursor_state_id`; retained STALE keeps the old presented value even without a batch, and any present batch request ID equals its presented cursor-state ID. Per-series status/sequence/selected LOD, actual disposition, range, and value-only indicators still come from the exact executed plan. GUI config/cursor currency gates every mutation, including clears from absent/failure results. No independent indicator snapshot path exists; the ordinary result remains complete without P-R1/P-D15. | **Amended and approved 2026-07-11.** Retain activation/move/deactivation, delayed/no-batch/failure/stale currency, plan/result construction, one-frame latency, and ordinary-with-stack-fault independence tests. |
 | D10 | Unchanged-frame reuse | Stable nonzero `current_sequence()` plus stable/non-conservative access semantics authorizes reuse; zero/unstable/conservative inputs rebuild and report why. | **Approved 2026-07-10.** The existing second-frame upload oracle may change after Checkpoint 2.1 retains its baseline. |
 | D11 | Widget threading and render-input publication | `Plot_widget` configuration, registry, and public API reads and mutations are Qt-GUI-thread-only; cross-thread callers use queued invocation. `QQuickRhiItemRenderer::synchronize()` copies the complete render input while the GUI thread is blocked, after which item and renderer share no mutable widget state. `Data_source` contents are separate and support concurrent producer, GUI-query, and render access through the source's own synchronization. | **Approved 2026-07-11.** Public thread-contract, synchronization, and migrated Qt tests gate Batch 3A/3D. |
 | D12 | Source acquisition domain and hold lifetime | Each `Data_source` object is one acquisition domain. Acquisition-taking methods are `try_snapshot`, `time_range`, `query_time_window`, `query_v_range`, planned `query_sample`, and any future method documented as taking a lock, snapshot, or hold. None may begin on a thread while that thread retains any hold from the same object. Metadata operations (`sample_stride`, LOD count/scale/list, `current_sequence`, `time_order`, direct-query-support flags, and equivalent documented metadata) are non-acquiring and safe while a hold is live. Distinct source objects must not return holds backed by the same non-recursive lock; shared backing must provide independent public-acquisition semantics or is nonconforming. Rejected holds release immediately; selected observations are consumed sequentially, and no surviving plan/result/cache/record context owns a snapshot. | **Approved 2026-07-11.** RU-3A publishes the contract and atomically makes every current per-series/custom path hold-free; RU-3C2 alone replaces independent acquisitions with cross-series/shared-key scheduling. No duplicate scheduler, capability enum, or domain token is introduced. |
@@ -261,9 +261,9 @@ that action occurs:
   ordering, and performance contract;
 - **P-R1:** self-describing ordered stack results, factory-enforced
   disposition/payload invariants, four terminal tagged source observations,
-  closed stack failure/indicator types, cumulative-only optional indicator
-  batches and GUI transition matrix, deterministic precedence, and stale-
-  presentation vocabulary;
+  closed stack failure/indicator types, checked cumulative-step records,
+  cursor-state-bound optional indicator batches and GUI transition matrix,
+  deterministic precedence, and stale-presentation vocabulary;
 - **P-D15:** allocation-free admission prepass, one exact counted stack-table
   backing, MAIN-before-PREVIEW immutable slices, `U_limit` accounting, exact
   renderer-owned-cap/allocation-lifetime requested-byte counters, resident byte
@@ -433,9 +433,10 @@ the non-owning weak identities above.
 never exposed, serialized, copied into, or accepted from the public frame
 result/API. The private retained cache alone keeps `content_key` for READY reuse
 and BUSY eligibility. P-R1's public group/view/member IDs are structural labels
-without reuse authority. Public content provenance is only `content_frame_id`
-plus exact per-series presented sequences; no weak owner handle, alias pointer,
-structure key, or content key crosses that boundary.
+without reuse authority. Public content provenance is only `content_frame_id`,
+`content_cursor_state_id`, and exact per-series presented sequences; no weak
+owner handle, alias pointer, structure key, or content key crosses that
+boundary.
 
 READY reuse requires an identical `content_key`, stable nonzero observed
 sequences, and D10 eligibility. A complete retained result whose key contains
@@ -538,16 +539,18 @@ same order; every record's members are ascending `series_id`. Each public
 never have a `FAILED(reason)` disposition. These IDs are self-description labels
 only and never cache, retention, or reuse authority.
 The enclosing D9 result supplies the executed plan's frame/config/view identity,
-including the producer's `publication_frame_id`; its current-config identity
-check rejects a delayed result after configuration or topology changes.
+including the producer's `publication_frame_id` and current-attempt
+`cursor_state_id`; its current-config identity check rejects a delayed result
+after configuration or topology changes.
 
 Every `stack_result_entry_t` has exactly one canonical disposition: `READY`,
 `EMPTY`, `STALE_BUSY`, or `FAILED(reason)`. Its complete public field set is the
 structural labels and disposition; per-series origin, status, sequence, and
 origin-tagged terminal-attempted or selected LOD/logical window; rendered range;
 `optional<stack_indicator_batch_t>`; and optional `content_frame_id`. It
-contains no geometry, spans, samples, resources, source identities, owner
-handles, cache keys, or other private backing.
+also carries `content_cursor_state_id` exactly for READY/STALE_BUSY presented
+content. It contains no geometry, spans, samples, resources, source identities,
+owner handles, cache keys, or other private backing.
 
 The public `Stack_failure_reason` is closed to exactly:
 
@@ -580,6 +583,17 @@ dispositions `FAILED(RESULT_STORAGE_BUDGET)` and
 `FAILED(RESULT_STORAGE_ALLOCATION_FAILED)` are not enum members, never appear as
 entry failure reasons, and remain exclusive to `stack_result_section_t`.
 
+The private `checked_cumulative_step(series_id,base_y,component_y)` is the sole
+cumulative arithmetic primitive. It requires finite input values, performs the
+one ordinary binary64 addition `base_y+component_y` used by the stack plan,
+requires the result finite, and returns one private immutable
+`{series_id,component_y,base_y,cumulative_y}` record. It preserves both input
+values bitwise; in particular, absorption such as `1e16+1` may round the
+cumulative back to `1e16` without changing the recorded component from `1`.
+Composition/GPU conversion, range, and indicator production consume this same
+executed record and never reconstruct component, base, or cumulative from other
+fields or perform a second cumulative addition.
+
 The public `Stack_indicator_status` is closed to exactly
 `Stack_indicator_status::READY` and `Stack_indicator_status::EMPTY`.
 One cursor request applies to every enabled member of that group/view, including
@@ -590,29 +604,28 @@ member/requested-subset API. The batch contains `cursor_request_id` exactly once
 and one batch-level group-total status/value whose status matches every item.
 Only these factory-enforced variants exist:
 
-- `stack_indicator_batch_t::ready(cursor_request_id,cumulative_items)` accepts
-  exactly `K` ascending enabled-member `{series_id,cumulative_y}` inputs from the
-  published representation. The caller cannot supply `component_y`,
-  `stack_base_y`, or `stack_total_y`. The factory starts with a canonical
-  positive-zero base. For each item in order it requires finite `cumulative_y`,
-  stores `stack_base_y` bitwise equal to the current base, computes
-  `component_y` by the ordinary binary64 subtraction `cumulative_y-base`,
-  requires that result finite, stores the input `cumulative_y` bitwise
-  unchanged, then advances the base by bitwise-copying that cumulative value.
-  Thus the first base is `+0.0`, each later base is bitwise the preceding
-  cumulative value, and `stack_total_y` is bitwise the final cumulative value;
+- private/frame-producer-only
+  `stack_indicator_batch_t::ready(cursor_request_id,executed_records)` accepts
+  exactly `K` ascending executed or retained `checked_cumulative_step` records
+  from the published representation. It verifies the first `base_y` is
+  canonical `+0.0` and every later `base_y` is bitwise the preceding record's
+  `cumulative_y`, then copies record `component_y`/`base_y`/`cumulative_y` into
+  public `component_y`/`stack_base_y`/`cumulative_y` and makes `stack_total_y`
+  bitwise the final record's `cumulative_y`. Public callers
+  cannot construct, supply, or manufacture the private records or independently
+  supply component/base/cumulative/total fields;
 - `stack_indicator_item_t::empty(series_id)` contains only `series_id`;
 - `stack_indicator_batch_t::empty(cursor_request_id,items)` requires exactly
   `K` ascending enabled-member items, every item EMPTY, and no stack total.
 
-The READY subtraction uses the implementation's ordinary correctly rounded
-`double` operation; it is not algebraically reconstructed from another field,
-contracted with adjacent work, or normalized for signed zero. Mixed READY/EMPTY
-items, independently supplied or inconsistent component/base/total fields, a
-nonfinite input/derived value, duplicate/missing/extra member, and a zero-length
-present batch are unconstructible. This uniform status follows the common
-published stack domain, so a gap or out-of-domain cursor empties the complete
-group rather than a filtered member subset.
+The cumulative primitive's one addition uses the implementation's ordinary
+`double` operation; it is not repeated, algebraically reconstructed, contracted
+with adjacent work, or normalized for signed zero. Mixed READY/EMPTY items,
+publicly manufactured/inconsistent records, a nonfinite input/result,
+duplicate/missing/extra member, and a zero-length present batch are
+unconstructible. This uniform status follows the common published stack domain,
+so a gap or out-of-domain cursor empties the complete group rather than a
+filtered member subset.
 
 An entry's indicator batch is absent exactly when the executed READY plan, or
 the retained plan for STALE_BUSY, had no cursor request. It is present whenever
@@ -620,22 +633,39 @@ that plan had a request, with exactly `K` all-READY or all-EMPTY items.
 STALE_BUSY copies the complete retained batch and its old request ID.
 EMPTY and every group/view `FAILED(reason)` have no batch.
 
-After checking the enclosing result's current config identity and, for a present
-batch, its request identity, the GUI applies this complete transition matrix:
+The GUI owns a monotonic `cursor_state_id`. Activation, every movement/request
+replacement, and deactivation each increment it. Every executed frame plan and
+its enclosing D9 result copy the current-attempt `cursor_state_id`. READY
+PRESENTED_CONTENT additionally carries `content_cursor_state_id` copied from
+the exact executed plan. STALE_BUSY retains the old
+`content_cursor_state_id` unchanged with all retained presentation fields, even
+when its optional batch is absent; neither a newer attempt nor deactivation may
+rewrite it. A present batch's `cursor_request_id` must equal its enclosing
+PRESENTED_CONTENT `content_cursor_state_id` and is unconstructible otherwise.
 
-- a matching READY batch, whether from READY or STALE_BUSY, replaces the whole
-  group's component/base/cumulative tooltip fields, markers at `cumulative_y`,
-  and total;
-- a matching EMPTY batch clears the whole group's tooltip, markers, and total;
-- no batch because there is no cursor request clears/hides the whole group;
-- group/view EMPTY or `FAILED(reason)` clears the whole group;
-- a section result-storage failure clears all stack indicator groups;
-- a mismatched stale `cursor_request_id` is ignored wholesale, with no apply or
-  clear; and
-- a stale config identity rejects the whole result without any GUI mutation.
+The GUI applies currency before every result-driven mutation in this order:
 
-The GUI never partially applies, merges, clears, or relabels a mismatched
-batch. Cursor deactivation reaches the no-request/no-batch clearing path.
+1. Reject a stale enclosing config identity without mutation.
+2. Consult current GUI cursor activation independently of result payload. If it
+   is inactive, immediately clear/hide all stack tooltips, markers, and totals
+   and ignore the retained batch or delayed result completely. The deactivation
+   transition itself performs this clear immediately; result consumption
+   re-enforces the inactive invariant rather than waiting for another frame.
+3. If active, choose the applicable result currency: READY/STALE_BUSY use
+   `content_cursor_state_id`; group EMPTY/`FAILED(reason)` and either section
+   result-storage failure use the enclosing current-attempt `cursor_state_id`.
+   Compare it with the GUI's current `cursor_state_id` before any apply or clear;
+   mismatch leaves all GUI state unchanged.
+4. On a match, a READY-status batch from READY or STALE_BUSY replaces the whole
+   group's component/base/cumulative tooltip fields, markers at `cumulative_y`,
+   and total; an EMPTY-status batch clears the whole group; no batch because no
+   cursor request clears/hides the whole group; group EMPTY/FAILED clears its
+   whole group; and section failure clears all stack indicator groups.
+
+Thus an old no-batch result, group failure, or section failure cannot clear a
+newer cursor request; a retained batch cannot reappear after deactivation; and
+no transition partially applies, merges, clears, or relabels a mismatched
+payload.
 
 `stack_result_section_t`, `stack_result_table_t`, `stack_result_entry_t`, and
 the per-series record have private storage and no public mutator or unrestricted
@@ -646,10 +676,12 @@ create them, with these structural invariants:
   `result_storage_budget()` and `result_storage_allocation_failed()` contain no
   table;
 - `ready(presented_payload)` and `stale_busy(retained)` require
-  `content_frame_id`, rendered range, and the plan's exact
-  `optional<stack_indicator_batch_t>` under the presence/item invariants above;
+  `content_frame_id`, `content_cursor_state_id`, rendered range, and the plan's
+  exact `optional<stack_indicator_batch_t>` under the presence/item invariants
+  above;
 - `empty(observations)` and `failed(reason,observations)` contain no
-  `content_frame_id`, rendered range, or indicator batch;
+  `content_frame_id`, `content_cursor_state_id`, rendered range, or indicator
+  batch;
 - `not_evaluated(series_id)` contains only its structural label;
 - `observed_ready(series_id,terminal_attempted_lod,sequence,
   optional_logical_window)` is constructible once the controlling READY
@@ -669,16 +701,22 @@ create them, with these structural invariants:
   `observed_failed(series_id,terminal_attempted_lod)` carry the controlling
   terminal BUSY/FAILED outcome, sequence zero, and no window;
 - `presented_content(...)` is constructible only inside `READY`/`STALE_BUSY` with
-  the enclosing entry's exact `content_frame_id`; it carries the selected LOD
-  and logical window from the complete presented plan, never an attempted LOD.
+  the enclosing entry's exact `content_frame_id` and
+  `content_cursor_state_id`; it carries the selected LOD and logical window from
+  the complete presented plan, never an attempted LOD.
 
 The one public controlling/terminal source outcome for a member is
-PRESENTED_CONTENT's selected READY when selection succeeds; otherwise it is the
-CURRENT_OBSERVATION terminal READY attempt when later derivation or a later
-LOD-budget decision prevents selection, or the controlling EMPTY/BUSY/FAILED
-outcome. Earlier LOD attempts and every visit counter remain internal diagnostic
-trace/profiler records tagged by group, view, series, and attempt; they are not
-public result fields.
+PRESENTED_CONTENT's selected READY only when the final group/view disposition is
+READY, or retained PRESENTED_CONTENT when it is STALE_BUSY. Every final EMPTY or
+`FAILED(reason)` instead projects each acquired source as its single terminal
+CURRENT_OBSERVATION—even when READY selection and a logical window succeeded
+before a later intersection/nonfinite/fragmentation/numeric/output/resident/RHI
+failure. The optional logical window remains allowed when actually derived, but
+there is no content frame/cursor ID, value, rendered range, or indicator batch.
+Earlier LOD attempts and every visit counter remain internal diagnostic trace/profiler
+records tagged by group, view, series, and attempt; they are not public result
+fields. No provisional PRESENTED_CONTENT is constructed before final
+disposition selection.
 
 The CURRENT_OBSERVATION source-status domain is the existing closed
 `snapshot_result_t::Snapshot_status`: `READY`, `EMPTY`, `BUSY`, and `FAILED`.
@@ -698,10 +736,10 @@ Every per-series entry has exactly one origin:
 - `CURRENT_OBSERVATION` is one of the four exact `observed_*` terminal-outcome
   variants above, is associated with the enclosing result's
   `publication_frame_id`, and carries no value, indicator batch, rendered range,
-  or `content_frame_id`;
+  `content_frame_id`, or `content_cursor_state_id`;
 - `PRESENTED_CONTENT` carries only complete selected-plan fields associated with
-  the entry's exact `content_frame_id`, including selected rather than attempted
-  LOD/window.
+  the entry's exact `content_frame_id`/`content_cursor_state_id`, including
+  selected rather than attempted LOD/window.
 
 READY entries are current `PRESENTED_CONTENT`; STALE_BUSY entries are retained
 `PRESENTED_CONTENT`; `EMPTY`/`FAILED(reason)` have no content identity, rendered
@@ -709,21 +747,23 @@ range, or indicator batch and may contain only each actually acquired member's
 single controlling terminal CURRENT_OBSERVATION. Every pre-acquisition failure
 has all entries NOT_EVALUATED. A partial acquisition failure has one terminal
 CURRENT_OBSERVATION for each member completed through the first FAILED and
-NOT_EVALUATED afterward. Post-composition
-numeric, resident-cap, CPU-allocation, and RHI-allocation failures likewise
-expose no rendered range or indicator batch.
+NOT_EVALUATED afterward. A source that reached selected READY still projects to
+terminal `observed_ready` if the final group is EMPTY or fails during later
+normalization, intersection, fragmentation, numeric conversion, output budget,
+resident transaction, CPU allocation, or RHI allocation; its derived optional
+window is preserved without any presented-content field.
 
 For STALE_BUSY, the enclosing result keeps the current `publication_frame_id`
 and the public entry's group disposition alone reports that a current BUSY
 attempt caused fallback. The renderer reuses private retained geometry and
 copies only its value-only retained presentation record—per-series presentation
 fields, rendered range, the complete optional indicator batch, and
-`content_frame_id`—into the current independent public stack table. No geometry
-or private key is copied into that table, and no current partial acquisition
-enters presentation;
-current attempts exist only in diagnostic trace/counters. The normal GUI
-current-request check therefore rejects an old retained batch's request ID,
-when present, instead of relabelling it as current.
+`content_frame_id`/`content_cursor_state_id`—into the current independent public
+stack table. No geometry or private key is copied into that table, and no
+current partial acquisition enters presentation; current attempts exist only in
+diagnostic trace/counters. The normal GUI
+cursor-state check therefore rejects old retained presentation, including an
+absent batch, instead of relabelling it as current.
 
 The group never owns an ordered reason set. Evaluation stops once the
 controlling phase has its required deterministic observations, performs no
@@ -744,22 +784,24 @@ speculative later-phase work, and selects one reason as follows:
 3. Acquire required members sequentially in ascending enabled series ID. BUSY
    and EMPTY never stop acquisition because a later source FAILED outranks both.
    The first source FAILED maps to `FAILED(SOURCE_FAILED)`, stops acquisition,
-   and leaves only later series NOT_EVALUATED; every earlier completed attempt
-   is CURRENT_OBSERVATION. If no FAILED occurs, complete every required acquisition. EMPTY
-   then outranks BUSY. If neither FAILED nor EMPTY occurred but any source is
-   BUSY, discard all fresh READY presentation facts: an identical retained
-   `structure_key` yields wholesale STALE_BUSY as defined above; otherwise
-   return `FAILED(SOURCE_BUSY)`. The no-retained BUSY result contains all
-   required current acquisition entries as CURRENT_OBSERVATION. NOT_EVALUATED may appear
-   only after the first source FAILED or a pre-acquisition short-circuit.
+   and leaves only later series NOT_EVALUATED; every acquired member through it
+   projects one terminal CURRENT_OBSERVATION. If no FAILED occurs, complete
+   every required acquisition. EMPTY then outranks BUSY. If neither FAILED nor
+   EMPTY occurred but any source is BUSY, construct no fresh PRESENTED_CONTENT:
+   an identical retained `structure_key` yields wholesale STALE_BUSY as defined
+   above; otherwise return `FAILED(SOURCE_BUSY)` with every required acquired
+   member projected as one terminal CURRENT_OBSERVATION. NOT_EVALUATED may
+   appear only after the first source FAILED or a pre-acquisition short-circuit.
 4. Validate order and selected windows: `FAILED(UNORDERED_STACK_INPUT)`, then
    `FAILED(LOD_BUDGET_EXCEEDED)`.
 5. Normalize every member under D2. `FAILED(NONFINITE_REJECTED)` precedes a
    would-be EMPTY intersection, then `FAILED(FRAGMENTATION_BUDGET)`. Accumulate
-   in double; after every addition require a finite double cumulative value,
-   convert bottom/top to the v1 float representation, and require each converted
-   float to be finite before emitting anything. Exact double-to-float roundtrip
-   is not required; normal finite rounding is accepted. Failure is
+   only through `checked_cumulative_step`: each private immutable record owns the
+   one ordinary double addition and is shared unchanged by composition, range,
+   and indicator production. Convert its base/cumulative to the v1 float
+   representation and require each converted float finite before emitting
+   anything. Exact double-to-float roundtrip is not required; normal finite
+   rounding is accepted. Failure is
    `FAILED(STACK_NUMERIC_OVERFLOW)`. GLOBAL/GLOBAL_LOD bounded-query failure is
    `FAILED(STACK_GLOBAL_RANGE_UNBOUNDED)`.
 6. Enforce group output: `FAILED(STACK_OUTPUT_BUDGET_EXCEEDED)` if actual output pairs,
@@ -768,6 +810,12 @@ speculative later-phase work, and selects one reason as follows:
    `FAILED(RESIDENT_BUDGET)`; an in-cap CPU or QRhi allocation failure is
    `FAILED(RESOURCE_ALLOCATION_FAILED)`. Neither condition leaves partial
    geometry or an installed partial cache entry.
+
+After the final disposition is known, only READY constructs current
+PRESENTED_CONTENT and only STALE_BUSY copies retained PRESENTED_CONTENT. EMPTY
+and every failure in steps 3–7 project all acquired sources to their terminal
+CURRENT_OBSERVATION, including an optional window already derived during a
+successful READY selection, with no content/value/range/indicator payload.
 
 Every P-D15-generated frame/output/resident/allocation failure suppresses
 STALE_BUSY and removes the target's retained-content eligibility before result
@@ -1407,7 +1455,7 @@ Actions:
 
 1. Use full pre-layout framebuffer width as the deterministic LOD-budget width; final usable width changes transforms, not selected LOD.
 2. **3C1 parity:** add one production frame entry that creates one immutable per-series/per-view plan consumed by VISIBLE range and rendering. The plan owns status, sequence, selected LOD/window/spans, extrema, access/semantic facts, and derived normalized data, but no snapshot or hold.
-3. **3C1 result:** after renderer/RHI disposition is known, construct the sole immutable ordinary D9 frame result from the exact executed plan rather than accepting independent frame/config/view identities. Publish D9 value-only indicators with cursor request ID; the GUI discards a non-current request. No independent ordinary range, indicator, or status producer remains after parity. Do not add P-R1's stack envelope or make ordinary publication depend on a stack proposal in this unit.
+3. **3C1 result:** make GUI cursor activation, every movement/request replacement, and deactivation increment one monotonic `cursor_state_id`; copy it through the exact executed plan into the sole immutable ordinary D9 frame result constructed after renderer/RHI disposition. Presented indicator content retains its `content_cursor_state_id`, and any batch request ID equals it. GUI config/cursor currency gates every apply and clear, including absent/failure results; inactive state clears immediately and ignores delayed content. No independent ordinary range, indicator, or status producer remains after parity. Do not add P-R1's stack envelope or make ordinary publication depend on a stack proposal in this unit.
 4. **3C1 evidence entry:** route the benchmark through the same production frame entry before generating parity evidence. Record the visible full-framebuffer-width LOD change explicitly rather than treating it as an invisible refactor.
 5. **3C2 acquisition/reuse:** implement the sole production D12 scheduler. Cache attempted status, sequence, and counters without retaining rejected holds; acquire each shared `(source,LOD)` observation once across series, then consume distinct same-source LODs/main-preview queries sequentially. Finish extrema/staging/custom prepare and destroy every hold before another acquisition on that source and before render-pass recording. Do not cache direct query results without their complete request/context/expected-sequence key.
 6. Replace RU-3A's truthful hold-free per-series independent acquisitions with the single frame/shared-key schedule from action 5, consuming the existing snapshot-free plan/cache/custom interfaces unchanged. Do not introduce a parallel scheduler or restore a hold-bearing plan.
@@ -1435,7 +1483,7 @@ Gate:
   match, owner-equivalent weak handles plus equal alias do match, and no key
   serializes/hashes a control-block address;
 - shared custom prepare finishes while its non-owning view is valid, the writer proceeds before record, no plan/result/cache/record context owns a hold, and source search proves exactly one production acquisition scheduler;
-- delayed cursor results are discarded by request ID, and frame-result identity fields are copied only from the executed plan;
+- activation, movement/replacement, and deactivation monotonically advance cursor state; plan/result/presented identities come only from the executed plan. Active matching results apply/clear, active mismatches perform no mutation, and inactive state immediately clears/ignores delayed content, including old absent/failure results;
 - at fixed W/visible interval, run 1x/10x/100x retained histories for direct/zero-copy, copy-on-snapshot, and unknown-order sources after a changed sequence: exact snapshot bytes/physical visits at 100x must not exceed the 1x value, and time/producer-lock metrics must satisfy the approved Stage 2 noise rule for any source class eligible for stacking; fallback classes that fail remain measured but are not silently declared stack-safe;
 - warning-clean initialized build and all focused tests pass;
 - the approved Stage 2 protocol passes for full-frame latency, allocations, snapshot bytes/time, alignment scans, producer wait, and memory.
@@ -1446,7 +1494,8 @@ Gate allocation:
   before/after pixel evidence;
 - `FRAME_TRUTH_PARITY` (actions 2–4) owns one production entry, snapshot-free
   ordinary plan, ordinary VISIBLE/render/result/indicator identity, benchmark production entry,
-  delayed-request rejection, and removal of independent range/indicator/status
+  monotonic cursor-state propagation plus active/inactive apply/clear currency,
+  delayed-request/absence/failure rejection, and removal of independent range/indicator/status
   producers; it neither owns nor waits for the stack result envelope;
 - `SHARED_ACQUISITION_SCHEDULER` (actions 5–8) owns exactly-one-scheduler and
   shared-key acquisition counts, D12 sequential release/writer progress,
@@ -1537,10 +1586,12 @@ series ID and caller-batched topology; do not add a group descriptor. Scope:
 - D8 logical duplicate collapse before nonfinite processing;
 - nonfinite and hold behavior;
 - the register's complete D2 interval normalization, endpoint inclusion/merge, no-gap-bridging, Candidate A `R_A=K*B` and Candidate B `R_B=N` mandatory-endpoint limits, and `FAILED(FRAGMENTATION_BUDGET)` whole-group result;
-- cumulative nonfinite/overflow as a typed whole-group failure with no partial geometry;
+- one checked cumulative-step addition and immutable record consumed by
+  composition/range/indicator, with nonfinite/overflow as a typed whole-group
+  failure and no partial geometry;
 - D6 BUSY wholesale reuse, private retained-key eligibility, self-describing
-  public group/view/member labels and ordering, retained content-frame/per-
-  series-sequence provenance, and `STALE_BUSY` disposition;
+  public group/view/member labels and ordering, retained content-frame/cursor-
+  state/per-series-sequence provenance, and `STALE_BUSY` disposition;
 - singleton, all-NONE, and custom-layer failures;
 - GLOBAL/GLOBAL_LOD common-domain behavior;
 - cross-source/cross-LOD non-atomic snapshot wording;
@@ -1562,8 +1613,9 @@ extension; REJECT failure before would-be EMPTY; normalization-before-intersect;
 Candidate A retaining every intersection endpoint and selected breakpoint with
 exact `R_A` overflow; Candidate B mandatory endpoints before optional positions
 with exact `R_B` overflow; FAILED/EMPTY/BUSY precedence; NOT_EVALUATED,
-CURRENT_OBSERVATION, and PRESENTED_CONTENT origins; and double/float-max/negative/cancellation/ordinary-rounding
-representability with no partial emit.
+CURRENT_OBSERVATION, and final-disposition-only PRESENTED_CONTENT origins; and
+one-add double/float-max/absorption/signed-zero/negative/cancellation/ordinary-
+rounding representability with no partial emit.
 
 The ratified P-D2 gates also exercise exact `B`/`N` selected-input counts at the
 limit, below it, and one over; required interpolation brackets; and requested
@@ -1577,9 +1629,11 @@ NOT_EVALUATED, EMPTY outranks BUSY after all required attempts, and no-retained
 BUSY publishes each required member's terminal CURRENT_OBSERVATION as
 `FAILED(SOURCE_BUSY)`.
 Generation tests prove every enclosing result has current publication identity,
-READY has current content identity, EMPTY/FAILED have none, and STALE has the
-current outer publication plus wholly retained value-only public entries/range/
-optional indicator batch while its geometry remains private. Table tests prove
+current-attempt `cursor_state_id`, READY has current content frame/cursor
+identity, EMPTY/FAILED have no content identity, and STALE has the current outer
+publication plus wholly retained old content cursor identity, value-only public
+entries/range, and optional indicator-batch state (present or absent), while
+geometry remains private. Table tests prove
 all MAIN records precede ordered PREVIEW records, each class orders groups by
 `lowest_enabled_series_id`, and members order by `series_id`. Every group/view
 record carries `stack_group_id` and `Stack_view_kind`; every member, including
@@ -1601,13 +1655,16 @@ and `observed_failed` preserve their controlling terminal LOD with sequence zero
 and no window.
 `UNSUPPORTED` cannot construct it.
 PRESENTED_CONTENT exists only inside READY/STALE_BUSY and carries the selected
-LOD/window from the complete plan with exact `content_frame_id`. Attempted and
-selected fields cannot substitute for one another. Each member exposes exactly
-one controlling source outcome: selected READY through PRESENTED_CONTENT, or a
-terminal READY/EMPTY/BUSY/FAILED CURRENT_OBSERVATION. Every earlier LOD attempt
-and all visit counters exist only in the complete internal diagnostic trace/
-profiler tagged by group/view/series/attempt. A retained batch's old cursor
-request ID remains old and is rejected by the GUI current-request check.
+LOD/window from the complete plan with exact `content_frame_id` and
+`content_cursor_state_id`. Attempted and selected fields cannot substitute for
+one another. It is constructed only after final READY or copied only after final
+STALE_BUSY. Final EMPTY/every FAILED projects each acquired member—including a
+selected READY with derived window—to terminal CURRENT_OBSERVATION with no
+content ID/value/range/indicator. Every earlier LOD attempt and all visit
+counters exist only in the complete internal diagnostic trace/profiler tagged
+by group/view/series/attempt. Retained `content_cursor_state_id` remains old even
+without a batch and is rejected against a newer active cursor state; deactivation
+does not rewrite it.
 Focused failures cover READY acquisition followed by prospective visit
 exhaustion, unordered input, an LOD-budget decision that prevents selection,
 window failure, and another derivation failure; each retains only the terminal
@@ -1615,13 +1672,19 @@ public `observed_ready` facts after
 writer progress proves the hold is gone. The complete internal attempt trace
 retains every earlier attempt/counter, stops at the prospective limit, proves no
 scan past it, and cannot be conflated with or copied into the public outcome.
+Final-disposition tests acquire/select READY members, then produce empty
+intersection, nonfinite, fragmentation, numeric, output-budget, resident, and
+RHI-allocation outcomes; every acquired member is terminal CURRENT_OBSERVATION
+with any genuinely derived window and none is PRESENTED_CONTENT.
 Compile/API gates prove `stack_result_entry_t` contains only structural IDs,
 view kind, disposition, per-series origin/status/sequence/origin-tagged
 terminal-attempted-or-selected LOD/window, rendered range,
-`optional<stack_indicator_batch_t>`, and `content_frame_id`; it contains
-and accepts no visit counter, earlier-attempt record, geometry/span/sample/
-resource type, source identity, weak owner handle, alias pointer,
-`structure_key`, or `content_key`. The private
+`optional<stack_indicator_batch_t>`, `content_frame_id`, and
+`content_cursor_state_id`; the enclosing result alone carries current-attempt
+`cursor_state_id`. It contains
+and accepts no private checked-cumulative record, visit counter, earlier-attempt
+record, geometry/span/sample/resource type, source identity, weak owner handle,
+alias pointer, `structure_key`, or `content_key`. The private
 `renderer_retained_stack_entry_t` alone owns P-D6 keys, geometry/resources, and
 one retained value-only presentation record.
 
@@ -1631,37 +1694,45 @@ frame producer's named factories/tagged variants create the allowed states.
 Disposition-matched const observers expose the required payload; every
 mismatched observer is absent/null. `complete(table)` has exactly one table;
 both result-storage failures have none. READY/STALE_BUSY require complete
-presented payload with the exact optional indicator batch. No request requires
-absence; a request covers every enabled member including `NONE` and produces
+presented payload with content frame/cursor IDs and the exact optional indicator
+batch. Every present batch request ID equals `content_cursor_state_id`. No
+request requires absence; a request covers every enabled member including
+`NONE` and produces
 exactly `K>=2` ascending items with the ID once at batch level. The batch is
 uniformly READY with factory-derived finite component/base/cumulative fields and
-finite total,
-or uniformly EMPTY with only series IDs and no total value. EMPTY, every
+finite total, or uniformly EMPTY with only series IDs and no total value. EMPTY,
+every
 `FAILED(reason)`, and post-composition numeric/resident/CPU/RHI allocation
-failure expose no content ID,
-rendered range, or indicator batch. `Stack_indicator_status`/value combinations
-and invalid origin/status/sequence/window combinations are compile-time
+failure expose no content frame/cursor ID, rendered range, or indicator batch,
+and every acquired member is terminal CURRENT_OBSERVATION.
+`Stack_indicator_status`/value combinations and invalid origin/status/sequence/
+window combinations are compile-time
 unconstructible.
 
 Indicator-batch gates cover no request, all-READY, all-EMPTY at a gap/outside the
 domain, a step discontinuity, delayed request replacement, and retained stale
 ID. They prove exactly all `K` enabled members including `NONE`, ascending
-`series_id`, one batch-level `cursor_request_id`, and cumulative-only READY
-factory input from the published representation. Negative, cancellation, STEP,
-signed-zero, and ordinary-rounding cases prove the first base is canonical
-`+0.0`, every later base is bitwise the prior cumulative, component is the
-checked finite ordinary subtraction, and total is bitwise the final cumulative.
-Callers cannot supply inconsistent component/base/total values. EMPTY items/
-total are valueless. Factories reject zero length, filtered subsets, mixed item
-status, missing/extra/duplicate members, and nonfinite input or derived values.
-STALE_BUSY copies the entire retained batch/old ID.
+`series_id`, one batch-level `cursor_request_id` equal to presented cursor state,
+and private ordered executed/retained checked-step READY input. Absorption
+`1e16+1` preserves component `1` with cumulative `1e16`; negative,
+cancellation, STEP, signed-zero, and ordinary-rounding cases prove the first
+base is canonical `+0.0`, every later base is bitwise the prior cumulative, and
+total is bitwise the final cumulative. Composition, range, and indicator observe
+the same record without a second addition or arithmetic reconstruction. Public
+callers cannot manufacture records or inconsistent component/base/cumulative/
+total values.
+EMPTY items/total are valueless. Factories reject zero length, filtered subsets,
+mixed item status, missing/extra/duplicate members, nonfinite input/result, and
+broken adjacency. STALE_BUSY copies the entire retained batch/old ID.
 
-GUI tests start from a previously displayed READY group and cover, after config
-and request currency checks: matching READY replacement; matching EMPTY clear;
-cursor deactivation/no request/no batch clear-hide; group EMPTY and every FAILED
-clear; section storage failure clearing all groups; matching READY-status
-STALE_BUSY replacement; mismatched stale ID with no apply or clear; and stale
-config with no mutation. No transition partially applies or merges a group.
+GUI tests start from previously displayed READY and cover monotonic activation,
+movement/request replacement, and deactivation. After config validation,
+inactive state clears/hides all and ignores every delayed/retained result. Active
+matching current-attempt ID allows EMPTY/FAILED/section-failure clears; active
+matching content ID allows READY/STALE apply or no-batch clear. Mismatch performs
+no mutation. Cases include old no-batch/group failure/section failure, delayed
+old result, matching/mismatching stale, READY→deactivate→BUSY stale, and proof
+that content never reappears after deactivation.
 
 Enum membership tests prove `Stack_failure_reason` has exactly the 19 listed
 members and every entry `FAILED(reason)` carries exactly one of them. Compile/
@@ -1820,6 +1891,10 @@ Decision gate:
   full slice; the second unit's admission, slice, work, disposition, counters,
   and output remain identical, proving no shared runtime balance, slack
   transfer, refund, or readmission;
+- both candidates call the one private `checked_cumulative_step` per member/
+  position and feed its unchanged immutable records to composition conversion,
+  range, and indicator paths; absorption/signed-zero/negative/cancellation/
+  ordinary-rounding replays prove there is no second cumulative arithmetic;
 - common-adapter tests prove P-D15's stack-exclusive CPU scope, exact requested
   QRhi scope, instantaneous temporary-inclusive caps, preserve-old and
   debit-old replacement paths, narrow exact-array ownership/counting, exclusion
@@ -1934,7 +2009,8 @@ Gate allocation:
 - `STACK_PUBLIC_ACTIVATION` owns metadata/builder/registry reachability,
   public-to-internal end-to-end rendering, Qt/result/preview/cursor behavior,
   P-R1 publication/presented identity presence, exact per-series origin and
-  frame-tagging/sequences, retained stale cursor rejection, exact public group/
+  frame-tagging/sequences, enclosing/presented cursor-state propagation,
+  retained stale cursor rejection even without a batch, exact public group/
   view/member IDs and MAIN-before-PREVIEW/member ordering, and delayed/topology-
   changed self-description with enclosing-config stale rejection. Compile/API
   tests prove the four result types have private storage, no public mutation or
@@ -1942,11 +2018,12 @@ Gate allocation:
   observers, the exact four terminal source-observation factories/timing, one
   public controlling outcome versus complete internal attempt trace, the closed
   `Stack_failure_reason` membership/disposition boundary, the exact
-  cumulative-only `Stack_indicator_status`/optional-batch factories and derived
-  bitwise adjacency/total rules, the complete GUI config/request transition
-  matrix, and only the P-R1 value
-  fields—no visit-counter/earlier-attempt/geometry/span/sample/resource/source-
-  identity/owner/key fact.
+  private one-add cumulative-step producer/record and
+  `Stack_indicator_status`/optional-batch factories with copied bitwise
+  adjacency/total rules, the complete GUI config/activation/cursor transition
+  matrix, final-disposition origin projection, and only the P-R1 value
+  fields—no private cumulative record, visit-counter/earlier-attempt/geometry/
+  span/sample/resource/source-identity/owner/key fact.
   Construction/publication/lifetime tests prove the table's public-only backing
   is the single table-specific counted header/padding/payload allocation with
   exact checked requested bytes and no `shared_ptr`/opaque control block. It
@@ -1979,8 +2056,9 @@ Cache rules:
 - READY base-composition reuse requires an identical `content_key`, stable nonzero sequences, and non-conservative/explicit access semantics;
 - unstable/conservative inputs recompute within `M`, `V_limit`, and `H_limit` and record the disable reason;
 - BUSY compares only `structure_key`; P-R1 STALE_BUSY copies the prior complete
-  tagged presentation wholesale, exposes the current BUSY only at group level,
-  and leaves current partial attempts in trace/counters. With no retained match,
+  tagged presentation wholesale—including old `content_cursor_state_id` even
+  without a batch—exposes the current BUSY only at group level, and leaves
+  current partial attempts in trace/counters. With no retained match,
   the result is `FAILED(SOURCE_BUSY)` after every required acquisition entry is
   CURRENT_OBSERVATION;
 - READY replaces the retained entry; EMPTY, every `FAILED(reason)`, every
@@ -2004,29 +2082,37 @@ Correctness gate:
   ID as reuse authority;
 - exhaustive result variants make every invalid payload combination
   unconstructible; post-composition numeric, resident-cap, CPU-allocation, and
-  RHI-allocation failures expose no rendered range or indicator batch;
+  RHI-allocation failures expose no content frame/cursor identity, rendered
+  range, or indicator batch;
 - CURRENT_OBSERVATION has exactly the four source-status factories and their
   terminal-attempted-LOD/sequence/window shapes. READY attempt/consume-scope
   termination and hold destruction precede `observed_ready` even when visit/
   order/LOD-budget/window/other derivation later fails. Exactly one public
-  controlling outcome is selected READY presentation or terminal READY/EMPTY/
-  BUSY/FAILED observation; earlier attempts and all visit counters remain in the
+  controlling outcome is final READY presentation, retained final STALE
+  presentation, or terminal READY/EMPTY/BUSY/FAILED observation; earlier
+  attempts and all visit counters remain in the
   complete internal tagged trace, where prospective-limit and writer-progress
   tests prove no scan past the limit without conflating trace and public result.
   The public outcome implies neither complete desired-sample inspection nor
   derivation/value success.
   UNSUPPORTED and every invalid status/sequence/window combination are
-  unconstructible, while PRESENTED_CONTENT alone carries selected LOD/window;
+  unconstructible. PRESENTED_CONTENT is final READY/STALE only. Selected READY
+  followed by empty intersection, nonfinite, fragmentation, numeric, output,
+  resident, CPU, or RHI failure projects every acquired source to terminal
+  CURRENT_OBSERVATION with any derived window but no presented payload;
 - `Stack_failure_reason` membership is exact and result-storage dispositions
   cannot enter an entry reason. READY/STALE_BUSY have an absent indicator batch
   exactly without a plan request and a present exactly-K batch otherwise. The
-  all-READY/all-EMPTY domain, cumulative-only factory, derived component/base/
-  total, bitwise adjacency/total, canonical first `+0.0` base, signed-zero,
-  ordinary rounding, negative/cancellation/STEP, enabled-member ordering
-  including `NONE`, and one batch request ID pass. GUI tests cover prior READY
-  through matching READY/EMPTY/STALE, cursor deactivation/no batch, group EMPTY/
-  FAILED, section failure, mismatched request with no mutation, and stale config
-  with no mutation; zero/filtered/mixed/inconsistent batches are unconstructible;
+  all-READY/all-EMPTY domain, private one-add checked-step records shared by
+  composition/range/indicator, canonical first `+0.0`, bitwise adjacency/total,
+  signed zero, absorption `1e16+1`, ordinary rounding, negative/cancellation/
+  STEP, enabled-member ordering including `NONE`, and batch ID equality with
+  content cursor state pass. GUI tests cover monotonic activation/move/
+  deactivation; active applicable-ID matches/mismatches for READY/EMPTY/STALE/
+  group failure/section failure/no batch; inactive immediate all-clear/ignore;
+  delayed old absence/failure; READY→deactivate→BUSY stale; and no reappearance.
+  Public record manufacture and zero/filtered/mixed/inconsistent batches are
+  unconstructible;
 - negative cancellation includes intermediate cumulative range;
 - VISIBLE range/render plan identity proves cancellation and every intermediate cumulative extremum cannot be clipped;
 - common-domain EMPTY and hold behavior pass;
@@ -2036,7 +2122,7 @@ Correctness gate:
 - failed/empty preview group never suppresses main and never renders partial preview;
 - unordered input, failed member, custom layer, missing scalar, singleton, all-NONE, and budget failures are explicit;
 - no partial member is silently dropped within one immutable topology.
-- after every double addition, convert bottom/top to v1 float and require the
+- after the sole checked-step double addition, convert its base/cumulative to v1 float and require the
   converted values to be finite before any emit; ordinary finite rounding is
   accepted without exact roundtrip, while float-max positive/negative,
   overflow, and cancellation cases produce the proposed canonical disposition
@@ -2087,12 +2173,15 @@ Performance gate:
   attempted-versus-selected LOD/window fields, internal attempt-trace boundary,
   exact `Stack_failure_reason` membership, and
   section-only result-storage dispositions are exhaustive. READY/STALE_BUSY
-  alone expose content ID/range and the exact optional indicator batch; absent/
+  alone expose content frame/cursor ID, range, and the exact optional indicator
+  batch; absent/
   all-READY/all-EMPTY/discontinuity/delayed/stale cases satisfy the closed
-  exactly-K cumulative-only batch/item factories and bitwise derived-field
-  rules, while zero/filter/mixed/inconsistent states cannot compile;
+  exactly-K private checked-step batch/item factories and copied bitwise-field
+  rules, while public record construction and zero/filter/mixed/inconsistent
+  states cannot compile;
   EMPTY and every failure, including post-composition numeric, resident-cap,
-  CPU-allocation, and RHI-allocation failures, expose none;
+  CPU-allocation, and RHI-allocation failures, expose none and project every
+  acquired source as terminal CURRENT_OBSERVATION;
 - first-frame and replacement exact-table cap/allocation faults publish the
   allocation-free `stack_result_section_t` with
   `FAILED(RESULT_STORAGE_BUDGET)`/`FAILED(RESULT_STORAGE_ALLOCATION_FAILED)`, no
