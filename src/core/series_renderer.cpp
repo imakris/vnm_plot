@@ -1083,12 +1083,21 @@ void Series_renderer::prepare(
                     continue;
             }
             std::size_t output_samples = 0;
+            std::vector<stack_source_revision_t>* main_validity = nullptr;
             if (view_kind == Series_view_kind::MAIN) {
                 auto& validity = m_main_stack_validity[group];
                 validity.reserve(plans.size());
-                for (const Series_view_plan* plan : plans) {
-                    validity.push_back({plan->source, plan->lod_level, plan->snapshot.sequence});
+                for (std::size_t i = 0; i < plans.size(); ++i) {
+                    const Series_view_plan* plan = plans[i];
+                    validity.push_back({
+                        members[i]->id,
+                        plan->source,
+                        plan->lod_level,
+                        plan->snapshot.sequence,
+                        plan->interpolation,
+                        {}});
                 }
+                main_validity = &validity;
             }
             for (std::size_t i = 0; i < members.size(); ++i) {
                 Series_view_plan& plan = view_kind == Series_view_kind::MAIN
@@ -1106,18 +1115,21 @@ void Series_renderer::prepare(
                     view_state.stack_cache_key      = cache_key;
                 }
                 const data_snapshot_t snapshot = view_state.stack_cache_snapshot;
-                const std::size_t     count    = snapshot.count;
-                output_samples                += count;
-                plan.access                    = &detail::stacked_sample_access();
-                plan.snapshot.snapshot         = snapshot;
-                plan.snapshot.sequence         = snapshot.sequence;
-                plan.source_first              = 0;
-                plan.source_count              = count;
-                plan.synthetic_hold_count      = 0;
-                plan.gpu_count                 = count;
-                plan.drawable_spans            = {{0, count, 0, count}};
-                plan.hold_last_forward         = false;
-                plan.stacked                   = true;
+                if (main_validity) {
+                    (*main_validity)[i].cumulative = snapshot;
+                }
+                const std::size_t     count = snapshot.count;
+                output_samples            += count;
+                plan.access                = &detail::stacked_sample_access();
+                plan.snapshot.snapshot     = snapshot;
+                plan.snapshot.sequence     = snapshot.sequence;
+                plan.source_first          = 0;
+                plan.source_count          = count;
+                plan.synthetic_hold_count  = 0;
+                plan.gpu_count             = count;
+                plan.drawable_spans        = {{0, count, 0, count}};
+                plan.hold_last_forward     = false;
+                plan.stacked               = true;
 
                 const bool has_custom_layer = std::any_of(
                     qrhi_layers_for(*members[i]->series).begin(),

@@ -263,6 +263,11 @@ bool test_indicator_reports_stack_sum_only_inside_common_domain()
     constexpr std::int64_t k_second_ns = 1'000'000'000LL;
     indicator_test_widget_t widget;
     configure_view(widget, 0, 2 * k_second_ns, 0.0f, 10.0f);
+    plot::Plot_config indicator_config;
+    indicator_config.format_value = [](double value, const plot::value_format_context_t&) {
+        return std::to_string(value);
+    };
+    widget.set_config(indicator_config);
 
     auto lower = make_sample_series(
         {{0, 1.0f}, {k_second_ns, 3.0f}}, plot::Series_interpolation::LINEAR);
@@ -284,11 +289,27 @@ bool test_indicator_reports_stack_sum_only_inside_common_domain()
     TEST_ASSERT(stacked[0].toMap().value("series_label").toString() == QStringLiteral("f(x1)") &&
         stacked[1].toMap().value("series_label").toString() == QStringLiteral("f(x2)"),
         "stacked indicator should preserve component labels");
-    const QVariantMap sum = stacked[2].toMap();
+    const QVariantMap sum          = stacked[2].toMap();
+    const QVariantMap lower_marker = stacked[0].toMap();
+    const QVariantMap upper_marker = stacked[1].toMap();
+    TEST_ASSERT(nearly_equal(lower_marker.value("y").toDouble(), 2.5) &&
+        lower_marker.value("y_text").toString() == QStringLiteral("2.500000") &&
+        nearly_equal(upper_marker.value("y").toDouble(), 2.0) &&
+        upper_marker.value("y_text").toString() == QStringLiteral("2.000000"),
+        "stacked indicator component data and text should remain raw values");
+    TEST_ASSERT(nearly_equal(lower_marker.value("marker_y").toDouble(), 2.5) &&
+        nearly_equal(lower_marker.value("py").toDouble(), 75.0) &&
+        nearly_equal(upper_marker.value("marker_y").toDouble(), 4.5) &&
+        nearly_equal(upper_marker.value("py").toDouble(), 55.0) &&
+        lower_marker.value("stacked_marker").toBool() &&
+        upper_marker.value("stacked_marker").toBool(),
+        "stacked component marker metadata and geometry should use cumulative rendered values");
     TEST_ASSERT(sum.value("series_label").toString() == QStringLiteral("\u03a3"),
         "stacked indicator should label the aggregate with sigma");
     TEST_ASSERT(nearly_equal(sum.value("y").toDouble(), 4.5),
         "stacked indicator should report the interpolated cumulative value");
+    TEST_ASSERT(!sum.value("show_marker").toBool(),
+        "stack sum row should not duplicate the top cumulative marker");
 
     const QVariantList outside_common_domain = widget.get_indicator_samples(250.0, 100.0, 100.0);
     TEST_ASSERT(outside_common_domain.size() == 2,

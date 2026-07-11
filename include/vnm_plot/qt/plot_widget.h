@@ -286,11 +286,12 @@ private:
         Indicator_sample_mode
                mode) const;
 
-    bool rendered_stack_group_valid(
+    std::optional<std::vector<std::pair<int, double>>> rendered_stack_values(
         int                    group,
         std::size_t            member_count,
         qint64                 t_min_ns,
-        qint64                 t_max_ns) const;
+        qint64                 t_max_ns,
+        double                 x_ns) const;
 
     // Plot_renderer reads m_config / m_data_cfg under the matching shared_mutexes
     // during synchronize(); friending lets it touch those members directly
@@ -328,9 +329,12 @@ private:
     mutable std::atomic<bool>      m_rendered_t_range_valid{false};
     struct rendered_stack_source_revision_t
     {
-        const Data_source* source   = nullptr;
-        std::size_t        lod      = 0;
-        std::uint64_t      sequence = 0;
+        int                    series_id     = 0;
+        const Data_source*     source        = nullptr;
+        std::size_t            lod           = 0;
+        std::uint64_t          sequence      = 0;
+        Series_interpolation   interpolation = Series_interpolation::LINEAR;
+        data_snapshot_t        cumulative;
     };
     mutable std::mutex             m_rendered_stack_validity_mutex;
     mutable std::map<int, std::vector<rendered_stack_source_revision_t>>

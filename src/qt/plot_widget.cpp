@@ -5,6 +5,7 @@
 #include <vnm_plot/core/constants.h>
 #include <vnm_plot/core/algo.h>
 #include <vnm_plot/rhi/series_renderer.h>
+#include "../core/series_window_planner.h"
 
 #include <QGuiApplication>
 #include <QDebug>
@@ -1311,13 +1312,10 @@ QVariantList Plot_widget::get_samples_for_time(
 
     struct indicator_stack_t
     {
-        std::size_t    member_count     = 0;
-        std::size_t    sampled_count    = 0;
-        std::optional<Series_interpolation>
-                       interpolation;
-        bool           compatible       = true;
-        bool           in_common_domain = true;
-        double         cumulative       = 0.0;
+        std::size_t    member_count                       = 0;
+        std::size_t    sampled_count                      = 0;
+        std::vector<std::pair<int, qsizetype>>
+                       entries;
         QColor         color;
     };
     std::map<int, indicator_stack_t> indicator_stacks;
@@ -1334,13 +1332,6 @@ QVariantList Plot_widget::get_samples_for_time(
         if (mode == Indicator_sample_mode::Interpolated && series->stack_group != 0 && !!series->style) {
             stack = &indicator_stacks[series->stack_group];
             ++stack->member_count;
-            if (!stack->interpolation) {
-                stack->interpolation = series->interpolation;
-            }
-            else
-            if (*stack->interpolation != series->interpolation) {
-                stack->compatible = false;
-            }
         }
 
         auto snap = series->main_source()->snapshot(0);
@@ -1372,24 +1363,6 @@ QVariantList Plot_widget::get_samples_for_time(
         const double x1 = series->get_timestamp(sample1);
         const double y0 = static_cast<double>(series->get_value(sample0));
         const double y1 = static_cast<double>(series->get_value(sample1));
-
-        if (stack) {
-            const void* first_sample = sample_at(0);
-            const void* last_sample  = sample_at(snap.count - 1);
-            if (!first_sample || !last_sample) {
-                stack->in_common_domain = false;
-            }
-            else {
-                const double first_x    = series->get_timestamp(first_sample);
-                const double last_x     = series->get_timestamp(last_sample);
-                const double domain_min = std::min(first_x, last_x);
-                const double domain_max = std::max(first_x, last_x);
-                stack->in_common_domain = stack->in_common_domain &&
-                    x >= domain_min &&
-                    (x <= domain_max ||
-                        series->empty_window_behavior == Empty_window_behavior::HOLD_LAST_FORWARD);
-            }
-        }
 
         double y          = y0;
         double resolved_x = x;
@@ -1448,25 +1421,51 @@ QVariantList Plot_widget::get_samples_for_time(
 
         if (stack) {
             ++stack->sampled_count;
-            stack->cumulative += y;
-            stack->color       = color;
+            stack->entries.emplace_back(id, result.size() - 1);
+            stack->color = color;
         }
     }
 
     for (const auto& [group, stack] : indicator_stacks) {
-        if (stack.member_count < 2 || stack.sampled_count != stack.member_count ||
-            !stack.compatible || !stack.in_common_domain || !std::isfinite(stack.cumulative) ||
-            !rendered_stack_group_valid(group, stack.member_count, tmin_ns, tmax_ns))
-        {
+        if (stack.member_count < 2 || stack.sampled_count != stack.member_count) {
+            continue;
+        }
+        const auto stacked_values = rendered_stack_values(
+            group, stack.member_count, tmin_ns, tmax_ns, x);
+        if (!stacked_values || stacked_values->size() != stack.entries.size()) {
+            continue;
+        }
+        const bool matching_members = std::equal(
+            stack.entries.begin(),
+            stack.entries.end(),
+            stacked_values->begin(),
+            [](const auto& entry, const auto& value) { return entry.first == value.first; });
+        if (!matching_members) {
             continue;
         }
 
+        for (std::size_t i = 0; i < stack.entries.size(); ++i) {
+            const qsizetype result_index = stack.entries[i].second;
+            const double    marker_y     = (*stacked_values)[i].second;
+            QVariantMap     component    = result[result_index].toMap();
+            component["marker_y"]        = marker_y;
+            component["stacked_marker"]  = true;
+            component["py"]              = std::clamp(
+                (1.0 - (marker_y - vmin) / v_span) * plot_height,
+                0.0,
+                plot_height);
+            result[result_index]         = component;
+        }
+
+        const double cumulative = stacked_values->back().second;
+
         QVariantMap entry;
         entry["x"]            = x / k_ns_per_ms;
-        entry["y"]            = stack.cumulative;
+        entry["y"]            = cumulative;
+        entry["show_marker"]  = false;
         entry["px"]           = std::clamp((x - tmin) / t_span * plot_width, 0.0, plot_width);
         entry["py"]           = std::clamp(
-            (1.0 - (stack.cumulative - vmin) / v_span) * plot_height, 0.0, plot_height);
+            (1.0 - (cumulative - vmin) / v_span) * plot_height, 0.0, plot_height);
         entry["color"]        = stack.color;
         entry["series_label"] = QStringLiteral("\u03a3");
         if (value_formatter) {
@@ -1474,7 +1473,7 @@ QVariantList Plot_widget::get_samples_for_time(
             context.role                   = Value_format_role::INDICATOR;
             context.suggested_fixed_digits = 3;
             context.series_label           = "\u03a3";
-            entry["y_text"]                = QString::fromStdString(value_formatter(stack.cumulative, context));
+            entry["y_text"]                = QString::fromStdString(value_formatter(cumulative, context));
         }
         result.append(entry);
     }
@@ -1611,37 +1610,89 @@ void Plot_widget::set_rendered_stack_validity(
         auto& stored = m_rendered_stack_validity[group];
         stored.reserve(revisions.size());
         for (const auto& revision : revisions) {
-            stored.push_back({revision.source, revision.lod, revision.sequence});
+            stored.push_back({
+                revision.series_id,
+                revision.source,
+                revision.lod,
+                revision.sequence,
+                revision.interpolation,
+                revision.cumulative});
         }
     }
 }
 
-bool Plot_widget::rendered_stack_group_valid(
+std::optional<std::vector<std::pair<int, double>>> Plot_widget::rendered_stack_values(
     int                    group,
     std::size_t            member_count,
     qint64                 t_min_ns,
-    qint64                 t_max_ns) const
+    qint64                 t_max_ns,
+    double                 x_ns) const
 {
     std::lock_guard lock(m_rendered_stack_validity_mutex);
     if (m_series_revision.load(std::memory_order_acquire) != m_rendered_stack_series_revision ||
         t_min_ns                                          != m_rendered_stack_t_min           ||
         t_max_ns                                          != m_rendered_stack_t_max)
     {
-        return false;
+        return std::nullopt;
     }
     const auto found = m_rendered_stack_validity.find(group);
     if (found == m_rendered_stack_validity.end() || found->second.size() != member_count) {
-        return false;
+        return std::nullopt;
     }
-    return std::all_of(
-        found->second.begin(),
-        found->second.end(),
-        [](const auto& revision) {
-            return
-                revision.source        &&
-                revision.sequence != 0 &&
-                revision.source->current_sequence(revision.lod) == revision.sequence;
-        });
+
+    std::vector<std::pair<int, double>> values;
+    values.reserve(found->second.size());
+    for (const auto& revision : found->second) {
+        if (!revision.source || revision.sequence == 0 || !revision.cumulative.is_valid() ||
+            revision.source->current_sequence(revision.lod) != revision.sequence)
+        {
+            return std::nullopt;
+        }
+
+        const auto sample_at = [&](std::size_t index) {
+            return static_cast<const detail::stacked_sample_t*>(revision.cumulative.at(index));
+        };
+        const detail::stacked_sample_t* first = sample_at(0);
+        const detail::stacked_sample_t* last  = sample_at(revision.cumulative.count - 1);
+        if (!first || !last || x_ns < first->timestamp_ns || x_ns > last->timestamp_ns) {
+            return std::nullopt;
+        }
+        const detail::timestamp_bracket_t bracket = detail::bracket_timestamp(
+            revision.cumulative,
+            [](const void* sample) {
+                return static_cast<const detail::stacked_sample_t*>(sample)->timestamp_ns;
+            },
+            x_ns);
+        if (!bracket) {
+            return std::nullopt;
+        }
+        const detail::stacked_sample_t* sample0 = sample_at(bracket.i0);
+        const detail::stacked_sample_t* sample1 = sample_at(bracket.i1);
+        if (!sample0 || !sample1) {
+            return std::nullopt;
+        }
+
+        double value = sample0->value;
+        if (revision.interpolation == Series_interpolation::STEP_AFTER) {
+            if (bracket.i0 != bracket.i1 && x_ns >= sample1->timestamp_ns) {
+                value = sample1->value;
+            }
+        }
+        else {
+            const double denominator =
+                static_cast<double>(sample1->timestamp_ns) - sample0->timestamp_ns;
+            if (bracket.i0 != bracket.i1 && std::abs(denominator) > 1e-15) {
+                const double position = (x_ns - sample0->timestamp_ns) / denominator;
+                value = sample0->value + std::clamp(position, 0.0, 1.0) *
+                    (sample1->value - sample0->value);
+            }
+        }
+        if (!std::isfinite(value)) {
+            return std::nullopt;
+        }
+        values.emplace_back(revision.series_id, value);
+    }
+    return values;
 }
 
 bool Plot_widget::consume_view_state_reset_request()

@@ -87,9 +87,12 @@ private:
 
     struct stack_source_revision_t
     {
-        const Data_source* source   = nullptr;
-        std::size_t        lod      = 0;
-        std::uint64_t      sequence = 0;
+        int                    series_id     = 0;
+        const Data_source*     source        = nullptr;
+        std::size_t            lod           = 0;
+        std::uint64_t          sequence      = 0;
+        Series_interpolation   interpolation = Series_interpolation::LINEAR;
+        data_snapshot_t        cumulative;
     };
 
     const std::map<int, std::vector<stack_source_revision_t>>&

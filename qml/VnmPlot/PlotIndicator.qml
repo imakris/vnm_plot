@@ -132,6 +132,15 @@ Item {
         return sample.y.toFixed(fallback_decimals)
     }
 
+    function cumulative_marker_note(samples) {
+        for (var i = 0; i < samples.length; ++i) {
+            if (samples[i].stacked_marker === true) {
+                return "Markers show cumulative stack positions"
+            }
+        }
+        return ""
+    }
+
     function refresh_indicator() {
         var in_main_plot = internal.has_mouse_in_plot
             && internal.in_main_plot_at_move
@@ -265,6 +274,7 @@ Item {
                 var x_axis_txt = root.labeled_x_value(x_txt)
                 var lines = []
                 var max_value_width = ctx.measureText(x_axis_txt).width
+                var marker_note = root.cumulative_marker_note(samples)
 
                 for (var i = 0; i < samples.length; ++i) {
                     var s = samples[i]
@@ -277,7 +287,8 @@ Item {
                         value: value_label,
                         color: s.color,
                         px: s.px,
-                        py: s.py
+                        py: s.py,
+                        show_marker: s.show_marker !== false
                     })
                 }
 
@@ -286,13 +297,17 @@ Item {
                 var box_padding_x = 8
                 var box_padding_y = 6
                 var bullet_width = show_bullet ? ctx.measureText(bullet_char).width + 4 : 0
-                var text_width = Math.max(ctx.measureText(x_axis_txt).width, bullet_width + max_value_width)
+                var text_width = Math.max(
+                    ctx.measureText(x_axis_txt).width,
+                    bullet_width + max_value_width,
+                    ctx.measureText(marker_note).width)
                 var box_width = text_width + box_padding_x * 2
 
                 var x0 = (x_line > width / 2) ? x_line - 10 - box_width : x_line + 10
                 var x1 = x0 + box_width
                 var y0 = 10
-                var y1 = y0 + box_padding_y * 2 + line_height * (lines.length + 1)
+                var y1 = y0 + box_padding_y * 2 + line_height *
+                    (lines.length + 1 + (marker_note.length > 0 ? 1 : 0))
 
                 ctx.strokeStyle = "#ffffff"
                 ctx.fillStyle = "#ccdadada"
@@ -330,7 +345,18 @@ Item {
                     ctx.closePath()
                 }
 
+                if (marker_note.length > 0) {
+                    ctx.fillStyle = "#444444"
+                    ctx.fillText(
+                        marker_note,
+                        x0 + box_padding_x,
+                        y0 + box_padding_y + line_height * (lines.length + 2))
+                }
+
                 for (var di = 0; di < lines.length; ++di) {
+                    if (!lines[di].show_marker) {
+                        continue
+                    }
                     var sx = lines[di].px
                     var sy = lines[di].py
                     ctx.strokeStyle = "#ffffffff"
