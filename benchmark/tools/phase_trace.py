@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Strict validation for retained benchmark phase traces."""
+"""Strict validation for benchmark phase traces."""
 
 from __future__ import annotations
 

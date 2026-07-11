@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import subprocess
@@ -22,7 +21,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--graphics-backend", default="native")
     parser.add_argument("--frames", type=int, default=3)
-    parser.add_argument("--allow-unavailable", action="store_true")
     return parser.parse_args()
 
 
@@ -37,14 +35,6 @@ def normalized_backend(name: str) -> str:
 
 def write_json(path: Path, value: object) -> None:
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-
-
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as source:
-        for chunk in iter(lambda: source.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def captured_text(value: object) -> str:
@@ -200,12 +190,6 @@ def main() -> int:
                 "stderr": completed.stderr,
             },
         )
-        if completed.returncode != 0 and args.allow_unavailable and "backend_create" in completed.stderr:
-            write_json(
-                attempt / "smoke_validation.json",
-                {"status": "UNAVAILABLE", "reason": completed.stderr.strip()},
-            )
-            return 0
         if completed.returncode != 0:
             raise RuntimeError(completed.stderr.strip() or "benchmark smoke failed")
         artifacts = list(attempt.glob("inspector_benchmark_*.json"))
@@ -218,9 +202,7 @@ def main() -> int:
             {
                 "status": "PASS",
                 "artifact": artifacts[0].name,
-                "artifact_sha256": sha256_file(artifacts[0]),
                 "phase_trace": trace_path.name,
-                "phase_trace_sha256": sha256_file(trace_path),
                 "backend": payload["metadata"]["actual_graphics_backend"],
                 "pixel_checksum": payload["metadata"]["pixel_checksum"],
                 "pixel_nonuniform_count": payload["metadata"]["pixel_nonuniform_count"],

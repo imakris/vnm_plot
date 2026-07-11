@@ -77,7 +77,7 @@ struct Benchmark_config {
     std::size_t sample_count = 4;
     std::size_t warmup_frames = 2;
     // Zero keeps duration-based execution. Nonzero runs exactly this many
-    // measured frames after warmup and is preferred for calibration/CI.
+    // measured frames after warmup and is preferred for repeatable measurements.
     std::size_t measured_frames = 0;
     std::string scenario = "ad-hoc";
     bool capture_pixel_checksum = false;

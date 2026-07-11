@@ -16,7 +16,7 @@ profiling report format for reproducible comparisons.
 ## Major Components
 - Ring_buffer<T>
   - Thread-safe circular buffer with overwrite semantics.
-  - Exposes split-span zero-copy views protected by a retained shared lock.
+  - Exposes split-span zero-copy views protected by a shared lock.
   - Keeps `copy_to()` only as an explicit copying helper; snapshots do not use it.
 
 - Brownian_generator
@@ -44,10 +44,10 @@ profiling report format for reproducible comparisons.
   - Produces samples at the configured rate using steady_clock pacing.
   - Writes into the ring buffer only; no rendering work.
   - A coordinated publication barrier bounds complete logical publications
-    across every series to the retained measurement interval.
+    across every series to the measurement interval.
 
 - UI/render thread:
-  - The retained path drives QRhi offscreen frames directly.
+  - The offscreen path drives QRhi frames directly.
   - Requests zero-copy snapshots from the Data_source and renders with vnm_plot.
   - Records profiling scopes, render-thread CPU allocations, and QRhi buffer
     allocations through Plot_config::profiler.
@@ -87,8 +87,7 @@ Benchmark_profiler produces a stable benchmark report:
 The report is written at the end of the benchmark run to the configured output
 folder with the inspector_benchmark_YYYYMMDD_HHMMSS_<STREAM>_<DataType>.txt
 naming convention. Windows file operations adapt logical paths to the native
-extended-length namespace without exposing that transport spelling in retained
-metadata.
+extended-length namespace without exposing that transport spelling in reports.
 
 The phase trace flushes a fixed eleven aggregate success boundaries outside the
 measured frame loop. Only a failure adds a frame-specific boundary, so external

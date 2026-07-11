@@ -1,18 +1,13 @@
 // vnm_plot Synthetic Benchmark
 // Stage 7: CLI polish with validation and improved UX
 
-#include "benchmark_build_metadata.h"
 #include "benchmark_profiler.h"
 #include "benchmark_window.h"
 #include "path_io.h"
 
 #include <QByteArray>
-#include <QCoreApplication>
-#include <QCryptographicHash>
 #include <QDesktopServices>
-#include <QFile>
 #include <QGuiApplication>
-#include <QProcess>
 #include <QQuickWindow>
 #include <QSGRendererInterface>
 #include <QSurfaceFormat>
@@ -77,102 +72,6 @@ std::string bytes_to_string(const QByteArray& value)
     return std::string(value.constData(), value.size());
 }
 
-QByteArray run_process(
-    const QString& program,
-    const QStringList& arguments,
-    const QString& working_directory,
-    int* exit_code = nullptr)
-{
-    QProcess process;
-    process.setWorkingDirectory(working_directory);
-    process.start(program, arguments);
-    if (!process.waitForStarted(10'000) || !process.waitForFinished(30'000)) {
-        if (exit_code) {
-            *exit_code = -1;
-        }
-        return {};
-    }
-    if (exit_code) {
-        *exit_code = process.exitCode();
-    }
-    return process.readAllStandardOutput();
-}
-
-std::string sha256_bytes(const QByteArray& value)
-{
-    return bytes_to_string(QCryptographicHash::hash(
-        value,
-        QCryptographicHash::Sha256).toHex());
-}
-
-std::string sha256_file(const QString& path)
-{
-    QFile file(path);
-    if (!file.open(QIODevice::ReadOnly)) {
-        return "unavailable";
-    }
-    QCryptographicHash hash(QCryptographicHash::Sha256);
-    if (!hash.addData(&file)) {
-        return "unavailable";
-    }
-    return bytes_to_string(hash.result().toHex());
-}
-
-struct Runtime_source_identity {
-    std::string commit = "unavailable";
-    std::string git_tree = "unavailable";
-    std::string exact_tree_sha256 = "unavailable";
-    std::string diff_sha256 = "unavailable";
-    std::string diff;
-    std::string status;
-    bool dirty = true;
-};
-
-Runtime_source_identity runtime_source_identity(const QString& source_root)
-{
-    Runtime_source_identity identity;
-    int exit_code = 0;
-    const QByteArray commit = run_process(
-        "git", {"rev-parse", "HEAD"}, source_root, &exit_code).trimmed();
-    if (exit_code != 0) {
-        return identity;
-    }
-    identity.commit = bytes_to_string(commit);
-    identity.git_tree = bytes_to_string(run_process(
-        "git", {"rev-parse", "HEAD^{tree}"}, source_root).trimmed());
-
-    const QByteArray status = run_process(
-        "git", {"status", "--porcelain", "--untracked-files=all"}, source_root);
-    identity.status = bytes_to_string(status);
-    identity.dirty = !status.trimmed().isEmpty();
-
-    const QByteArray diff = run_process(
-        "git", {"diff", "--binary", "HEAD", "--"}, source_root);
-    identity.diff = bytes_to_string(diff);
-    identity.diff_sha256 = sha256_bytes(diff);
-
-    const QByteArray file_list = run_process(
-        "git",
-        {"ls-files", "-z", "--cached", "--others", "--exclude-standard"},
-        source_root);
-    QCryptographicHash exact_tree(QCryptographicHash::Sha256);
-    const QList<QByteArray> paths = file_list.split('\0');
-    for (const QByteArray& relative_path : paths) {
-        if (relative_path.isEmpty()) {
-            continue;
-        }
-        QFile file(source_root + "/" + QString::fromUtf8(relative_path));
-        exact_tree.addData(relative_path);
-        exact_tree.addData("\0", 1);
-        if (file.open(QIODevice::ReadOnly)) {
-            exact_tree.addData(&file);
-        }
-        exact_tree.addData("\0", 1);
-    }
-    identity.exact_tree_sha256 = bytes_to_string(exact_tree.result().toHex());
-    return identity;
-}
-
 void print_version()
 {
     std::cout << "vnm_plot_benchmark version " << k_version << "\n";
@@ -211,7 +110,7 @@ void print_usage(const char* program_name)
               << "  --height <pixels>       Framebuffer height (default: 720)\n"
               << "  --warmup-frames <count> Untimed frames before measurement (default: 2)\n"
               << "  --frames <count>        Exact measured frame count (default: duration-based)\n"
-              << "  --scenario <name>       Stable scenario identifier retained in artifacts\n"
+              << "  --scenario <name>       Scenario identifier written to reports\n"
               << "  --pixel-checksum        Read back pixels and retain an output checksum\n"
               << "  --version               Show version information\n"
               << "  --help                  Show this help message\n"
@@ -434,7 +333,7 @@ std::string validate_config(const vnm::benchmark::Benchmark_config& config)
         return "Backend must be 'qrhi' or 'qrhi-offscreen'";
     }
     if (config.backend == "qrhi") {
-        return "The qrhi window path is visual-only and cannot produce measured evidence; "
+        return "The qrhi window path is visual-only and cannot produce measured reports; "
             "use qrhi-offscreen";
     }
     if (config.capture_pixel_checksum && config.backend != "qrhi-offscreen") {
@@ -623,44 +522,11 @@ int main(int argc, char* argv[])
 
     QGuiApplication app(argc, argv);
 
-    const Runtime_source_identity source_identity = runtime_source_identity(
-        QString::fromUtf8(VNM_PLOT_BENCHMARK_SOURCE_ROOT));
-    const std::string dependency_commit = bytes_to_string(run_process(
-        "git",
-        {"rev-parse", "HEAD"},
-        QString::fromUtf8(VNM_PLOT_BENCHMARK_DEPENDENCY_ROOT)).trimmed());
-    const QByteArray dependency_status = run_process(
-        "git",
-        {"status", "--porcelain", "--untracked-files=all"},
-        QString::fromUtf8(VNM_PLOT_BENCHMARK_DEPENDENCY_ROOT));
-    const bool dependency_dirty = !dependency_status.trimmed().isEmpty();
-    const std::string executable_sha256 = sha256_file(QCoreApplication::applicationFilePath());
-    const QByteArray machine_id = QSysInfo::machineUniqueId();
-    const std::string machine_id_sha256 = machine_id.isEmpty()
-        ? std::string{}
-        : sha256_bytes(machine_id);
-
     const auto add_reproduction_metadata = [&](auto& meta, const auto& benchmark) {
         const auto graphics = benchmark.graphics_device_info();
         meta.reproduction["actual_graphics_backend"] = graphics.backend;
-        meta.reproduction["build_source_commit"] = VNM_PLOT_BENCHMARK_SOURCE_COMMIT;
-        meta.reproduction["build_source_dirty"] = VNM_PLOT_BENCHMARK_SOURCE_DIRTY;
-        meta.reproduction["build_source_diff_sha256"] =
-            VNM_PLOT_BENCHMARK_SOURCE_DIFF_SHA256;
-        meta.reproduction["build_source_tree"] = VNM_PLOT_BENCHMARK_SOURCE_TREE;
-        meta.reproduction["build_dependency_commit"] =
-            VNM_PLOT_BENCHMARK_DEPENDENCY_COMMIT;
-        meta.reproduction["build_dependency_dirty"] =
-            VNM_PLOT_BENCHMARK_DEPENDENCY_DIRTY;
-        meta.reproduction["build_qt_version"] = QT_VERSION_STR;
         meta.reproduction["build_type"] = VNM_PLOT_BENCHMARK_BUILD_TYPE;
-        meta.reproduction["cmake_version"] = VNM_PLOT_BENCHMARK_CMAKE_VERSION;
         meta.reproduction["compiler"] = compiler_identity();
-        meta.reproduction["dependency_commit"] = dependency_commit.empty()
-            ? VNM_PLOT_BENCHMARK_DEPENDENCY_COMMIT
-            : dependency_commit;
-        meta.reproduction["dependency_dirty"] = dependency_dirty ? "true" : "false";
-        meta.reproduction["dependency_status"] = bytes_to_string(dependency_status);
         meta.reproduction["device_id"] = std::to_string(graphics.device_id);
         meta.reproduction["device_name"] = graphics.device_name;
         meta.reproduction["device_type"] = graphics.device_type;
@@ -672,7 +538,6 @@ int main(int argc, char* argv[])
         meta.reproduction["env.GALLIUM_DRIVER"] = gallium_driver.empty()
             ? "unset"
             : gallium_driver;
-        meta.reproduction["executable_sha256"] = executable_sha256;
         meta.reproduction["finish_state"] = config.finish
             ? "enabled"
             : config.capture_pixel_checksum ? "forced-by-pixel-readback" : "disabled";
@@ -700,20 +565,12 @@ int main(int argc, char* argv[])
         meta.reproduction["pixel_nonuniform_count"] =
             std::to_string(benchmark.pixel_nonuniform_count());
         meta.reproduction["qt_version"] = qVersion();
-        meta.reproduction["machine_id_sha256"] = machine_id_sha256;
         meta.reproduction["requested_graphics_backend"] = config.graphics_backend;
         meta.reproduction["scenario"] = config.scenario;
         meta.reproduction["sample_count"] = std::to_string(config.sample_count);
         meta.reproduction["seed"] = std::to_string(config.seed);
         meta.reproduction["series_count"] = std::to_string(config.series_count);
         meta.reproduction["show_text"] = config.show_text ? "true" : "false";
-        meta.reproduction["source_commit"] = source_identity.commit;
-        meta.reproduction["source_diff"] = source_identity.diff;
-        meta.reproduction["source_diff_sha256"] = source_identity.diff_sha256;
-        meta.reproduction["source_dirty"] = source_identity.dirty ? "true" : "false";
-        meta.reproduction["source_git_tree"] = source_identity.git_tree;
-        meta.reproduction["source_status"] = source_identity.status;
-        meta.reproduction["source_tree"] = source_identity.exact_tree_sha256;
         meta.reproduction["static_data"] = config.static_data ? "true" : "false";
         meta.reproduction["static_sample_count"] =
             std::to_string(config.static_sample_count);
@@ -794,7 +651,7 @@ int main(int argc, char* argv[])
                 std::cout << "\nBenchmark completed.\n"
                           << "  Samples generated: " << window.samples_generated() << "\n"
                           << "  Report written to: " << report_path.string() << "\n";
-                std::cout << "  Raw artifact: " << raw_path.string() << "\n";
+                std::cout << "  Raw report: " << raw_path.string() << "\n";
                 std::cout << "\n" << window.profiler().generate_report(meta);
             }
             else {
@@ -843,7 +700,7 @@ int main(int argc, char* argv[])
                 std::cout << "\nBenchmark completed.\n"
                           << "  Samples generated: " << benchmark.samples_generated() << "\n"
                           << "  Report written to: " << report_path.string() << "\n";
-                std::cout << "  Raw artifact: " << raw_path.string() << "\n";
+                std::cout << "  Raw report: " << raw_path.string() << "\n";
                 std::cout << "\n" << benchmark.profiler().generate_report(meta);
             }
             else {
