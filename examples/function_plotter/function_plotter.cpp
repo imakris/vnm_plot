@@ -800,6 +800,32 @@ void Function_plotter::remove_function(int idx)
     emit function_count_changed();
 }
 
+void Function_plotter::move_function(int from, int to)
+{
+    const int count = static_cast<int>(m_entries.size());
+    if (from < 0 || from >= count || to < 0 || to >= count || from == to) {
+        return;
+    }
+
+    std::vector<int> series_ids;
+    series_ids.reserve(m_entries.size());
+    for (const auto& entry : m_entries) {
+        series_ids.push_back(entry->series_id());
+    }
+    std::sort(series_ids.begin(), series_ids.end());
+
+    beginMoveRows(QModelIndex(), from, from, QModelIndex(), to > from ? to + 1 : to);
+    auto entry = std::move(m_entries[static_cast<std::size_t>(from)]);
+    m_entries.erase(m_entries.begin() + from);
+    m_entries.insert(m_entries.begin() + to, std::move(entry));
+    endMoveRows();
+
+    for (std::size_t i = 0; i < m_entries.size(); ++i) {
+        m_entries[i]->set_series_id(series_ids[i]);
+    }
+    refresh_series_labels(true);
+}
+
 Function_entry* Function_plotter::get_function(int idx) const
 {
     if (idx < 0 || idx >= static_cast<int>(m_entries.size())) {
@@ -920,8 +946,9 @@ void Function_plotter::configure_plot_widget()
     m_plot_widget->set_config(config);
 }
 
-void Function_plotter::refresh_series_labels()
+void Function_plotter::refresh_series_labels(bool refresh_all)
 {
+    std::vector<std::pair<int, std::shared_ptr<vnm::plot::series_data_t>>> updates;
     for (std::size_t i = 0; i < m_entries.size(); ++i) {
         auto& entry = m_entries[i];
         if (!entry) {
@@ -934,14 +961,15 @@ void Function_plotter::refresh_series_labels()
         }
 
         const std::string new_label = QStringLiteral("f(x%1)").arg(static_cast<int>(i) + 1).toStdString();
-        if (series->series_label == new_label) {
+        if (!refresh_all && series->series_label == new_label) {
             continue;
         }
 
         series->series_label = new_label;
-        if (m_plot_widget) {
-            m_plot_widget->add_series(entry->series_id(), series);
-        }
+        updates.emplace_back(entry->series_id(), std::move(series));
+    }
+    if (m_plot_widget && !updates.empty()) {
+        m_plot_widget->apply_series_updates(updates);
     }
 }
 

@@ -60,6 +60,7 @@ ApplicationWindow {
 
         // Row 2: Function entries (dynamic list)
         ColumnLayout {
+            id: functionList
             Layout.fillWidth: true
             spacing: 4
 
@@ -83,20 +84,51 @@ ApplicationWindow {
                     required property bool showLine
                     required property bool showArea
 
-                    // Color indicator
-                    Rectangle {
-                        width: 8
-                        height: controlHeight
-                        color: functionDelegate.color
-                        radius: 2
-                    }
+                    Item {
+                        Layout.preferredWidth: dragHandleContent.implicitWidth
+                        Layout.preferredHeight: controlHeight
 
-                    Text {
-                        text: "f(x" + (functionDelegate.index + 1) + ") ="
-                        font.pixelSize: fontSize
-                        font.family: "Consolas"
-                        color: dimTextColor
-                        Layout.alignment: Qt.AlignVCenter
+                        RowLayout {
+                            id: dragHandleContent
+                            anchors.fill: parent
+                            spacing: 8
+
+                            Rectangle {
+                                width: 8
+                                height: controlHeight
+                                color: functionDelegate.color
+                                radius: 2
+                            }
+
+                            Text {
+                                text: "f(x" + (functionDelegate.index + 1) + ") ="
+                                font.pixelSize: fontSize
+                                font.family: "Consolas"
+                                color: dimTextColor
+                                Layout.alignment: Qt.AlignVCenter
+                            }
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+                            hoverEnabled: true
+                            preventStealing: true
+
+                            onPositionChanged: function(mouse) {
+                                if (!(mouse.buttons & Qt.LeftButton)) {
+                                    return
+                                }
+                                const point = mapToItem(functionList, mouse.x, mouse.y)
+                                const rowHeight = controlHeight + functionList.spacing
+                                const target = Math.max(0, Math.min(
+                                    functionPlotter.functionCount - 1,
+                                    Math.floor(point.y / rowHeight)))
+                                if (target !== functionDelegate.index) {
+                                    functionPlotter.move_function(functionDelegate.index, target)
+                                }
+                            }
+                        }
                     }
 
                     ComboBox {

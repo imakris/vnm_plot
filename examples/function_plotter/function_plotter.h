@@ -70,6 +70,7 @@ public:
 
     // Internal access
     int series_id() const { return m_series_id; }
+    void set_series_id(int id) { m_series_id = id; }
     vnm::plot::examples::Function_data_source* data_source() { return &m_data_source; }
     std::shared_ptr<vnm::plot::series_data_t> series() const { return m_series; }
 
@@ -178,6 +179,7 @@ public slots:
     // Function management
     void add_function();
     void remove_function(int index);
+    void move_function(int from, int to);
 
     // Access function entry by index (for QML)
     Function_entry* get_function(int index) const;
@@ -198,7 +200,7 @@ private:
     void regenerate_all_samples();
     void update_plot_widget();
     void configure_plot_widget();
-    void refresh_series_labels();
+    void refresh_series_labels(bool refresh_all = false);
     QColor get_next_color();
     QString get_unique_expression() const;
     int index_of_entry(Function_entry* entry) const;
