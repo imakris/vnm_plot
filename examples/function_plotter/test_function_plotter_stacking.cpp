@@ -1,9 +1,14 @@
 #include "function_plotter.h"
 
+#include <QGuiApplication>
+
 #include <iostream>
 
-int main()
+int main(int argc, char** argv)
 {
+    QGuiApplication app(argc, argv);
+
+    vnm::plot::Plot_widget widget;
     Function_plotter plotter;
     plotter.add_function();
 
@@ -41,6 +46,12 @@ int main()
             std::cerr << "function remained stacked after disabling\n";
             return 1;
         }
+    }
+
+    plotter.set_plot_widget(&widget);
+    if (widget.format_timestamp_precise(1250) != QStringLiteral("1.250")) {
+        std::cerr << "function indicator x value lost fractional precision\n";
+        return 1;
     }
 
     return 0;

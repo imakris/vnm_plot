@@ -218,6 +218,46 @@ bool test_indicator_samples_step_after_holds_previous_sample()
     return true;
 }
 
+bool test_indicator_reports_stack_sum_only_inside_common_domain()
+{
+    constexpr std::int64_t k_second_ns = 1'000'000'000LL;
+    plot::Plot_widget widget;
+    configure_view(widget, 0, 2 * k_second_ns, 0.0f, 10.0f);
+
+    auto lower = make_sample_series(
+        {{0, 1.0f}, {k_second_ns, 3.0f}}, plot::Series_interpolation::LINEAR);
+    auto upper = make_sample_series(
+        {{k_second_ns / 2, 2.0f}, {2 * k_second_ns, 2.0f}}, plot::Series_interpolation::LINEAR);
+    lower->series_label = "f(x1)";
+    upper->series_label = "f(x2)";
+    lower->stack_group  = upper->stack_group = 1;
+    widget.add_series(1, lower);
+    widget.add_series(2, upper);
+
+    const QVariantList stacked = widget.get_indicator_samples(750.0, 100.0, 100.0);
+    TEST_ASSERT(stacked.size() == 3, "stacked indicator should retain components and add one sum");
+    TEST_ASSERT(stacked[0].toMap().value("series_label").toString() == QStringLiteral("f(x1)") &&
+        stacked[1].toMap().value("series_label").toString() == QStringLiteral("f(x2)"),
+        "stacked indicator should preserve component labels");
+    const QVariantMap sum = stacked[2].toMap();
+    TEST_ASSERT(sum.value("series_label").toString() == QStringLiteral("\u03a3"),
+        "stacked indicator should label the aggregate with sigma");
+    TEST_ASSERT(nearly_equal(sum.value("y").toDouble(), 4.5),
+        "stacked indicator should report the interpolated cumulative value");
+
+    const QVariantList outside_common_domain = widget.get_indicator_samples(250.0, 100.0, 100.0);
+    TEST_ASSERT(outside_common_domain.size() == 2,
+        "stacked indicator should omit the sum outside the common source domain");
+
+    upper->stack_group = 0;
+    widget.add_series(2, upper);
+    const QVariantList unstacked = widget.get_indicator_samples(750.0, 100.0, 100.0);
+    TEST_ASSERT(unstacked.size() == 2,
+        "unstacked indicator should contain only component values");
+
+    return true;
+}
+
 bool test_nearest_samples_choose_closer_sample()
 {
     plot::Plot_widget widget;
@@ -435,6 +475,7 @@ int main(int argc, char** argv)
     RUN_TEST(test_zoom_math_handles_zero_velocity);
     RUN_TEST(test_indicator_samples_linearly_interpolate_between_samples);
     RUN_TEST(test_indicator_samples_step_after_holds_previous_sample);
+    RUN_TEST(test_indicator_reports_stack_sum_only_inside_common_domain);
     RUN_TEST(test_nearest_samples_choose_closer_sample);
     RUN_TEST(test_auto_adjust_view_uses_visible_samples_for_value_and_time_range);
     RUN_TEST(test_auto_adjust_view_includes_step_after_held_sample);

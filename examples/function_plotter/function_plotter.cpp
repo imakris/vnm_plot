@@ -929,7 +929,7 @@ void Function_plotter::configure_plot_widget()
         const double x = static_cast<double>(x_ns) / k_ns_per_second;
         const double step = static_cast<double>(step_ns) / k_ns_per_second;
 
-        int digits = 0;
+        int digits = step_ns == 0 ? 3 : 0;
         if (step > 0.0) {
             digits = std::max(0, static_cast<int>(std::ceil(-std::log10(step))) + 1);
             digits = std::min(digits, 6);

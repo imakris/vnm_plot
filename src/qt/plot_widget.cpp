@@ -1306,12 +1306,38 @@ QVariantList Plot_widget::get_samples_for_time(
     const auto value_formatter = plot_cfg.format_value;
     auto       series_map      = get_series_snapshot();
 
+    struct indicator_stack_t
+    {
+        std::size_t    member_count     = 0;
+        std::size_t    sampled_count    = 0;
+        std::optional<Series_interpolation>
+                       interpolation;
+        bool           compatible       = true;
+        bool           in_common_domain = true;
+        double         cumulative       = 0.0;
+        QColor         color;
+    };
+    std::map<int, indicator_stack_t> indicator_stacks;
+
     for (const auto& [id, series] : series_map) {
         if (!series || !series->enabled) {
             continue;
         }
         if (!series->main_source() || !series->access.get_timestamp || !series->access.get_value) {
             continue;
+        }
+
+        indicator_stack_t* stack = nullptr;
+        if (mode == Indicator_sample_mode::Interpolated && series->stack_group != 0 && !!series->style) {
+            stack = &indicator_stacks[series->stack_group];
+            ++stack->member_count;
+            if (!stack->interpolation) {
+                stack->interpolation = series->interpolation;
+            }
+            else
+            if (*stack->interpolation != series->interpolation) {
+                stack->compatible = false;
+            }
         }
 
         auto snap = series->main_source()->snapshot(0);
@@ -1343,6 +1369,24 @@ QVariantList Plot_widget::get_samples_for_time(
         const double x1 = series->get_timestamp(sample1);
         const double y0 = static_cast<double>(series->get_value(sample0));
         const double y1 = static_cast<double>(series->get_value(sample1));
+
+        if (stack) {
+            const void* first_sample = sample_at(0);
+            const void* last_sample  = sample_at(snap.count - 1);
+            if (!first_sample || !last_sample) {
+                stack->in_common_domain = false;
+            }
+            else {
+                const double first_x    = series->get_timestamp(first_sample);
+                const double last_x     = series->get_timestamp(last_sample);
+                const double domain_min = std::min(first_x, last_x);
+                const double domain_max = std::max(first_x, last_x);
+                stack->in_common_domain = stack->in_common_domain &&
+                    x >= domain_min &&
+                    (x <= domain_max ||
+                        series->empty_window_behavior == Empty_window_behavior::HOLD_LAST_FORWARD);
+            }
+        }
 
         double y          = y0;
         double resolved_x = x;
@@ -1397,6 +1441,38 @@ QVariantList Plot_widget::get_samples_for_time(
         entry["py"]           = py;
         entry["color"]        = color;
         entry["series_label"] = QString::fromStdString(series->series_label);
+        result.append(entry);
+
+        if (stack) {
+            ++stack->sampled_count;
+            stack->cumulative += y;
+            stack->color       = color;
+        }
+    }
+
+    for (const auto& [group, stack] : indicator_stacks) {
+        (void) group;
+        if (stack.member_count < 2 || stack.sampled_count != stack.member_count ||
+            !stack.compatible || !stack.in_common_domain || !std::isfinite(stack.cumulative))
+        {
+            continue;
+        }
+
+        QVariantMap entry;
+        entry["x"]            = x / k_ns_per_ms;
+        entry["y"]            = stack.cumulative;
+        entry["px"]           = std::clamp((x - tmin) / t_span * plot_width, 0.0, plot_width);
+        entry["py"]           = std::clamp(
+            (1.0 - (stack.cumulative - vmin) / v_span) * plot_height, 0.0, plot_height);
+        entry["color"]        = stack.color;
+        entry["series_label"] = QStringLiteral("\u03a3");
+        if (value_formatter) {
+            value_format_context_t context;
+            context.role                   = Value_format_role::INDICATOR;
+            context.suggested_fixed_digits = 3;
+            context.series_label           = "\u03a3";
+            entry["y_text"]                = QString::fromStdString(value_formatter(stack.cumulative, context));
+        }
         result.append(entry);
     }
 
