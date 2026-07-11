@@ -30,9 +30,13 @@ numbers RU-4A source actions if and only if P-D6, P-C1, P-D2, P-R1, and P-D15
 are all owner-ratified consistently; otherwise it records the RU-4A stop and
 numbers no RU-4A action, which also blocks RU-4B. Every individual proposal
 disposition remains recorded for a later separately reviewed amendment. RU-3C2
-remains the sole P-D6 source/cache implementation owner; RU-4A/4B consume its
-contract, keys, and retention semantics without duplicating that implementation.
-D4 remains a later nondelegated evidence decision outside A1.
+owns reusable P-D6 source identity/acquisition, access-semantic and observation-
+fact/key-builder primitives, generic D10 eligibility, and ordinary reuse,
+without unused stack scaffolding. After that cluster is clean, RU-4A owns complete stack-key
+construction/population and `renderer_retained_stack_entry_t` transitions;
+RU-4B supplies candidate/version inputs through the canonical builder and
+consumes retention. No layer duplicates another. D4 remains a later
+nondelegated evidence decision outside A1.
 
 ## Executive conclusion
 
@@ -421,16 +425,21 @@ function:
 - P-D15 enforces visits, output pairs, and upload writes prospectively before
   the next inspection/create/write. The limit+1 operation has no side effect and
   counters never exceed their per-unit or admitted-frame allowances.
-- Pending P-D6's `structure_key` gates BUSY fallback. Its `content_key` is the
-  register's compact equality LOD/sequence/logical-window/hold/origin/version
-  equality key. Inherited source identity is a non-owning weak owner identity
-  plus alias pointer; equality requires neither `owner_less(a,b)` nor
-  `owner_less(b,a)`, then equal alias pointers—never control-block address serialization/hash or strong
-  lifetime. The key excludes both physical snapshot segmentation and
-  normalized/drawable spans, values, arrays, and resources. READY reuse
-  additionally requires stable nonzero sequences/D10; a zero-key may identify
-  retained STALE_BUSY content. Both keys and their weak-owner/alias identity are
-  renderer-private; public results expose neither key nor source identity.
+- Pending P-D6 has one split implementation. RU-3C2 owns the canonical weak-
+  owner-plus-alias identity comparer, access-semantic and observed LOD/sequence/
+  logical-window/hold/origin/version fact builders, generic D10 eligibility,
+  acquisition, and ordinary reuse; it creates no stack membership/cap/strategy scaffold. After
+  that cluster is clean, RU-4A combines those facts with group membership/order,
+  descriptors/view/time/caps, and a required strategy/version input to construct
+  complete private stack `structure_key`/`content_key` values and owns
+  `renderer_retained_stack_entry_t` transitions. RU-4B supplies Candidate A/B
+  strategy/version inputs through that builder and consumes retention. The
+  complete `structure_key` gates BUSY; the complete `content_key` gates READY
+  reuse with stable nonzero sequences/D10. Physical snapshot segmentation,
+  normalized/drawable spans, values, arrays, and resources remain excluded.
+  Public results expose neither key nor source identity, and no layer duplicates
+  a shared-field schema/comparer, acquisition, eligibility, complete-key builder,
+  or retention transition.
 - Pending P-R1 requires pending P-C1 to be ratified before or in the same owner
   disposition and both to be recorded by review-clean consolidated A1; P-R1
   cannot be approved or implemented first. It leaves the ordinary approved D9
@@ -580,13 +589,17 @@ RU-3C1 produces the ordinary D9 result without a P-R1/P-D15 prerequisite.
 Stage 5 later appends the stack section; stack result-storage failure does not
 alter the ordinary section.
 
-D13 makes each renderer registration slot the lifecycle owner. Pending P-D6's
-compact `structure_key` contains only non-content request facts. Its compact
-equality `content_key` uses the register's scalar LOD/sequence/logical-window/hold-
-endpoint/origin/version tuple—never physical snapshot segmentation, normalized
-or drawable spans, payload values, arrays, or resources. Inherited source
-identity is weak/non-owning plus alias pointer. D14 removes
-`Data_source::identity()`; no incarnation/revision/reset token exists.
+D13 makes each renderer registration slot the lifecycle owner. RU-3C2's pending
+P-D6 primitive layer canonicalizes weak-owner-plus-alias identity, access-
+semantic facts, observed LOD/sequence/logical-window/hold/origin/version facts,
+and generic eligibility. RU-4A
+uses those exact primitives plus stack membership/order, descriptor/view/time/
+cap facts, and RU-4B's strategy/version input to build the compact complete stack
+`structure_key`/`content_key` and own retention transitions. Physical snapshot
+segmentation, normalized/drawable spans, payload values, arrays, and resources
+remain excluded. D14 removes `Data_source::identity()`; no incarnation/revision/
+reset token exists and no layer duplicates the canonical primitives or stack
+builder.
 
 READY composite reuse requires identical `content_key`, stable nonzero sequences, and non-conservative semantics. Otherwise correctness wins: recompute the bounded group and record why. BUSY compares only `structure_key`, retains the previous complete `content_key` wholesale, and never consumes a partially fresh operand set.
 
@@ -655,9 +668,9 @@ Renderer-private retained/staging backing, builders, temporaries, and current/
 stale entries never cross renderer ownership or expose an external owning
 handle. Internal aliases remain renderer-owned and change neither counter. Each
 private successful allocation increments both exact counters, and only its
-actual deallocation decrements both exactly once. A private
-`renderer_retained_stack_entry_t` owns P-D6 keys, retained geometry/resources,
-and one value-only retained presentation record. The public
+actual deallocation decrements both exactly once. RU-4A's private
+`renderer_retained_stack_entry_t` owns the complete stack P-D6 keys, retained
+geometry/resources, and one value-only retained presentation record. The public
 `stack_result_entry_t` contains only `stack_group_id`, `Stack_view_kind`,
 disposition, per-series `series_id`/origin/status/sequence and origin-tagged
 terminal-attempted-or-selected LOD/window, rendered range, optional indicator
@@ -800,13 +813,16 @@ current per-series plan/cache/record hold. RU-3B, only after owner-ratified
 P-D7/P-Q1 and review-clean consolidated A1, supplies checked floating ingestion,
 integral-only members, and canonical `query_sample`/range semantics. RU-3C2
 solely replaces independent hold-free acquisitions with cross-series/shared-key
-scheduling; it does not repeat hold removal. RU-3C1 supplies snapshot-free frame
-truth and VISIBLE/render/D9 identity, but its atomic cursor/result cluster waits
-for owner-ratified P-C1 recorded in review-clean consolidated A1. RU-3C2's P-D6
-reuse work likewise waits for owner-ratified P-D6 in that A1. No stack-only
-public metadata or unused planner lands in this stage.
+scheduling and owns canonical P-D6 reusable identity/observation/key-builder/
+eligibility primitives plus ordinary reuse; it does not repeat hold removal or
+create stack membership/cap/strategy/retention scaffolding. RU-3C1 supplies
+snapshot-free frame truth and VISIBLE/render/D9 identity, but its atomic cursor/
+result cluster waits for owner-ratified P-C1 recorded in review-clean
+consolidated A1. RU-3C2's P-D6 primitive work likewise waits for owner-ratified
+P-D6 in that A1. No stack-only public metadata or unused planner lands in this
+stage.
 
-Gate: RU-3A proves snapshot READY/EMPTY/BUSY/FAILED top-level sequence semantics, D12 conformance, writer-before-record, and no surviving current hold. RU-3B separately proves proposed cursor and range gates plus D7 trait/rational boundaries. RU-3C2 proves exactly one shared scheduler and one acquisition per shared key. RU-3C1 proves frame/range/render/result parity. Each RU retains its own ASan/TSan/UBSan, warning-clean, and no-regression evidence; one later gate never retroactively makes an earlier hash truthful.
+Gate: RU-3A proves snapshot READY/EMPTY/BUSY/FAILED top-level sequence semantics, D12 conformance, writer-before-record, and no surviving current hold. RU-3B separately proves proposed cursor and range gates plus D7 trait/rational boundaries. RU-3C2 proves exactly one shared scheduler, one acquisition per shared key, canonical reusable P-D6 primitives/ordinary eligibility, and absence of complete stack-key/retained-entry scaffolding. RU-3C1 proves frame/range/render/result parity. Each RU retains its own ASan/TSan/UBSan, warning-clean, and no-regression evidence; one later gate never retroactively makes an earlier hash truthful.
 
 ### Batch 3 — Atomic end-to-end stack feature
 
