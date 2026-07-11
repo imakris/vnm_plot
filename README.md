@@ -128,13 +128,16 @@ The grid retains both domain endpoints and is capped so one stack view never
 materializes more than 1,048,576 cumulative samples across all layers; very
 large layer counts therefore use a coarser grid. Main and preview use their own
 horizontal pixel widths and budgets. Members must use
-matching `Series_interpolation` modes and provide finite values with monotonic
-timestamps in one drawable span. An incompatible group fails closed: the
-affected stack view is omitted and a diagnostic is logged instead of drawing
-misleading unstacked data. Bounded resampling is an accepted `ACTIVE` result,
-not a rejection. Features narrower than half a pixel may be omitted, and a
-`STEP_AFTER` transition may move to the next grid timestamp; indicators and
-auto-fit continue to match the geometry actually rendered.
+matching `Series_interpolation` modes and, after sample and nonfinite-policy
+handling, produce a single continuous drawable selected window with monotonic
+timestamps. A rejected group fails closed: the affected stack view is omitted
+instead of drawing misleading unstacked data, and its reason is queryable via
+`stack_status` or `get_stack_status`. When configured, the optional
+`Plot_config::log_error` callback may also receive a human-readable message.
+Bounded resampling is an accepted `ACTIVE` result, not a rejection. Features
+narrower than half a pixel may be omitted, and a `STEP_AFTER` transition may
+move to the next grid timestamp; indicators and auto-fit continue to match the
+geometry actually rendered.
 
 Stack acceptance is also queryable without installing a log callback. C++ can
 call `Plot_widget::stack_status(group, Series_view_kind::MAIN)` (or `PREVIEW`)
