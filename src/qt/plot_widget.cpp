@@ -4,6 +4,8 @@
 #include <vnm_plot/qt/plot_time_axis.h>
 #include <vnm_plot/core/constants.h>
 #include <vnm_plot/core/algo.h>
+#include <vnm_plot/rhi/qrhi_series_layer.h>
+#include <vnm_plot/rhi/series_data.h>
 #include <vnm_plot/rhi/series_renderer.h>
 #include "../core/series_window_planner.h"
 
@@ -1098,11 +1100,22 @@ void Plot_widget::auto_adjust_view(bool adjust_t, double extra_v_scale, bool anc
         std::shared_lock lock(m_series_mutex);
         sources.reserve(m_series.size());
         for (const auto& [id, series] : m_series) {
-            if (series && series->enabled) {
-                sources.emplace_back(id, series);
-                if (series->stack_group != 0 && series->main_source()) {
-                    stack_members[series->stack_group].push_back(id);
-                }
+            if (!series || !series->enabled || !series->main_source()) {
+                continue;
+            }
+            const auto& qrhi_layers = qrhi_layers_for(*series);
+            const bool has_main_layer = std::any_of(
+                qrhi_layers.begin(),
+                qrhi_layers.end(),
+                [](const auto& layer) {
+                    return layer && layer->draws_view(Series_view_kind::MAIN);
+                });
+            if (!series->style && !has_main_layer) {
+                continue;
+            }
+            sources.emplace_back(id, series);
+            if (series->stack_group != 0) {
+                stack_members[series->stack_group].push_back(id);
             }
         }
     }

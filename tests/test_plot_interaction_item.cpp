@@ -476,6 +476,15 @@ bool test_auto_adjust_view_uses_rendered_stack_and_preserves_unstacked_range()
     TEST_ASSERT(nearly_equal(widget.v_min(), 1.0) && nearly_equal(widget.v_max(), 20.0),
         "auto-adjust should preserve ordinary unstacked range fitting");
 
+    lower->stack_group = upper->stack_group = 1;
+    upper->style = plot::Display_style::NONE;
+    widget.add_series(1, lower);
+    widget.add_series(2, upper);
+    publish_rendered_stack_validity(widget, {{1, lower}, {2, upper}}, 0, 100);
+    widget.auto_adjust_view(false, 0.0, false);
+    TEST_ASSERT(nearly_equal(widget.v_min(), 1.0) && nearly_equal(widget.v_max(), 3.0),
+        "a hidden stack peer should leave the rendered singleton's ordinary range fitting intact");
+
     return true;
 }
 
