@@ -26,7 +26,7 @@ select D4 before any Stage 5 public stack exposure.
 
 `vnm_plot` has a sound foundation and does not need a rewrite. The data/layout/RHI/Qt target split, immutable render-boundary descriptors, held snapshot lifetimes, per-source LOD planning, nanosecond timestamps, and D3D11-compatible prepare/record split should be preserved. The highest-value work is to make the current frame plan the single producer for range, rendering, interaction, and the proposed stack composition; remove avoidable steady-state snapshots, CPU staging, and GPU uploads; and tighten source lifetime and status contracts.
 
-The requested stack should be a core frame-planning capability, not a custom rendering layer and not an application-side precomputed `h` source. Each component selects its LOD independently. The planner then evaluates those source-local curves under a strict screen-space composition/output budget and emits cumulative bottom/top bands. Two bounded strategies remain viable: an event union exact for the selected curves, or a shared bounded screen grid with better per-input density but another approximation. Native-backend and visual A/B evidence must choose one before implementation. Both support unrelated timestamps/LOD ladders and bound composition/GPU output; current snapshot/window APIs may still copy, lock, or align against more history, so those costs must be measured and, if necessary, given a bounded source hook before stacks are enabled by default.
+The requested stack should be a core frame-planning capability, not a custom rendering layer and not an application-side precomputed `h` source. Each component selects its LOD independently. The planner then evaluates those source-local curves under a strict screen-space composition/output budget and emits cumulative bottom/top bands. Two bounded strategies remain viable: an event union exact for the selected curves, or a shared bounded screen grid with better per-input density but another approximation. Stage 4 may implement both privately for native-backend/visual evidence; the owner selects one before Stage 5 public activation, not before private implementation. Both support unrelated timestamps/LOD ladders and bound composition/GPU output; current snapshot/window APIs may still copy, lock, or align against more history, so those costs must be measured and, if necessary, given a bounded source hook before stacks are enabled by default.
 
 The recommended implementation order is:
 
@@ -70,7 +70,7 @@ The final Codex claim audit confirmed the principal findings and made four usefu
 1. The duplicate auto-range scanner is real redundancy, but a normal valid policy does **not** execute both scanners in one request. The remedy is consolidation and drift prevention, not a claim of a measured double scan.
 2. Policy-pointer invalidation and per-frame Qt map copying are source-confirmed mechanisms; their production severity remains unmeasured. Their batches therefore require replacement-heavy and 1/100/1000-series measurements before priority is raised.
 3. Upload evidence must distinguish sample geometry from complete QRhi traffic. The renderer should report primary, LINE-window, stack, uniform, and known custom-layer bytes separately plus a total; if a custom layer cannot expose bytes, the total must be labelled incomplete rather than guessed.
-4. A budgeted exact union is internally consistent only when “exact” is explicitly limited to the independently selected LOD functions and LOD selection enforces the input budget before union. A full-width grid per member would emit `K*W`, but a bounded grid with `N=floor(M/(D*K))` (and `D=1` for all-LINEAR input) also respects the same total output budget and can retain far more input density for large K. The default is therefore **unresolved** pending native-backend compose/bytes/p95 and visual spike/step A/B evidence.
+4. A budgeted exact union is internally consistent only when “exact” is explicitly limited to the independently selected LOD functions and LOD selection enforces the input budget before union. A full-width grid per member grows with membership, while the proposed bounded shared grid partitions one fixed output budget and can retain more input density for large groups. The exact formulas live only in the plan register. The default is therefore **unresolved** pending native-backend compose/bytes/p95 and visual spike/step A/B evidence.
 
 The audit also confirmed that commit `e605b5f` deliberately removed LOD hysteresis. This report therefore does not reintroduce it.
 
@@ -231,10 +231,13 @@ sharing gate cannot retroactively justify a hold-bearing RU-3A hash.
 
 **Pending P-Q1 rationale:** one point producer avoids the present divergent
 ordering, nonfinite, hold, and status behavior. The sole register now owns the
-complete request/value types, bounded point-support search, ordered/UNKNOWN/
-UNORDERED behavior, exact tie, expected-sequence, default/direct-override, and
-no-nested-acquisition rules. This review deliberately does not restate that
-operative contract. P-Q1 is not owner-ratified, so RU-3B cannot begin.
+complete request/value types, invariant-safe result factories/failure reasons,
+semantic-support versus physical-visit rules, ordered/UNKNOWN/UNORDERED
+behavior, exact tie, expected-sequence, default/direct-override, and
+no-nested-acquisition rules. In particular, unrelated physically visited
+nonfinite history cannot reject a finite chosen NEAREST winner. This review
+deliberately does not restate that operative contract. P-Q1 is not
+owner-ratified, so RU-3B cannot begin.
 
 Route `auto_adjust_view()` through the same range producer used by frame auto-range. The stack planner and stacked indicator must call the same evaluator rather than implement another interpolation loop. For pixel-parity indicators, the UI publishes the cursor timestamp; the sole 3C frame result copies value-only indicators and identities from the exact executed snapshot-free plan plus final renderer/RHI disposition, accepting one-frame latency. Do not independently query after render, because the source may have advanced. A direct source query remains valid for non-pixel-parity operations only when selected LOD and expected sequence are supplied and mismatch is discarded/retried.
 
@@ -271,7 +274,7 @@ reread `current_sequence()` after the operation or leave a deprecated alias.
 
 **Classification: Source-confirmed correctness issue.** `include/vnm_plot/core/access_policy.h:63-77` multiplies a floating member by `1e9` and casts directly to `int64_t`. NaN, infinity, or out-of-range finite values make the conversion invalid/undefined. README and typed API tests make floating seconds an adopted behavior, so it cannot simply be ignored.
 
-**Remediation:** D7 exposes public `checked_seconds_to_ns(double) -> optional<int64_t>` for caller ingestion into integral-nanosecond storage. It rounds the exact binary64 mathematical value times `1e9` to nearest, exact halves away from zero, range-checks before conversion, and rejects nonfinite/nonrepresentable values. Pending P-D7 in the sole register owns the exact `remove_cv_t`, integral/non-bool, signed/unsigned `numeric_limits::digits` admissibility trait; this review does not create a second operative definition.
+**Remediation:** D7 exposes public `checked_seconds_to_ns(double) -> optional<int64_t>` for caller ingestion into integral-nanosecond storage. It rounds the exact binary64 mathematical value times `1e9` to nearest, exact halves away from zero, range-checks before conversion, and rejects nonfinite/nonrepresentable values. Pending P-D7 in the sole register owns the exact reference/cv normalization, volatile rejection, integral/non-bool, and signed/unsigned `numeric_limits::digits` admissibility trait; this review does not create a second operative definition.
 
 **Verification:** compile-fail/detection tests reject floating member pointers and migrate existing examples/docs. An exact binary64-rational oracle covers positive/negative integers and halves (`+/-1/1024` seconds is an exact half-nanosecond case after scaling); `std::nextafter` neighbours around both signed rounded-result boundaries identify representable accepted/rejected inputs instead of inventing a one-nanosecond step at that magnitude. NaN/infinities fail under UBSan, and accessor/full-frame evidence proves no hot-loop conversion.
 
@@ -383,16 +386,23 @@ function:
 - ASCENDING and DESCENDING use direction-aware cursors. UNKNOWN classifies within one acquired snapshot; proposed RU-3C2 reuse requires owner/object, stable nonzero observed sequence, and access semantics. Truly UNORDERED data is `FAILED(UNORDERED_STACK_INPUT)`; sorting every frame is expensive and semantically ambiguous.
 - LINEAR consecutive finite knots define closed spans. STEP_AFTER is right-continuous on the same closed domain and retains left/right event order at a jump. Touching spans merge only when the function is defined at their shared endpoint; `BREAK_SEGMENT` removes the knot and incident spans, `SKIP` reconnects surviving neighbours, `REPLACE_WITH_ZERO` substitutes finite zero, and `REJECT_WINDOW` is `FAILED(NONFINITE_REJECTED)`.
 - Under pending P-D2, normalize every member before intersection. REJECT failure precedes would-be EMPTY. Both LINEAR and STEP_AFTER HOLD_LAST_FORWARD extend the latest defined value constantly through the closed right endpoint, never left/cross-break; DRAW_NOTHING does not. Candidate A must retain every intersection endpoint and selected breakpoint within `R_A=K*B`; Candidate B reserves endpoints then optional grid positions within `R_B=N`; excess is `FAILED(FRAGMENTATION_BUDGET)`.
+- P-D2 counts semantic selected timestamp positions separately from physical
+  visits: retained timestamps, required brackets, and a synthetic hold endpoint
+  consume the existing B/N capacity, never an appended `+1`; search work is
+  reported only in `V_observed`.
 - Pending P-D6's `structure_key` gates BUSY fallback. Its `content_key` is the
-  register's compact scalar observation tuple, including logical window and
-  fixed two-segment mapping but excluding normalized/drawable spans, values,
-  arrays, and resources. READY reuse additionally requires stable nonzero
-  sequences/D10; a zero-key may identify retained STALE_BUSY content.
-- Pending P-R1 gives each `(group,view)` one disposition and tags every
-  per-series presentation entry with its `content_frame_id`/`content_key`.
-  STALE_BUSY presentation is copied wholly from retained content; current
-  attempts remain trace/counters only. Without retained content, BUSY is
-  `FAILED(SOURCE_BUSY)` and only completed current observations are presented.
+  register's compact scalar LOD/sequence/logical-window/hold/origin/version
+  tuple. It excludes both physical snapshot segmentation and normalized/
+  drawable spans, values, arrays, and resources. READY reuse additionally
+  requires stable nonzero sequences/D10; a zero-key may identify retained
+  STALE_BUSY content.
+- Pending P-R1 distinguishes current `publication_frame_id` from retained
+  `content_frame_id`/`content_key`. STALE_BUSY keeps current outer publication
+  but copies all content-bearing facts, including cursor request IDs, wholly
+  from retained content; current attempts remain trace/counters only. BUSY and
+  EMPTY acquisitions continue so a later first FAILED can stop and outrank;
+  otherwise EMPTY outranks BUSY, and no-retained BUSY is
+  `FAILED(SOURCE_BUSY)` with all required attempts OBSERVED.
 - Accumulation remains double. Pending P-R1 requires a finite double after each
   addition and a finite v1 float after conversion; ordinary finite rounding is
   accepted and exact float roundtrip is not required.
@@ -408,9 +418,12 @@ resident-resource formulas. They are intentionally not duplicated here.
 
 Extend the planner request with separate `render_width_px` and `max_visible_samples`; do not overload shader/view width. Every strategy selects each source independently and includes brackets/holds. If a coarsest complete window exceeds the per-input cap, return `FAILED(LOD_BUDGET_EXCEEDED)` rather than dropping input or using raw history.
 
-**Pending P-D2 Candidate A—budgeted event union.** Let `B=floor(M/(D*K^2))` and `R_A=K*B`. Require B>=2. Exact union retains every intersection endpoint and selected member breakpoint within R_A; none is optional. Excess is `FAILED(FRAGMENTATION_BUDGET)`. Output remains `K*E<=M`; inability to represent a segment is `FAILED(STACK_BUDGET_TOO_SMALL)`.
-
-**Pending P-D2 Candidate B—bounded shared grid.** Let `N=floor(M/(D*K))` and `R_B=N`; require N>=2 or return `FAILED(STACK_BUDGET_TOO_SMALL)`. Mandatory normalized endpoints consume R_B first; only remaining positions are optional grid positions, and endpoint excess is `FAILED(FRAGMENTATION_BUDGET)`. Monotonic cursors keep `E<=D*N`, `K*E<=M`; the candidate retains the documented spike/step approximation.
+**Pending P-D2 candidates.** The sole register owns the exact Candidate A/B
+input/output capacities, minimums, endpoint/breakpoint obligations, hold-slot
+accounting, and typed failures. Architecturally, A is an exact union of the
+bounded selected curves, while B is a deterministic bounded shared grid whose
+spike/step approximation remains part of D4 evidence. This review does not
+duplicate the operative formulas.
 
 Do not choose a default from asymptotic argument alone. Prototype both outside the public API with identical independent LOD selection and hard `M`, `V_limit`, and `H_limit` counters plus identical D15 frame admission. Compare native-backend compose time, `V_observed`, total bytes, allocations, producer wait, and full-frame p50/p95/p99 for K={2,8,32} and W={800,3840}; visually inspect phase-shifted narrow spikes, mixed LINEAR/STEP_AFTER discontinuities, gaps, and cancellation. The owner selects one strategy before its tests become product oracle; do not ship two speculative modes.
 
@@ -440,16 +453,19 @@ executed-plan disposition ---------> one immutable frame result
 
 D13 makes each renderer registration slot the lifecycle owner. Pending P-D6's
 compact `structure_key` contains only non-content request facts. Its compact
-`content_key` uses the register's scalar LOD/sequence/logical-window/fixed-
-segment-mapping/hold-endpoint/origin/version tuple—never normalized or drawable
-spans, payload values, arrays, or resources. D14 removes
+`content_key` uses the register's scalar LOD/sequence/logical-window/hold-
+endpoint/origin/version tuple—never physical snapshot segmentation, normalized
+or drawable spans, payload values, arrays, or resources. D14 removes
 `Data_source::identity()`; no incarnation/revision/reset token exists.
 
 READY composite reuse requires identical `content_key`, stable nonzero sequences, and non-conservative semantics. Otherwise correctness wins: recompute the bounded group and record why. BUSY compares only `structure_key`, retains the previous complete `content_key` wholesale, and never consumes a partially fresh operand set.
 
-Pending P-D15 replaces unspecified geometric vector growth with exact-capacity
-internal stack storage so live/temporary cap accounting is truthful; unchanged
-steady state still reuses the exact capacity and allocates zero heap blocks. Do
+Pending P-D15 replaces unspecified geometric vector growth only for capped
+stack-exclusive storage with a narrow exact-size owning contiguous array plus
+explicit count; it introduces no general allocator/container framework and
+leaves ordinary Stage 3 vectors unchanged. This makes live/temporary cap
+accounting truthful; unchanged steady state still reuses exact storage and
+allocates zero heap blocks. Do
 not implement suffix-only incremental recomposition from `current_sequence()`:
 the current contract does not promise append-only immutable prefixes or report
 the first changed index. If profiling later proves this necessary, first add an
@@ -486,13 +502,15 @@ requires a separate owner-approved use case.
 Pending P-D15 proposes deterministic metadata-only MAIN-before-PREVIEW frame
 admission and hard instantaneous live caps for explicitly scoped stack-only CPU
 storage and exact requested stack QRhi buffers. Exact-capacity internal CPU
-storage makes committed/temporary bytes truthful. Its replacement transaction
-either preserves the old target while a complete replacement fits, or debits
-that target before retrying and leaves it absent on failure; no partial set is
-installed and no opaque pipeline/SRB/texture residency is claimed. The sole
-register owns the exact formulas, counted scopes, order, statuses, and
-transaction algorithm. Pending P-R1 owns the corresponding immutable result
-presentation.
+storage makes committed/temporary bytes truthful; external value-copied public
+results and ordinary per-series arrays are excluded from renderer residency.
+Its replacement transaction either preserves the old target while a complete
+replacement fits or debits it before retrying, but every resident/allocation/
+frame/output budget failure ultimately removes target eligibility and stale
+fallback. No partial set is installed and no opaque pipeline/SRB/texture
+residency is claimed. The sole register owns the exact formulas, counted scopes,
+order, statuses, and transaction algorithm. Pending P-R1 owns the corresponding
+immutable result presentation.
 
 ### Auto-range, preview, and indicators
 
@@ -587,8 +605,11 @@ bounded composition strategy, independent sequential LOD observations,
 cumulative bands, typed status/domain handling, D15 frame/resident budgets,
 VISIBLE/global scalar range, cached RHI rendering, preview parity, plan-derived
 frame-result indicators, example, and representative benchmark. Production
-completes before public exposure; no stack-only public metadata, unconsumed
-planner, or unused shader is pushed independently, and the three containers are
+actions are internal but immediately consumed by the benchmark/internal entry.
+Public metadata/registry reachability, Qt/result/preview, normative API/docs,
+and package-consumer smoke activate atomically as `STACK_PUBLIC_ACTIVATION`, so
+no unused, unreachable, or undocumented public intermediate exists. A later
+independent example/tutorial unit is non-contractual. The three containers are
 not combined into one review unit.
 
 Gate: complete the then-ratified acceptance matrix after D4 selection; hard band-ordinate and total-byte bounds; linear visit counters; zero steady allocation after warm-up; stable/non-conservative unchanged second frame zero composition/upload; unstable/conservative inputs perform bounded recomposition and expose the disable reason; shader bake and prepare/record lifecycle on every backend; non-stack counters bit-for-bit unchanged. Human approval is required for representative positive, negative, mixed-step, gap, and unrelated-LOD scenes before any golden image becomes an oracle. Compare full-frame native-backend p50/p95/p99, CPU plan/compose, GPU-finished time, total bytes, draws, allocations, snapshot bytes/time, alignment scans, producer wait, memory, and LOD changes. Require no statistically meaningful non-stack regression under identical builds; agree any numeric timing threshold from baseline evidence rather than inventing one.
@@ -615,9 +636,9 @@ evidence-gated, and labelled executable refinements remain owner-pending.
 | Negative/cancellation `100 + -100` | Second band descends to zero; range still includes the first cumulative 100. |
 | Disjoint/partially overlapping domains | Only intersection renders, except explicit right hold; no left extrapolation. GLOBAL/GLOBAL_LOD intersect selected-level domains first and return EMPTY when disjoint. |
 | Nonfinite policies | BREAK/SKIP/ZERO/REJECT outcomes match the canonical evaluator and affect the whole sum where undefined. |
-| BUSY/FAILED/EMPTY | FAILED then EMPTY suppress stale before BUSY. STALE_BUSY presentation, including every tagged series entry, is copied wholesale from one retained complete `structure_key` match; current partial attempts remain trace/counters only. Without retained content, BUSY is `FAILED(SOURCE_BUSY)`. |
-| Multiple failures | Pending P-R1 selects one canonical disposition by phase/series/reason order and gives each tagged series entry NOT_EVALUATED/OBSERVED state; only completed current observations appear in a current failure and no reason set/speculative work/fabricated observation exists. |
-| Fragment/frame/resident budget | Pending P-D2 endpoint/breakpoint excess is `FAILED(FRAGMENTATION_BUDGET)`; pending P-D15 admission is `FAILED(FRAME_BUDGET)`, cap excess `FAILED(RESIDENT_BUDGET)`, and in-cap API failure `FAILED(RESOURCE_ALLOCATION_FAILED)`. No case emits a partial group. |
+| BUSY/FAILED/EMPTY | BUSY/EMPTY continue in ascending acquisition order so a later first FAILED can stop and outrank; otherwise EMPTY outranks BUSY. STALE_BUSY keeps current `publication_frame_id` but copies every content-bearing fact from one old complete match; current attempts remain trace/counters. Without retained content, BUSY is `FAILED(SOURCE_BUSY)` with all required entries OBSERVED. |
+| Multiple failures | Pending P-R1 selects one canonical disposition by phase/series/reason order. Only a pre-acquisition stop or series after the first source FAILED is NOT_EVALUATED; no reason set/speculative later-phase work/fabricated observation exists. |
+| Fragment/frame/resident budget | Pending P-D2 endpoint/breakpoint excess is `FAILED(FRAGMENTATION_BUDGET)`; pending P-D15 admission is `FAILED(FRAME_BUDGET)`, cap excess `FAILED(RESIDENT_BUDGET)`, and in-cap API failure `FAILED(RESOURCE_ALLOCATION_FAILED)`. No case emits a partial group, and every P-D15 budget/allocation failure removes target stale eligibility. |
 | Main/preview admission | Pending P-D15 admits all MAIN units by ascending lowest ID before PREVIEW; previews cannot change MAIN admission. |
 | Group topology update | One `apply_series_updates` publishes the complete new group in one map revision. Individual add/remove commits intermediate topology and may render a valid partial membership; documentation/tests require batching when atomic topology matters. |
 | One sequence/policy/view mutation | Cache invalidates once; composition runs once, base geometry uploads once, and—when LINE is present—the separately keyed padded boundary buffer uploads once. A style-only LINE change performs no recomposition/base upload and updates only boundary/draw state. |
