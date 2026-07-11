@@ -165,8 +165,14 @@ inline long double span_ns_as_long_double(
     std::int64_t   min_ns,
     std::int64_t   max_ns) noexcept
 {
-    return static_cast<long double>(max_ns) -
-        static_cast<long double>(min_ns);
+    if (min_ns <= max_ns) {
+        return static_cast<long double>(
+            static_cast<std::uint64_t>(max_ns) -
+            static_cast<std::uint64_t>(min_ns));
+    }
+    return -static_cast<long double>(
+        static_cast<std::uint64_t>(min_ns) -
+        static_cast<std::uint64_t>(max_ns));
 }
 
 inline std::optional<long double> positive_span_ns_as_long_double(
@@ -178,6 +184,27 @@ inline std::optional<long double> positive_span_ns_as_long_double(
     }
     return span_ns_as_long_double(min_ns, max_ns);
 }
+
+namespace detail {
+
+inline double normalized_time_position_ns(
+    std::int64_t   first_ns,
+    std::int64_t   value_ns,
+    std::int64_t   last_ns) noexcept
+{
+    if (first_ns == last_ns) {
+        return 0.0;
+    }
+
+    const long double numerator   = span_ns_as_long_double(first_ns, value_ns);
+    const long double denominator = span_ns_as_long_double(first_ns, last_ns);
+    const long double position    = numerator / denominator;
+    if (position <= 0.0L) { return 0.0; }
+    if (position >= 1.0L) { return 1.0; }
+    return static_cast<double>(position);
+}
+
+} // namespace detail
 
 inline std::int64_t midpoint_ns(
     std::int64_t   min_ns,

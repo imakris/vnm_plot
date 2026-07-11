@@ -331,6 +331,42 @@ bool test_indicator_reports_stack_sum_only_inside_common_domain()
     return true;
 }
 
+bool test_stacked_indicator_matches_sub_256ns_epoch_composition()
+{
+    constexpr std::int64_t k_epoch = 1'750'000'000'000'000'000LL;
+    indicator_test_widget_t widget;
+    configure_view(widget, k_epoch, k_epoch + 254, 0.0f, 20.0f);
+
+    auto lower = make_sample_series(
+        { {k_epoch, 0.0f}, {k_epoch + 254, 10.0f} },
+        plot::Series_interpolation::LINEAR);
+    auto upper = make_sample_series(
+        {
+            { k_epoch,       1.0f},
+            { k_epoch + 127, 1.0f},
+            { k_epoch + 254, 1.0f}
+        },
+        plot::Series_interpolation::LINEAR);
+    lower->stack_group = upper->stack_group = 1;
+    widget.add_series(1, lower);
+    widget.add_series(2, upper);
+    publish_rendered_stack_validity(
+        widget, {{1, lower}, {2, upper}}, k_epoch, k_epoch + 254);
+
+    const QVariantList samples = widget.get_indicator_samples(
+        0.0, 100.0, 100.0, 50.0);
+    TEST_ASSERT(samples.size() == 3,
+        "sub-256ns epoch stack should publish components and sigma");
+    TEST_ASSERT(nearly_equal(samples[0].toMap().value("y").toDouble(), 5.0) &&
+        nearly_equal(samples[0].toMap().value("marker_y").toDouble(), 5.0),
+        "ordinary and cumulative indicator interpolation should match at the epoch midpoint");
+    TEST_ASSERT(nearly_equal(samples[1].toMap().value("marker_y").toDouble(), 6.0) &&
+        nearly_equal(samples[2].toMap().value("y").toDouble(), 6.0),
+        "stacked marker and sigma should match composed epoch geometry");
+
+    return true;
+}
+
 bool test_indicator_omits_sum_when_renderer_rejects_stack()
 {
     constexpr std::int64_t k_second_ns = 1'000'000'000LL;
@@ -643,6 +679,7 @@ int main(int argc, char** argv)
     RUN_TEST(test_indicator_samples_linearly_interpolate_between_samples);
     RUN_TEST(test_indicator_samples_step_after_holds_previous_sample);
     RUN_TEST(test_indicator_reports_stack_sum_only_inside_common_domain);
+    RUN_TEST(test_stacked_indicator_matches_sub_256ns_epoch_composition);
     RUN_TEST(test_indicator_omits_sum_when_renderer_rejects_stack);
     RUN_TEST(test_nearest_samples_choose_closer_sample);
     RUN_TEST(test_auto_adjust_view_uses_visible_samples_for_value_and_time_range);

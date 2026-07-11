@@ -656,6 +656,48 @@ bool test_time_unit_helpers_handle_edges()
     return true;
 }
 
+bool test_timestamp_positions_preserve_epoch_nanoseconds()
+{
+    constexpr std::int64_t k_epoch          = 1'750'000'000'000'000'000LL;
+    constexpr std::int64_t k_negative_epoch = -k_epoch;
+    constexpr std::int64_t k_min            = std::numeric_limits<std::int64_t>::min();
+    constexpr std::int64_t k_max            = std::numeric_limits<std::int64_t>::max();
+
+    TEST_ASSERT(plot::span_ns_as_long_double(k_epoch, k_epoch + 1) == 1.0L,
+        "relative span math should preserve adjacent current-epoch nanoseconds");
+    TEST_ASSERT(plot::span_ns_as_long_double(k_negative_epoch, k_negative_epoch + 1) == 1.0L,
+        "relative span math should preserve adjacent negative-epoch nanoseconds");
+    TEST_ASSERT(plot::span_ns_as_long_double(k_epoch + 127, k_epoch) == -127.0L,
+        "relative span math should preserve reversed sub-256ns intervals");
+    TEST_ASSERT(plot::detail::normalized_time_position_ns(
+        k_epoch, k_epoch + 127, k_epoch + 254) == 0.5,
+        "normalized position should interpolate inside a sub-256ns epoch interval");
+    TEST_ASSERT(plot::detail::normalized_time_position_ns(
+        k_negative_epoch, k_negative_epoch + 127, k_negative_epoch + 254) == 0.5,
+        "normalized position should interpolate inside a negative epoch interval");
+    TEST_ASSERT(std::abs(plot::detail::normalized_time_position_ns(k_min, -1, k_max) - 0.5) < 1e-15,
+        "normalized position should avoid overflow across the full int64 range");
+
+    const std::vector<sample_t> samples{
+        { k_epoch,       0.0f },
+        { k_epoch + 127, 1.0f },
+        { k_epoch + 127, 2.0f },
+        { k_epoch + 254, 3.0f },
+    };
+    const plot::data_snapshot_t snapshot{
+        samples.data(), samples.size(), sizeof(sample_t), 1};
+    const auto bracket = plot::detail::bracket_timestamp(
+        snapshot,
+        [](const void* sample) {
+            return static_cast<const sample_t*>(sample)->t;
+        },
+        k_epoch + 127);
+    TEST_ASSERT(bracket && bracket.i0 == 2 && bracket.i1 == 3,
+        "exact integer bracketing should retain the last duplicate timestamp");
+
+    return true;
+}
+
 bool test_horizontal_label_fade_keys_preserve_int64_timestamps()
 {
     constexpr std::int64_t k_min = std::numeric_limits<std::int64_t>::min();
@@ -887,6 +929,7 @@ int main()
     RUN_TEST(test_layout_cache_key_distinguishes_adjacent_int64_time_windows);
     RUN_TEST(test_format_axis_fixed_or_int);
     RUN_TEST(test_time_unit_helpers_handle_edges);
+    RUN_TEST(test_timestamp_positions_preserve_epoch_nanoseconds);
     RUN_TEST(test_horizontal_label_fade_keys_preserve_int64_timestamps);
     RUN_TEST(test_text_lcd_policy_helpers);
     RUN_TEST(test_built_in_label_backgrounds_are_opaque_for_lcd);

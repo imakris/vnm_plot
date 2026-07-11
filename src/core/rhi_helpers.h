@@ -1,5 +1,7 @@
 #pragma once
 
+#include <vnm_plot/core/time_units.h>
+
 #include <QFile>
 #include <rhi/qrhi.h>
 #include <rhi/qshader.h>
@@ -63,8 +65,7 @@ inline bool to_positive_int(double value, int& out)
 inline float to_view_seconds(std::int64_t ts_ns, std::int64_t origin_ns)
 {
     return static_cast<float>(
-        (static_cast<long double>(ts_ns) - static_cast<long double>(origin_ns)) *
-        1.0e-9L);
+        span_ns_as_long_double(origin_ns, ts_ns) * 1.0e-9L);
 }
 
 inline bool to_qrhi_u32(std::size_t value, quint32& out)

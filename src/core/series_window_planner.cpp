@@ -1056,8 +1056,7 @@ bool compose_stacked_series(
                 const point_t& a = source[cursors[layer]];
                 const point_t& b = source[cursors[layer] + 1u];
                 const double position =
-                    (static_cast<double>(timestamp) - static_cast<double>(a.t)) /
-                    (static_cast<double>(b.t) - static_cast<double>(a.t));
+                    normalized_time_position_ns(a.t, timestamp, b.t);
                 value = static_cast<float>(a.v + position * (b.v - a.v));
             }
 

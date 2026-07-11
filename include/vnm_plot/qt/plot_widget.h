@@ -299,7 +299,7 @@ private:
         std::size_t            member_count,
         qint64                 t_min_ns,
         qint64                 t_max_ns,
-        double                 x_ns) const;
+        qint64                 x_ns) const;
 
     // Plot_renderer reads m_config / m_data_cfg under the matching shared_mutexes
     // during synchronize(); friending lets it touch those members directly

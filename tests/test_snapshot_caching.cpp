@@ -1551,6 +1551,57 @@ bool test_stacking_composes_different_timestamps_from_independent_lods()
     return true;
 }
 
+bool test_stacking_interpolates_sub_256ns_epoch_intervals()
+{
+    constexpr std::int64_t k_epoch = 1'750'000'000'000'000'000LL;
+    std::vector<Test_sample> lower{
+        { k_epoch, 0.0f },
+        { k_epoch + 254, 10.0f },
+    };
+    std::vector<Test_sample> upper{
+        { k_epoch,       1.0f },
+        { k_epoch + 127, 1.0f },
+        { k_epoch + 254, 1.0f },
+    };
+    const Data_access_policy access = make_policy();
+    const auto make_plan = [&access](std::vector<Test_sample>& samples) {
+        plot::Series_view_plan plan;
+        plan.access            = &access;
+        plan.snapshot.snapshot = {
+            samples.data(), samples.size(), sizeof(Test_sample), 1};
+        plan.snapshot.sequence = 1;
+        plan.source_count      = samples.size();
+        plan.gpu_count         = samples.size();
+        plan.drawable_spans    = {{0, samples.size(), 0, samples.size()}};
+        plan.interpolation     = plot::Series_interpolation::LINEAR;
+        return plan;
+    };
+    const auto lower_plan = make_plan(lower);
+    const auto upper_plan = make_plan(upper);
+
+    std::vector<std::vector<plot::detail::stacked_sample_t>> layers;
+    TEST_ASSERT(plot::detail::compose_stacked_series(
+        {&lower_plan, &upper_plan}, layers),
+        "sub-256ns current-epoch grids should compose");
+    TEST_ASSERT(layers.size() == 2 && layers[0].size() == 3,
+        "epoch stack should retain the exact timestamp union");
+    TEST_ASSERT(layers[0][1].timestamp_ns == k_epoch + 127 &&
+        std::abs(layers[0][1].value - 5.0f) < 1e-6f &&
+        std::abs(layers[1][1].value - 6.0f) < 1e-6f,
+        "epoch stack should linearly interpolate before accumulating");
+
+    lower.insert(lower.begin() + 1, {k_epoch + 127, 3.0f});
+    lower.insert(lower.begin() + 2, {k_epoch + 127, 5.0f});
+    const auto duplicate_plan = make_plan(lower);
+    TEST_ASSERT(plot::detail::compose_stacked_series(
+        {&duplicate_plan, &upper_plan}, layers),
+        "duplicate epoch timestamps should compose");
+    TEST_ASSERT(std::abs(layers[0][1].value - 5.0f) < 1e-6f,
+        "stack composition should retain its last duplicate value policy");
+
+    return true;
+}
+
 bool test_snapshot_released_after_render()
 {
     auto data_source = std::make_shared<Single_level_source>();
@@ -1942,6 +1993,7 @@ int main()
     RUN_TEST(test_lod_level_separation);
     RUN_TEST(test_lod_selection_has_no_hysteresis);
     RUN_TEST(test_stacking_composes_different_timestamps_from_independent_lods);
+    RUN_TEST(test_stacking_interpolates_sub_256ns_epoch_intervals);
     RUN_TEST(test_snapshot_released_after_render);
     RUN_TEST(test_upload_origin_records_per_view_origin);
     RUN_TEST(test_upload_invalidates_when_origin_changes_across_snap_bucket);

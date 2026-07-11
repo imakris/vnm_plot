@@ -112,6 +112,30 @@ bool apply_time_axis_update_to_data_config(data_config_t& cfg, Update&& update)
     return true;
 }
 
+std::optional<std::int64_t> indicator_ms_to_ns(double value_ms)
+{
+    if (!std::isfinite(value_ms)) {
+        return std::nullopt;
+    }
+
+    constexpr double k_max_ms =
+        static_cast<double>(std::numeric_limits<std::int64_t>::max()) /
+        static_cast<double>(k_ns_per_ms);
+    constexpr double k_min_ms =
+        static_cast<double>(std::numeric_limits<std::int64_t>::min()) /
+        static_cast<double>(k_ns_per_ms);
+    if (value_ms >= k_max_ms) { return std::numeric_limits<std::int64_t>::max(); }
+    if (value_ms <= k_min_ms) { return std::numeric_limits<std::int64_t>::min(); }
+
+    double       whole_ms      = 0.0;
+    const double fractional_ms = std::modf(value_ms, &whole_ms);
+    const auto   fractional_ns = static_cast<std::int64_t>(
+        std::round(fractional_ms * static_cast<double>(k_ns_per_ms)));
+    return saturating_add_ns(
+        saturating_ms_to_ns(static_cast<std::int64_t>(whole_ms)),
+        fractional_ns);
+}
+
 } // anonymous namespace
 
 Plot_widget::Plot_widget()
@@ -1382,16 +1406,11 @@ QVariantList Plot_widget::get_samples_for_time(
         tmin_ns = cfg.t_min;
         tmax_ns = cfg.t_max;
     }
-    // QML passes x_ms in milliseconds-since-epoch; the rest of this routine
-    // works in nanoseconds (cast to fp64 for arithmetic, as before). Bring x
-    // onto the same axis up front. entry["x"] is converted back to ms at the
-    // end so the QML side stays on the ms surface end-to-end.
-    constexpr double k_ns_per_ms = 1'000'000.0;
-    double           x           = x_ms * k_ns_per_ms;
-    const double     tmin        = static_cast<double>(tmin_ns);
-    const double     tmax        = static_cast<double>(tmax_ns);
-    float            vmin        = 0.0f;
-    float            vmax        = 0.0f;
+    // QML passes x_ms in milliseconds-since-epoch; keep the internal target in
+    // integer nanoseconds so nearby epoch timestamps remain distinguishable.
+    std::int64_t x    = 0;
+    float        vmin = 0.0f;
+    float        vmax = 0.0f;
     if (m_v_auto.load(std::memory_order_acquire)) {
         if (!rendered_v_range(vmin, vmax)) {
             vmin = cfg.v_min;
@@ -1403,10 +1422,10 @@ QVariantList Plot_widget::get_samples_for_time(
         vmax = cfg.v_manual_max;
     }
 
-    const double t_span = tmax - tmin;
-    const float  v_span = vmax - vmin;
+    const auto  t_span = positive_span_ns(tmin_ns, tmax_ns);
+    const float v_span = vmax - vmin;
 
-    if (t_span <= 0.0 || v_span <= 0.0f) {
+    if (!t_span || v_span <= 0.0f) {
         return result;
     }
 
@@ -1414,7 +1433,21 @@ QVariantList Plot_widget::get_samples_for_time(
     // This keeps pixel->time and time->pixel conversions on the same range and
     // avoids horizontal indicator jitter during high-rate loading.
     if (mouse_px >= 0.0) {
-        x = tmin + (mouse_px / plot_width) * t_span;
+        const auto target = time_at_fraction_ns(
+            { tmin_ns, tmax_ns },
+            static_cast<long double>(mouse_px) /
+                static_cast<long double>(plot_width));
+        if (!target) {
+            return result;
+        }
+        x = *target;
+    }
+    else {
+        const auto target = indicator_ms_to_ns(x_ms);
+        if (!target) {
+            return result;
+        }
+        x = *target;
     }
 
     const auto plot_cfg        = config();
@@ -1470,16 +1503,24 @@ QVariantList Plot_widget::get_samples_for_time(
             continue;
         }
 
-        const double x0 = series->get_timestamp(sample0);
-        const double x1 = series->get_timestamp(sample1);
-        const double y0 = static_cast<double>(series->get_value(sample0));
-        const double y1 = static_cast<double>(series->get_value(sample1));
+        const std::int64_t x0 = series->get_timestamp(sample0);
+        const std::int64_t x1 = series->get_timestamp(sample1);
+        const double       y0 = static_cast<double>(series->get_value(sample0));
+        const double       y1 = static_cast<double>(series->get_value(sample1));
 
-        double y          = y0;
-        double resolved_x = x;
+        double       y          = y0;
+        std::int64_t resolved_x = x;
 
         if (mode == Indicator_sample_mode::Nearest) {
-            const bool use_sample1 = std::abs(x1 - x) < std::abs(x0 - x);
+            const auto distance_ns = [](std::int64_t lhs, std::int64_t rhs) {
+                if (lhs <= rhs) {
+                    return static_cast<std::uint64_t>(rhs) -
+                        static_cast<std::uint64_t>(lhs);
+                }
+                return static_cast<std::uint64_t>(lhs) -
+                    static_cast<std::uint64_t>(rhs);
+            };
+            const bool use_sample1 = distance_ns(x1, x) < distance_ns(x0, x);
             resolved_x = use_sample1 ? x1 : x0;
             y = use_sample1 ? y1 : y0;
         }
@@ -1490,16 +1531,15 @@ QVariantList Plot_widget::get_samples_for_time(
                 }
             }
             else {
-                const double denom = x1 - x0;
-                if (bracket.i0 != bracket.i1 && std::abs(denom) > 1e-15) {
-                    double t = (x - x0) / denom;
-                    t = std::clamp(t, 0.0, 1.0);
+                if (bracket.i0 != bracket.i1 && x0 != x1) {
+                    const double t = detail::normalized_time_position_ns(x0, x, x1);
                     y = y0 + t * (y1 - y0);
                 }
             }
         }
 
-        double px = (resolved_x - tmin) / t_span * plot_width;
+        double px = detail::normalized_time_position_ns(
+            tmin_ns, resolved_x, tmax_ns) * plot_width;
         double py = (1.0 - (y - vmin) / v_span) * plot_height;
 
         px = std::clamp(px, 0.0, plot_width);
@@ -1515,7 +1555,8 @@ QVariantList Plot_widget::get_samples_for_time(
         QVariantMap entry;
         // x_ms keeps the QML side on the milliseconds-since-epoch surface;
         // see the Plot_widget class-level comment for the convention.
-        entry["x"] = resolved_x / k_ns_per_ms;
+        entry["x"] = static_cast<double>(resolved_x) /
+            static_cast<double>(k_ns_per_ms);
         entry["y"] = y;
         if (value_formatter) {
             value_format_context_t context;
@@ -1581,10 +1622,12 @@ QVariantList Plot_widget::get_samples_for_time(
         const double cumulative = stacked_values->back().second;
 
         QVariantMap entry;
-        entry["x"]            = x / k_ns_per_ms;
+        entry["x"]            = static_cast<double>(x) /
+            static_cast<double>(k_ns_per_ms);
         entry["y"]            = cumulative;
         entry["show_marker"]  = false;
-        entry["px"]           = std::clamp((x - tmin) / t_span * plot_width, 0.0, plot_width);
+        entry["px"]           = detail::normalized_time_position_ns(
+            tmin_ns, x, tmax_ns) * plot_width;
         entry["py"]           = std::clamp(
             (1.0 - (cumulative - vmin) / v_span) * plot_height, 0.0, plot_height);
         entry["color"]        = stack.color;
@@ -1747,7 +1790,7 @@ std::optional<std::vector<std::pair<int, double>>> Plot_widget::rendered_stack_v
     std::size_t            member_count,
     qint64                 t_min_ns,
     qint64                 t_max_ns,
-    double                 x_ns) const
+    qint64                 x_ns) const
 {
     std::lock_guard lock(m_rendered_stack_validity_mutex);
     if (m_series_revision.load(std::memory_order_acquire) != m_rendered_stack_series_revision ||
@@ -1800,11 +1843,14 @@ std::optional<std::vector<std::pair<int, double>>> Plot_widget::rendered_stack_v
             }
         }
         else {
-            const double denominator =
-                static_cast<double>(sample1->timestamp_ns) - sample0->timestamp_ns;
-            if (bracket.i0 != bracket.i1 && std::abs(denominator) > 1e-15) {
-                const double position = (x_ns - sample0->timestamp_ns) / denominator;
-                value = sample0->value + std::clamp(position, 0.0, 1.0) *
+            if (bracket.i0            != bracket.i1 &&
+                sample0->timestamp_ns != sample1->timestamp_ns)
+            {
+                const double position = detail::normalized_time_position_ns(
+                    sample0->timestamp_ns,
+                    x_ns,
+                    sample1->timestamp_ns);
+                value = sample0->value + position *
                     (sample1->value - sample0->value);
             }
         }

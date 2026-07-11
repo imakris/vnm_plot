@@ -5,6 +5,8 @@
 #include "../src/core/rhi_helpers.h"
 
 #include <cstddef>
+#include <cmath>
+#include <cstdint>
 #include <iostream>
 #include <limits>
 #include <vector>
@@ -102,6 +104,20 @@ bool test_qrhi_buffer_offset_checks_scaled_offsets()
     return true;
 }
 
+bool test_view_seconds_subtracts_before_floating_conversion()
+{
+    constexpr std::int64_t k_epoch = 1'750'000'000'000'000'000LL;
+    TEST_ASSERT(std::abs(plot::detail::to_view_seconds(k_epoch + 1, k_epoch) - 1.0e-9f) < 1.0e-15f,
+        "GPU-relative time should preserve an adjacent current-epoch nanosecond");
+    TEST_ASSERT(std::abs(plot::detail::to_view_seconds(k_epoch - 1, k_epoch) + 1.0e-9f) < 1.0e-15f,
+        "GPU-relative time should preserve a negative adjacent epoch offset");
+    TEST_ASSERT(plot::detail::to_view_seconds(
+        std::numeric_limits<std::int64_t>::max(),
+        std::numeric_limits<std::int64_t>::min()) > 0.0f,
+        "GPU-relative time should avoid overflow across the full int64 range");
+    return true;
+}
+
 bool test_embedded_shaders_retain_desktop_glsl_330_and_410()
 {
     std::vector<const char*> shaders = {
@@ -153,6 +169,7 @@ int main()
     RUN_TEST(test_qrhi_byte_size_rejects_size_t_product_overflow);
     RUN_TEST(test_qrhi_grown_capacity_bytes_checks_headroom_overflow);
     RUN_TEST(test_qrhi_buffer_offset_checks_scaled_offsets);
+    RUN_TEST(test_view_seconds_subtracts_before_floating_conversion);
     RUN_TEST(test_embedded_shaders_retain_desktop_glsl_330_and_410);
 
     std::cout << "Passed: " << passed << ", Failed: " << failed << std::endl;

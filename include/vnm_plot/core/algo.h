@@ -609,7 +609,7 @@ timestamp_bracket_t bracket_timestamp_impl(
     std::size_t        count,
     AddrFn&&           addr,
     GetTimestampFn&&   get_timestamp,
-    double             t_ns)
+    std::int64_t       t_ns)
 {
     if (count == 0) {
         return {};
@@ -621,9 +621,9 @@ timestamp_bracket_t bracket_timestamp_impl(
         return {};
     }
 
-    const double first_ts  = get_timestamp(first_sample);
-    const double last_ts   = get_timestamp(last_sample);
-    const bool   ascending = first_ts <= last_ts;
+    const std::int64_t first_ts  = get_timestamp(first_sample);
+    const std::int64_t last_ts   = get_timestamp(last_sample);
+    const bool         ascending = first_ts <= last_ts;
 
     std::size_t lo = 0;
     std::size_t hi = count - 1;
@@ -634,8 +634,8 @@ timestamp_bracket_t bracket_timestamp_impl(
             return {};
         }
 
-        const double ts = get_timestamp(mid_sample);
-        if (ascending ? (ts < t_ns) : (ts > t_ns)) {
+        const std::int64_t ts = get_timestamp(mid_sample);
+        if (ascending ? (ts <= t_ns) : (ts >= t_ns)) {
             lo = mid + 1;
         }
         else {
@@ -648,7 +648,7 @@ timestamp_bracket_t bracket_timestamp_impl(
     }
 
     if (ascending) {
-        if (t_ns <= first_ts) {
+        if (t_ns < first_ts) {
             return {0, 0, true};
         }
         if (t_ns >= last_ts) {
@@ -656,7 +656,7 @@ timestamp_bracket_t bracket_timestamp_impl(
         }
     }
     else {
-        if (t_ns >= first_ts) {
+        if (t_ns > first_ts) {
             return {0, 0, true};
         }
         if (t_ns <= last_ts) {
@@ -671,7 +671,7 @@ template<typename GetTimestampFn>
 timestamp_bracket_t bracket_timestamp(
     const data_snapshot_t& snapshot,
     GetTimestampFn&&       get_timestamp,
-    double                 t_ns)
+    std::int64_t           t_ns)
 {
     if (!snapshot.is_valid()) {
         return {};
