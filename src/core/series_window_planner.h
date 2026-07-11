@@ -121,7 +121,7 @@ struct stacked_sample_t
 
 // Compose independently planned LOD windows onto their timestamp union.
 // Output layers match input order and contain cumulative tops plus bases.
-bool compose_stacked_series(
+Stack_rejection_reason compose_stacked_series(
     const std::vector<const Series_view_plan*>&    plans,
     std::vector<std::vector<stacked_sample_t>>&    layers);
 

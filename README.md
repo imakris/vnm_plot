@@ -128,6 +128,16 @@ in one drawable span. An incompatible group fails closed: the affected stack
 view is omitted and a diagnostic is logged instead of drawing misleading
 unstacked data.
 
+Stack acceptance is also queryable without installing a log callback. C++ can
+call `Plot_widget::stack_status(group, Series_view_kind::MAIN)` (or `PREVIEW`)
+and inspect its typed `state`, `reason`, and `affected_series_ids`. `PENDING`
+means no renderer result matches the current data and range, `ACTIVE` means the
+view was accepted, and `SUPPRESSED` includes the specific rejection reason. A
+singleton group is `ACTIVE` with no rejection because no composition is needed.
+QML can call `get_stack_status(group, preview)`; the returned map contains
+`group`, uppercase `view`, `state`, and `reason` strings, plus an
+`affected_series_ids` list.
+
 The final cumulative value gets an automatic line overlay two pixels thicker
 than `Plot_config::line_width_px`: `#E6DFCC` in dark mode and `#192033` in light
 mode. This applies to the main and preview views for `LINE`, `DOTS`, and `AREA`

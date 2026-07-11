@@ -95,8 +95,18 @@ private:
         data_snapshot_t        cumulative;
     };
 
+    struct stack_view_status_t
+    {
+        Stack_view_status      status;
+        std::vector<stack_source_revision_t>
+                               sources;
+    };
+
     const std::map<int, std::vector<stack_source_revision_t>>&
     main_stack_validity() const { return m_main_stack_validity; }
+
+    const std::map<std::pair<int, Series_view_kind>, stack_view_status_t>&
+    stack_view_statuses() const { return m_stack_view_statuses; }
 
     struct gpu_sample_t
     {
@@ -208,26 +218,27 @@ private:
         bool               preview_stack_sum_overlay        = false;
     };
 
-    Asset_loader*                                          m_asset_loader = nullptr;
-    std::unordered_map<int, vbo_state_t>                   m_vbo_states;
+    Asset_loader*                                                      m_asset_loader = nullptr;
+    std::unordered_map<int, vbo_state_t>                               m_vbo_states;
     // Consolidated once-per-series error log deduplication.
     // Key encodes (series_id, error_category) as uint64_t.
-    std::unordered_set<uint64_t>                           m_logged_errors;
-    std::map<int, std::vector<stack_source_revision_t>>    m_main_stack_validity;
+    std::unordered_set<uint64_t>                                       m_logged_errors;
+    std::map<int, std::vector<stack_source_revision_t>>                m_main_stack_validity;
+    std::map<std::pair<int, Series_view_kind>, stack_view_status_t>    m_stack_view_statuses;
     // Private test instrumentation for the QRhi prepare/render split.
-    std::vector<int>                                       m_last_recorded_draw_z_orders;
-    std::vector<Display_style>                             m_last_recorded_draw_styles;
-    std::vector<int>                                       m_last_recorded_draw_series_ids;
-    std::vector<Series_view_kind>                          m_last_recorded_draw_view_kinds;
-    std::vector<bool>                                      m_last_recorded_stack_sum_overlays;
-    std::vector<glm::vec4>                                 m_last_recorded_draw_colors;
-    std::vector<float>                                     m_last_recorded_line_widths;
-    std::size_t                                            m_last_qrhi_layer_cache_size = 0;
+    std::vector<int>                                                   m_last_recorded_draw_z_orders;
+    std::vector<Display_style>                                         m_last_recorded_draw_styles;
+    std::vector<int>                                                   m_last_recorded_draw_series_ids;
+    std::vector<Series_view_kind>                                      m_last_recorded_draw_view_kinds;
+    std::vector<bool>                                                  m_last_recorded_stack_sum_overlays;
+    std::vector<glm::vec4>                                             m_last_recorded_draw_colors;
+    std::vector<float>                                                 m_last_recorded_line_widths;
+    std::size_t                                                        m_last_qrhi_layer_cache_size = 0;
 
     // The full implementation sits in series_renderer.cpp where the QRhi
     // types are complete.
     struct rhi_state_t;
-    std::unique_ptr<rhi_state_t>                           m_rhi_state;
+    std::unique_ptr<rhi_state_t>                                       m_rhi_state;
 
     uint64_t m_frame_id = 0; // Monotonic frame counter for snapshot caching
 

@@ -60,6 +60,21 @@ constexpr float k_default_color_epsilon    = 0.01f;
 constexpr int   k_stack_sum_z_order        = 20;
 constexpr float k_stack_sum_width_extra_px = 2.0f;
 
+const char* stack_rejection_reason_text(Stack_rejection_reason reason)
+{
+    switch (reason) {
+        case Stack_rejection_reason::NONE:                    return "none";
+        case Stack_rejection_reason::MIXED_INTERPOLATION:     return "mixed interpolation";
+        case Stack_rejection_reason::NO_DRAWABLE_DATA:        return "no drawable data";
+        case Stack_rejection_reason::INCOMPATIBLE_DATA:       return "incompatible data";
+        case Stack_rejection_reason::NONMONOTONIC_TIMESTAMPS: return "nonmonotonic timestamps";
+        case Stack_rejection_reason::NO_COMMON_DOMAIN:        return "no common time domain";
+        case Stack_rejection_reason::CUMULATIVE_OVERFLOW:     return "cumulative overflow";
+        case Stack_rejection_reason::OUTPUT_LIMIT:            return "output limit";
+    }
+    return "unknown";
+}
+
 std::vector<std::size_t> source_lod_scales(const Data_source& source)
 {
     const std::size_t        level_count = source.lod_levels();
@@ -717,6 +732,7 @@ void Series_renderer::prepare(
                            series)
 {
     m_main_stack_validity.clear();
+    m_stack_view_statuses.clear();
     m_rhi_state->frame_draw_states.clear();
     m_rhi_state->prepared_draws.clear();
     m_rhi_state->frame_plan_ready = false;
@@ -1077,10 +1093,13 @@ void Series_renderer::prepare(
         }
 
         for (auto& [group, members] : groups) {
-            if (members.size() < 2) {
-                clear_stack_cache(*members.front());
-                continue;
-            }
+            auto& published = m_stack_view_statuses[{group, view_kind}];
+            published.status.group     = group;
+            published.status.view_kind = view_kind;
+            published.status.state     = Stack_view_state::ACTIVE;
+            published.status.reason    = Stack_rejection_reason::NONE;
+            published.status.affected_series_ids.reserve(members.size());
+            published.sources.reserve(members.size());
             std::vector<const Series_view_plan*> plans;
             plans.reserve(members.size());
             std::size_t input_samples = 0;
@@ -1092,6 +1111,19 @@ void Series_renderer::prepare(
                     ? &member->main_plan
                     : &member->preview_plan;
                 plans.push_back(plan);
+                published.status.affected_series_ids.push_back(member->id);
+                const std::uint64_t attempt_sequence = plan->snapshot.sequence != 0
+                    ? plan->snapshot.sequence
+                    : (plan->source
+                        ? plan->source->current_sequence(plan->lod_level)
+                        : 0);
+                published.sources.push_back({
+                    member->id,
+                    plan->source,
+                    plan->lod_level,
+                    attempt_sequence,
+                    plan->interpolation,
+                    {}});
                 input_samples += plan->gpu_count;
                 cacheable = cacheable && plan->snapshot.sequence != 0;
                 const auto access_view = plan->access
@@ -1129,6 +1161,11 @@ void Series_renderer::prepare(
                 });
             }
 
+            if (members.size() < 2) {
+                clear_stack_cache(*members.front());
+                continue;
+            }
+
             const bool cache_hit = cacheable && std::all_of(
                 members.begin(),
                 members.end(),
@@ -1139,7 +1176,12 @@ void Series_renderer::prepare(
                         state.stack_cache_snapshot;
                 });
             std::vector<std::vector<detail::stacked_sample_t>> layers;
-            if (!cache_hit && !detail::compose_stacked_series(plans, layers)) {
+            const Stack_rejection_reason rejection = cache_hit
+                ? Stack_rejection_reason::NONE
+                : detail::compose_stacked_series(plans, layers);
+            if (rejection != Stack_rejection_reason::NONE) {
+                published.status.state  = Stack_view_state::SUPPRESSED;
+                published.status.reason = rejection;
                 for (auto* member : members) {
                     clear_stack_cache(*member);
                     Series_view_plan& plan = view_kind == Series_view_kind::MAIN
@@ -1157,9 +1199,9 @@ void Series_renderer::prepare(
                 log_error_once(
                     Error_cat::STACK_COMPOSITION,
                     members.front()->id,
-                    "Stack composition requires finite value samples, "
-                    "monotonic timestamps, and matching interpolation (group "
-                + std::to_string(group) + ")");
+                    "Stack composition suppressed: " +
+                    std::string(stack_rejection_reason_text(rejection)) +
+                    " (group " + std::to_string(group) + ")");
                 continue;
             }
             std::size_t output_samples = 0;

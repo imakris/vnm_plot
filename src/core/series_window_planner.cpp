@@ -933,7 +933,7 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
     return plan;
 }
 
-bool compose_stacked_series(
+Stack_rejection_reason compose_stacked_series(
     const std::vector<const Series_view_plan*>&    plans,
     std::vector<std::vector<stacked_sample_t>>&    layers)
 {
@@ -941,24 +941,27 @@ bool compose_stacked_series(
 
     layers.clear();
     if (plans.size() < 2) {
-        return false;
+        return Stack_rejection_reason::NO_DRAWABLE_DATA;
     }
-    const Series_interpolation interpolation = plans.front()
-        ? plans.front()->interpolation
-        : Series_interpolation::LINEAR;
+    if (std::any_of(plans.begin(), plans.end(), [](const auto* plan) { return !plan; })) {
+        return Stack_rejection_reason::NO_DRAWABLE_DATA;
+    }
+    const Series_interpolation interpolation = plans.front()->interpolation;
     if (std::any_of(plans.begin(), plans.end(),
-        [interpolation](const auto* plan) { return !plan || plan->interpolation != interpolation; }))
+        [interpolation](const auto* plan) { return plan->interpolation != interpolation; }))
     {
-        return false;
+        return Stack_rejection_reason::MIXED_INTERPOLATION;
     }
 
     std::vector<std::vector<point_t>> points(plans.size());
     for (std::size_t layer = 0; layer < plans.size(); ++layer) {
         const Series_view_plan* plan = plans[layer];
-        if (!plan || !plan->snapshot.snapshot || !plan->access ||
-            !plan->access->get_value || plan->drawable_spans.size() != 1)
+        if (!plan->snapshot.snapshot || !plan->access || !plan->access->get_value)
         {
-            return false;
+            return Stack_rejection_reason::NO_DRAWABLE_DATA;
+        }
+        if (plan->drawable_spans.size() != 1) {
+            return Stack_rejection_reason::INCOMPATIBLE_DATA;
         }
 
         const drawable_sample_span_t& span = plan->drawable_spans.front();
@@ -973,7 +976,7 @@ bool compose_stacked_series(
                 access, sample, plan->nonfinite_policy, value) !=
                 sample_draw_status_t::DRAWABLE)
             {
-                return false;
+                return Stack_rejection_reason::INCOMPATIBLE_DATA;
             }
             const std::int64_t timestamp = access.timestamp(sample);
             if (!out.empty() && out.back().t == timestamp) {
@@ -985,14 +988,14 @@ bool compose_stacked_series(
         }
         if (span.gpu_count == span.source_count + 1u) {
             if (out.empty()) {
-                return false;
+                return Stack_rejection_reason::NO_DRAWABLE_DATA;
             }
             if (out.back().t != plan->hold_timestamp_ns) {
                 out.push_back({plan->hold_timestamp_ns, out.back().v});
             }
         }
         if (out.empty()) {
-            return false;
+            return Stack_rejection_reason::NO_DRAWABLE_DATA;
         }
         if (out.size() > 1 && out.front().t > out.back().t) {
             std::reverse(out.begin(), out.end());
@@ -1000,7 +1003,7 @@ bool compose_stacked_series(
         if (!std::is_sorted(out.begin(), out.end(),
             [](const point_t& a, const point_t& b) { return a.t < b.t; }))
         {
-            return false;
+            return Stack_rejection_reason::NONMONOTONIC_TIMESTAMPS;
         }
     }
 
@@ -1012,7 +1015,7 @@ bool compose_stacked_series(
         overlap_end   = std::min(overlap_end, source.back().t);
     }
     if (overlap_end < overlap_start) {
-        return false;
+        return Stack_rejection_reason::NO_COMMON_DOMAIN;
     }
 
     std::vector<std::size_t> merge_indices(points.size(), 0);
@@ -1072,12 +1075,14 @@ bool compose_stacked_series(
             cumulative += value;
             if (!std::isfinite(cumulative)) {
                 layers.clear();
-                return false;
+                return Stack_rejection_reason::CUMULATIVE_OVERFLOW;
             }
             layers[layer].push_back({timestamp, cumulative, base});
         }
     }
-    return !timestamps.empty();
+    return timestamps.empty()
+        ? Stack_rejection_reason::NO_DRAWABLE_DATA
+        : Stack_rejection_reason::NONE;
 }
 
 const Data_access_policy& stacked_sample_access()

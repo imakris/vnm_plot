@@ -17,6 +17,38 @@ enum class Series_view_kind
     PREVIEW
 };
 
+enum class Stack_view_state
+{
+    // No renderer result matches the current series data and view range.
+    PENDING,
+    // The current view was accepted. A singleton group is active but is not
+    // composed with another series.
+    ACTIVE,
+    // The current view was omitted for the accompanying rejection reason.
+    SUPPRESSED,
+};
+
+enum class Stack_rejection_reason
+{
+    NONE,
+    MIXED_INTERPOLATION,
+    NO_DRAWABLE_DATA,
+    INCOMPATIBLE_DATA,
+    NONMONOTONIC_TIMESTAMPS,
+    NO_COMMON_DOMAIN,
+    CUMULATIVE_OVERFLOW,
+    OUTPUT_LIMIT,
+};
+
+struct Stack_view_status
+{
+    int                        group     = 0;
+    Series_view_kind           view_kind = Series_view_kind::MAIN;
+    Stack_view_state           state     = Stack_view_state::PENDING;
+    Stack_rejection_reason     reason    = Stack_rejection_reason::NONE;
+    std::vector<int>           affected_series_ids;
+};
+
 struct drawable_sample_span_t
 {
     std::size_t                source_first = 0;

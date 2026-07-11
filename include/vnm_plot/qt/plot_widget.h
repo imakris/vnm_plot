@@ -5,6 +5,7 @@
 
 #include <vnm_plot/core/types.h>
 #include <vnm_plot/core/plot_config.h>
+#include <vnm_plot/core/series_window.h>
 #include <vnm_plot/core/time_units.h>
 
 #include <QBasicTimer>
@@ -15,6 +16,7 @@
 
 #include <QString>
 #include <QVariantList>
+#include <QVariantMap>
 
 #include <atomic>
 #include <map>
@@ -235,6 +237,19 @@ public:
     Q_INVOKABLE QString format_timestamp_precise(
         qint64 timestamp_ms) const;
 
+    // Current renderer result for a configured stack group and view. A
+    // pending result means the renderer has not yet published a result for
+    // the current series revision/range, or its source data has advanced.
+    Stack_view_status stack_status(
+        int                    group,
+        Series_view_kind       view_kind) const;
+
+    // QML schema: group (int), view/state/reason (uppercase strings), and
+    // affected_series_ids (list<int>). Pass preview=true for PREVIEW.
+    Q_INVOKABLE QVariantMap get_stack_status(
+        int    group,
+        bool   preview = false) const;
+
     // --- Qt Quick RHI Interface ---
 
     QQuickRhiItemRenderer* createRenderer() override;
@@ -277,6 +292,14 @@ protected:
         const Series_renderer& renderer,
         qint64                 t_min_ns,
         qint64                 t_max_ns,
+        std::uint64_t          series_revision) const;
+
+    void set_rendered_stack_validity(
+        const Series_renderer& renderer,
+        qint64                 t_min_ns,
+        qint64                 t_max_ns,
+        qint64                 t_available_min_ns,
+        qint64                 t_available_max_ns,
         std::uint64_t          series_revision) const;
 
 private:
@@ -347,8 +370,17 @@ private:
     mutable std::mutex             m_rendered_stack_validity_mutex;
     mutable std::map<int, std::vector<rendered_stack_source_revision_t>>
                                    m_rendered_stack_validity;
+    struct rendered_stack_status_t
+    {
+        Stack_view_status                              status;
+        std::vector<rendered_stack_source_revision_t>  sources;
+    };
+    mutable std::map<std::pair<int, Series_view_kind>, rendered_stack_status_t>
+                                   m_rendered_stack_statuses;
     mutable qint64                 m_rendered_stack_t_min                        = 0;
     mutable qint64                 m_rendered_stack_t_max                        = 0;
+    mutable qint64                 m_rendered_stack_available_t_min              = 0;
+    mutable qint64                 m_rendered_stack_available_t_max              = 0;
     mutable std::uint64_t          m_rendered_stack_series_revision              = 0;
     std::atomic<double>            m_vbar_width_px{0.0};
     QBasicTimer                    m_vbar_width_timer;

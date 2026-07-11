@@ -136,6 +136,31 @@ std::optional<std::int64_t> indicator_ms_to_ns(double value_ms)
         fractional_ns);
 }
 
+const char* stack_state_name(Stack_view_state state)
+{
+    switch (state) {
+        case Stack_view_state::PENDING:    return "PENDING";
+        case Stack_view_state::ACTIVE:     return "ACTIVE";
+        case Stack_view_state::SUPPRESSED: return "SUPPRESSED";
+    }
+    return "PENDING";
+}
+
+const char* stack_reason_name(Stack_rejection_reason reason)
+{
+    switch (reason) {
+        case Stack_rejection_reason::NONE:                    return "NONE";
+        case Stack_rejection_reason::MIXED_INTERPOLATION:     return "MIXED_INTERPOLATION";
+        case Stack_rejection_reason::NO_DRAWABLE_DATA:        return "NO_DRAWABLE_DATA";
+        case Stack_rejection_reason::INCOMPATIBLE_DATA:       return "INCOMPATIBLE_DATA";
+        case Stack_rejection_reason::NONMONOTONIC_TIMESTAMPS: return "NONMONOTONIC_TIMESTAMPS";
+        case Stack_rejection_reason::NO_COMMON_DOMAIN:        return "NO_COMMON_DOMAIN";
+        case Stack_rejection_reason::CUMULATIVE_OVERFLOW:     return "CUMULATIVE_OVERFLOW";
+        case Stack_rejection_reason::OUTPUT_LIMIT:            return "OUTPUT_LIMIT";
+    }
+    return "NONE";
+}
+
 } // anonymous namespace
 
 Plot_widget::Plot_widget()
@@ -1657,6 +1682,71 @@ QString Plot_widget::format_timestamp_precise(qint64 timestamp_ms) const
     return QString::fromStdString(formatter(timestamp_ns, std::int64_t{0}));
 }
 
+Stack_view_status Plot_widget::stack_status(
+    int                group,
+    Series_view_kind   view_kind) const
+{
+    Stack_view_status pending;
+    pending.group     = group;
+    pending.view_kind = view_kind;
+
+    const data_config_t cfg = data_cfg_snapshot();
+    const qint64 expected_min = view_kind == Series_view_kind::MAIN
+        ? cfg.t_min
+        : cfg.t_available_min;
+    const qint64 expected_max = view_kind == Series_view_kind::MAIN
+        ? cfg.t_max
+        : cfg.t_available_max;
+
+    std::lock_guard lock(m_rendered_stack_validity_mutex);
+    const qint64 rendered_min = view_kind == Series_view_kind::MAIN
+        ? m_rendered_stack_t_min
+        : m_rendered_stack_available_t_min;
+    const qint64 rendered_max = view_kind == Series_view_kind::MAIN
+        ? m_rendered_stack_t_max
+        : m_rendered_stack_available_t_max;
+    if (m_series_revision.load(std::memory_order_acquire) != m_rendered_stack_series_revision ||
+        expected_min                                      != rendered_min                     ||
+        expected_max                                      != rendered_max)
+    {
+        return pending;
+    }
+
+    const auto found = m_rendered_stack_statuses.find({group, view_kind});
+    if (found == m_rendered_stack_statuses.end()) {
+        return pending;
+    }
+    for (const auto& source : found->second.sources) {
+        if (!source.source) {
+            continue;
+        }
+        const std::uint64_t current = source.source->current_sequence(source.lod);
+        if (current != 0 && current != source.sequence) {
+            return pending;
+        }
+    }
+    return found->second.status;
+}
+
+QVariantMap Plot_widget::get_stack_status(int group, bool preview) const
+{
+    const Stack_view_status status = stack_status(
+        group,
+        preview ? Series_view_kind::PREVIEW : Series_view_kind::MAIN);
+    QVariantList series_ids;
+    series_ids.reserve(static_cast<qsizetype>(status.affected_series_ids.size()));
+    for (int id : status.affected_series_ids) {
+        series_ids.push_back(id);
+    }
+    return {
+        { "group", status.group },
+        { "view", status.view_kind == Series_view_kind::MAIN ? "MAIN" : "PREVIEW" },
+        { "state",               stack_state_name(status.state)   },
+        { "reason",              stack_reason_name(status.reason) },
+        { "affected_series_ids", series_ids                       },
+    };
+}
+
 std::pair<float, float> Plot_widget::manual_v_range() const
 {
     const auto cfg = data_cfg_snapshot();
@@ -1756,6 +1846,8 @@ void Plot_widget::set_rendered_stack_validity(
         renderer,
         t_min_ns,
         t_max_ns,
+        t_min_ns,
+        t_max_ns,
         m_series_revision.load(std::memory_order_acquire));
 }
 
@@ -1765,10 +1857,30 @@ void Plot_widget::set_rendered_stack_validity(
     qint64                 t_max_ns,
     std::uint64_t          series_revision) const
 {
+    set_rendered_stack_validity(
+        renderer,
+        t_min_ns,
+        t_max_ns,
+        t_min_ns,
+        t_max_ns,
+        series_revision);
+}
+
+void Plot_widget::set_rendered_stack_validity(
+    const Series_renderer& renderer,
+    qint64                 t_min_ns,
+    qint64                 t_max_ns,
+    qint64                 t_available_min_ns,
+    qint64                 t_available_max_ns,
+    std::uint64_t          series_revision) const
+{
     std::lock_guard lock(m_rendered_stack_validity_mutex);
     m_rendered_stack_validity.clear();
+    m_rendered_stack_statuses.clear();
     m_rendered_stack_t_min           = t_min_ns;
     m_rendered_stack_t_max           = t_max_ns;
+    m_rendered_stack_available_t_min = t_available_min_ns;
+    m_rendered_stack_available_t_max = t_available_max_ns;
     m_rendered_stack_series_revision = series_revision;
     for (const auto& [group, revisions] : renderer.main_stack_validity()) {
         auto& stored = m_rendered_stack_validity[group];
@@ -1783,14 +1895,28 @@ void Plot_widget::set_rendered_stack_validity(
                 revision.cumulative});
         }
     }
+    for (const auto& [key, rendered] : renderer.stack_view_statuses()) {
+        auto& stored  = m_rendered_stack_statuses[key];
+        stored.status = rendered.status;
+        stored.sources.reserve(rendered.sources.size());
+        for (const auto& source : rendered.sources) {
+            stored.sources.push_back({
+                source.series_id,
+                source.source,
+                source.lod,
+                source.sequence,
+                source.interpolation,
+                source.cumulative});
+        }
+    }
 }
 
 std::optional<std::vector<std::pair<int, double>>> Plot_widget::rendered_stack_values(
-    int                    group,
-    std::size_t            member_count,
-    qint64                 t_min_ns,
-    qint64                 t_max_ns,
-    qint64                 x_ns) const
+    int            group,
+    std::size_t    member_count,
+    qint64         t_min_ns,
+    qint64         t_max_ns,
+    qint64         x_ns) const
 {
     std::lock_guard lock(m_rendered_stack_validity_mutex);
     if (m_series_revision.load(std::memory_order_acquire) != m_rendered_stack_series_revision ||

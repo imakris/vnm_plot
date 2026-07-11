@@ -1488,7 +1488,7 @@ bool test_stacking_composes_different_timestamps_from_independent_lods()
 
     std::vector<std::vector<plot::detail::stacked_sample_t>> layers;
     TEST_ASSERT(plot::detail::compose_stacked_series(
-        {&lower_plan, &upper_plan}, layers),
+        {&lower_plan, &upper_plan}, layers) == plot::Stack_rejection_reason::NONE,
         "different timestamp grids should compose");
     TEST_ASSERT(layers.size() == 2 && layers[0].size() == layers[1].size(),
         "stack layers should share the timestamp union");
@@ -1581,7 +1581,7 @@ bool test_stacking_interpolates_sub_256ns_epoch_intervals()
 
     std::vector<std::vector<plot::detail::stacked_sample_t>> layers;
     TEST_ASSERT(plot::detail::compose_stacked_series(
-        {&lower_plan, &upper_plan}, layers),
+        {&lower_plan, &upper_plan}, layers) == plot::Stack_rejection_reason::NONE,
         "sub-256ns current-epoch grids should compose");
     TEST_ASSERT(layers.size() == 2 && layers[0].size() == 3,
         "epoch stack should retain the exact timestamp union");
@@ -1594,10 +1594,81 @@ bool test_stacking_interpolates_sub_256ns_epoch_intervals()
     lower.insert(lower.begin() + 2, {k_epoch + 127, 5.0f});
     const auto duplicate_plan = make_plan(lower);
     TEST_ASSERT(plot::detail::compose_stacked_series(
-        {&duplicate_plan, &upper_plan}, layers),
+        {&duplicate_plan, &upper_plan}, layers) == plot::Stack_rejection_reason::NONE,
         "duplicate epoch timestamps should compose");
     TEST_ASSERT(std::abs(layers[0][1].value - 5.0f) < 1e-6f,
         "stack composition should retain its last duplicate value policy");
+
+    return true;
+}
+
+bool test_stacking_reports_specific_rejection_reasons()
+{
+    const Data_access_policy access = make_policy();
+    const auto make_plan = [&access](std::vector<Test_sample>& samples) {
+        plot::Series_view_plan plan;
+        plan.access            = &access;
+        plan.snapshot.snapshot = {
+            samples.data(), samples.size(), sizeof(Test_sample), 1};
+        plan.snapshot.sequence = 1;
+        plan.source_count      = samples.size();
+        plan.gpu_count         = samples.size();
+        plan.drawable_spans    = {{0, samples.size(), 0, samples.size()}};
+        return plan;
+    };
+    std::vector<std::vector<plot::detail::stacked_sample_t>> layers;
+
+    std::vector<Test_sample> a{{0, 1.0f}, {1, 2.0f}};
+    std::vector<Test_sample> b{{0, 3.0f}, {1, 4.0f}};
+    auto a_plan = make_plan(a);
+    auto b_plan = make_plan(b);
+
+    TEST_ASSERT(plot::detail::compose_stacked_series(
+        {nullptr, &b_plan}, layers) == plot::Stack_rejection_reason::NO_DRAWABLE_DATA,
+        "missing plans should have a queryable rejection reason");
+
+    b_plan.interpolation = plot::Series_interpolation::STEP_AFTER;
+    TEST_ASSERT(plot::detail::compose_stacked_series(
+        {&a_plan, &b_plan}, layers) == plot::Stack_rejection_reason::MIXED_INTERPOLATION,
+        "mixed interpolation should have a queryable rejection reason");
+    b_plan.interpolation = plot::Series_interpolation::LINEAR;
+
+    a_plan.drawable_spans.push_back({1, 1, 1, 1});
+    TEST_ASSERT(plot::detail::compose_stacked_series(
+        {&a_plan, &b_plan}, layers) == plot::Stack_rejection_reason::INCOMPATIBLE_DATA,
+        "multiple drawable spans should report discontinuous data");
+    a_plan.drawable_spans.resize(1);
+
+    a[0].v = std::numeric_limits<float>::quiet_NaN();
+    a_plan.nonfinite_policy = plot::Nonfinite_sample_policy::REJECT_WINDOW;
+    TEST_ASSERT(plot::detail::compose_stacked_series(
+        {&a_plan, &b_plan}, layers) == plot::Stack_rejection_reason::INCOMPATIBLE_DATA,
+        "nonfinite input should have a queryable rejection reason");
+    a = {{0, 1.0f}, {1, 2.0f}};
+    a_plan = make_plan(a);
+
+    a = {{0, 1.0f}, {2, 2.0f}, {1, 3.0f}};
+    a_plan = make_plan(a);
+    TEST_ASSERT(plot::detail::compose_stacked_series(
+        {&a_plan, &b_plan}, layers) == plot::Stack_rejection_reason::NONMONOTONIC_TIMESTAMPS,
+        "unordered timestamps should have a queryable rejection reason");
+
+    a      = {{0, 1.0f}, {1, 2.0f}};
+    b      = {{2, 3.0f}, {3, 4.0f}};
+    a_plan = make_plan(a);
+    b_plan = make_plan(b);
+    TEST_ASSERT(plot::detail::compose_stacked_series(
+        {&a_plan, &b_plan}, layers) == plot::Stack_rejection_reason::NO_COMMON_DOMAIN,
+        "disjoint inputs should report no common domain");
+
+    const float maximum = std::numeric_limits<float>::max();
+    a      = {{0, maximum}, {1, maximum}};
+    b      = {{0, maximum}, {1, maximum}};
+    a_plan = make_plan(a);
+    b_plan = make_plan(b);
+    TEST_ASSERT(plot::detail::compose_stacked_series(
+        {&a_plan, &b_plan}, layers) == plot::Stack_rejection_reason::CUMULATIVE_OVERFLOW,
+        "nonfinite cumulative output should report overflow");
 
     return true;
 }
@@ -1994,6 +2065,7 @@ int main()
     RUN_TEST(test_lod_selection_has_no_hysteresis);
     RUN_TEST(test_stacking_composes_different_timestamps_from_independent_lods);
     RUN_TEST(test_stacking_interpolates_sub_256ns_epoch_intervals);
+    RUN_TEST(test_stacking_reports_specific_rejection_reasons);
     RUN_TEST(test_snapshot_released_after_render);
     RUN_TEST(test_upload_origin_records_per_view_origin);
     RUN_TEST(test_upload_invalidates_when_origin_changes_across_snap_bucket);

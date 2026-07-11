@@ -496,6 +496,8 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
                     m_impl->series,
                     ctx.t0,
                     ctx.t1,
+                    ctx.t_available_min,
+                    ctx.t_available_max,
                     snapshot.series_revision);
             }
         }

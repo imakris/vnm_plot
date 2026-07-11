@@ -57,6 +57,69 @@ struct indicator_sample_t
     float          value = 0.0f;
 };
 
+class unsupported_sequence_source_t final : public plot::Data_source
+{
+public:
+    std::vector<indicator_sample_t> samples;
+    std::uint64_t                   snapshot_sequence = 41;
+
+    plot::snapshot_result_t try_snapshot(std::size_t) override
+    {
+        if (samples.empty()) {
+            return {{}, plot::snapshot_result_t::Snapshot_status::EMPTY};
+        }
+        return {{
+            samples.data(), samples.size(), sizeof(indicator_sample_t), snapshot_sequence},
+            plot::snapshot_result_t::Snapshot_status::READY};
+    }
+
+    std::uint64_t current_sequence(std::size_t) const override { return 0; }
+    std::size_t sample_stride() const override { return sizeof(indicator_sample_t); }
+};
+
+class advancing_after_snapshot_source_t final : public plot::Data_source
+{
+public:
+    std::vector<indicator_sample_t> samples{{0, 1.0f}, {100, 2.0f}};
+    std::uint64_t                   sequence = 1;
+
+    plot::snapshot_result_t try_snapshot(std::size_t) override
+    {
+        const std::uint64_t rendered_sequence = sequence++;
+        return {{
+            samples.data(), samples.size(), sizeof(indicator_sample_t), rendered_sequence},
+            plot::snapshot_result_t::Snapshot_status::READY};
+    }
+
+    std::uint64_t current_sequence(std::size_t) const override { return sequence; }
+    std::size_t sample_stride() const override { return sizeof(indicator_sample_t); }
+};
+
+plot::Data_access_policy indicator_access_policy()
+{
+    plot::Data_access_policy_typed<indicator_sample_t> access;
+    access.get_timestamp = [](const indicator_sample_t& sample) {
+        return sample.t_ns;
+    };
+    access.get_value = [](const indicator_sample_t& sample) {
+        return sample.value;
+    };
+    return access.erase();
+}
+
+std::shared_ptr<plot::series_data_t> make_stack_status_series(
+    std::shared_ptr<plot::Data_source> source,
+    plot::Nonfinite_sample_policy      policy = plot::Nonfinite_sample_policy::BREAK_SEGMENT)
+{
+    auto series = std::make_shared<plot::series_data_t>();
+    series->style            = plot::Display_style::LINE;
+    series->stack_group      = 7;
+    series->nonfinite_policy = policy;
+    series->data_source      = std::move(source);
+    series->access           = indicator_access_policy();
+    return series;
+}
+
 bool nearly_equal(double a, double b, double epsilon = 1e-12)
 {
     return std::abs(a - b) <= epsilon * std::max({1.0, std::abs(a), std::abs(b)});
@@ -80,20 +143,14 @@ std::shared_ptr<plot::series_data_t> make_sample_series(
     auto source = std::make_shared<plot::Vector_data_source<indicator_sample_t>>(
         std::move(samples));
 
-    plot::Data_access_policy_typed<indicator_sample_t> access;
-    access.get_timestamp = [](const indicator_sample_t& sample) {
-        return sample.t_ns;
-    };
-    access.get_value = [](const indicator_sample_t& sample) {
-        return sample.value;
-    };
+    const plot::Data_access_policy access = indicator_access_policy();
 
     auto series = std::make_shared<plot::series_data_t>();
     series->series_label          = "indicator";
     series->interpolation         = interpolation;
     series->empty_window_behavior = empty_window_behavior;
     series->data_source           = source;
-    series->access                = access.erase();
+    series->access                = access;
 
     return series;
 }
@@ -145,18 +202,22 @@ void publish_rendered_stack_validity(
     const std::map<int, std::shared_ptr<const plot::series_data_t>>&
                                series,
     std::int64_t               t_min_ns,
-    std::int64_t               t_max_ns)
+    std::int64_t               t_max_ns,
+    bool                       include_preview = false)
 {
     plot::frame_layout_result_t layout;
     layout.usable_width  = 100.0;
     layout.usable_height = 100.0;
     plot::Plot_config config;
     plot::frame_context_t context{layout};
-    context.t0     = t_min_ns;
-    context.t1     = t_max_ns;
-    context.win_w  = 100;
-    context.win_h  = 100;
-    context.config = &config;
+    context.t0                      = t_min_ns;
+    context.t1                      = t_max_ns;
+    context.t_available_min         = t_min_ns;
+    context.t_available_max         = t_max_ns;
+    context.win_w                   = 100;
+    context.win_h                   = 100;
+    context.adjusted_preview_height = include_preview ? 20.0 : 0.0;
+    context.config                  = &config;
 
     plot::Asset_loader assets;
     plot::Series_renderer renderer;
@@ -363,6 +424,207 @@ bool test_stacked_indicator_matches_sub_256ns_epoch_composition()
     TEST_ASSERT(nearly_equal(samples[1].toMap().value("marker_y").toDouble(), 6.0) &&
         nearly_equal(samples[2].toMap().value("y").toDouble(), 6.0),
         "stacked marker and sigma should match composed epoch geometry");
+
+    return true;
+}
+
+bool test_stack_status_reports_views_freshness_rejection_and_recovery()
+{
+    auto lower_source = std::make_shared<plot::Vector_data_source<indicator_sample_t>>(
+        std::vector<indicator_sample_t>{{0, 1.0f}, {100, 2.0f}});
+    auto upper_source = std::make_shared<plot::Vector_data_source<indicator_sample_t>>(
+        std::vector<indicator_sample_t>{{0, 3.0f}, {100, 4.0f}});
+    auto lower = make_stack_status_series(lower_source);
+    auto upper = make_stack_status_series(upper_source);
+
+    indicator_test_widget_t widget;
+    configure_view(widget, 0, 100, 0.0f, 10.0f);
+    widget.add_series(1, lower);
+    widget.add_series(2, upper);
+    std::map<int, std::shared_ptr<const plot::series_data_t>> series{
+        {1, lower}, {2, upper}};
+
+    TEST_ASSERT(widget.stack_status(7, plot::Series_view_kind::MAIN).state ==
+        plot::Stack_view_state::PENDING,
+        "a stack should be pending before the renderer publishes its current result");
+
+    publish_rendered_stack_validity(widget, series, 0, 100, true);
+    const auto main_status    = widget.stack_status(7, plot::Series_view_kind::MAIN);
+    const auto preview_status = widget.stack_status(7, plot::Series_view_kind::PREVIEW);
+    TEST_ASSERT(main_status.state == plot::Stack_view_state::ACTIVE &&
+        preview_status.state == plot::Stack_view_state::ACTIVE,
+        "main and preview should publish independent active stack results");
+    TEST_ASSERT(main_status.affected_series_ids == std::vector<int>({1, 2}),
+        "active status should identify every affected series");
+
+    const QVariantMap qml = widget.get_stack_status(7, true);
+    TEST_ASSERT(qml.value("group").toInt() == 7 &&
+        qml.value("view").toString() == "PREVIEW" &&
+        qml.value("state").toString() == "ACTIVE" &&
+        qml.value("reason").toString() == "NONE" &&
+        qml.value("affected_series_ids").toList().size() == 2,
+        "QML status should expose the documented stable schema");
+
+    lower_source->set_data({{0, 5.0f}, {100, 6.0f}});
+    TEST_ASSERT(widget.stack_status(7, plot::Series_view_kind::MAIN).state ==
+        plot::Stack_view_state::PENDING,
+        "advanced source data should make a published status stale");
+    publish_rendered_stack_validity(widget, series, 0, 100, true);
+    TEST_ASSERT(widget.stack_status(7, plot::Series_view_kind::MAIN).state ==
+        plot::Stack_view_state::ACTIVE,
+        "a fresh renderer publication should recover a stale status");
+
+    upper->interpolation = plot::Series_interpolation::STEP_AFTER;
+    widget.add_series(2, upper);
+    TEST_ASSERT(widget.stack_status(7, plot::Series_view_kind::MAIN).state ==
+        plot::Stack_view_state::PENDING,
+        "a series revision should make the previous renderer result pending");
+    publish_rendered_stack_validity(widget, series, 0, 100, true);
+    const auto rejected_main    = widget.stack_status(7, plot::Series_view_kind::MAIN);
+    const auto rejected_preview = widget.stack_status(7, plot::Series_view_kind::PREVIEW);
+    TEST_ASSERT(rejected_main.state == plot::Stack_view_state::SUPPRESSED &&
+        rejected_preview.state == plot::Stack_view_state::SUPPRESSED &&
+        rejected_main.reason == plot::Stack_rejection_reason::MIXED_INTERPOLATION,
+        "main and preview should expose the renderer's typed rejection");
+
+    upper->interpolation = plot::Series_interpolation::LINEAR;
+    widget.add_series(2, upper);
+    publish_rendered_stack_validity(widget, series, 0, 100, true);
+    TEST_ASSERT(widget.stack_status(7, plot::Series_view_kind::MAIN).state ==
+        plot::Stack_view_state::ACTIVE,
+        "a compatible group should recover from suppression");
+
+    widget.remove_series(2);
+    series.erase(2);
+    publish_rendered_stack_validity(widget, series, 0, 100, true);
+    const auto singleton = widget.stack_status(7, plot::Series_view_kind::MAIN);
+    TEST_ASSERT(singleton.state == plot::Stack_view_state::ACTIVE &&
+        singleton.reason == plot::Stack_rejection_reason::NONE,
+        "a singleton group should remain a non-error");
+
+    return true;
+}
+
+bool test_stack_status_handles_unsupported_and_empty_source_revisions()
+{
+    auto unsupported_lower = std::make_shared<unsupported_sequence_source_t>();
+    auto unsupported_upper = std::make_shared<unsupported_sequence_source_t>();
+    unsupported_lower->samples = {{0, 1.0f}, {100, 2.0f}};
+    unsupported_upper->samples = {{0, 3.0f}, {100, 4.0f}};
+    auto lower = make_stack_status_series(unsupported_lower);
+    auto upper = make_stack_status_series(unsupported_upper);
+
+    indicator_test_widget_t unsupported_widget;
+    configure_view(unsupported_widget, 0, 100, 0.0f, 10.0f);
+    unsupported_widget.add_series(1, lower);
+    unsupported_widget.add_series(2, upper);
+    std::map<int, std::shared_ptr<const plot::series_data_t>> unsupported_series{
+        {1, lower}, {2, upper}};
+    publish_rendered_stack_validity(
+        unsupported_widget, unsupported_series, 0, 100);
+    TEST_ASSERT(unsupported_widget.stack_status(7, plot::Series_view_kind::MAIN).state ==
+        plot::Stack_view_state::ACTIVE,
+        "unsupported source revisions must not make a fresh status pending");
+    unsupported_lower->samples = {{0, 5.0f}, {100, 6.0f}};
+    TEST_ASSERT(unsupported_widget.stack_status(7, plot::Series_view_kind::MAIN).state ==
+        plot::Stack_view_state::ACTIVE,
+        "unsupported revision sources remain current until the next renderer publication");
+
+    auto empty_source = std::make_shared<plot::Vector_data_source<indicator_sample_t>>();
+    auto valid_source = std::make_shared<plot::Vector_data_source<indicator_sample_t>>(
+        std::vector<indicator_sample_t>{{0, 3.0f}, {100, 4.0f}});
+    lower = make_stack_status_series(empty_source);
+    upper = make_stack_status_series(valid_source);
+    indicator_test_widget_t empty_widget;
+    configure_view(empty_widget, 0, 100, 0.0f, 10.0f);
+    empty_widget.add_series(1, lower);
+    empty_widget.add_series(2, upper);
+    std::map<int, std::shared_ptr<const plot::series_data_t>> empty_series{
+        {1, lower}, {2, upper}};
+    publish_rendered_stack_validity(empty_widget, empty_series, 0, 100);
+    auto status = empty_widget.stack_status(7, plot::Series_view_kind::MAIN);
+    TEST_ASSERT(status.state == plot::Stack_view_state::SUPPRESSED &&
+        status.reason == plot::Stack_rejection_reason::NO_DRAWABLE_DATA,
+        "an empty source should publish a current no-drawable-data rejection");
+
+    empty_source->set_data({{0, 1.0f}, {100, 2.0f}});
+    TEST_ASSERT(empty_widget.stack_status(7, plot::Series_view_kind::MAIN).state ==
+        plot::Stack_view_state::PENDING,
+        "an empty source becoming drawable should stale its rejection");
+    publish_rendered_stack_validity(empty_widget, empty_series, 0, 100);
+    TEST_ASSERT(empty_widget.stack_status(7, plot::Series_view_kind::MAIN).state ==
+        plot::Stack_view_state::ACTIVE,
+        "renderer publication should recover an empty-source rejection");
+
+    empty_source->set_data({});
+    TEST_ASSERT(empty_widget.stack_status(7, plot::Series_view_kind::MAIN).state ==
+        plot::Stack_view_state::PENDING,
+        "a drawable source becoming empty should stale its active result");
+    publish_rendered_stack_validity(empty_widget, empty_series, 0, 100);
+    status = empty_widget.stack_status(7, plot::Series_view_kind::MAIN);
+    TEST_ASSERT(status.state == plot::Stack_view_state::SUPPRESSED &&
+        status.reason == plot::Stack_rejection_reason::NO_DRAWABLE_DATA,
+        "a new publication should restore the current empty-source rejection");
+
+    return true;
+}
+
+bool test_stack_status_detects_source_advance_after_snapshot()
+{
+    auto advancing_source = std::make_shared<advancing_after_snapshot_source_t>();
+    auto stable_source = std::make_shared<plot::Vector_data_source<indicator_sample_t>>(
+        std::vector<indicator_sample_t>{{0, 3.0f}, {100, 4.0f}});
+    auto lower = make_stack_status_series(advancing_source);
+    auto upper = make_stack_status_series(stable_source);
+    indicator_test_widget_t widget;
+    configure_view(widget, 0, 100, 0.0f, 10.0f);
+    widget.add_series(1, lower);
+    widget.add_series(2, upper);
+    const std::map<int, std::shared_ptr<const plot::series_data_t>> series{
+        {1, lower}, {2, upper}};
+
+    publish_rendered_stack_validity(widget, series, 0, 100);
+    TEST_ASSERT(widget.stack_status(7, plot::Series_view_kind::MAIN).state ==
+        plot::Stack_view_state::PENDING,
+        "a source advancing after its rendered snapshot should stale the publication");
+
+    return true;
+}
+
+bool test_stack_status_labels_nonfinite_planner_outcomes_truthfully()
+{
+    const auto status_for = [](plot::Nonfinite_sample_policy policy) {
+        auto affected = std::make_shared<plot::Vector_data_source<indicator_sample_t>>(
+            std::vector<indicator_sample_t>{
+                { 0, 1.0f },
+                { 50, std::numeric_limits<float>::quiet_NaN() },
+                {100, 2.0f}});
+        auto valid = std::make_shared<plot::Vector_data_source<indicator_sample_t>>(
+            std::vector<indicator_sample_t>{{0, 3.0f}, {100, 4.0f}});
+        auto lower = make_stack_status_series(affected, policy);
+        auto upper = make_stack_status_series(valid);
+        indicator_test_widget_t widget;
+        configure_view(widget, 0, 100, 0.0f, 10.0f);
+        widget.add_series(1, lower);
+        widget.add_series(2, upper);
+        const std::map<int, std::shared_ptr<const plot::series_data_t>> series{
+            {1, lower}, {2, upper}};
+        publish_rendered_stack_validity(widget, series, 0, 100);
+        return widget.stack_status(7, plot::Series_view_kind::MAIN);
+    };
+
+    const auto broken   = status_for(plot::Nonfinite_sample_policy::BREAK_SEGMENT);
+    const auto skipped  = status_for(plot::Nonfinite_sample_policy::SKIP);
+    const auto rejected = status_for(plot::Nonfinite_sample_policy::REJECT_WINDOW);
+    TEST_ASSERT(broken.state == plot::Stack_view_state::SUPPRESSED &&
+        broken.reason == plot::Stack_rejection_reason::INCOMPATIBLE_DATA,
+        "BREAK_SEGMENT gaps should report incompatible composed data");
+    TEST_ASSERT(skipped.state == plot::Stack_view_state::SUPPRESSED &&
+        skipped.reason == plot::Stack_rejection_reason::INCOMPATIBLE_DATA,
+        "SKIP gaps should report incompatible composed data");
+    TEST_ASSERT(rejected.state == plot::Stack_view_state::SUPPRESSED &&
+        rejected.reason == plot::Stack_rejection_reason::NO_DRAWABLE_DATA,
+        "REJECT_WINDOW should report that the planner supplied no drawable data");
 
     return true;
 }
@@ -680,6 +942,10 @@ int main(int argc, char** argv)
     RUN_TEST(test_indicator_samples_step_after_holds_previous_sample);
     RUN_TEST(test_indicator_reports_stack_sum_only_inside_common_domain);
     RUN_TEST(test_stacked_indicator_matches_sub_256ns_epoch_composition);
+    RUN_TEST(test_stack_status_reports_views_freshness_rejection_and_recovery);
+    RUN_TEST(test_stack_status_handles_unsupported_and_empty_source_revisions);
+    RUN_TEST(test_stack_status_detects_source_advance_after_snapshot);
+    RUN_TEST(test_stack_status_labels_nonfinite_planner_outcomes_truthfully);
     RUN_TEST(test_indicator_omits_sum_when_renderer_rejects_stack);
     RUN_TEST(test_nearest_samples_choose_closer_sample);
     RUN_TEST(test_auto_adjust_view_uses_visible_samples_for_value_and_time_range);
