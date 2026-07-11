@@ -163,7 +163,7 @@ be reviewed or merged as one undifferentiated batch.
 | `RU-4B-A` | Numbered private Candidate A implementation action, independently reviewed. |
 | `RU-4B-B` | Numbered private Candidate B implementation action, independently reviewed. |
 | `RU-4B-evidence` | Evidence-only comparison, identified by `(exact candidate source hash, evidence-manifest SHA-256)` after the common/A/B source units are independently clean; it changes no semantic code and a clean review does not approve D4. |
-| owner D4 | Non-delegated owner selection bound to the exact evidence hash. |
+| owner D4 | Non-delegated owner reviews the exact RU-4B-evidence identity, records the comparative visual verdict, and selects D4 in one decision; workers/evidence reviewers store hashes and technical findings but no human verdict. |
 | `RU-4B-cleanup` | Numbered action deletes the losing candidate/config/tests and binds the winner to the decision; it begins only after owner D4. |
 | `RU-5-production` | Three internal, immediately consumed source units: A1 winner promotion/private-copy deletion/benchmark production entry; A2 internal frame/range/cache producer consumed by benchmark/internal entry; A3 internal RHI consumed by that entry. |
 | `RU-5-public` | `STACK_PUBLIC_ACTIVATION` atomically clusters A1 metadata/registry reachability and A2 Qt/result/preview plus normative public API docs/package-consumer smoke; required public reachability/contract/docs never land separately. A3 is independent and contains only non-contractual example/tutorial expansion and additional package evidence. |
@@ -404,8 +404,9 @@ events, geometry, and all other content-derived facts.
 
 Each inherited source identity stores a non-owning
 `weak_ptr<Data_source>` owner handle plus the aliased `Data_source*`. Two source
-identities compare equal exactly when owner equivalence holds in both
-`owner_less` directions and the alias pointers are equal. The key never
+identities compare equal if and only if neither `owner_less(a.owner,b.owner)` nor
+`owner_less(b.owner,a.owner)` is true, and then the alias pointers are equal.
+The key never
 serializes or hashes a control-block address and never adds strong lifetime
 extension. Expiry remains observable through the weak handle and invalidates
 use; address equality without owner equivalence never matches.
@@ -423,12 +424,24 @@ values, arrays, extrema, events, geometry, CPU staging, or GPU objects.
 The tuple adds no payload/resource owners; its inherited source identities are
 the non-owning weak identities above.
 
+`structure_key` and `content_key` are renderer-private equality state. They are
+never exposed, serialized, copied into, or accepted from the public frame
+result/API. The private retained cache alone keeps `content_key` for READY reuse
+and BUSY eligibility. Public content provenance is only P-R1's
+`content_frame_id` plus exact per-series presented sequences; no weak owner
+handle, alias pointer, structure key, or content key crosses that boundary.
+
 READY reuse requires an identical `content_key`, stable nonzero observed
 sequences, and D10 eligibility. A complete retained result whose key contains
 zero may be identified and copied wholesale under BUSY, but zero never
 authorizes READY reuse. BUSY compares only `structure_key`; a match publishes
 the old complete content, including its zero sequences if any, as STALE_BUSY.
-Structural change, FAILED, EMPTY, or any budget failure suppresses fallback.
+Every complete READY replaces the retained entry. EMPTY, every
+`FAILED(reason)` from any phase, every frame/output/resident/allocation budget
+failure, and every structural-key change remove retained eligibility before
+publication. Only consecutive BUSY publications with no intervening terminal
+event may reuse the retained entry. A structural change cannot preserve an old
+entry for a later change-back.
 
 #### P-D2 — Stack interval normalization and fragmentation
 
@@ -446,9 +459,10 @@ Candidate A selects at most `B` such positions per member; Candidate B selects
 at most `N`. A requested hold endpoint consumes one of those positions during
 selection and is never appended as a `B+1`/`N+1` item. The selector must choose
 a smaller retained window or return the applicable whole-group failure when
-the required brackets/hold cannot fit. Physical samples inspected while finding
-those positions are counted separately in `V_observed` and never reclassified
-as selected inputs.
+the required brackets/hold cannot fit. Physical samples inspected across every
+attempted/selected LOD while finding those positions are counted separately in
+`V_observed`, governed by P-D15's prospective `V_limit`/frame allowance, and
+never reclassified as selected inputs.
 
 The D2 normalization oracle is:
 
@@ -468,13 +482,33 @@ The D2 normalization oracle is:
 
 #### P-R1 — Result authority, stale presentation, and failure precedence
 
+Before any stack processing, the renderer already owns one fixed-size,
+allocation-free `frame_result_t` top-level envelope containing
+`publication_frame_id` and exactly one top disposition: `COMPLETE` or
+`FAILED(reason)`. Its closed top-level failure dispositions are
+`FAILED(RESULT_STORAGE_BUDGET)` and
+`FAILED(RESULT_STORAGE_ALLOCATION_FAILED)`; failure-envelope publication itself
+performs no allocation.
+
+Before any source acquisition, calculate and attempt the exact group/per-series
+result table allocation, counting its complete instantaneous CPU bytes under
+P-D15. A configured-cap rejection publishes
+`FAILED(RESULT_STORAGE_BUDGET)`; an in-cap allocation failure publishes
+`FAILED(RESULT_STORAGE_ALLOCATION_FAILED)`. Either top failure has no group
+table, performs no acquisition/geometry work, and clears every stack retained-
+content eligibility before publication. Only after the complete table exists
+does the ordinary per-group P-R1 contract below apply under top disposition
+COMPLETE.
+
 Every `(group,view)` has exactly one canonical disposition: `READY`, `EMPTY`,
 `STALE_BUSY`, or `FAILED(reason)`. All dispositions except READY and STALE_BUSY
 emit no geometry; STALE_BUSY emits only a retained complete result. Every result
 always has the current producer's `publication_frame_id`. It also has
 `optional<presented_content_identity_t> presented_content_identity`, whose
-fields are `{content_frame_id,content_key}`. That optional is present exactly
-for READY and STALE_BUSY and absent exactly for EMPTY and FAILED. READY sets
+only field is `content_frame_id`. Group/view identity already belongs to the
+enclosing result, and each per-series PRESENTED_CONTENT entry carries its exact
+presented sequence. The optional identity is present exactly for READY and
+STALE_BUSY and absent exactly for EMPTY and FAILED. READY sets
 `content_frame_id=publication_frame_id` only when the complete current result is
 finalized.
 
@@ -549,7 +583,9 @@ speculative later-phase work, and selects one reason as follows:
 
 Every P-D15-generated frame/output/resident/allocation failure suppresses
 STALE_BUSY and removes the target's retained-content eligibility before result
-publication.
+publication. The same pre-publication removal applies to EMPTY, every other
+`FAILED(reason)`, and structural-key change; READY installs the sole replacement
+entry. Thus only uninterrupted BUSY after READY/STALE_BUSY can remain stale.
 
 #### P-D15 — Frame admission and resident resource transaction
 
@@ -570,9 +606,20 @@ The checked per-group/view reservation is
 bytes are
 `12*K*E + 8*group_span_count + 8*sum_line(span_length+2) +
 sizeof(actual_stack_uniform_std140)*U_observed`; every add/multiply and
-`K*E`/visit count is checked. Any arithmetic failure, `K*E>M`,
-`V_observed>V_limit`, `U_observed>U_limit`, or actual bytes above `H_limit`
-returns `FAILED(STACK_OUTPUT_BUDGET_EXCEEDED)` before partial output.
+`K*E`/visit count is checked. Any arithmetic failure, prospective output/visit/
+write excess, or `U_observed>U_limit` returns
+`FAILED(STACK_OUTPUT_BUDGET_EXCEEDED)` before the prohibited side effect.
+
+Hard limits are prospective. Before every physical sample inspection, checked
+arithmetic computes `V_observed+1` against both the per-unit `V_limit` and its
+remaining admitted frame-visit allowance. If the next visit would exceed either,
+perform no inspection and return `FAILED(STACK_OUTPUT_BUDGET_EXCEEDED)`;
+`V_observed` never exceeds its limit. Apply the same checked-before-side-effect
+rule before each output-pair creation (`pairs+1` against `M`/its admitted frame
+reservation) and each upload write (`bytes+write_size` against `H_limit`/its
+admitted frame reservation). The rejected limit+1 operation performs no read,
+write, allocation growth, counter increment, geometry emission, or other side
+effect.
 
 One metadata-only frame planner charges the fixed checked reservation
 `(M,V_limit,H_limit)` before acquisition/allocation: every MAIN unit in
@@ -585,13 +632,19 @@ preview enablement cannot change MAIN admission.
 `STACK_CPU_BYTES_LIMIT` counts only stack-exclusive renderer-owned live bytes:
 composition arrays, normalized stack-only spans, boundary/padding storage,
 uniform/upload staging, and renderer-retained current/stale presentation
-backing. Result-builder and result-backing bytes remain counted for as long as
-the renderer owns or references them. Atomic publication transfers backing out
-of renderer accounting only when the renderer retains no ownership or reference.
-A backing allocation retained for current/stale presentation is counted exactly
-once even when external consumers share it. Only a deep/value copy made solely
-external after complete ownership transfer is excluded and makes no renderer
-residency claim. Ordinary Stage 3 per-series arrays remain excluded. Capped CPU
+backing. Renderer builder, temporary, current, and stale backing bytes remain
+counted while the renderer owns, references, or aliases them. Each internal
+allocation is counted exactly once until the renderer's final reference is
+released, even if some non-public external handle also shares it.
+
+The public immutable `frame_result_t` is always an independent value/deep copy
+and never aliases capped internal backing. Its exact table/builder allocation is
+counted while the renderer constructs/owns it; atomic publication makes that
+independent copy solely externally owned and debits it from renderer accounting
+in the same operation. No capped internal allocation is transferred or escapes
+through an alias. Only that solely external independent copy is excluded and
+makes no renderer residency claim. Ordinary Stage 3 per-series arrays remain
+excluded. Capped CPU
 storage uses only a narrow repo-local noncopyable
 exact-size owning contiguous array—equivalent to
 `unique_ptr<T[]>` plus explicit element count—inside stack-exclusive storage.
@@ -848,7 +901,8 @@ Checkpoint gate:
 
 #### Checkpoint 2.2 — Remove test work and unchanged uploads
 
-`CACHE_KEY_MIGRATION` is unconditionally actions 2–4 and never splits.
+`CACHE_KEY_MIGRATION` is unconditionally actions 2–4 plus action 6 and never
+splits; A5, A7, and A8 follow as separate units.
 
 1. Compile test-only vectors/writes only with `VNM_PLOT_ENABLE_TEST_HOOKS`.
 2. Add `sample_upload_key` using source, stable nonzero sequence, selected LOD, origin, access semantics, window/spans, policies, and view kind.
@@ -874,11 +928,11 @@ Source-unit gate allocation:
   absent plus hook-enabled ordering parity;
 - `CACHE_KEY_MIGRATION` owns key equality/mutation matrices, primary revision
   exactly-once behavior, LINE derivative invalidation/reuse, changed/unchanged
-  upload counts, and pixel/command parity on one source hash;
-- A5 owns stable custom-snapshot unchanged reuse; A6 owns owning/nonowning/ABA
-  behavior and `nonowning_source`; A7 owns zero/unstable/conservative rebuild
-  reasons; A8 owns unconditional custom prepare and separately observable
-  custom traffic;
+  upload counts, source owning/nonowning/ABA identity, `nonowning_source`, and
+  pixel/command parity on one source hash;
+- A5 owns stable custom-snapshot unchanged reuse; A7 owns zero/unstable/
+  conservative rebuild reasons; A8 owns unconditional custom prepare and
+  separately observable custom traffic;
 - every source unit also runs the common source-unit gate; no later evidence
   substitutes for its deterministic oracle.
 
@@ -1214,7 +1268,8 @@ series ID and caller-batched topology; do not add a group descriptor. Scope:
 - nonfinite and hold behavior;
 - the register's complete D2 interval normalization, endpoint inclusion/merge, no-gap-bridging, Candidate A `R_A=K*B` and Candidate B `R_B=N` mandatory-endpoint limits, and `FAILED(FRAGMENTATION_BUDGET)` whole-group result;
 - cumulative nonfinite/overflow as a typed whole-group failure with no partial geometry;
-- D6 BUSY wholesale reuse, retained sequence/content-key publication, and `STALE_BUSY` disposition;
+- D6 BUSY wholesale reuse, private retained-key eligibility, public retained
+  content-frame/per-series-sequence provenance, and `STALE_BUSY` disposition;
 - singleton, all-NONE, and custom-layer failures;
 - GLOBAL/GLOBAL_LOD common-domain behavior;
 - cross-source/cross-LOD non-atomic snapshot wording;
@@ -1254,6 +1309,20 @@ CURRENT_OBSERVATION has only current facts with
 `observation_frame_id==publication_frame_id` and no presented identity, and
 PRESENTED_CONTENT exactly matches the result presented identity. A retained old
 cursor request ID remains old and is rejected by the GUI current-request check.
+Compile/API gates prove public result/request types contain and accept no weak
+owner handle, alias pointer, `structure_key`, or `content_key`; the private cache
+retains keys only for internal eligibility.
+Transition gates prove READY→BUSY→BUSY may publish stale, while READY→EMPTY→BUSY,
+READY→source FAILED→BUSY, READY→normalization FAILED→BUSY,
+READY→budget/allocation FAILED→BUSY, and READY(key A)→structural key B→BUSY(key
+A) cannot.
+Each terminal/structural event removes eligibility before its own publication.
+First-frame and replacement result-storage fault gates prove exact-table cap
+rejection versus in-cap allocation failure publish the pre-owned allocation-free
+envelope as `FAILED(RESULT_STORAGE_BUDGET)` or
+`FAILED(RESULT_STORAGE_ALLOCATION_FAILED)` with no table/acquisition/geometry;
+replacement faults clear every stack stale entry. Successful construction
+counts exact instantaneous bytes before ordinary P-R1 entries become available.
 
 ### Batch 4B — Sampling A/B experiment
 
@@ -1286,7 +1355,7 @@ authority; this batch creates no duplicate definitions. The fixed scenario
 manifest supplies `C`, frame totals, workloads, and all other evidence inputs
 identically for both candidates.
 
-Both prototypes call the same benchmark-local wrapper around the production LOD/window selector with explicit `max_visible_samples`; only composition differs. “Complete input” and `V_observed` count interpolation padding, duplicate-collapse visits, hold samples, and every physical sample examined across attempted and selected LODs. D12 applies: attempted status/sequence/counters are retained, rejected holds release immediately, and selected observations are consumed sequentially with no hold in the final plan or prototype result.
+Both prototypes call the same benchmark-local wrapper around the production LOD/window selector with explicit `max_visible_samples`; only composition differs. P-D2 semantic selected source timestamps, required brackets, and a synthetic hold endpoint consume B/N. Separately, `V_observed` counts every physical inspection across all attempted and selected LODs under the prospective visit limit; no physical inspection is ever a selected-input position. D12 applies: attempted status/sequence/counters are retained, rejected holds release immediately, and selected observations are consumed sequentially with no hold in the final plan or prototype result.
 
 Candidate A — budgeted event union:
 
@@ -1333,7 +1402,8 @@ Record:
 - allocations and memory;
 - producer wait and snapshot cost;
 - full-frame p50/p95/p99 and GPU-finished time;
-- human visual verdict for spikes, steps, gaps, and cancellation.
+- deterministic visual artifacts and hashes for spikes, steps, gaps, and
+  cancellation; the evidence unit stores no human verdict.
 
 Decision gate:
 
@@ -1343,12 +1413,17 @@ Decision gate:
   Candidate B never more than `N` semantic input positions per member; brackets
   and hold endpoints consume those capacities, while additional physical search
   visits appear only in `V_observed`;
+- prospective-limit tests allow exactly `V_limit` inspections, `M` output pairs,
+  and `H_limit` upload bytes, then reject the next operation before its read/
+  create/write/counter side effect; `V_observed` and other counters never exceed
+  their limits or remaining frame allowances;
 - multi-group scenarios use identical proposed P-D15 order and `FRAME_M_LIMIT`/`FRAME_V_LIMIT`/`FRAME_H_LIMIT`; rejected `(group,view)` units report `FAILED(FRAME_BUDGET)`, perform no acquisition/allocation, and leave no partial geometry;
 - common-adapter tests prove P-D15's stack-exclusive CPU scope, exact requested
   QRhi scope, instantaneous temporary-inclusive caps, preserve-old and
   debit-old replacement paths, narrow exact-array ownership/counting, exclusion
   of ordinary Stage 3 arrays, result construction/publication ownership
-  transfer, shared-backing counted-once behavior, final-release debit, no
+  boundary, independent public deep-copy/no-alias behavior, internal shared-
+  backing counted-once behavior, final renderer-release debit, no
   transient uncounted escape, absent
   entry/stale suppression after every budget/allocation failure, configured-cap
   `FAILED(RESIDENT_BUDGET)`, in-cap CPU/QRhi
@@ -1360,7 +1435,9 @@ Decision gate:
 - do not expose C or a strategy switch unless evidence proves applications need it.
 
 Owner D4 is a separate non-delegated decision bound to the exact
-`RU-4B-evidence/A1` identity. Only afterward,
+`RU-4B-evidence/A1` identity. The owner reviews those exact artifacts, records
+the comparative visual verdict, and selects the winner in the same decision;
+workers/reviewers cannot manufacture that verdict. Only afterward,
 `RU-4B-cleanup/A1` records why the loser was rejected, deletes its function,
 flags, mechanical checks, and candidate-only documentation, binds the winner to
 the decision, and proves the losing path absent before Stage 5.
@@ -1443,8 +1520,12 @@ Gate allocation:
 - `STACK_PUBLIC_ACTIVATION` owns metadata/builder/registry reachability,
   public-to-internal end-to-end rendering, Qt/result/preview/cursor behavior,
   P-R1 publication/presented identity presence, exact per-series origin and
-  frame-tagging, retained stale cursor rejection, normative API/migration/
-  package docs, and install/package consumer smoke on the same source hash;
+  frame-tagging/sequences, retained stale cursor rejection, and compile/API
+  proof that no owner handle/alias/structure key/content key crosses the public
+  result boundary. Construction/publication tests prove public backing is an
+  independent deep/value copy with no capped-internal alias, plus normative
+  API/migration/package docs and install/package consumer smoke on the same
+  source hash;
   public A3 owns only tutorial/example compilation and supplementary package
   evidence;
 - final-evidence A1 owns correctness/platform manifests; A2 owns performance/
@@ -1468,6 +1549,10 @@ Cache rules:
   and leaves current partial attempts in trace/counters. With no retained match,
   the result is `FAILED(SOURCE_BUSY)` after every required acquisition entry is
   CURRENT_OBSERVATION;
+- READY replaces the retained entry; EMPTY, every `FAILED(reason)`, every
+  budget/allocation failure, and structural-key change clear eligibility before
+  publication. READY→BUSY→BUSY may stale, while every tested terminal/
+  structural transition followed by BUSY cannot;
 - D13 observed absence retires the slot; no source identity/incarnation/geometry/instance token exists and no content-derived fact enters `structure_key`;
 - color/label changes do not recompose;
 - boundary data key is base-content revision, LINE-membership mask, and spans;
@@ -1498,15 +1583,24 @@ Performance gate:
 - the ratified P-D15 formulas, candidate-independent metadata-derived
   `U_limit`, checked counters, actual-upload accounting, and fixed frame
   admission pass exactly;
+- exact-limit/next-operation probes prove prospective visit, output-pair, and
+  upload-write checks fail before side effects, counters never exceed limits,
+  and the result is `FAILED(STACK_OUTPUT_BUDGET_EXCEEDED)`;
 - stack-exclusive CPU and exact requested QRhi byte instrumentation proves both
   instantaneous caps, including temporary replacement storage, on every tested
   transaction;
 - the narrow exact-size owning array proves exact count/bytes and ownership
   destruction; ordinary Stage 3 vectors remain unchanged. Result-builder and
   backing counters cover construction, atomic publication, renderer-retained
-  shared backing exactly once despite external consumers, complete transfer to
-  solely external deep/value copies, and final release with no transient
-  uncounted escape; opaque objects remain excluded;
+  internal backing exactly once despite sharing, an independently allocated
+  public deep/value copy that never aliases internal backing, atomic debit when
+  that copy becomes solely external, and final internal renderer-reference
+  release with no transfer/alias or transient uncounted escape; opaque objects
+  remain excluded;
+- first-frame and replacement exact-table cap/allocation faults publish the
+  allocation-free top envelope with
+  `FAILED(RESULT_STORAGE_BUDGET)`/`FAILED(RESULT_STORAGE_ALLOCATION_FAILED)`, no
+  table/acquisition/geometry, and no surviving stack stale eligibility;
 - retained-old-target fit, debit-old-target replacement, configured-cap
   `FAILED(RESIDENT_BUDGET)`, in-cap CPU/QRhi
   `FAILED(RESOURCE_ALLOCATION_FAILED)`, old-target removal and stale suppression
