@@ -14,7 +14,9 @@ D6, D7, D8, and D9 entries supersede earlier proposals here for
 `Published_state`, a `Frame_orchestrator` component, retained frame snapshots,
 snapshot capability/batch APIs, `Data_source::identity()`, registry
 incarnations, `geometry_revision`, series-instance tokens, and the split v1 GPU
-layout. D4 is the only intentionally unresolved architecture decision.
+layout. The accepted follow-up left D4 unresolved; later exact executable
+refinements are proposals pending owner ratification in the plan register and
+must not be presented here as approved product oracle.
 
 ## Executive conclusion
 
@@ -207,21 +209,26 @@ When the relevant key matches, retain the buffer even if a current CPU snapshot 
 
 **Classification: Source-confirmed mechanism; cost is inferred until measured.** Each series state owns its own cache (`include/vnm_plot/rhi/series_renderer.h:147-152`; `src/core/series_window_planner.cpp:248-269`). Multiple series using the same source and LOD can therefore obtain multiple copies and potentially observe different sequences.
 
-**Remediation:** D12 defines each `Data_source` object as one acquisition domain. `try_snapshot`, `time_range`, `query_time_window`, `query_v_range`, `query_sample`, and future methods documented as taking a lock/snapshot/hold are acquiring; metadata, LOD topology, `current_sequence`, `time_order`, and direct-query-support flags are non-acquiring. No acquiring method begins on a thread retaining a same-object hold. Distinct objects must not return holds backed by the same non-recursive lock; shared backing supplies independent public-acquisition semantics or is nonconforming. Batch 3A owns this public contract and the structural custom-layer break. Batch 3C alone owns the production scheduler: rejected holds release immediately, consumers of one selected `(source,LOD)` share its single acquisition, distinct same-source observations run sequentially, and no final plan/result/cache/record context owns a snapshot. No capability enum or acquisition-domain token is needed.
+**Remediation:** D12 defines each `Data_source` object as one acquisition domain. `try_snapshot`, `time_range`, `query_time_window`, `query_v_range`, proposed `query_sample`, and future lock/snapshot/hold methods are acquiring; metadata, LOD topology, `current_sequence`, `time_order`, and support flags are non-acquiring. RU-3A must publish this contract and atomically remove the current `cached_snapshot_hold` plus every hold-bearing per-series plan/cache/custom/record representation; otherwise that independently mergeable hash would state a false invariant. Its existing per-series planner may still acquire independently, but consumes/releases before another same-source call and before record. RU-3C2 alone later replaces those independent acquisitions with one cross-series/shared-key production scheduler. Distinct objects sharing backing require independent public-acquisition semantics. No duplicate scheduler, capability enum, or domain token is needed.
 
-**Verification:** ten series sharing one source/LOD produce exactly one snapshot request; two selected LODs produce exactly two; all plans report the same sequence for a shared key. A copy-on-snapshot source should show the removed bytes and time in full-frame counters.
+**Verification:** RU-3A source search proves no surviving plan/cache/context hold;
+lock-backed writer progress occurs after per-series derivation/custom prepare and
+before record/next acquisition. RU-3C2 separately proves ten series sharing one
+source/LOD produce one request and that exactly one scheduler exists. A later
+sharing gate cannot retroactively justify a hold-bearing RU-3A hash.
 
 ### P4 — UI range and indicator paths duplicate and diverge from renderer semantics
 
 **Classification: Source-confirmed correctness and performance issue.** `auto_adjust_view()` snapshots/scans LOD 0 at `src/qt/plot_widget.cpp:1106-1147`. Indicators snapshot LOD 0 at `1312-1371` and use `bracket_timestamp()`, which infers order from endpoints and binary-searches (`include/vnm_plot/core/algo.h:615-675`) despite `Data_source` supporting `UNORDERED`. These paths also bypass the renderer's complete nonfinite policy.
 
-**Remediation:** add one core `resolve_sample_at` evaluator and the concrete Batch 3B request/value contract from the plan: `Sample_query_mode::{NEAREST,INTERPOLATE}`, a point-specific access/profiler/semantics/interpolation/hold/nonfinite context, request timestamp/nonzero optional expected sequence, value-only resolved timestamp/scalar, and `Data_source::query_sample(lod,request)` returning the canonical query status plus observed sequence. NEAREST returns the chosen collapsed sample timestamp/value; INTERPOLATE returns the request timestamp and canonical interpolated/held value. The default performs exactly one snapshot acquisition, evaluates, and releases before return; indexed sources override directly without nesting an acquiring call. Required behavior:
+**Pending P-Q1 rationale:** add one core `resolve_sample_at` evaluator and the proposed Batch 3B request/value contract: `Sample_query_mode::{NEAREST,INTERPOLATE}`, point-specific context, request timestamp/expected sequence, value-only result, and `Data_source::query_sample`. The default performs one acquisition and returns its top-level result sequence without post-hoc `current_sequence`; indexed overrides do not nest acquisition. This exact API/tie contract is not owner-ratified, so RU-3B cannot begin. Proposed behavior:
 
 - ascending/descending timestamp brackets and duplicate-run boundaries: O(log n), with additional policy-required visits counted;
-- unknown: cache monotonic classification by source owner/object, sequence, and access semantics;
+- unknown: classify within the acquired snapshot; RU-3C2 may cache only by owner/object, stable nonzero observed sequence, and access semantics;
 - unordered nearest: O(n) correct global nearest; exact equidistance chooses the greater timestamp by unsigned nanosecond distance, then that timestamp's D8 winner;
 - unordered interpolation: explicit unsupported unless the source supplies a direct semantic query;
-- all paths: use the same interpolation, duplicate-timestamp, hold, nonfinite, status, and sequence producer used for rendering; a nonzero expected-sequence mismatch is discarded/retried by the caller.
+- after D8 collapse, SKIP/BREAK remove candidates, ZERO retains zero, and REJECT fails before EMPTY; NEAREST is globally closest even outside interpolation domain; INTERPOLATE follows D2 gaps, no-left extrapolation, and LINEAR/STEP_AFTER constant right hold;
+- all paths use the same status/sequence producer; a nonzero expected-sequence mismatch is discarded/retried.
 
 Route `auto_adjust_view()` through the same range producer used by frame auto-range. The stack planner and stacked indicator must call the same evaluator rather than implement another interpolation loop. For pixel-parity indicators, the UI publishes the cursor timestamp; the sole 3C frame result copies value-only indicators and identities from the exact executed snapshot-free plan plus final renderer/RHI disposition, accepting one-frame latency. Do not independently query after render, because the source may have advanced. A direct source query remains valid for non-pixel-parity operations only when selected LOD and expected sequence are supplied and mismatch is discarded/retried.
 
@@ -238,9 +245,11 @@ Route `auto_adjust_view()` through the same range producer used by frame auto-ra
 - FAILED: suppress that operation and report once through the configured diagnostic path;
 - READY: consume while retaining its hold.
 
-Use invariant-safe named construction so READY cannot coexist with an invalid
-snapshot and no other status carries one. Do not leave a deprecated alias,
-because it would retain the ambiguity.
+Use invariant-safe named construction and a top-level sequence independent of
+payload. READY validates a snapshot and copies its sequence; EMPTY may carry an
+exact zero/nonzero empty revision with no snapshot; BUSY/FAILED carry neither a
+snapshot nor a claimed sequence. Do not reread `current_sequence()` after the
+operation or leave a deprecated alias.
 
 **Verification:** a four-state source must prove no view mutation on BUSY, an observable diagnostic on FAILED, no draw on EMPTY, and normal consumption on READY.
 
@@ -256,7 +265,7 @@ because it would retain the ambiguity.
 
 **Classification: Source-confirmed correctness issue.** `include/vnm_plot/core/access_policy.h:63-77` multiplies a floating member by `1e9` and casts directly to `int64_t`. NaN, infinity, or out-of-range finite values make the conversion invalid/undefined. README and typed API tests make floating seconds an adopted behavior, so it cannot simply be ignored.
 
-**Remediation:** D7 exposes public `checked_seconds_to_ns(double) -> optional<int64_t>` for caller ingestion into integral-nanosecond storage. It rounds the exact binary64 mathematical value times `1e9` to nearest, exact halves away from zero, range-checks that rounded result before integer conversion, and rejects nonfinite/nonrepresentable values without clamp/sentinel. Floating timestamp member pointers become ill-formed; the member-pointer hot path accepts integral nanoseconds only.
+**Remediation:** D7 exposes public `checked_seconds_to_ns(double) -> optional<int64_t>` for caller ingestion into integral-nanosecond storage. It rounds the exact binary64 mathematical value times `1e9` to nearest, exact halves away from zero, range-checks before conversion, and rejects nonfinite/nonrepresentable values. Member pointers accept only non-bool integral types whose whole range fits `int64_t`: signed `int64_t` is valid; bool, float/double, `uint64_t`, and wider types are ill-formed.
 
 **Verification:** compile-fail/detection tests reject floating member pointers and migrate existing examples/docs. An exact binary64-rational oracle covers positive/negative integers and halves (`+/-1/1024` seconds is an exact half-nanosecond case after scaling); `std::nextafter` neighbours around both signed rounded-result boundaries identify representable accepted/rejected inputs instead of inventing a one-nanosecond step at that magnitude. NaN/infinities fail under UBSan, and accessor/full-frame evidence proves no hot-loop conversion.
 
@@ -315,7 +324,7 @@ The static Bars artifact at `C:\Users\imak\AppData\Local\Temp\vnm_plot_review_be
 **Classification: Source-confirmed.** These are safe, bounded changes:
 
 - replace the duplicate `floor_div` in `include/vnm_plot/core/algo.h:734` with the canonical, better edge-case-aware implementation in `time_units.h:433`;
-- in Batch 3C, remove `cached_snapshot_hold` and all internal plan/record hold storage under D12 after consume-scoped derivation; Batch 3A supplies only the public/API and custom-layer prerequisites;
+- in RU-3A's D12_HOLD_BREAK, remove `cached_snapshot_hold` and all current per-series plan/cache/record hold storage after consume-scoped derivation; RU-3C2 later adds only cross-series/shared-key scheduling over those unchanged hold-free representations;
 - reject/erase null descriptors in `apply_series_updates` rather than retaining a map key whose renderer resources survive because cleanup only sees key absence;
 - make `Series_view_plan` own or directly expose the canonical `sample_window_t` instead of manually copying equivalent fields at `src/core/series_renderer.cpp:977-1004`;
 - cache LOD scale topology only after declaring it immutable or adding `lod_layout_revision()`; otherwise the cache would be incorrect.
@@ -334,11 +343,11 @@ std::optional<int> stack_group_id;
 
 Add `Basic_series_builder::stack(group_id)` and `clear_stack()`. An enabled series with no membership behaves exactly as today. Enabled members with the same group form one stack in ascending existing series-ID order. Existing source, access policy, interpolation, nonfinite behavior, color, label, preview source, and style remain per series. Reuse the existing ID as order instead of adding a second ordering concept; add a distinct order property only if an actual caller later needs to reorder layers without changing IDs.
 
-This is preferred over a separate `Stack_data`/`add_stack()` object because it reuses the canonical registration/update/lifetime path and avoids a second descriptor hierarchy. `apply_series_updates` is the documented atomic way to change multiple members. Individual `add_series`/`remove_series` calls are not group-atomic: they commit each intermediate topology, and a still-valid two-of-three-member group can render that intermediate partial sum. Callers requiring atomic topology must batch. If the owner requires atomicity regardless of caller behavior, re-evaluate a group-owned immutable descriptor before implementing this API. A member must provide both timestamp and scalar `get_value` access; `Data_access_policy::is_valid()` alone is insufficient because range-only access cannot define `cj(t)`. `cj` always comes from `get_value`, even when a draw-range accessor also exists. Missing source, timestamp, and scalar access map to the register's distinct `STACK_SOURCE_MISSING`, `STACK_REQUIRES_TIMESTAMP`, and `STACK_REQUIRES_SCALAR_VALUE` reasons. Within one immutable topology, silently dropping a failed member is forbidden because it would display a different sum.
+This is preferred over a separate `Stack_data`/`add_stack()` object because it reuses the canonical registration/update/lifetime path and avoids a second descriptor hierarchy. `apply_series_updates` is the documented atomic way to change multiple members. Individual add/remove calls commit intermediate topology; callers requiring atomic group changes must batch. A member needs timestamp and scalar `get_value`; missing source/timestamp/scalar map to `FAILED(STACK_SOURCE_MISSING)`, `FAILED(STACK_REQUIRES_TIMESTAMP)`, and `FAILED(STACK_REQUIRES_SCALAR_VALUE)`. Silently dropping a failed member is forbidden.
 
-An enabled member with `Display_style::NONE` still contributes mathematically but emits no band, boundary, or dots of its own; later cumulative members and the final total still include it. `enabled=false` is the canonical way to exclude a component from the sum. This keeps visibility and mathematical membership explicit rather than making style selection mutate data semantics. A group requires at least two enabled members (`STACK_REQUIRES_TWO_MEMBERS`) and at least one supported visible built-in style across the group (`STACK_GROUP_HAS_NO_VISIBLE_STYLE` otherwise). DOTS, LINE, and AREA combinations are the supported first-version styles.
+An enabled NONE member still contributes mathematically but emits no own draw; `enabled=false` excludes it. Fewer than two enabled members is `FAILED(STACK_REQUIRES_TWO_MEMBERS)` and no visible built-in style is `FAILED(STACK_GROUP_HAS_NO_VISIBLE_STYLE)`. DOTS, LINE, and AREA combinations are supported.
 
-For the first version, a stack member with `Qrhi_series_layer` is explicitly unsupported and invalidates the group with `CUSTOM_LAYER_IN_STACK`. The custom-layer ABI describes one ordinary planned window and has no cumulative bottom/top contract; silently drawing it at raw component coordinates would make it disagree with the stack. A future stacked custom-layer ABI requires a separate owner-approved use case and benchmark.
+For the first version, a stack member with `Qrhi_series_layer` is `FAILED(CUSTOM_LAYER_IN_STACK)`. The ordinary custom-layer ABI has no cumulative bottom/top contract; a future stacked ABI needs a separately approved use case/benchmark.
 
 ### Mathematical definition
 
@@ -358,16 +367,19 @@ Layer `j` fills the band between `Sj-1` and `Sj`. Its boundary line is `Sj`; the
 
 ### Timestamp, interpolation, domain, and status semantics
 
-**Derived from the plan register; D4 alone remains open.** Each member is evaluated as its own selected piecewise function:
+**Derived from the plan register.** D4 and the register's labelled executable
+refinements remain open. Each member is evaluated as its own selected piecewise
+function:
 
 - Candidate A builds the ordered union of selected member timestamps. Candidate B builds a view-derived shared grid. Neither may match array indices, require equal timestamps, or choose one operand's grid.
 - LINEAR evaluates piecewise linearly at every emitted position. STEP_AFTER is right-continuous: a value becomes active at its timestamp and holds until the next. Candidate A emits a left-limit event and then a right-value event at a changing step timestamp; without both, geometry would bridge the discontinuity. Candidate B evaluates right-continuously at grid positions and accepts the measured/signed-off screen-space displacement described by its approximation contract. Mixed modes are allowed.
 - Treat both snapshot segments as one logical `at(i)` sequence. Equal timestamps collapse first to the greatest logical `i`, regardless of traversal direction; nonfinite processing then applies to that winner without resurrecting an earlier duplicate.
-- ASCENDING and DESCENDING use direction-aware cursors. UNKNOWN performs one cached classification per source owner/object, sequence, and access-semantic key only when sequence is stable and nonzero; otherwise it scans during the consume-scoped acquisition and does not reuse that classification across frames. Truly UNORDERED data returns explicit `UNORDERED_STACK_INPUT`; sorting every frame is both expensive and semantically ambiguous for a function.
+- ASCENDING and DESCENDING use direction-aware cursors. UNKNOWN classifies within one acquired snapshot; proposed RU-3C2 reuse requires owner/object, stable nonzero observed sequence, and access semantics. Truly UNORDERED data is `FAILED(UNORDERED_STACK_INPUT)`; sorting every frame is expensive and semantically ambiguous.
 - LINEAR consecutive finite knots define closed spans. STEP_AFTER is right-continuous on the same closed domain and retains left/right event order at a jump. Touching spans merge only when the function is defined at their shared endpoint; `BREAK_SEGMENT` removes the knot and incident spans, `SKIP` reconnects surviving neighbours, `REPLACE_WITH_ZERO` substitutes finite zero, and `REJECT_WINDOW` is `FAILED(NONFINITE_REJECTED)`.
-- The group domain is the closed-set intersection where every component has a value. There is no left extrapolation. Only explicit STEP_AFTER hold-last-forward extends the latest defined value to the requested right endpoint, and it never crosses a break. Candidate A mandatory endpoints fit `R_A=K*B`; Candidate B endpoints fit `R_B=N`; otherwise the result is `FAILED(FRAGMENTATION_BUDGET)` with no geometry.
-- D6's non-content `structure_key` gates wholesale BUSY fallback; the executed `content_key` plus D10 eligibility gates READY reuse. FAILED then EMPTY suppress stale before BUSY evaluation. A matching BUSY fallback is `STALE_BUSY` with the retained sequences/`content_key`; no fresh operand, range, indicator, or status is mixed.
-- Each `(group,view)` owns one canonical disposition, not a failure-reason set. The plan register's validation, metadata-admission, acquisition, domain, output, and RHI order selects the first defined failure and forbids speculative later work.
+- Under pending P-D2, normalize every member before intersection. REJECT failure precedes would-be EMPTY. Both LINEAR and STEP_AFTER HOLD_LAST_FORWARD extend the latest defined value constantly through the closed right endpoint, never left/cross-break; DRAW_NOTHING does not. Candidate A must retain every intersection endpoint and selected breakpoint within `R_A=K*B`; Candidate B reserves endpoints then optional grid positions within `R_B=N`; excess is `FAILED(FRAGMENTATION_BUDGET)`.
+- Pending P-D6's `structure_key` gates BUSY fallback. Its `content_key` is only a compact tuple: structure, selected LODs, atomically observed sequences including zero, exact window/span indices/timestamps, origin, and deterministic planner/format parameters. It owns no samples, winners, arrays, extrema, events, geometry, or GPU objects. READY reuse additionally requires stable nonzero sequences/D10; a zero-key may identify retained STALE_BUSY content. FAILED then EMPTY suppress stale before BUSY.
+- Pending P-R1 gives each `(group,view)` one disposition and each series explicit NOT_EVALUATED/OBSERVED state. It selects `FAILED(reason)` by deterministic phase precedence without speculative work or fabricated observations.
+- Accumulation remains double, but pending P-R1 checks finite double and finite representable v1 float bottom/top after every addition before any partial emit; tests cover float maxima, negatives, cancellation, and ordinary rounding.
 - Snapshots from different sources are individually stable, not transactionally simultaneous. Different LOD snapshots of the same source have no stronger atomicity guarantee. The contract must say this. Applications needing atomic cross-signal or cross-LOD publication must publish through one coordinated snapshot/revision contract.
 
 ### Bounded independent LOD planning and unresolved sampling strategy
@@ -382,19 +394,20 @@ Let:
 - `D` be 1 for all-LINEAR groups and 2 when STEP_AFTER output can require paired left/right events;
 - `M = floor(C * W)` be the hard emitted band-ordinate-pair budget;
 - `A = align_up(sizeof(actual_stack_uniform_std140), QRhi uniform-buffer alignment)` use the real static-asserted uniform record rather than a guessed size;
-- `U` be the actual uniform blocks updated for that group/view;
-- `H_limit = 40*M + A*U` be the checked conservative per-group/view reservation for the owner-approved 12-byte base records, shared spans, padded LINE boundaries, and aligned uniforms;
+- `U_limit` be the metadata-only uniform-block reservation fixed before admission;
+- `U_observed` be actual updates, with `U_observed<=U_limit`;
+- `H_limit = 40*M + A*U_limit` be the checked reservation for 12-byte base records, shared spans, padded boundaries, and aligned uniform capacity;
 - `V_limit=2*M` be the fixed per-group/view visit reservation and hard limit; measured visits are reported as `V_observed`.
 
-Extend the planner request with separate `render_width_px` and `max_visible_samples`; do not overload the shader/view width. Every strategy selects each source independently from its own ladder and includes interpolation brackets/synthetic hold knots in its input count. If even a coarsest complete window exceeds the chosen per-input cap, return `LOD_BUDGET_EXCEEDED` rather than dropping brackets or falling back to raw history.
+Extend the planner request with separate `render_width_px` and `max_visible_samples`; do not overload shader/view width. Every strategy selects each source independently and includes brackets/holds. If a coarsest complete window exceeds the per-input cap, return `FAILED(LOD_BUDGET_EXCEEDED)` rather than dropping input or using raw history.
 
-**Candidate A—budgeted event union.** Let `B=floor(M/(D*K^2))` and mandatory-domain capacity `R_A=K*B` endpoint timestamps before D-dependent side expansion. Require `B>=2`. With each input at most `B`, union `U<=K*B`, events `E<=D*U`, and output pairs `K*E<=M`. If normalized mandatory endpoints exceed `R_A`, return `FRAGMENTATION_BUDGET`. It is exact relative to selected piecewise curves, including step discontinuities, but input density falls quadratically with K; for `W=800,K=32,C=2`, it cannot represent a segment and returns `STACK_BUDGET_TOO_SMALL`.
+**Pending P-D2 Candidate A—budgeted event union.** Let `B=floor(M/(D*K^2))` and `R_A=K*B`. Require B>=2. Exact union retains every intersection endpoint and selected member breakpoint within R_A; none is optional. Excess is `FAILED(FRAGMENTATION_BUDGET)`. Output remains `K*E<=M`; inability to represent a segment is `FAILED(STACK_BUDGET_TOO_SMALL)`.
 
-**Candidate B—bounded shared grid.** Use the same D factor and let `N=floor(M/(D*K))` shared grid timestamps, with mandatory-domain capacity `R_B=N`; require `N>=2` so interpolation brackets and a drawable segment have an unambiguous budget, otherwise return `STACK_BUDGET_TOO_SMALL`. If normalized mandatory endpoints exceed `R_B`, return `FRAGMENTATION_BUDGET`. Cap each selected source window at N. Evaluate every component with monotonic cursors. For STEP_AFTER, when the sampled value changes, emit left/right events at the grid transition where the change is observed, so `E<=D*N`, output `K*E<=M`, and CPU work is `O(sum(ni)+K*E)`. At `W=800,K=32,C=2`, an all-LINEAR group retains 50 grid values per band; a step-capable group retains 25 grid positions and up to 50 events. It adds a screen-space approximation: narrow spikes can alias and a true step between grid points is displaced to the sampled transition.
+**Pending P-D2 Candidate B—bounded shared grid.** Let `N=floor(M/(D*K))` and `R_B=N`; require N>=2 or return `FAILED(STACK_BUDGET_TOO_SMALL)`. Mandatory normalized endpoints consume R_B first; only remaining positions are optional grid positions, and endpoint excess is `FAILED(FRAGMENTATION_BUDGET)`. Monotonic cursors keep `E<=D*N`, `K*E<=M`; the candidate retains the documented spike/step approximation.
 
 Do not choose a default from asymptotic argument alone. Prototype both outside the public API with identical independent LOD selection and hard `M`, `V_limit`, and `H_limit` counters plus identical D15 frame admission. Compare native-backend compose time, `V_observed`, total bytes, allocations, producer wait, and full-frame p50/p95/p99 for K={2,8,32} and W={800,3840}; visually inspect phase-shifted narrow spikes, mixed LINEAR/STEP_AFTER discontinuities, gaps, and cancellation. The owner selects one strategy before its tests become product oracle; do not ship two speculative modes.
 
-For either candidate, final buffer construction counts every update/padding byte against `H_limit`; if actual record formats change, recompute the `sizeof`-based bound and tests in the same commit. Return `STACK_OUTPUT_BUDGET_EXCEEDED` rather than exceeding `M` or `H_limit`. Composition/output is screen-bounded; acquisition, copying, and alignment costs remain separately measured under D12/3C.
+For either candidate, final construction counts every update/padding byte against `H_limit`, uses `sizeof(actual_uniform)*U_observed`, and requires `U_observed<=U_limit`. Format changes re-derive bounds/tests. Excess is `FAILED(STACK_OUTPUT_BUDGET_EXCEEDED)`; acquisition/copy/alignment remain separately measured.
 
 `C` should remain internal until native-backend quality/performance results show that callers need control. Verify the hard output/byte bounds and explicit budget failures for both prototypes.
 
@@ -416,7 +429,7 @@ stack composition plans ----------> stacked range and stacked renderer
 executed-plan disposition ---------> one immutable frame result
 ```
 
-D13 makes each renderer registration slot the lifecycle owner: observed absence destroys it, while unobserved remove/re-add is an update through existing authorities. The plan's `structure_key` contains only non-content request facts and excludes sequences/selected windows/derived geometry; its `content_key` adds stable sequences, selected LODs/windows/spans, normalized values, extrema, time origin, and emitted representation. Exclude color/label and uniform-only built-in style from base-composition content identity; separately key boundary data/draw state. D14 removes `Data_source::identity()`; no registry incarnation, `geometry_revision`, reset token, or instance token exists.
+D13 makes each renderer registration slot the lifecycle owner. Pending P-D6's compact `structure_key` contains only non-content request facts. Its compact `content_key` adds selected LODs, observed sequences including zero, exact selected window/span indices/timestamps, origin, and deterministic planner/format parameters—never payload/derived arrays/resources. D14 removes `Data_source::identity()`; no incarnation/revision/reset token exists.
 
 READY composite reuse requires identical `content_key`, stable nonzero sequences, and non-conservative semantics. Otherwise correctness wins: recompute the bounded group and record why. BUSY compares only `structure_key`, retains the previous complete `content_key` wholesale, and never consumes a partially fresh operand set.
 
@@ -433,9 +446,11 @@ Let `E` be emitted events, `K` enabled members, and `K*E<=M`. Base bytes are
 `12*K*E`. Group-shared span metadata costs `8*group_span_count`. Each visible
 LINE member has a separately keyed padded `{float t_rel,float top}` buffer with
 `8*sum_line(span_length+2)` bytes and four prev/p0/p1/next bindings. Actual
-uniform uploads use `sizeof(actual_stack_uniform_std140)*U`; aligned reservation
-uses `A*U`. The checked conservative cap is `H_limit=40*M+A*U`. If formats or
-ownership change, re-derive the formula and tests in the same amendment.
+uniform uploads use
+`sizeof(actual_stack_uniform_std140)*U_observed`, where
+`U_observed<=U_limit`; aligned reservation uses `A*U_limit`. Pending P-D15's
+checked conservative cap is `H_limit=40*M+A*U_limit`. If formats or ownership
+change, re-derive the formula and tests in the same amendment.
 
 Prepare/upload outside the render pass and bind/draw inside. Draw filled bands
 in component order, then cumulative boundaries so the final line represents
@@ -452,25 +467,23 @@ requires a separate owner-approved use case.
 
 ### Frame-wide and resident resource ownership
 
-D15 keeps per-group/per-view `M`, `V_limit=2*M`, and `H_limit` and adds one
+Pending P-D15 keeps per-group/per-view `M`, `V_limit=2*M`, and `H_limit` and proposes one
 shared frame budget for both views. Admission is metadata-only and view-major:
 all MAIN `(group,view)` units in ascending `lowest_enabled_series_id`, then all
 PREVIEW units in the same order. Before acquisition/allocation each unit charges
 the complete fixed `(M,V_limit,H_limit)` reservation against
 `FRAME_M_LIMIT`, `FRAME_V_LIMIT`, and `FRAME_H_LIMIT`. Rejection publishes
-`FRAME_BUDGET`, emits no geometry, and does no later work; actual use never
+`FAILED(FRAME_BUDGET)`, emits no geometry, and does no later work; actual use never
 refunds or readmits. Preview enablement therefore cannot change a MAIN result.
 
-RHI retires non-current stack resources before comparison, then counts exact
-renderer-owned bytes: every CPU vector contributes
-`capacity()*sizeof(element)` against `STACK_CPU_BYTES_LIMIT`, and QRhi contributes
-allocated stack-buffer bytes against `STACK_QRHI_BYTES_LIMIT`. Exceeding either
-cap is `RESIDENT_BUDGET`; a QRhi allocation API failure while inside the
-configured cap is distinct `RHI_ALLOCATION_FAILED`.
-Neither leaves partial geometry/cache state, and neither claims opaque driver
-physical residency. Each `(group,view)` publishes exactly one canonical
-disposition under the plan's deterministic precedence, not a reason set; all
-per-series facts remain visible in the same immutable frame result.
+Pending P-D15 requires internal exact-capacity CPU storage rather than
+unspecified vector growth. RHI retires non-current resources, calculates
+projected installed CPU/QRhi bytes against `STACK_CPU_BYTES_LIMIT` and
+`STACK_QRHI_BYTES_LIMIT`, allocates temporary resources, then installs
+atomically. Cap excess is `FAILED(RESIDENT_BUDGET)`; an in-cap CPU or QRhi API
+failure is `FAILED(RESOURCE_ALLOCATION_FAILED)`. Pending P-R1 publishes one
+group disposition plus per-series NOT_EVALUATED/OBSERVED state. No failure
+leaves partial cache/geometry or claims opaque driver residency.
 
 ### Auto-range, preview, and indicators
 
@@ -533,56 +546,64 @@ Gate: static second frame has zero library restage/upload; a LINE mutation uploa
 
 Files: `include/vnm_plot/core/types.h`, `basic_series_builder.h`, `access_policy.h`, `algo.h`, `time_units.h`, `src/core/types.cpp`, `series_window_planner.*`, new `frame_series_planner.*`, auto/frame range, `include/vnm_plot/rhi/series_renderer.h`, `src/core/series_renderer.cpp`, `plot_renderer.cpp`, `plot_widget.cpp`, `examples/hello_plot`, `examples/function_plotter`, `benchmark/include/benchmark_data_source.h`, `benchmark/include/benchmark_window.h`, `benchmark/src/benchmark_window.cpp`, `README.md`, and focused tests.
 
-Deliverable: Batch 3A supplies shared ownership, explicit snapshot statuses, the exact D12 public method/domain contract, and structural custom prepare/record borrowing. Batch 3B supplies public checked floating ingestion, integral-only timestamp members, and canonical `query_sample`/range semantics. Batch 3C solely supplies cross-series acquisition scheduling, internal snapshot-hold removal, snapshot-free plans/results, and VISIBLE/render/D9 identity. The combined stage also owns the bounded P14 cleanups: canonical `floor_div`, null-update erase, plan/window consolidation, canonical time constants, and conditional LOD-topology cache only if measured. README removes nonexistent colormap/config drift and documents the resulting source/query contract. No stack-only public metadata or unused stack planner lands in this stage.
+Deliverable: RU-3A supplies shared ownership, top-level snapshot-result sequence, exact D12 public method/domain contract, structural custom borrowing, and atomic removal of every current per-series plan/cache/record hold. RU-3B, only after P-Q1 ratification, supplies checked floating ingestion, integral-only members, and canonical `query_sample`/range semantics. RU-3C2 solely replaces independent hold-free acquisitions with cross-series/shared-key scheduling; it does not repeat hold removal. RU-3C1 supplies snapshot-free frame truth and VISIBLE/render/D9 identity. No stack-only public metadata or unused planner lands in this stage.
 
-Gate: ASan/TSan lifetime tests; D12 acquiring/non-acquiring and shared-backing conformance; compile-time floating-member rejection plus exact-rational/`nextafter` UBSan conversion cases; unordered/nonfinite/equidistant evaluator table; indexed/default `query_sample` status/sequence parity; one selected acquisition per shared key; rejected-hold release; sequential same-source distinct LODs; no hold at record/cross-frame; no unchanged Qt map copy; VISIBLE range/render/result parity; warning-clean initialized build; and all focused cleanup tests. Compare identical-workload before/after full-frame p50/p95/p99, allocations, producer wait, snapshot bytes/time, alignment scans, and memory for zero-copy and copy-on-snapshot sources; require no statistically meaningful non-stack regression. If history growth increases acquisition work beyond the owner-accepted bound, stop and present the plan-authorized eligibility/amendment choice; do not add a hook speculatively.
+Gate: RU-3A proves snapshot READY/EMPTY/BUSY/FAILED top-level sequence semantics, D12 conformance, writer-before-record, and no surviving current hold. RU-3B separately proves proposed cursor and range gates plus D7 trait/rational boundaries. RU-3C2 proves exactly one shared scheduler and one acquisition per shared key. RU-3C1 proves frame/range/render/result parity. Each RU retains its own ASan/TSan/UBSan, warning-clean, and no-regression evidence; one later gate never retroactively makes an earlier hash truthful.
 
 ### Batch 3 — Atomic end-to-end stack feature
 
 Files: public series metadata/builder, new `src/core/stack_planner.{h,cpp}` (with internal placement consistent with the layout target), scalar range projection, frame-range integration, Qt registry/API/preview/indicator publication, series renderer state/commands, one stack-band shader and boundary path, CMake/QSB assets, focused math/RHI/interaction tests, example/QML, benchmark scenarios, and architecture documentation.
 
-Deliverable: one usable public capability in the same governed batch—A/B-selected bounded composition strategy, independent sequential LOD observations, cumulative bands, typed status/domain handling, D15 frame/resident budgets, VISIBLE/global scalar range, cached RHI rendering, preview parity, plan-derived frame-result indicators, example, and representative benchmark. Internal commits may aid review, but no stack-only public metadata, unconsumed planner, or unused shader is pushed independently.
+Deliverable: one usable public capability sequenced through the plan's distinct
+`RU-5-production`, `RU-5-public`, and `RU-5-final-evidence` containers—A/B-selected
+bounded composition strategy, independent sequential LOD observations,
+cumulative bands, typed status/domain handling, D15 frame/resident budgets,
+VISIBLE/global scalar range, cached RHI rendering, preview parity, plan-derived
+frame-result indicators, example, and representative benchmark. Production
+completes before public exposure; no stack-only public metadata, unconsumed
+planner, or unused shader is pushed independently, and the three containers are
+not combined into one review unit.
 
-Gate: complete owner-approved acceptance matrix; hard band-ordinate and total-byte bounds; linear visit counters; zero steady allocation after warm-up; stable/non-conservative unchanged second frame zero composition/upload; unstable/conservative inputs perform bounded recomposition and expose the disable reason; shader bake and prepare/record lifecycle on every backend; non-stack counters bit-for-bit unchanged. Human approval is required for representative positive, negative, mixed-step, gap, and unrelated-LOD scenes before any golden image becomes an oracle. Compare full-frame native-backend p50/p95/p99, CPU plan/compose, GPU-finished time, total bytes, draws, allocations, snapshot bytes/time, alignment scans, producer wait, memory, and LOD changes. Require no statistically meaningful non-stack regression under identical builds; agree any numeric timing threshold from baseline evidence rather than inventing one.
+Gate: complete the then-ratified acceptance matrix after D4 selection; hard band-ordinate and total-byte bounds; linear visit counters; zero steady allocation after warm-up; stable/non-conservative unchanged second frame zero composition/upload; unstable/conservative inputs perform bounded recomposition and expose the disable reason; shader bake and prepare/record lifecycle on every backend; non-stack counters bit-for-bit unchanged. Human approval is required for representative positive, negative, mixed-step, gap, and unrelated-LOD scenes before any golden image becomes an oracle. Compare full-frame native-backend p50/p95/p99, CPU plan/compose, GPU-finished time, total bytes, draws, allocations, snapshot bytes/time, alignment scans, producer wait, memory, and LOD changes. Require no statistically meaningful non-stack regression under identical builds; agree any numeric timing threshold from baseline evidence rather than inventing one.
 
 ## Stack acceptance matrix
 
 This matrix is non-normative evidence derived from the sole decision register in
 `VNM_PLOT_IMPLEMENTATION_PLAN.md`. If wording diverges, the register wins and
-this table must be regenerated; it never creates a second contract. D4 alone
-remains evidence-gated.
+this table must be regenerated; it never creates a second contract. D4 remains
+evidence-gated, and labelled executable refinements remain owner-pending.
 
 | Case | Required observable result |
 |---|---|
 | Offset LINEAR timestamp grids | Candidate A includes both breakpoint sets; Candidate B evaluates both curves at every shared grid point. In either prototype, the final boundary is the double-precision sum at every emitted position. |
-| Sampling strategy A/B | Candidate A and bounded-grid Candidate B use identical `M`, `V_limit`, `H_limit`, D15 fixed frame reservations/totals, and workloads but their defined B/N input caps; native compose/bytes/p95 plus spike/step visual evidence selects exactly one product strategy before oracle approval. |
+| Sampling strategy A/B | Pending P-D15 gives both candidates identical `M`, `V_limit`, `U_limit`, `H_limit`, fixed reservations/totals, and workloads; evidence selects one strategy before oracle approval. |
 | Mixed LINEAR and STEP_AFTER | Candidate A emits left/right at the true selected-curve timestamp; Candidate B emits left/right at its sampled grid transition. Both avoid a diagonal bridge, and indicators match the chosen representation; Candidate B's displacement is part of visual A/B approval. |
 | Unrelated LOD counts/scales | Each source records an independently selected level satisfying its budget; no same-index assumption appears. |
-| Coarsest LOD exceeds budget | Group reports `LOD_BUDGET_EXCEEDED`; there is no LOD-0 fallback or partial render. |
-| Strategy budget too small | Candidate A B<2 or Candidate B N<2 reports `STACK_BUDGET_TOO_SMALL`; neither constructs ambiguous zero/one-point geometry. |
+| Coarsest LOD exceeds budget | Group reports `FAILED(LOD_BUDGET_EXCEEDED)`; there is no LOD-0 fallback or partial render. |
+| Strategy budget too small | Candidate A B<2 or Candidate B N<2 reports `FAILED(STACK_BUDGET_TOO_SMALL)`; neither constructs ambiguous zero/one-point geometry. |
 | Descending and UNKNOWN-monotonic | Direction-aware result matches ascending reference; stable nonzero sequence caches classification, while zero/unstable sequence scans once during its consume-scoped acquisition only. |
-| Truly unordered | Explicit group failure; no sort allocation and no misleading partial sum. |
+| Truly unordered | `FAILED(UNORDERED_STACK_INPUT)`; no sort allocation or partial sum. |
 | Duplicate timestamps | Greatest logical `data_snapshot_t::at(i)` index wins consistently in ascending/descending planner and indicator before nonfinite processing. |
-| Equidistant NEAREST | After D8 collapse, exact unsigned nanosecond distance chooses the greater timestamp and its D8 winner, independent of order and sign. |
+| Equidistant NEAREST | Pending P-Q1 chooses the greater timestamp and its D8 winner by exact unsigned distance, independent of order/sign. |
 | Negative/cancellation `100 + -100` | Second band descends to zero; range still includes the first cumulative 100. |
 | Disjoint/partially overlapping domains | Only intersection renders, except explicit right hold; no left extrapolation. GLOBAL/GLOBAL_LOD intersect selected-level domains first and return EMPTY when disjoint. |
 | Nonfinite policies | BREAK/SKIP/ZERO/REJECT outcomes match the canonical evaluator and affect the whole sum where undefined. |
 | BUSY/FAILED/EMPTY | FAILED then EMPTY suppress stale before BUSY. BUSY reuses a previous complete group wholesale only on `structure_key` match, ignores all fresh operands, and reports `STALE_BUSY` with retained sequences/`content_key`; generations never mix. |
-| Multiple failures | One canonical disposition is selected by the plan register's phase/series/reason order; no reason set or speculative later-stage work exists, while per-series facts remain visible. |
-| Fragment/frame/resident budget | Candidate A endpoints exceeding `R_A=K*B` or Candidate B endpoints exceeding `R_B=N` report `FRAGMENTATION_BUDGET`; fixed view-major admission reports `FRAME_BUDGET`; exact owned-byte cap failure reports `RESIDENT_BUDGET`; an in-capacity QRhi allocation API failure is `RHI_ALLOCATION_FAILED`. Every case emits no partial group. |
-| Main/preview admission | All MAIN units in ascending `lowest_enabled_series_id` precede all PREVIEW units; enabling previews cannot change admitted MAIN units or MAIN counters. |
+| Multiple failures | Pending P-R1 selects one canonical disposition by phase/series/reason order and gives each series NOT_EVALUATED/OBSERVED state; no reason set/speculative work/fabricated observation exists. |
+| Fragment/frame/resident budget | Pending P-D2 endpoint/breakpoint excess is `FAILED(FRAGMENTATION_BUDGET)`; pending P-D15 admission is `FAILED(FRAME_BUDGET)`, cap excess `FAILED(RESIDENT_BUDGET)`, and in-cap API failure `FAILED(RESOURCE_ALLOCATION_FAILED)`. No case emits a partial group. |
+| Main/preview admission | Pending P-D15 admits all MAIN units by ascending lowest ID before PREVIEW; previews cannot change MAIN admission. |
 | Group topology update | One `apply_series_updates` publishes the complete new group in one map revision. Individual add/remove commits intermediate topology and may render a valid partial membership; documentation/tests require batching when atomic topology matters. |
 | One sequence/policy/view mutation | Cache invalidates once; composition runs once, base geometry uploads once, and—when LINE is present—the separately keyed padded boundary buffer uploads once. A style-only LINE change performs no recomposition/base upload and updates only boundary/draw state. |
 | Unchanged second frame | With stable nonzero sequences and non-conservative semantics: zero composition, zero allocation, zero group upload, identical pixels/commands. Otherwise bounded recomposition occurs and records its disable reason. |
 | Preview | Uses independent preview sources/LODs and same cumulative contract. |
 | Indicator | Reports component, base, cumulative top, and total from the published rendered event/grid representation, matching pixels even when Candidate B approximates the selected LOD curve. |
-| Custom QRhi layer on a member | Explicit `CUSTOM_LAYER_IN_STACK`; no raw-coordinate custom draw is silently mixed with cumulative geometry. |
-| Scalar/range-only member | `get_value` defines the contribution even when range exists; missing scalar value returns `STACK_REQUIRES_SCALAR_VALUE`; GLOBAL scalar projection never sums draw envelopes. |
-| Singleton/all-NONE group | Fewer than two enabled members returns `STACK_REQUIRES_TWO_MEMBERS`; all members visually NONE returns `STACK_GROUP_HAS_NO_VISIBLE_STYLE`; an individual NONE member still contributes. |
-| Boundary LINE storage | Four-binding prev/p0/p1/next shader consumes the separately keyed padded cumulative-top buffer; base plus boundary updates remain within H_limit. |
+| Custom QRhi layer on a member | `FAILED(CUSTOM_LAYER_IN_STACK)`; no raw-coordinate custom draw is mixed with cumulative geometry. |
+| Scalar/range-only member | `get_value` defines contribution; missing scalar is `FAILED(STACK_REQUIRES_SCALAR_VALUE)`; GLOBAL never sums draw envelopes. |
+| Singleton/all-NONE group | Fewer than two is `FAILED(STACK_REQUIRES_TWO_MEMBERS)`; all NONE is `FAILED(STACK_GROUP_HAS_NO_VISIBLE_STYLE)`; an individual NONE still contributes. |
+| Boundary LINE storage | Four-binding prev/p0/p1/next consumes separately keyed padded cumulative-top data; updates remain within `H_limit`. |
 | Zero/unstable sequence or conservative access identity | Correct bounded recomposition occurs and a counter identifies why cache reuse was disabled. |
 | Signed timestamp extremes | Merge/window logic is overflow-safe and preserves ordering. |
-| K={2,8,32}, W={800,3840} | Band ordinates remain within `M`, `V_observed<=V_limit`, all uploaded bytes/metadata/padding remain within `H_limit`, D15 fixed frame totals remain bounded, or the exact budget status is returned. Separately report acquisition/alignment cost that still grows with history. |
+| K={2,8,32}, W={800,3840} | P-D15 requires ordinates within `M`, `V_observed<=V_limit`, `U_observed<=U_limit`, bytes within `H_limit`, and fixed frame totals, or exact `FAILED(reason)`. |
 
 ## Final recommendation
 
@@ -595,9 +616,11 @@ The stack architecture itself is viable without relating source timestamps or
 LOD ladders: independently select bounded source-local LOD windows, use the
 eventual D4-selected bounded event-union or shared-grid evaluator, accumulate
 double-precision cumulative bands, and upload one cached group representation.
-D1-D3 and D5-D15 are product oracle; only the sampling-strategy winner remains
-subject to owner selection from the exact A/B evidence hash. Algebraic negative
-stacking and intersection of defined interval sets with only explicit right
-hold are already approved rather than remaining recommendations.
+The plan register—not this recommendation—identifies approved portions of
+D1-D3/D5-D15. D4 and P-D2/P-D6/P-Q1/P-R1/P-D15 remain owner decisions. The
+architecture is viable if those pending contracts are ratified or amended
+before their affected RUs; this review cannot manufacture that approval.
 
-The other scalar/range, duplicate, BUSY, singleton/style/custom-layer, cache, and budget policies are also explicit owner decisions, not silently settled implementation details. Every proposed choice has a concrete source boundary, failure behavior, cache identity, qualified performance bound, and executable gate.
+Scalar/range, duplicate, BUSY, style/custom-layer, cache, and budget text is
+owner-approved only where the plan labels it approved. The precise proposals
+remain executable review material, not decisions, until explicit ratification.
