@@ -146,6 +146,7 @@ private:
             detail::access_dispatch_kind_t::NONE;
         std::vector<gpu_sample_t>      line_window_staging;
         std::vector<line_draw_span_t>  line_draw_spans;
+        bool                           line_window_geometry_dirty = true;
         std::vector<std::uint64_t>     stack_cache_key;
         data_snapshot_t                stack_cache_snapshot;
         bool                           last_stack_view_suppressed = false;
@@ -193,16 +194,18 @@ private:
     // own state (vbo_state) is owned by m_vbo_states.
     struct series_draw_state_t
     {
-        int                id                        = 0;
-        std::size_t        series_order              = 0;
+        int                id                               = 0;
+        std::size_t        series_order                     = 0;
         std::shared_ptr<const series_data_t>
                            series;
-        vbo_state_t*       vbo_state                 = nullptr;
+        vbo_state_t*       vbo_state                        = nullptr;
         Series_view_plan   main_plan;
         Series_view_plan   preview_plan;
-        bool               has_preview               = false;
-        bool               main_stack_sum_overlay    = false;
-        bool               preview_stack_sum_overlay = false;
+        bool               has_preview                      = false;
+        bool               main_reuses_uploaded_geometry    = false;
+        bool               preview_reuses_uploaded_geometry = false;
+        bool               main_stack_sum_overlay           = false;
+        bool               preview_stack_sum_overlay        = false;
     };
 
     Asset_loader*                                          m_asset_loader = nullptr;

@@ -118,8 +118,10 @@ def validate(
     else:
         if observation_total(payload, "renderer.frame.upload.primary_count") != 0:
             raise RuntimeError("static unchanged primary uploads are not zero")
-        if observation_total(payload, "renderer.frame.upload.line_window_count") <= 0:
-            raise RuntimeError("LINE-window upload counter is missing")
+    if observation_total(payload, "renderer.frame.upload.line_window_count") != 0:
+        raise RuntimeError("static unchanged LINE-window uploads are not zero")
+    if observation_total(payload, "renderer.frame.upload.line_window_bytes") != 0:
+        raise RuntimeError("static unchanged LINE-window bytes are not zero")
     if observation_total(payload, "renderer.frame.upload.total_bytes") <= 0:
         raise RuntimeError("total upload bytes are missing")
     if observation_total(payload, "benchmark.snapshot.count") <= 0:

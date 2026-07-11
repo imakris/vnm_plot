@@ -764,7 +764,7 @@ void Series_renderer::prepare(
 
     QRhi* rhi = ctx.rhi;
     QRhiResourceUpdateBatch* rhi_updates = ctx.rhi_updates;
-    if (m_rhi_state->last_rhi && m_rhi_state->last_rhi != rhi) {
+    if (m_rhi_state->last_rhi != rhi) {
         for (auto& [key, entry] : m_rhi_state->qrhi_layer_cache) {
             if (entry.state) {
                 entry.state->cleanup_qrhi_resources(key.rhi);
@@ -772,7 +772,15 @@ void Series_renderer::prepare(
         }
         m_rhi_state->qrhi_layer_cache.clear();
         m_rhi_state->view_ubos.clear();
+        m_rhi_state->pipelines.clear();
         m_rhi_state->prepared_draws.clear();
+        for (auto& [_, state] : m_vbo_states) {
+            state.main_view.reset();
+            state.preview_view.reset();
+            if (state.snapshot_cache) {
+                *state.snapshot_cache = detail::Series_window_snapshot_cache{};
+            }
+        }
         m_last_qrhi_layer_cache_size = 0;
     }
     m_rhi_state->last_rhi        = rhi;
@@ -960,6 +968,8 @@ void Series_renderer::prepare(
             (has_main_layer || s->stack_group != 0)
                 ? detail::Snapshot_requirement::Frame_snapshot_required
                 : detail::Snapshot_requirement::Optional);
+        const bool main_reuses_uploaded_geometry =
+            vbo_state.main_view.planner->last_plan_reused_upload;
         main_plan.v_min        = ctx.v0;
         main_plan.v_max        = ctx.v1;
         main_plan.height_px    = static_cast<float>(layout.usable_height);
@@ -976,6 +986,7 @@ void Series_renderer::prepare(
         }
 
         Series_view_plan preview_plan;
+        bool             preview_reuses_uploaded_geometry = false;
         preview_plan.series_id             = id;
         preview_plan.view_kind             = Series_view_kind::PREVIEW;
         preview_plan.source                = preview_source;
@@ -1000,6 +1011,8 @@ void Series_renderer::prepare(
                 (has_preview_layer || s->stack_group != 0)
                     ? detail::Snapshot_requirement::Frame_snapshot_required
                     : detail::Snapshot_requirement::Optional);
+            preview_reuses_uploaded_geometry =
+                vbo_state.preview_view.planner->last_plan_reused_upload;
             const double preview_top =
                 double(ctx.win_h) - ctx.adjusted_preview_height;
             preview_plan.v_min        = ctx.preview_v0;
@@ -1017,6 +1030,10 @@ void Series_renderer::prepare(
         draw_state.main_plan    = std::move(main_plan);
         draw_state.preview_plan = std::move(preview_plan);
         draw_state.has_preview  = preview_visible && preview_valid;
+        draw_state.main_reuses_uploaded_geometry =
+            main_reuses_uploaded_geometry;
+        draw_state.preview_reuses_uploaded_geometry =
+            preview_reuses_uploaded_geometry;
         draw_states.push_back(std::move(draw_state));
     }
 
@@ -1033,6 +1050,15 @@ void Series_renderer::prepare(
             state.stack_cache_key.clear();
             state.stack_cache_snapshot = {};
         };
+        const auto set_reuses_uploaded_geometry =
+            [view_kind](series_draw_state_t& member, bool value) {
+                if (view_kind == Series_view_kind::MAIN) {
+                    member.main_reuses_uploaded_geometry = value;
+                }
+                else {
+                    member.preview_reuses_uploaded_geometry = value;
+                }
+            };
         for (auto& draw_state : draw_states) {
             if (draw_state.vbo_state) {
                 view_state_for(draw_state).last_stack_view_suppressed = false;
@@ -1114,27 +1140,27 @@ void Series_renderer::prepare(
                 });
             std::vector<std::vector<detail::stacked_sample_t>> layers;
             if (!cache_hit && !detail::compose_stacked_series(plans, layers)) {
-                    for (auto* member : members) {
-                        clear_stack_cache(*member);
-                        Series_view_plan& plan = view_kind == Series_view_kind::MAIN
-                            ? member->main_plan
-                            : member->preview_plan;
-                        plan.snapshot             = {};
-                        plan.source_first         = 0;
-                        plan.source_count         = 0;
-                        plan.synthetic_hold_count = 0;
-                        plan.gpu_count            = 0;
-                        plan.drawable_spans.clear();
-                        plan.hold_last_forward    = false;
-                        view_state_for(*member).last_stack_view_suppressed = true;
-                    }
-                    log_error_once(
-                        Error_cat::STACK_COMPOSITION,
-                        members.front()->id,
-                        "Stack composition requires finite value samples, "
-                        "monotonic timestamps, and matching interpolation (group "
-                            + std::to_string(group) + ")");
-                    continue;
+                for (auto* member : members) {
+                    clear_stack_cache(*member);
+                    Series_view_plan& plan = view_kind == Series_view_kind::MAIN
+                        ? member->main_plan
+                        : member->preview_plan;
+                    plan.snapshot             = {};
+                    plan.source_first         = 0;
+                    plan.source_count         = 0;
+                    plan.synthetic_hold_count = 0;
+                    plan.gpu_count            = 0;
+                    plan.drawable_spans.clear();
+                    plan.hold_last_forward    = false;
+                    view_state_for(*member).last_stack_view_suppressed = true;
+                }
+                log_error_once(
+                    Error_cat::STACK_COMPOSITION,
+                    members.front()->id,
+                    "Stack composition requires finite value samples, "
+                    "monotonic timestamps, and matching interpolation (group "
+                + std::to_string(group) + ")");
+                continue;
             }
             std::size_t output_samples = 0;
             std::vector<stack_source_revision_t>* main_validity = nullptr;
@@ -1168,6 +1194,9 @@ void Series_renderer::prepare(
                         nullptr, 0, samples};
                     view_state.stack_cache_key      = cache_key;
                 }
+                set_reuses_uploaded_geometry(
+                    *members[i],
+                    cache_hit && view_state.has_uploaded_vbo);
                 const data_snapshot_t snapshot = view_state.stack_cache_snapshot;
                 if (main_validity) {
                     (*main_validity)[i].cumulative = snapshot;
@@ -1229,6 +1258,7 @@ void Series_renderer::prepare(
         view_state.last_line_window_upload_count = 0;
         view_state.last_uniform_upload_bytes     = 0;
         view_state.last_uniform_upload_count     = 0;
+        view_state.line_window_geometry_dirty    = true;
         view_state.line_draw_spans.clear();
     };
 
@@ -1376,7 +1406,6 @@ void Series_renderer::prepare(
         view_state.last_sample_access_dispatch_kind =
             detail::access_dispatch_kind_t::NONE;
         view_state.last_sample_buffer = nullptr;
-        view_state.line_draw_spans.clear();
 
         if (!draw_state.series) {
             return;
@@ -1500,6 +1529,16 @@ void Series_renderer::prepare(
             ctx,
             view_state,
             window);
+        const bool reuses_uploaded_geometry =
+            plan.view_kind == Series_view_kind::MAIN
+                ? draw_state.main_reuses_uploaded_geometry
+                : draw_state.preview_reuses_uploaded_geometry;
+        if (samples_ready                              &&
+            view_state.last_sample_upload_count > 0   &&
+            !reuses_uploaded_geometry)
+        {
+            view_state.line_window_geometry_dirty = true;
+        }
         const qrhi_series_sample_buffer_t sample_buffer =
             samples_ready
                 ? make_sample_buffer(view_state, window)
@@ -1956,7 +1995,6 @@ bool Series_renderer::rhi_prepare_series_view_samples(
                 detail::series_window_planner_state_t::k_no_timestamp;
         }
         view_state.staging.clear();
-        view_state.line_draw_spans.clear();
         view_state.last_staged_sample_count      = 0;
         view_state.last_sample_upload_bytes      = 0;
         view_state.last_line_window_upload_bytes = 0;
@@ -1968,6 +2006,8 @@ bool Series_renderer::rhi_prepare_series_view_samples(
         view_state.last_prepared_t_max_ns        = 0;
         view_state.last_prepared_width_px        = 0.0;
         view_state.last_sample_buffer            = nullptr;
+        view_state.line_window_geometry_dirty    = true;
+        view_state.line_draw_spans.clear();
     };
 
     if (window.gpu_count == 0) {
@@ -2274,8 +2314,12 @@ bool Series_renderer::rhi_prepare_series_primitive(
     // them as RWByteAddressBuffer UAVs and D3D11 SM 5.0 vertex shaders
     // accept zero UAVs; QRhi requires HLSL 5.0 bytecode for D3D11, so any
     // storage-buffer access in the vertex stage fails to compile.
-    if (!is_dots && !is_area && (!stack_sum_overlay || view_state.line_draw_spans.empty()))
-    {
+    const bool line_geometry_current =
+        !view_state.line_window_geometry_dirty &&
+        view_state.rhi->line_window_vbo        &&
+        !view_state.line_draw_spans.empty();
+    if (!is_dots && !is_area && !line_geometry_current) {
+        view_state.line_window_geometry_dirty = true;
         view_state.line_draw_spans.clear();
         std::size_t total_window_count = 0;
         std::size_t total_padded_count = 0;
@@ -2334,6 +2378,7 @@ bool Series_renderer::rhi_prepare_series_primitive(
             else {
                 view_state.rhi->line_window_vbo.reset();
                 view_state.rhi_line_window_vbo_capacity_bytes = 0;
+                view_state.line_window_geometry_dirty         = true;
                 return false;
             }
         }
@@ -2411,6 +2456,7 @@ bool Series_renderer::rhi_prepare_series_primitive(
             view_state.last_line_window_sample_count = total_window_count;
             view_state.last_line_window_upload_bytes = upload_bytes;
             ++view_state.last_line_window_upload_count;
+            view_state.line_window_geometry_dirty = false;
         }
     }
 

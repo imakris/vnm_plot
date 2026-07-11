@@ -70,6 +70,7 @@ struct series_window_planner_state_t
     std::vector<drawable_sample_span_t>
                                last_drawable_spans;
     std::int64_t               uploaded_t_origin_ns      = k_no_timestamp;
+    bool                       last_plan_reused_upload   = false;
 };
 
 struct Series_window_snapshot_cache

@@ -1041,6 +1041,8 @@ bool test_combined_builtin_uploads_samples_once_per_view()
         "combined primitive prepare count must describe the current frame");
     TEST_ASSERT(view_state.last_sample_upload_count == 1,
         "combined sample upload count must describe the current frame");
+    TEST_ASSERT(view_state.last_line_window_upload_count == 0,
+        "unchanged custom-layer snapshots must reuse LINE geometry");
     TEST_ASSERT(view_state.last_staged_sample_count == second_prepare->gpu_count,
         "second combined frame must stage the shared compact GPU window");
     TEST_ASSERT(
@@ -1809,7 +1811,7 @@ bool test_non_rhi_prepare_invalidates_prior_upload_before_fast_path()
     });
 
     auto series         = std::make_shared<plot::series_data_t>();
-    series->style       = plot::Display_style::DOTS;
+    series->style       = plot::Display_style::LINE;
     series->data_source = source;
     series->access      = make_access_policy();
 
@@ -1843,6 +1845,8 @@ bool test_non_rhi_prepare_invalidates_prior_upload_before_fast_path()
     TEST_ASSERT(state_it->second.main_view.has_uploaded_vbo &&
         state_it->second.main_view.last_staged_sample_count > 1,
         "initial QRhi frame should upload multiple samples");
+    TEST_ASSERT(!state_it->second.main_view.line_window_geometry_dirty,
+        "initial QRhi LINE frame should cache its geometry");
 
     plot::frame_context_t non_rhi_ctx = make_context(layout, config);
     non_rhi_ctx.t0              = 10LL * k_second_ns;
@@ -1852,6 +1856,8 @@ bool test_non_rhi_prepare_invalidates_prior_upload_before_fast_path()
     renderer.prepare(non_rhi_ctx, series_map);
     TEST_ASSERT(!state_it->second.main_view.has_uploaded_vbo,
         "non-RHI prepare must invalidate the previous upload for its planned window");
+    TEST_ASSERT(state_it->second.main_view.line_window_geometry_dirty,
+        "QRhi transitions must invalidate cached LINE geometry");
 
     events.clear();
     TEST_ASSERT(
@@ -1862,6 +1868,8 @@ bool test_non_rhi_prepare_invalidates_prior_upload_before_fast_path()
         "QRhi frame after non-RHI prepare should upload its own VBO");
     TEST_ASSERT(state_it->second.main_view.last_sample_upload_count == 1,
         "QRhi frame after non-RHI prepare must not reuse the old upload");
+    TEST_ASSERT(state_it->second.main_view.last_line_window_upload_count == 1,
+        "QRhi frame after non-RHI prepare must rebuild LINE geometry");
     TEST_ASSERT(state_it->second.main_view.last_staged_sample_count == 2,
         "QRhi frame after non-RHI prepare should stage the new expanded window");
     TEST_ASSERT(state_it->second.main_view.staging[0].y == 2.0f &&
@@ -3544,6 +3552,14 @@ bool test_stacked_sum_overlay_uses_top_geometry_and_theme()
     TEST_ASSERT(
         rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
         error_message);
+    TEST_ASSERT(top_state->second.main_view.last_line_window_upload_count == 0 &&
+        top_state->second.preview_view.last_line_window_upload_count == 0 &&
+        top_state->second.main_view.last_recorded_line_segment_count > 0 &&
+        top_state->second.preview_view.last_recorded_line_segment_count > 0,
+        "unchanged AREA stack overlays must draw in main and preview without LINE uploads");
+    TEST_ASSERT(line_top_state->second.main_view.last_line_window_upload_count == 0 &&
+        line_top_state->second.preview_view.last_line_window_upload_count == 0,
+        "unchanged ordinary LINE and sum overlay must share retained geometry");
     const glm::vec4 light_sum_color(
         25.0f / 255.0f, 32.0f / 255.0f, 51.0f / 255.0f, 1.0f);
     for (std::size_t i = 0; i < renderer.m_last_recorded_stack_sum_overlays.size(); ++i) {
@@ -3553,6 +3569,89 @@ bool test_stacked_sum_overlay_uses_top_geometry_and_theme()
                 "light stack sum overlay color must be #192033");
         }
     }
+
+    auto* changed_source = dynamic_cast<Test_source*>(series_map.at(10)->main_source());
+    TEST_ASSERT(changed_source, "stack fixture should expose its mutable source");
+    changed_source->set_samples({
+        { 0LL,               101.0f},
+        { 1LL * k_second_ns, 102.0f},
+        { 2LL * k_second_ns, 103.0f},
+        { 3LL * k_second_ns, 104.0f}
+    });
+    events.clear();
+    TEST_ASSERT(
+        rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
+        error_message);
+    TEST_ASSERT(top_state->second.main_view.last_line_window_upload_count == 1 &&
+        top_state->second.preview_view.last_line_window_upload_count == 1 &&
+        top_state->second.main_view.line_window_staging.front().y == 112.0f,
+        "changed stack geometry must rebuild each AREA sum overlay once");
+
+    return true;
+}
+
+bool test_line_geometry_reuses_and_rebuilds_after_area_only_change()
+{
+    constexpr std::int64_t k_second_ns = 1'000'000'000LL;
+    auto source = std::make_shared<Test_source>();
+    source->set_samples({
+        { 0LL,               1.0f},
+        { 1LL * k_second_ns, 2.0f},
+        { 2LL * k_second_ns, 3.0f},
+        { 3LL * k_second_ns, 4.0f}
+    });
+
+    auto series         = std::make_shared<plot::series_data_t>();
+    series->style       = plot::Display_style::LINE;
+    series->data_source = source;
+    series->access      = make_access_policy();
+    std::map<int, std::shared_ptr<const plot::series_data_t>> series_map;
+    series_map[1] = series;
+
+    plot::Asset_loader asset_loader;
+    plot::Series_renderer renderer;
+    renderer.initialize(asset_loader);
+    Offscreen_rhi_fixture rhi_fixture;
+    std::string error_message;
+    TEST_ASSERT(rhi_fixture.initialize(error_message), error_message);
+
+    plot::Plot_config config;
+    const plot::frame_layout_result_t layout = make_layout();
+    plot::frame_context_t ctx = make_context(layout, config);
+    std::vector<layer_event_t> events;
+
+    TEST_ASSERT(rhi_fixture.render_layer_frame(
+        renderer, ctx, series_map, events, error_message), error_message);
+    auto state = renderer.m_vbo_states.find(1);
+    TEST_ASSERT(state != renderer.m_vbo_states.end() &&
+        state->second.main_view.last_line_window_upload_count == 1,
+        "cold LINE frame should upload its geometry once");
+
+    TEST_ASSERT(rhi_fixture.render_layer_frame(
+        renderer, ctx, series_map, events, error_message), error_message);
+    TEST_ASSERT(state->second.main_view.last_line_window_upload_count == 0 &&
+        state->second.main_view.last_recorded_line_segment_count > 0,
+        "unchanged LINE frame should draw without a geometry upload");
+
+    series->style = plot::Display_style::AREA;
+    source->set_samples({
+        { 0LL,               10.0f},
+        { 1LL * k_second_ns, 20.0f},
+        { 2LL * k_second_ns, 30.0f},
+        { 3LL * k_second_ns, 40.0f}
+    });
+    TEST_ASSERT(rhi_fixture.render_layer_frame(
+        renderer, ctx, series_map, events, error_message), error_message);
+    TEST_ASSERT(state->second.main_view.last_line_window_upload_count == 0,
+        "AREA-only changed frame should not upload unused LINE geometry");
+
+    series->style = plot::Display_style::LINE;
+    TEST_ASSERT(rhi_fixture.render_layer_frame(
+        renderer, ctx, series_map, events, error_message), error_message);
+    TEST_ASSERT(state->second.main_view.last_sample_upload_count == 0 &&
+        state->second.main_view.last_line_window_upload_count == 1 &&
+        state->second.main_view.line_window_staging.front().y == 10.0f,
+        "re-enabled LINE must rebuild from geometry changed during AREA-only rendering");
 
     return true;
 }
@@ -3602,6 +3701,7 @@ int main()
     RUN_TEST(test_layer_state_recreated_for_program_identity_changes);
     RUN_TEST(test_range_only_access_skips_builtin_value_styles);
     RUN_TEST(test_stacked_sum_overlay_uses_top_geometry_and_theme);
+    RUN_TEST(test_line_geometry_reuses_and_rebuilds_after_area_only_change);
 
     std::cout << "Results: " << passed << " passed, " << failed << " failed" << std::endl;
     return failed > 0 ? 1 : 0;
