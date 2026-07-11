@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <vector>
@@ -922,6 +923,173 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
     }
 
     return plan;
+}
+
+bool compose_stacked_series(
+    const std::vector<const Series_view_plan*>&    plans,
+    std::vector<std::vector<stacked_sample_t>>&    layers)
+{
+    struct point_t { std::int64_t t; float v; };
+
+    layers.clear();
+    if (plans.size() < 2) {
+        return false;
+    }
+    const Series_interpolation interpolation = plans.front()
+        ? plans.front()->interpolation
+        : Series_interpolation::LINEAR;
+    if (std::any_of(plans.begin(), plans.end(),
+        [interpolation](const auto* plan) { return !plan || plan->interpolation != interpolation; }))
+    {
+        return false;
+    }
+
+    std::vector<std::vector<point_t>> points(plans.size());
+    for (std::size_t layer = 0; layer < plans.size(); ++layer) {
+        const Series_view_plan* plan = plans[layer];
+        if (!plan || !plan->snapshot.snapshot || !plan->access ||
+            !plan->access->get_value || plan->drawable_spans.size() != 1)
+        {
+            return false;
+        }
+
+        const drawable_sample_span_t& span = plan->drawable_spans.front();
+        const auto access = make_erased_access_policy_view(*plan->access);
+
+        auto& out = points[layer];
+        out.reserve(span.gpu_count);
+        for (std::size_t i = 0; i < span.source_count; ++i) {
+            const void* sample = plan->snapshot.snapshot.at(span.source_first + i);
+            sample_draw_value_t value;
+            if (!sample || read_sample_draw_value(
+                access, sample, plan->nonfinite_policy, value) !=
+                sample_draw_status_t::DRAWABLE)
+            {
+                return false;
+            }
+            const std::int64_t timestamp = access.timestamp(sample);
+            if (!out.empty() && out.back().t == timestamp) {
+                out.back().v = value.y;
+            }
+            else {
+                out.push_back({timestamp, value.y});
+            }
+        }
+        if (span.gpu_count == span.source_count + 1u) {
+            if (out.empty()) {
+                return false;
+            }
+            if (out.back().t != plan->hold_timestamp_ns) {
+                out.push_back({plan->hold_timestamp_ns, out.back().v});
+            }
+        }
+        if (out.empty()) {
+            return false;
+        }
+        if (out.size() > 1 && out.front().t > out.back().t) {
+            std::reverse(out.begin(), out.end());
+        }
+        if (!std::is_sorted(out.begin(), out.end(),
+            [](const point_t& a, const point_t& b) { return a.t < b.t; }))
+        {
+            return false;
+        }
+    }
+
+    std::vector<std::int64_t> timestamps;
+    std::int64_t overlap_start = points.front().front().t;
+    std::int64_t overlap_end   = points.front().back().t;
+    for (const auto& source : points) {
+        overlap_start = std::max(overlap_start, source.front().t);
+        overlap_end   = std::min(overlap_end, source.back().t);
+    }
+    if (overlap_end < overlap_start) {
+        return false;
+    }
+
+    std::vector<std::size_t> merge_indices(points.size(), 0);
+    for (;;) {
+        bool         found = false;
+        std::int64_t next  = 0;
+        for (std::size_t i = 0; i < points.size(); ++i) {
+            if (merge_indices[i] == points[i].size()) {
+                continue;
+            }
+            const std::int64_t candidate = points[i][merge_indices[i]].t;
+            if (!found || candidate < next) {
+                next  = candidate;
+                found = true;
+            }
+        }
+        if (!found)                { break;                      }
+        if (next > overlap_end)    { break;                      }
+        if (next >= overlap_start) { timestamps.push_back(next); }
+        for (std::size_t i = 0; i < points.size(); ++i) {
+            while (merge_indices[i]           <  points[i].size() &&
+                points[i][merge_indices[i]].t == next)
+            {
+                ++merge_indices[i];
+            }
+        }
+    }
+
+    layers.assign(plans.size(), {});
+    for (auto& layer : layers) {
+        layer.reserve(timestamps.size());
+    }
+    std::vector<std::size_t> cursors(points.size(), 0);
+    for (const std::int64_t timestamp : timestamps) {
+        float cumulative = 0.0f;
+        for (std::size_t layer = 0; layer < points.size(); ++layer) {
+            const auto& source = points[layer];
+            while (cursors[layer] + 1u        <  source.size() &&
+                source[cursors[layer] + 1u].t <= timestamp)
+            {
+                ++cursors[layer];
+            }
+
+            float value = source[cursors[layer]].v;
+            if (plans[layer]->interpolation == Series_interpolation::LINEAR &&
+                cursors[layer] + 1u         <  source.size()                &&
+                timestamp                   >  source[cursors[layer]].t)
+            {
+                const point_t& a = source[cursors[layer]];
+                const point_t& b = source[cursors[layer] + 1u];
+                const double position =
+                    (static_cast<double>(timestamp) - static_cast<double>(a.t)) /
+                    (static_cast<double>(b.t) - static_cast<double>(a.t));
+                value = static_cast<float>(a.v + position * (b.v - a.v));
+            }
+
+            const float base = cumulative;
+            cumulative += value;
+            if (!std::isfinite(cumulative)) {
+                layers.clear();
+                return false;
+            }
+            layers[layer].push_back({timestamp, cumulative, base});
+        }
+    }
+    return !timestamps.empty();
+}
+
+const Data_access_policy& stacked_sample_access()
+{
+    static const Data_access_policy access = [] {
+        Data_access_policy policy;
+        policy.get_timestamp = [](const void* sample) {
+            return static_cast<const stacked_sample_t*>(sample)->timestamp_ns;
+        };
+        policy.get_value = [](const void* sample) {
+            return static_cast<const stacked_sample_t*>(sample)->value;
+        };
+        policy.get_range = [](const void* sample) {
+            const auto& value = *static_cast<const stacked_sample_t*>(sample);
+            return std::make_pair(value.base, value.value);
+        };
+        return policy;
+    }();
+    return access;
 }
 
 } // namespace vnm::plot::detail

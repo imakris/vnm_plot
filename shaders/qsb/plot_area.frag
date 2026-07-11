@@ -7,6 +7,7 @@ layout(std140, binding = 0) uniform Block
 {
     Series_view_t view;
     int  interpolation;
+    int  stacked;
 } u;
 
 layout(location = 0) in vec4  vs_color;

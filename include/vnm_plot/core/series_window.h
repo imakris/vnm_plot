@@ -53,6 +53,7 @@ struct sample_window_t
     double                                 pixels_per_sample = 0.0;
     std::uint64_t                          sample_sequence   = 0;
     Series_interpolation                   interpolation     = Series_interpolation::LINEAR;
+    bool                                   stacked           = false;
     Nonfinite_sample_policy nonfinite_policy =
         Nonfinite_sample_policy::BREAK_SEGMENT;
 
@@ -110,6 +111,7 @@ struct Series_view_plan
     std::int64_t               hold_timestamp_ns = 0;
 
     Series_interpolation       interpolation         = Series_interpolation::LINEAR;
+    bool                       stacked               = false;
     Empty_window_behavior      empty_window_behavior = Empty_window_behavior::DRAW_NOTHING;
     Nonfinite_sample_policy nonfinite_policy =
         Nonfinite_sample_policy::BREAK_SEGMENT;

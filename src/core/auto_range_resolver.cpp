@@ -418,6 +418,15 @@ bool resolve_series_collection_range(
     const bool visible_only =
         !preview && config.auto_v_range_mode == Auto_v_range_mode::VISIBLE;
     const time_range_t visible_window{data_cfg.t_min, data_cfg.t_max};
+    std::map<int, std::pair<float, float>> stack_ranges;
+    std::map<int, std::size_t> stack_members;
+    for (const auto& [_, item] : series) {
+        if (item && item->enabled && item->stack_group != 0 &&
+            (preview ? item->preview_source() : item->main_source()))
+        {
+            ++stack_members[item->stack_group];
+        }
+    }
     prune_cache_entries(cache, preview, series);
 
     for (const auto& [id, item] : series) {
@@ -466,8 +475,19 @@ bool resolve_series_collection_range(
             continue;
         }
 
-        out_min  = std::min(out_min, series_min);
-        out_max  = std::max(out_max, series_max);
+        if (item->stack_group != 0 && stack_members[item->stack_group] > 1) {
+            auto& cumulative = stack_ranges[item->stack_group];
+            out_min = std::min(out_min, std::min(cumulative.first,
+                cumulative.first + series_min));
+            out_max = std::max(out_max, std::max(cumulative.second,
+                cumulative.second + series_max));
+            cumulative.first  += series_min;
+            cumulative.second += series_max;
+        }
+        else {
+            out_min = std::min(out_min, series_min);
+            out_max = std::max(out_max, series_max);
+        }
         have_any = true;
     }
 

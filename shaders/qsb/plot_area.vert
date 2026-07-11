@@ -12,13 +12,18 @@
 
 layout(location = 0) in float in_x0_rel;
 layout(location = 1) in float in_y0;
+layout(location = 2) in float in_ymin0;
+layout(location = 3) in float in_ymax0;
 layout(location = 4) in float in_x1_rel;
 layout(location = 5) in float in_y1;
+layout(location = 6) in float in_ymin1;
+layout(location = 7) in float in_ymax1;
 
 layout(std140, binding = 0) uniform Block
 {
     Series_view_t view;
     int  interpolation;
+    int  stacked;
 } u;
 
 layout(location = 0) out vec4  vs_color;
@@ -53,6 +58,31 @@ void main()
 
     float y0 = u.view.height * (1.0 - (cv0 - u.view.v_min) / rv) + u.view.y_offset;
     float y1 = u.view.height * (1.0 - (cv1 - u.view.v_min) / rv) + u.view.y_offset;
+
+    if (u.stacked == 1) {
+        float base0 = abs(in_y0 - in_ymin0) > abs(in_y0 - in_ymax0)
+            ? in_ymin0 : in_ymax0;
+        float base1 = abs(in_y1 - in_ymin1) > abs(in_y1 - in_ymax1)
+            ? in_ymin1 : in_ymax1;
+        if (u.interpolation == 1) {
+            base1 = base0;
+        }
+        float ybase0 = u.view.height * (1.0 - (base0 - u.view.v_min) / rv) + u.view.y_offset;
+        float ybase1 = u.view.height * (1.0 - (base1 - u.view.v_min) / rv) + u.view.y_offset;
+        if ((cv0 - base0) < 0.0) { v0_color = v0_color.zyxw; axis_color0 = axis_color0.zyxw; }
+        if ((cv1 - base1) < 0.0) { v1_color = v1_color.zyxw; axis_color1 = axis_color1.zyxw; }
+        switch (vid) {
+            case 0:  pos = vec2(x0, y0);     vcolor = v0_color;    break;
+            case 1:  pos = vec2(x1, y1);     vcolor = v1_color;    break;
+            case 2:  pos = vec2(x0, ybase0); vcolor = axis_color0; break;
+            case 3:  pos = vec2(x0, ybase0); vcolor = axis_color0; break;
+            case 4:  pos = vec2(x1, y1);     vcolor = v1_color;    break;
+            default: pos = vec2(x1, ybase1); vcolor = axis_color1; break;
+        }
+        vs_color    = vcolor;
+        gl_Position = u.view.pmv * vec4(pos, 0.0, 1.0);
+        return;
+    }
 
     bool  sign_flip = (cv0 * cv1) < 0.0;
     float mid       = (cv0 - cv1) != 0.0 ? cv0 / (cv0 - cv1) : 0.0;

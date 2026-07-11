@@ -223,6 +223,19 @@ struct Access_call_counts
     int value     = 0;
 };
 
+class Observation_profiler final : public plot::Profiler
+{
+public:
+    void begin_scope(const char*) override {}
+    void end_scope() override {}
+    void record_observation(const char* name, double value) override
+    {
+        observations[name ? name : ""] += value;
+    }
+
+    std::map<std::string, double> observations;
+};
+
 Data_access_policy make_direct_member_policy()
 {
     auto typed = plot::make_access_policy<Test_sample>(
@@ -1443,6 +1456,101 @@ bool test_lod_selection_has_no_hysteresis()
     return true;
 }
 
+bool test_stacking_composes_different_timestamps_from_independent_lods()
+{
+    Two_level_source lower_source;
+    Two_level_source upper_source;
+    fill_lod_samples(lower_source);
+    fill_lod_samples(upper_source);
+    for (auto& sample : upper_source.lod0) {
+        sample.t += 2;
+        sample.v = 10.0f;
+    }
+    for (auto& sample : upper_source.lod1) {
+        sample.t += 2;
+        sample.v = 10.0f;
+    }
+
+    const Data_access_policy       lower_access = make_policy();
+    const Data_access_policy       upper_access = make_policy();
+    const std::vector<std::size_t> scales = {1, 4};
+    plot::detail::series_window_planner_state_t lower_state;
+    plot::detail::series_window_planner_state_t upper_state;
+    plot::detail::Series_window_snapshot_cache lower_cache;
+    plot::detail::Series_window_snapshot_cache upper_cache;
+
+    auto lower_plan = plan_two_level_lod_width(
+        lower_source, lower_access, scales, lower_state, lower_cache, 1, 50.0);
+    auto upper_plan = plan_two_level_lod_width(
+        upper_source, upper_access, scales, upper_state, upper_cache, 1, 39.0);
+    TEST_ASSERT(lower_plan.lod_level == 0 && upper_plan.lod_level == 1,
+        "stack inputs must retain independent LOD choices");
+
+    std::vector<std::vector<plot::detail::stacked_sample_t>> layers;
+    TEST_ASSERT(plot::detail::compose_stacked_series(
+            {&lower_plan, &upper_plan}, layers),
+        "different timestamp grids should compose");
+    TEST_ASSERT(layers.size() == 2 && layers[0].size() == layers[1].size(),
+        "stack layers should share the timestamp union");
+    TEST_ASSERT(layers[0].front().timestamp_ns == 2 &&
+                layers[0].back().timestamp_ns == 98,
+        "stack output must stay inside the common selected-sample domain");
+
+    const auto sample = std::find_if(
+        layers[1].begin(), layers[1].end(),
+        [](const auto& value) { return value.timestamp_ns == 3; });
+    TEST_ASSERT(sample != layers[1].end(),
+        "full-resolution lower timestamps should remain in the union");
+    TEST_ASSERT(std::abs(sample->base - 4.0f) < 1e-5f &&
+                std::abs(sample->value - 14.0f) < 1e-5f,
+        "upper layer should use the lower value and interpolate its own selected LOD");
+
+    auto lower_series = std::make_shared<series_data_t>();
+    lower_series->data_source.set_ref(lower_source);
+    lower_series->access = lower_access;
+    lower_series->stack_group = 1;
+    auto upper_series = std::make_shared<series_data_t>();
+    upper_series->data_source.set_ref(upper_source);
+    upper_series->access = upper_access;
+    upper_series->stack_group = 1;
+    std::map<int, std::shared_ptr<const series_data_t>> series{
+        {1, lower_series}, {2, upper_series}};
+    frame_layout_result_t layout;
+    layout.usable_width = 50.0;
+    layout.usable_height = 50.0;
+    Plot_config config;
+    auto profiler = std::make_shared<Observation_profiler>();
+    config.profiler = profiler;
+    auto ctx = make_context(layout, config);
+    ctx.t1 = 99;
+    Series_renderer renderer;
+    Asset_loader assets;
+    renderer.initialize(assets);
+    renderer.render(ctx, series);
+    TEST_ASSERT(profiler->observations["renderer.stacking.output_sample_count"] > 0.0,
+        "stack composition should report its concrete output sample count");
+    renderer.render(ctx, series);
+    TEST_ASSERT(profiler->observations["renderer.stacking.cache_hit_count"] == 1.0,
+        "unchanged stack inputs should reuse their composed timestamp union");
+
+    series.erase(2);
+    renderer.render(ctx, series);
+    TEST_ASSERT(!renderer.m_vbo_states.at(1).main_view.stack_cache_snapshot,
+        "dropping below two stack members must clear the surviving view cache");
+    series[2] = upper_series;
+    renderer.render(ctx, series);
+    TEST_ASSERT(profiler->observations["renderer.stacking.cache_hit_count"] == 1.0,
+        "re-enabling a stack must recompose instead of accepting a stale cache hit");
+
+    upper_series->interpolation = plot::Series_interpolation::STEP_AFTER;
+    renderer.render(ctx, series);
+    TEST_ASSERT(
+        renderer.m_vbo_states.at(1).main_view.last_stack_view_suppressed &&
+        renderer.m_vbo_states.at(2).main_view.last_stack_view_suppressed,
+        "a rejected stack must suppress its views instead of rendering ordinary series");
+    return true;
+}
+
 bool test_snapshot_released_after_render()
 {
     auto data_source = std::make_shared<Single_level_source>();
@@ -1833,6 +1941,7 @@ int main()
     RUN_TEST(test_preview_honors_hold_last_forward);
     RUN_TEST(test_lod_level_separation);
     RUN_TEST(test_lod_selection_has_no_hysteresis);
+    RUN_TEST(test_stacking_composes_different_timestamps_from_independent_lods);
     RUN_TEST(test_snapshot_released_after_render);
     RUN_TEST(test_upload_origin_records_per_view_origin);
     RUN_TEST(test_upload_invalidates_when_origin_changes_across_snap_bucket);

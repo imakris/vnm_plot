@@ -588,12 +588,13 @@ struct Area_block_std140
     series_view_uniform_std140_t
            view;          // offset 0
     int    interpolation; // offset 128
-    int    pad0;          // offset 132
+    int    stacked;       // offset 132
     int    pad1;          // offset 136
     int    pad2;          // offset 140
 };
 static_assert(sizeof(Area_block_std140) == 144, "Area_block_std140 must be a multiple of 16");
 static_assert(offsetof(Area_block_std140, interpolation) == 128, "Area_block interpolation offset");
+static_assert(offsetof(Area_block_std140, stacked)       == 132, "Area_block stacked offset");
 
 constexpr std::uint32_t k_series_ubo_bytes = 144;
 static_assert(sizeof(Line_block_std140) <= k_series_ubo_bytes, "ubo bytes fit LINE block");
@@ -749,7 +750,8 @@ void Series_renderer::prepare(
 
     enum class Error_cat : uint32_t {
         PREVIEW_MISSING_SOURCE,
-        MISSING_SHADER
+        MISSING_SHADER,
+        STACK_COMPOSITION
     };
 
     const auto log_error_once = [&](Error_cat cat, int series_id,
@@ -832,6 +834,10 @@ void Series_renderer::prepare(
         }
 
         auto& vbo_state = m_vbo_states[id];
+        if (vbo_state.stack_group != s->stack_group) {
+            vbo_state = vbo_state_t{};
+            vbo_state.stack_group = s->stack_group;
+        }
 
         std::vector<std::size_t> main_scales = source_lod_scales(*main_source);
         std::vector<std::size_t> preview_scales;
@@ -896,7 +902,7 @@ void Series_renderer::prepare(
             layout.usable_width,
             main_style,
             main_interpolation,
-            has_main_layer
+            (has_main_layer || s->stack_group != 0)
                 ? detail::Snapshot_requirement::Frame_snapshot_required
                 : detail::Snapshot_requirement::Optional);
         main_plan.v_min        = ctx.v0;
@@ -936,7 +942,7 @@ void Series_renderer::prepare(
                 ctx.win_w,
                 preview_style,
                 preview_interpolation,
-                has_preview_layer
+                (has_preview_layer || s->stack_group != 0)
                     ? detail::Snapshot_requirement::Frame_snapshot_required
                     : detail::Snapshot_requirement::Optional);
             const double preview_top =
@@ -957,6 +963,177 @@ void Series_renderer::prepare(
         draw_state.preview_plan = std::move(preview_plan);
         draw_state.has_preview  = preview_visible && preview_valid;
         draw_states.push_back(std::move(draw_state));
+    }
+
+    const auto compose_stacks = [&](Series_view_kind view_kind) {
+        VNM_PLOT_PROFILE_SCOPE(profiler, "renderer.frame.compose_stacks");
+        const auto view_state_for = [view_kind](series_draw_state_t& member)
+            -> vbo_view_state_t& {
+            return view_kind == Series_view_kind::MAIN
+                ? member.vbo_state->main_view
+                : member.vbo_state->preview_view;
+        };
+        const auto clear_stack_cache = [&](series_draw_state_t& member) {
+            auto& state = view_state_for(member);
+            state.stack_cache_key.clear();
+            state.stack_cache_snapshot = {};
+        };
+        for (auto& draw_state : draw_states) {
+            if (draw_state.vbo_state) {
+                view_state_for(draw_state).last_stack_view_suppressed = false;
+            }
+        }
+        std::map<int, std::vector<series_draw_state_t*>> groups;
+        for (auto& draw_state : draw_states) {
+            if (!draw_state.series || draw_state.series->stack_group == 0) {
+                continue;
+            }
+            if (view_kind == Series_view_kind::PREVIEW && !draw_state.has_preview) {
+                clear_stack_cache(draw_state);
+                continue;
+            }
+            groups[draw_state.series->stack_group].push_back(&draw_state);
+        }
+
+        for (auto& [group, members] : groups) {
+            if (members.size() < 2) {
+                clear_stack_cache(*members.front());
+                continue;
+            }
+            std::vector<const Series_view_plan*> plans;
+            plans.reserve(members.size());
+            std::size_t input_samples = 0;
+            std::vector<std::uint64_t> cache_key;
+            cache_key.reserve(members.size() * 20u);
+            bool cacheable = true;
+            for (const auto* member : members) {
+                const Series_view_plan* plan = view_kind == Series_view_kind::MAIN
+                    ? &member->main_plan
+                    : &member->preview_plan;
+                plans.push_back(plan);
+                input_samples += plan->gpu_count;
+                cacheable = cacheable && plan->snapshot.sequence != 0;
+                const auto access_view = plan->access
+                    ? detail::make_erased_access_policy_view(*plan->access)
+                    : detail::erased_access_policy_t{};
+                const auto access_key = detail::make_access_policy_cache_key(
+                    plan->access, access_view);
+                const auto semantics_key = detail::make_sample_semantics_key(
+                    plan->access);
+                cache_key.insert(cache_key.end(), {
+                    static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(
+                        plan->source ? plan->source->identity() : nullptr)),
+                    plan->snapshot.sequence,
+                    static_cast<std::uint64_t>(plan->lod_level),
+                    static_cast<std::uint64_t>(plan->source_first),
+                    static_cast<std::uint64_t>(plan->source_count),
+                    static_cast<std::uint64_t>(plan->synthetic_hold_count),
+                    static_cast<std::uint64_t>(plan->hold_timestamp_ns),
+                    static_cast<std::uint64_t>(plan->t_min_ns),
+                    static_cast<std::uint64_t>(plan->t_max_ns),
+                    static_cast<std::uint64_t>(plan->t_origin_ns),
+                    static_cast<std::uint64_t>(plan->interpolation),
+                    static_cast<std::uint64_t>(plan->nonfinite_policy),
+                    static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(
+                        access_key.identity)),
+                    access_key.layout_key,
+                    access_key.revision,
+                    static_cast<std::uint64_t>(access_key.dispatch_kind),
+                    static_cast<std::uint64_t>(access_key.has_timestamp),
+                    static_cast<std::uint64_t>(access_key.has_value),
+                    static_cast<std::uint64_t>(access_key.has_range),
+                    semantics_key.value,
+                    semantics_key.revision,
+                    static_cast<std::uint64_t>(semantics_key.conservative)
+                });
+            }
+
+            const bool cache_hit = cacheable && std::all_of(
+                members.begin(), members.end(), [&](auto* member) {
+                    const auto& state = view_state_for(*member);
+                    return state.stack_cache_key == cache_key &&
+                           state.stack_cache_snapshot;
+                });
+            std::vector<std::vector<detail::stacked_sample_t>> layers;
+            if (!cache_hit && !detail::compose_stacked_series(plans, layers)) {
+                    for (auto* member : members) {
+                        clear_stack_cache(*member);
+                        Series_view_plan& plan = view_kind == Series_view_kind::MAIN
+                            ? member->main_plan
+                            : member->preview_plan;
+                        plan.snapshot             = {};
+                        plan.source_first         = 0;
+                        plan.source_count         = 0;
+                        plan.synthetic_hold_count = 0;
+                        plan.gpu_count            = 0;
+                        plan.drawable_spans.clear();
+                        plan.hold_last_forward    = false;
+                        view_state_for(*member).last_stack_view_suppressed = true;
+                    }
+                    log_error_once(
+                        Error_cat::STACK_COMPOSITION,
+                        members.front()->id,
+                        "Stack composition requires finite value samples, monotonic timestamps, and matching interpolation (group "
+                            + std::to_string(group) + ")");
+                    continue;
+            }
+            std::size_t output_samples = 0;
+            for (std::size_t i = 0; i < members.size(); ++i) {
+                Series_view_plan& plan = view_kind == Series_view_kind::MAIN
+                    ? members[i]->main_plan
+                    : members[i]->preview_plan;
+                auto& view_state = view_state_for(*members[i]);
+                if (!cache_hit) {
+                    auto samples = std::make_shared<std::vector<detail::stacked_sample_t>>(
+                        std::move(layers[i]));
+                    view_state.stack_cache_snapshot = {
+                        samples->data(), samples->size(),
+                        sizeof(detail::stacked_sample_t),
+                        m_frame_id,
+                        nullptr, 0, samples};
+                    view_state.stack_cache_key = cache_key;
+                }
+                const data_snapshot_t snapshot = view_state.stack_cache_snapshot;
+                const std::size_t count = snapshot.count;
+                output_samples += count;
+                plan.access                  = &detail::stacked_sample_access();
+                plan.snapshot.snapshot       = snapshot;
+                plan.snapshot.sequence       = snapshot.sequence;
+                plan.source_first         = 0;
+                plan.source_count         = count;
+                plan.synthetic_hold_count = 0;
+                plan.gpu_count            = count;
+                plan.drawable_spans       = {{0, count, 0, count}};
+                plan.hold_last_forward    = false;
+                plan.stacked              = true;
+
+                const bool has_custom_layer = std::any_of(
+                    qrhi_layers_for(*members[i]->series).begin(),
+                    qrhi_layers_for(*members[i]->series).end(),
+                    [view_kind](const auto& layer) {
+                        return layer && layer->draws_view(view_kind);
+                    });
+                if (cache_hit && view_state.has_uploaded_vbo && !has_custom_layer) {
+                    plan.snapshot.snapshot = {};
+                }
+            }
+            if (profiler) {
+                profiler->record_observation(
+                    "renderer.stacking.input_sample_count",
+                    static_cast<double>(input_samples));
+                profiler->record_observation(
+                    "renderer.stacking.output_sample_count",
+                    static_cast<double>(output_samples));
+                if (cache_hit) {
+                    profiler->record_counter("renderer.stacking.cache_hit_count");
+                }
+            }
+        }
+    };
+
+    compose_stacks(Series_view_kind::MAIN);
+    if (preview_visible) {
+        compose_stacks(Series_view_kind::PREVIEW);
     }
 
     const auto invalidate_view_upload_state = [](vbo_view_state_t& view_state) {
@@ -1000,6 +1177,7 @@ void Series_renderer::prepare(
         window.pixels_per_sample    = plan.pixels_per_sample;
         window.sample_sequence      = plan.snapshot.sequence;
         window.interpolation        = plan.interpolation;
+        window.stacked              = plan.stacked;
         window.nonfinite_policy     = plan.nonfinite_policy;
         window.t_min_ns             = plan.t_min_ns;
         window.t_max_ns             = plan.t_max_ns;
@@ -2176,9 +2354,22 @@ bool Series_renderer::rhi_prepare_series_primitive(
                 static_cast<quint32>(offsetof(gpu_sample_t, y));
             QRhiVertexInputAttribute a_x0(0, 0, QRhiVertexInputAttribute::Float, t_offset);
             QRhiVertexInputAttribute a_y0(0, 1, QRhiVertexInputAttribute::Float, y_offset);
+            QRhiVertexInputAttribute a_min0(
+                0, 2, QRhiVertexInputAttribute::Float,
+                static_cast<quint32>(offsetof(gpu_sample_t, y_min)));
+            QRhiVertexInputAttribute a_max0(
+                0, 3, QRhiVertexInputAttribute::Float,
+                static_cast<quint32>(offsetof(gpu_sample_t, y_max)));
             QRhiVertexInputAttribute a_x1(1, 4, QRhiVertexInputAttribute::Float, t_offset);
             QRhiVertexInputAttribute a_y1(1, 5, QRhiVertexInputAttribute::Float, y_offset);
-            vlayout.setAttributes({a_x0, a_y0, a_x1, a_y1});
+            QRhiVertexInputAttribute a_min1(
+                1, 6, QRhiVertexInputAttribute::Float,
+                static_cast<quint32>(offsetof(gpu_sample_t, y_min)));
+            QRhiVertexInputAttribute a_max1(
+                1, 7, QRhiVertexInputAttribute::Float,
+                static_cast<quint32>(offsetof(gpu_sample_t, y_max)));
+            vlayout.setAttributes({a_x0, a_y0, a_min0, a_max0,
+                                   a_x1, a_y1, a_min1, a_max1});
         }
         else {
             // LINE binds the line_window_vbo four times at element offsets 0,
@@ -2311,6 +2502,7 @@ bool Series_renderer::rhi_prepare_series_primitive(
         block.view = view_block;
         block.interpolation =
             window.interpolation == Series_interpolation::STEP_AFTER ? 1 : 0;
+        block.stacked = window.stacked ? 1 : 0;
 
         if (updates) {
             updates->updateDynamicBuffer(

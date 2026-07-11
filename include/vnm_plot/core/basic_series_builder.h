@@ -58,6 +58,12 @@ public:
         return derived();
     }
 
+    Derived& stack_group(int group)
+    {
+        m_series.stack_group = group;
+        return derived();
+    }
+
     Derived& data_source(std::shared_ptr<Data_source> source)
     {
         m_series.set_data_source(std::move(source));

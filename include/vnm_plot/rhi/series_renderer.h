@@ -130,6 +130,9 @@ private:
             detail::access_dispatch_kind_t::NONE;
         std::vector<gpu_sample_t>      line_window_staging;
         std::vector<line_draw_span_t>  line_draw_spans;
+        std::vector<std::uint64_t>     stack_cache_key;
+        data_snapshot_t                stack_cache_snapshot;
+        bool                           last_stack_view_suppressed = false;
 
         // Per-view RHI resources. Defined out-of-line in series_renderer.cpp
         // where QRhiBuffer is complete; the public header only sees the
@@ -154,6 +157,7 @@ private:
 
     struct vbo_state_t
     {
+        int                stack_group = 0;
         vbo_view_state_t   main_view;
         vbo_view_state_t   preview_view;
         std::unique_ptr<detail::Series_window_snapshot_cache>

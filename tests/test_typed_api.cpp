@@ -559,6 +559,7 @@ bool test_series_builder_preview_config()
         .interpolation(plot::Series_interpolation::STEP_AFTER)
         .empty_window_behavior(plot::Empty_window_behavior::HOLD_LAST_FORWARD)
         .nonfinite_policy(plot::Nonfinite_sample_policy::REPLACE_WITH_ZERO)
+        .stack_group(7)
         .data_source(main_source)
         .access(policy)
         .preview(preview_cfg)
@@ -583,6 +584,7 @@ bool test_series_builder_preview_config()
         "empty_window_behavior mismatch");
     TEST_ASSERT(series.nonfinite_policy == plot::Nonfinite_sample_policy::REPLACE_WITH_ZERO,
         "nonfinite_policy mismatch");
+    TEST_ASSERT(series.stack_group == 7, "stack_group mismatch");
 
     return true;
 }

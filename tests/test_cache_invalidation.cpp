@@ -1142,6 +1142,26 @@ bool test_manual_range_skips_queries()
     return true;
 }
 
+bool test_stacked_auto_range_includes_cumulative_envelope()
+{
+    auto lower = std::make_shared<Query_range_source>();
+    auto upper = std::make_shared<Query_range_source>();
+    lower->query_status = upper->query_status = Data_query_status::READY;
+    lower->query_range = {1.0f, 2.0f};
+    upper->query_range = {10.0f, 20.0f};
+    auto lower_series = make_series(lower);
+    auto upper_series = make_series(upper);
+    lower_series->stack_group = upper_series->stack_group = 1;
+    std::map<int, std::shared_ptr<const series_data_t>> series{
+        {1, lower_series}, {2, upper_series}};
+
+    const auto range = plot::detail::resolve_main_v_range(
+        series, make_data_config(), Plot_config{}, true);
+    TEST_ASSERT(range.first == 0.0f && range.second == 22.0f,
+        "stacked auto-range should include the baseline and cumulative top");
+    return true;
+}
+
 }  // namespace
 
 int main()
@@ -1177,6 +1197,7 @@ int main()
     RUN_TEST(test_frame_range_planner_skips_preview_when_disabled);
     RUN_TEST(test_frame_range_planner_preserves_step_after_visible_scan);
     RUN_TEST(test_manual_range_skips_queries);
+    RUN_TEST(test_stacked_auto_range_includes_cumulative_envelope);
 
     std::cout << "Results: " << passed << " passed, " << failed << " failed" << std::endl;
 

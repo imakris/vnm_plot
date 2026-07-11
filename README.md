@@ -80,6 +80,10 @@ auto series = vnm::plot::Series_builder()
 plot_widget->add_series(0, series);
 ```
 
+To stack ordinary series, give two or more builders the same non-zero
+`.stack_group(group_id)` and use `AREA` to show each band. Plot ids determine
+bottom-to-top order; each source keeps its own timestamps and selected LOD.
+
 **Thread Safety**
 `Plot_widget` renders on a separate RHI render thread. Treat `series_data_t` as immutable once added. To change series config (style, access policy, preview config, color), update a copy and call `add_series` again with the same id to replace it. Make sure your `Data_source` implementation is safe to read from the render thread.
 
