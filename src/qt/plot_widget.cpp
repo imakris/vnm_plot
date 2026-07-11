@@ -1417,9 +1417,6 @@ QVariantList Plot_widget::get_samples_for_time(
         entry["py"]           = py;
         entry["color"]        = color;
         entry["series_label"] = QString::fromStdString(series->series_label);
-        if (stack) {
-            entry["show_marker"] = false;
-        }
         result.append(entry);
 
         if (stack) {
@@ -1430,7 +1427,16 @@ QVariantList Plot_widget::get_samples_for_time(
     }
 
     for (const auto& [group, stack] : indicator_stacks) {
-        if (stack.member_count < 2 || stack.sampled_count != stack.member_count) {
+        if (stack.member_count < 2) {
+            continue;
+        }
+        for (const auto& [series_id, result_index] : stack.entries) {
+            (void) series_id;
+            QVariantMap component    = result[result_index].toMap();
+            component["show_marker"] = false;
+            result[result_index]     = component;
+        }
+        if (stack.sampled_count != stack.member_count) {
             continue;
         }
         const auto stacked_values = rendered_stack_values(

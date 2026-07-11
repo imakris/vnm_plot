@@ -325,6 +325,8 @@ bool test_indicator_reports_stack_sum_only_inside_common_domain()
     const QVariantList unstacked = widget.get_indicator_samples(750.0, 100.0, 100.0);
     TEST_ASSERT(unstacked.size() == 2,
         "unstacked indicator should contain only component values");
+    TEST_ASSERT(!unstacked[0].toMap().contains("show_marker"),
+        "a singleton nonzero stack group should retain its ordinary raw marker");
 
     return true;
 }
