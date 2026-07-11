@@ -30,10 +30,12 @@ numbers RU-4A source actions if and only if P-D6, P-C1, P-D2, P-R1, and P-D15
 are all owner-ratified consistently; otherwise it records the RU-4A stop and
 numbers no RU-4A action, which also blocks RU-4B. Every individual proposal
 disposition remains recorded for a later separately reviewed amendment. RU-3C2
-owns reusable P-D6 source identity/acquisition, access-semantic and observation-
-fact/key-builder primitives, generic D10 eligibility, and ordinary reuse,
-without unused stack scaffolding. After that cluster is clean, RU-4A owns complete stack-key
-construction/population and `renderer_retained_stack_entry_t` transitions;
+owns reusable P-D6 source identity/acquisition and access-semantic primitives;
+exact per-observation `{LOD,sequence,window,hold}` builders; separate once-per-
+key `{time_origin,planner_version,data_format_version}` scalar builders; generic
+D10 eligibility; and ordinary reuse without unused stack scaffolding. After that
+cluster is clean, RU-4A owns complete stack-key construction/population and
+`renderer_retained_stack_entry_t` transitions;
 RU-4B supplies candidate/version inputs through the canonical builder and
 consumes retention. No layer duplicates another. D4 remains a later
 nondelegated evidence decision outside A1.
@@ -426,13 +428,18 @@ function:
   the next inspection/create/write. The limit+1 operation has no side effect and
   counters never exceed their per-unit or admitted-frame allowances.
 - Pending P-D6 has one split implementation. RU-3C2 owns the canonical weak-
-  owner-plus-alias identity comparer, access-semantic and observed LOD/sequence/
-  logical-window/hold/origin/version fact builders, generic D10 eligibility,
-  acquisition, and ordinary reuse; it creates no stack membership/cap/strategy scaffold. After
-  that cluster is clean, RU-4A combines those facts with group membership/order,
-  descriptors/view/time/caps, and a required strategy/version input to construct
-  complete private stack `structure_key`/`content_key` values and owns
-  `renderer_retained_stack_entry_t` transitions. RU-4B supplies Candidate A/B
+  owner-plus-alias identity comparer and access-semantic facts; an exact per-
+  observation `{LOD,observed_sequence_including_zero,logical_window,
+  synthetic_hold}` builder; a separate once-per-key
+  `{time_origin,planner_version,data_format_version}` scalar builder; generic D10
+  eligibility; acquisition; and ordinary reuse. It creates no stack membership/
+  cap/strategy scaffold. After that cluster is clean, RU-4A combines those facts
+  with group membership/order, descriptors/view/time/caps, and a required
+  strategy/version input to construct complete private stack `structure_key`/
+  `content_key` values. The `content_key` contains the ordered observation tuples
+  followed by exactly one key-level scalar block, never origin/version per
+  observation. RU-4A owns `renderer_retained_stack_entry_t` transitions. RU-4B
+  supplies Candidate A/B
   strategy/version inputs through that builder and consumes retention. The
   complete `structure_key` gates BUSY; the complete `content_key` gates READY
   reuse with stable nonzero sequences/D10. Physical snapshot segmentation,
@@ -591,11 +598,13 @@ alter the ordinary section.
 
 D13 makes each renderer registration slot the lifecycle owner. RU-3C2's pending
 P-D6 primitive layer canonicalizes weak-owner-plus-alias identity, access-
-semantic facts, observed LOD/sequence/logical-window/hold/origin/version facts,
-and generic eligibility. RU-4A
-uses those exact primitives plus stack membership/order, descriptor/view/time/
+semantic facts, exact per-observation LOD/sequence/window/hold tuples, a separate
+once-per-key origin/planner-version/data-format-version scalar block, and generic
+eligibility. RU-4A uses those exact primitives plus stack membership/order,
+descriptor/view/time/
 cap facts, and RU-4B's strategy/version input to build the compact complete stack
-`structure_key`/`content_key` and own retention transitions. Physical snapshot
+`structure_key`/`content_key`; it appends all ordered observation tuples and one
+scalar block, then owns retention transitions. Physical snapshot
 segmentation, normalized/drawable spans, payload values, arrays, and resources
 remain excluded. D14 removes `Data_source::identity()`; no incarnation/revision/
 reset token exists and no layer duplicates the canonical primitives or stack
@@ -814,7 +823,9 @@ P-D7/P-Q1 and review-clean consolidated A1, supplies checked floating ingestion,
 integral-only members, and canonical `query_sample`/range semantics. RU-3C2
 solely replaces independent hold-free acquisitions with cross-series/shared-key
 scheduling and owns canonical P-D6 reusable identity/observation/key-builder/
-eligibility primitives plus ordinary reuse; it does not repeat hold removal or
+eligibility primitives plus ordinary reuse. Its observation tuple is exactly
+LOD/sequence/window/hold and its separate origin/planner-version/data-format-
+version block occurs once per key; it does not repeat hold removal or
 create stack membership/cap/strategy/retention scaffolding. RU-3C1 supplies
 snapshot-free frame truth and VISIBLE/render/D9 identity, but its atomic cursor/
 result cluster waits for owner-ratified P-C1 recorded in review-clean
@@ -822,7 +833,7 @@ consolidated A1. RU-3C2's P-D6 primitive work likewise waits for owner-ratified
 P-D6 in that A1. No stack-only public metadata or unused planner lands in this
 stage.
 
-Gate: RU-3A proves snapshot READY/EMPTY/BUSY/FAILED top-level sequence semantics, D12 conformance, writer-before-record, and no surviving current hold. RU-3B separately proves proposed cursor and range gates plus D7 trait/rational boundaries. RU-3C2 proves exactly one shared scheduler, one acquisition per shared key, canonical reusable P-D6 primitives/ordinary eligibility, and absence of complete stack-key/retained-entry scaffolding. RU-3C1 proves frame/range/render/result parity. Each RU retains its own ASan/TSan/UBSan, warning-clean, and no-regression evidence; one later gate never retroactively makes an earlier hash truthful.
+Gate: RU-3A proves snapshot READY/EMPTY/BUSY/FAILED top-level sequence semantics, D12 conformance, writer-before-record, and no surviving current hold. RU-3B separately proves proposed cursor and range gates plus D7 trait/rational boundaries. RU-3C2 proves exactly one shared scheduler, one acquisition per shared key, canonical reusable P-D6 primitives/ordinary eligibility, K four-field observation tuples plus one three-field key-level block, and absence of complete stack-key/retained-entry scaffolding. RU-3C1 proves frame/range/render/result parity. Each RU retains its own ASan/TSan/UBSan, warning-clean, and no-regression evidence; one later gate never retroactively makes an earlier hash truthful.
 
 ### Batch 3 — Atomic end-to-end stack feature
 
@@ -869,6 +880,7 @@ evidence-gated, and labelled executable refinements remain owner-pending.
 | Multiple failures | Pending P-R1 selects one canonical disposition by phase/series/reason order. Every result has publication identity; only READY/STALE_BUSY have presented identity. A pre-acquisition stop is all NOT_EVALUATED; each completed member through the first source FAILED has one terminal CURRENT_OBSERVATION and only later series are NOT_EVALUATED. |
 | Result self-description/order | Every group/view record contains `stack_group_id` and MAIN/PREVIEW kind; every member contains `series_id`, including members of a `FAILED(reason)` group/view and members with `NOT_EVALUATED` origin. Per-series records have no failure disposition. All MAIN groups ordered by lowest enabled series ID precede equivalently ordered PREVIEW groups; members ascend by series ID. Delayed/topology-changed results remain self-describing, while enclosing executed-plan config identity rejects stale consumption and labels never authorize reuse. Under pending P-C1, enclosing current-attempt `cursor_state_id` and presented `content_cursor_state_id` remain distinct. |
 | Public result privacy | `stack_result_entry_t` contains only structural IDs/view kind, disposition, per-series origin/status/sequence, origin-tagged terminal-attempted-or-selected LOD/window, rendered range, optional indicator batch, content frame ID, and READY/STALE content cursor-state ID. No private cumulative-step record, visit counter/earlier attempt, geometry, span, sample, resource, source identity, weak owner, alias pointer, `structure_key`, or `content_key` is exposed, serialized, copied, or accepted by the public result/API. Private `renderer_retained_stack_entry_t` owns keys, retained geometry/resources, and one value-only retained presentation record. |
+| Cache-key cardinality | RU-3C2 supplies canonical four-field `{LOD,observed sequence including zero,logical window(first,count),synthetic hold(present,endpoint)}` observation tuples and a separate three-field `{time origin,planner version,data-format version}` key-level block. RU-4A's complete stack `content_key` contains K ordered observation tuples followed by exactly one key-level block; it never repeats origin/version per observation. RU-4B supplies strategy/version through the canonical stack builder. |
 | Source-observation variants | One public controlling source outcome is final READY PRESENTED_CONTENT, retained final STALE PRESENTED_CONTENT, or a terminal READY/EMPTY/BUSY/FAILED CURRENT_OBSERVATION. `observed_ready` is created after its terminal attempt/consume scope terminates and its hold is released/destroyed; later visit/order/LOD-budget/window/other failure does not erase its terminal LOD/sequence/derived optional window or fabricate value/content. Earlier LOD attempts and all visit counters stay in complete internal group/view/series/attempt-tagged trace; prospective-limit/writer-progress tests prove no scan past the limit and no trace/public conflation. `UNSUPPORTED` cannot construct CURRENT_OBSERVATION. |
 | Result structural states | Section/table/entry/member storage is private and frame-producer tagged factories are the only construction path. COMPLETE alone has a table. READY/STALE_BUSY require content frame/cursor IDs, range, and the plan's exact optional indicator batch. EMPTY and every failure expose no content ID/value/range/batch; every acquired source projects one terminal CURRENT_OBSERVATION even if selection/window derivation succeeded before a later group failure. NOT_EVALUATED has only `series_id`. Matched const observers expose payload and mismatched observers are absent/null. |
 | Failure enum boundary | Public `Stack_failure_reason` contains exactly the register's 19 stack reasons and is the only entry failure-reason type. Result-storage budget/allocation failures are enclosing section dispositions only and cannot appear in the enum or an entry. |

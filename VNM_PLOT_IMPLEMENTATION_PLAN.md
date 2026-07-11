@@ -155,7 +155,7 @@ be reviewed or merged as one undifferentiated batch.
 | `RU-3A` | Ordered, non-overlapping units: after P-S1 is owner-ratified and the consolidated `RU-contract-ratification-record/A1` exact hash is review-clean, `SOURCE_API_BREAK` comprises actions 1–5 and 10 because intermediate public headers/ordinary consumers do not compile; action 6 is independent; `D12_HOLD_BREAK` then comprises actions 7–9 and 11 because publishing D12 or structural custom borrowing while a custom/current renderer path retains a hold would be false. |
 | `RU-3B` | After P-D7 and P-Q1 are owner-ratified and the consolidated `RU-contract-ratification-record/A1` exact hash is review-clean, `POINT_QUERY_CONTRACT` comprises actions 1, 7–9, 11, and 12 because evaluator/API/default implementation/point consumers/docs must expose one contract. `D7_INGESTION` comprises actions 6 and 13 so public ingestion/member behavior and normative docs cannot diverge. Actions 2–5 and 10 remain individual units. |
 | `RU-3C1` | Parity actions 2–4 form `FRAME_TRUTH_PARITY`; separate producers may be deleted only in the same change that installs their production replacement/evidence entry. Its cursor/result action and therefore the atomic cluster are blocked until P-C1 is owner-ratified and recorded in the review-clean consolidated `RU-contract-ratification-record/A1`. |
-| `RU-3C2` | Scheduler/reuse/docs actions 5–8 form `SHARED_ACQUISITION_SCHEDULER`; sharing, canonical reusable source identity/access-semantic/observation-fact/key-builder primitives, generic D10 eligibility, ordinary reuse, cache migration, and normative behavior move together. Its P-D6 primitive work requires owner-ratified P-D6 recorded in review-clean consolidated A1. It creates no unused stack membership/cap/candidate-strategy scaffold, complete stack key, or retained-stack entry. |
+| `RU-3C2` | Scheduler/reuse/docs actions 5–8 form `SHARED_ACQUISITION_SCHEDULER`; sharing, canonical reusable source identity/access-semantic primitives, per-observation `{LOD,sequence,window,hold}` builders, separate once-per-key `{time_origin,planner_version,data_format_version}` scalar builders, generic D10 eligibility, ordinary reuse, cache migration, and normative behavior move together. Its P-D6 primitive work requires owner-ratified P-D6 recorded in review-clean consolidated A1. It creates no unused stack membership/cap/candidate-strategy scaffold, complete stack key, or retained-stack entry. |
 | `RU-3D` | Numbered Qt publication actions, one action per unit unless a future pre-delegation amendment names a necessary cluster. |
 | `RU-contract-ratification-record/A1` | The single consolidated documentation source unit runs only after the owner explicitly ratifies or rejects all eight pending proposals in a dependency-consistent set: P-S1, P-D7, P-Q1, P-D6, P-C1, P-D2, P-R1, and P-D15. P-R1 may be ratified only when P-C1 is ratified before or in the same owner disposition. A1 records all eight exact texts and individual statuses and updates every affected prerequisite/stop. It numbers RU-4A source actions if and only if P-D6, P-C1, P-D2, P-R1, and P-D15 are all owner-ratified consistently; otherwise it records the RU-4A stop and numbers no RU-4A action. Every individual disposition remains recorded for a later separately reviewed amendment. A1's exact hash receives the ordinary three-reviewer loop before any affected implementation. It is neither reusable nor divisible into waves. D4 is outside A1. |
 | `RU-4A` | Private core-contract actions exist only when review-clean `RU-contract-ratification-record/A1` records P-D6, P-C1, P-D2, P-R1, and P-D15 all owner-ratified consistently and numbers those actions, and the RU-3C2 `SHARED_ACQUISITION_SCHEDULER`/P-D6 primitive cluster is clean. RU-4A reuses those canonical primitives to own complete stack-key construction/population and private retained-stack eligibility/transitions; it does not duplicate shared identity, acquisition, reusable-field schema/builders, or generic eligibility. Otherwise A1 records the RU-4A stop and no RU-4A action exists. |
@@ -294,8 +294,10 @@ requires P-D7 and P-Q1; RU-3C1 cursor/result and therefore
 RU-4B-common/A/B/evidence/cleanup, plus stack-related Stage 5 require P-D6,
 P-C1, P-D2, P-R1, and P-D15. RU-4A additionally waits for the clean RU-3C2
 `SHARED_ACQUISITION_SCHEDULER`/P-D6 primitive cluster. RU-3C2 owns canonical
-reusable source identity/acquisition, observation-fact/key-builder primitives,
-access-semantic facts, generic D10 eligibility, and ordinary reuse. RU-4A reuses those primitives to
+reusable source identity/acquisition and access-semantic facts; exact per-
+observation LOD/sequence/window/hold builders; separate once-per-key time-origin/
+planner-version/data-format-version scalar builders; generic D10 eligibility;
+and ordinary reuse. RU-4A reuses those primitives to
 own complete stack-key population and retained-stack transitions; RU-4B supplies
 candidate/version inputs through that builder and consumes that retention path.
 No layer duplicates another's schema or implementation. Rejection of a
@@ -426,11 +428,14 @@ P-D6 has one canonical schema with an explicit implementation split:
 
 - RU-3C2 owns the reusable source/cache primitives shared by ordinary and stack
   paths: weak-owner-plus-alias source identity and comparison; canonical private
-  types/builders for access-semantic key/revision, observed source-local LOD,
-  sequence, logical window, synthetic hold, time origin, and planner/data-format
-  version facts; generic stable-nonzero/D10 eligibility; ordinary cache-key use;
-  and the single acquisition scheduler. It creates no group membership/order,
-  stack caps,
+  types/builders for access-semantic key/revision; a per-observation fact builder
+  containing exactly selected source-local LOD, atomically observed sequence
+  including zero, logical window `(first,count)`, and synthetic hold
+  `(present,endpoint_timestamp)`; and a separate key-level scalar builder
+  containing exactly time origin, planner version, and data-format version.
+  Origin/version scalars are not observation fields. RU-3C2 also owns generic
+  stable-nonzero/D10 eligibility, ordinary cache-key use, and the single
+  acquisition scheduler. It creates no group membership/order, stack caps,
   candidate strategy/version field, complete stack key, or
   `renderer_retained_stack_entry_t`, because those would be unused stack
   scaffolding in RU-3C2.
@@ -467,14 +472,14 @@ lifetime extension. Expiry remains observable through the weak handle and
 invalidates use; address equality without owner equivalence never matches.
 
 The complete stack `content_key` is a compact equality key and nothing else. Its
-RU-4A builder contains the complete `structure_key` and, for every selected
-source observation in deterministic member/LOD order, consumes RU-3C2's
-canonical facts: selected source-local LOD; atomically observed sequence
-including zero; selected logical source window `(first,count)`; the synthetic-
-right-hold `(present,endpoint_timestamp)`; time origin; and exact planner/data-
-format version numbers. It excludes the snapshot's physical first/second-
-segment split and all normalized/drawable
-span boundaries or arrays: segmentation is representation, while normalized
+RU-4A builder contains the complete `structure_key`; then, for every selected
+source observation in deterministic member/LOD order, exactly one canonical
+RU-3C2 tuple `{selected_lod,observed_sequence_including_zero,
+logical_window(first,count),synthetic_hold(present,endpoint)}`; then exactly one
+key-level scalar block `{time_origin,planner_version,data_format_version}` for
+the complete key. It never repeats origin or either version per observation. It
+excludes the snapshot's physical first/second-segment split and all normalized/
+drawable span boundaries or arrays: segmentation is representation, while normalized
 spans are produced artifacts. It also contains no samples, D8 winners or
 values, arrays, extrema, events, geometry, CPU staging, or GPU objects.
 The tuple adds no payload/resource owners; its inherited source identities are
@@ -1569,10 +1574,13 @@ Actions:
 6. Replace RU-3A's truthful hold-free per-series independent acquisitions with the single frame/shared-key schedule from action 5, consuming the existing snapshot-free plan/cache/custom interfaces unchanged. Do not introduce a parallel scheduler or restore a hold-bearing plan.
 7. After P-D6 is owner-ratified and recorded in review-clean consolidated A1,
    implement the canonical reusable P-D6 primitive layer: weak-owner-plus-alias
-   source identity/comparison; private access-semantic and observed LOD/sequence/
-   logical-window/synthetic-hold/origin/version fact types/builders; generic stable-
-   nonzero/D10 cache eligibility; and ordinary cache-key integration. Cache
-   UNKNOWN classification only under those canonical identity/sequence/access
+   source identity/comparison; private access-semantic facts; a per-observation
+   builder containing exactly LOD, observed sequence including zero, logical
+   window `(first,count)`, and synthetic hold `(present,endpoint)`; a separate
+   key-level builder containing exactly time origin, planner version, and data-
+   format version; generic stable-nonzero/D10 cache eligibility; and ordinary
+   cache-key integration. Cache UNKNOWN classification only under those
+   canonical identity/sequence/access
    facts. D13 governs observed absence; do not add source identity/incarnation/
    revision tokens. Create no group membership/order, stack-cap, candidate-
    strategy/version, complete stack-key, or retained-stack-entry scaffold.
@@ -1584,18 +1592,22 @@ Gate:
 - ten series sharing one source/LOD call `try_snapshot()` once per frame;
 - attempted-LOD counters prove rejected holds release before the next acquisition; same-source main/preview with distinct LODs are consumed sequentially without overlap and may truthfully report different sequences;
 - alternating one-segment/two-segment snapshots with identical logical `at(i)`
-  content, observed LOD/sequence, logical `(first,count)`, hold, origin, and
-  versions produce identical canonical P-D6 observation facts and ordinary
-  cache-key reuse; changing a reusable fact invalidates;
+  content, LOD/observed-sequence/logical-window/synthetic-hold tuple, and
+  separate time-origin/planner-version/data-format-version scalar block produce
+  identical ordinary cache-key reuse; changing either one observation tuple or
+  one key-level scalar invalidates;
 - P-D6 identity tests prove weak-owner expiry invalidates use without lifetime
   extension, the same control block with different alias pointers does not
   match, different control blocks at a reused identical raw address do not
   match, owner-equivalent weak handles plus equal alias do match, and no key
   serializes/hashes a control-block address;
 - primitive-builder tests prove ordinary and future stack consumers receive the
-  same field ordering/equality and generic D10 eligibility, while source search
-  proves RU-3C2 contains no stack membership/order/cap/strategy field, complete
-  stack-key builder, or retained-stack entry;
+  same field ordering/equality and generic D10 eligibility. For K observations,
+  cardinality tests prove exactly K ordered four-field observation tuples and
+  one three-field key-level scalar block, with no origin/planner-version/data-
+  format-version copy in any observation tuple. Source search proves RU-3C2
+  contains no stack membership/order/cap/strategy field, complete stack-key
+  builder, or retained-stack entry;
 - shared custom prepare finishes while its non-owning view is valid, the writer proceeds before record, no plan/result/cache/record context owns a hold, and source search proves exactly one production acquisition scheduler;
 - under owner-ratified P-C1 recorded by review-clean consolidated A1 only, its
   activation/movement/deactivation,
@@ -1621,10 +1633,11 @@ Gate allocation:
   owns nor waits for the stack result envelope;
 - `SHARED_ACQUISITION_SCHEDULER` (actions 5–8) owns exactly-one-scheduler and
   shared-key acquisition counts, D12 sequential release/writer progress,
-  canonical P-D6 weak-owner/alias identity and observation-fact/key-builder
-  primitives, physical-segmentation-independent ordinary reuse, generic D10
-  classification/cache eligibility, bounded-history cost, no-stack-scaffold
-  proof, and normative scheduler documentation;
+  canonical P-D6 weak-owner/alias identity, exact four-field per-observation
+  builder, separate three-field once-per-key scalar builder, physical-
+  segmentation-independent ordinary reuse, generic D10 classification/cache
+  eligibility, cardinality/no-stack-scaffold proof, bounded-history cost, and
+  normative scheduler documentation;
 - each unit also runs the common source-unit gate; parity evidence cannot excuse
   an unreviewed scheduler change and scheduler evidence cannot retroactively
   justify frame-truth code.
@@ -1722,11 +1735,14 @@ typed results without public RHI/Qt exposure; D4 remains separately open for
 evidence. D3 uses `std::optional<int> stack_group_id` with ascending existing
 series ID and caller-batched topology; do not add a group descriptor. Scope:
 
-RU-4A reuses RU-3C2's canonical source identity comparer, observation-fact/key-
-builder primitives, acquisition result, and generic eligibility. RU-4A owns the
+RU-4A reuses RU-3C2's canonical source identity comparer, access-semantic facts,
+four-field per-observation builder, separate three-field once-per-key scalar
+builder, acquisition result, and generic eligibility. RU-4A owns the
 complete stack `structure_key`/`content_key` builders and population from group
 membership/order, descriptor/view/time/cap facts, RU-3C2 reusable facts, and a
-required strategy/version input. It also owns
+required strategy/version input. Its `content_key` appends one ordered
+observation tuple per selected observation and then exactly one key-level scalar
+block. It also owns
 `renderer_retained_stack_entry_t` and its READY/BUSY/terminal eligibility and
 transitions under P-R1/P-D15. It must not duplicate the reusable-field schema,
 identity comparison, acquisition, or generic eligibility.
@@ -1944,11 +1960,16 @@ all internal alias/copy/drop operations retain renderer ownership and change
 neither counter; only actual private deallocation decrements both. Any
 intentionally transferred test allocation uses the public-table transition—
 renderer counter at transfer, allocation counter at final deallocation.
-Stack-key gates feed canonical RU-3C2 identity/observation facts into RU-4A's
-builder and prove exact membership/order/descriptor/view/time/cap/strategy-
-version participation, physical segmentation exclusion, and equality with no
-duplicated shared-field comparer or builder. Source search proves
-`renderer_retained_stack_entry_t` and complete stack-key population exist only
+Stack-key gates feed canonical RU-3C2 identity/access-semantic facts, ordered
+observation tuples, and one key-level scalar block into RU-4A's builder and prove
+exact membership/order/descriptor/view/time/cap/strategy-version participation,
+physical segmentation exclusion, and equality with no duplicated shared-field
+comparer or builder. For K selected observations, layout/cardinality tests prove
+the complete `content_key` has K ordered `{LOD,sequence,window,hold}` tuples
+followed by exactly one `{time_origin,planner_version,data_format_version}` block;
+changing K changes only tuple cardinality and never duplicates the scalar block.
+Source search proves `renderer_retained_stack_entry_t` and complete stack-key
+population exist only
 in RU-4A-owned code, while acquisition, reusable facts, and generic D10
 eligibility remain RU-3C2-owned.
 Transition gates prove READY→BUSY→BUSY may publish stale, while READY→EMPTY→BUSY,
