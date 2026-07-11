@@ -149,20 +149,16 @@ FIXED_MEASURED_RENDER_SAMPLE_COUNT = 4
 FINGERPRINT_FIELDS = (
     "actual_graphics_backend",
     "build_cpu_architecture",
-    "build_dependency_commit",
     "build_dependency_dirty",
     "build_qt_version",
-    "build_source_commit",
     "build_source_diff_sha256",
     "build_source_dirty",
-    "build_source_tree",
     "build_type",
     "cmake_version",
     "compiler",
     "context_profile_request",
     "context_sample_count",
     "context_version_request",
-    "dependency_commit",
     "dependency_dirty",
     "device_id",
     "device_name",
@@ -180,9 +176,7 @@ FINGERPRINT_FIELDS = (
     "os",
     "qt_version",
     "sample_count",
-    "source_commit",
     "source_diff_sha256",
-    "source_git_tree",
     "source_tree",
     "vendor_id",
 )
@@ -421,10 +415,7 @@ def validate_build_runtime_identity(
     if metadata.get("build_source_dirty") != "false":
         raise RuntimeError(f"{label} binary was configured from a dirty source tree")
     identity_pairs = (
-        ("build_source_commit", "source_commit", "source commit"),
         ("build_source_diff_sha256", "source_diff_sha256", "source diff"),
-        ("build_source_tree", "source_git_tree", "source git tree"),
-        ("build_dependency_commit", "dependency_commit", "dependency commit"),
         ("build_qt_version", "qt_version", "Qt version"),
     )
     for build_field, runtime_field, description in identity_pairs:

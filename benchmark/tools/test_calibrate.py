@@ -200,6 +200,33 @@ class CalibrationProtocolTests(unittest.TestCase):
             self.assertEqual(command[command.index("--static-samples") + 1], "10000")
             self.assertEqual(command[command.index("--frames") + 1], "1")
 
+    def test_git_ids_are_incidental_calibration_locators(self) -> None:
+        git_fields = {
+            "build_dependency_commit",
+            "build_source_commit",
+            "build_source_tree",
+            "dependency_commit",
+            "source_commit",
+            "source_git_tree",
+        }
+        metadata = {
+            "source_dirty": "false",
+            "build_source_dirty": "false",
+            "build_dependency_dirty": "false",
+            "dependency_dirty": "false",
+            "build_source_diff_sha256": "same-diff",
+            "source_diff_sha256": "same-diff",
+            "build_qt_version": "same-qt",
+            "qt_version": "same-qt",
+            **{field: field for field in git_fields},
+        }
+        calibrate.validate_build_runtime_identity(
+            args=None,
+            metadata=metadata,
+            label="test",
+        )
+        self.assertTrue(git_fields.isdisjoint(calibrate.FINGERPRINT_FIELDS))
+
     def test_phase_trace_uses_only_aggregate_success_boundaries(self) -> None:
         phases = calibrate.expected_phases(2, 120)
         self.assertEqual(len(phases), 11)

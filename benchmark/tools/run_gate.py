@@ -561,15 +561,7 @@ class Gate:
                     "source_dirty": "true" if expected_source["dirty"] else "false",
                     "source_tree": expected_source["exact_tree_sha256"],
                 }
-                if self.args.mode != "pre-calibration":
-                    expected.update(
-                        {
-                            "build_source_commit": expected_source["commit"],
-                            "build_source_tree": expected_source["git_tree"],
-                            "source_commit": expected_source["commit"],
-                        }
-                    )
-                if dependency.get("commit"):
+                if "dirty" in dependency:
                     expected.update(
                         {
                             "build_dependency_dirty": (
@@ -580,13 +572,6 @@ class Gate:
                             ),
                         }
                     )
-                    if self.args.mode != "pre-calibration":
-                        expected.update(
-                            {
-                                "build_dependency_commit": dependency["commit"],
-                                "dependency_commit": dependency["commit"],
-                            }
-                        )
                 environment = preflight.get("environment", {})
                 mismatches = {
                     field: {"expected": value, "actual": metadata.get(field)}

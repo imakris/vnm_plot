@@ -66,8 +66,10 @@ calibrated rather than declared deterministic zeros. The corresponding static
 scenario counters, including measured publications, remain exact-zero rules
 across every retained run. The runner
 first executes and retains a native environment probe, then binds every new or
-resumed run to its source, executable, dependency, machine, OS/CPU, Qt,
-device, driver, and actual backend fingerprint.
+resumed run to its worktree content, executable, dependency cleanliness,
+machine, OS/CPU, Qt, device, driver, and actual backend fingerprint. Recorded
+Git commit and tree IDs are incidental locators and are not compared by the
+calibration gate.
 
 The fixed protocol performs two calibration sets. Each set has two complete
 untimed warm-up runs followed by seven measured runs. Every run itself has two
@@ -91,11 +93,11 @@ python benchmark\tools\calibrate.py `
 Generated manifests and margins are labeled `CALIBRATION_REVIEW_REQUIRED`; the
 runner does not promote its own calibration into an acceptance threshold. Each
 attempt has a unique directory, failures are retained, and recovery reuses only
-an artifact whose full source, executable, device, backend, dependency, and
-scenario fingerprint validates. Relative margins are the exact maximum relative
-median drift between the two sets. Designated deterministic zeros use exact-zero
-rules; nonpositive, sub-resolution, or unstable observations remain explicitly
-review-required.
+an artifact whose worktree content, executable, device, backend, dependency
+cleanliness, and scenario fingerprint validates. Relative margins are the exact
+maximum relative median drift between the two sets. Designated deterministic
+zeros use exact-zero rules; nonpositive, sub-resolution, or unstable
+observations remain explicitly review-required.
 
 ## Checkpoint gate
 

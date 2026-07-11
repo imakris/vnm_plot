@@ -359,11 +359,11 @@ class GateEvidenceTests(unittest.TestCase):
             self.assertNotIn("calibration_proposal", manifest["inputs"])
             self.assertFalse(list(attempt_dir.rglob("owner_approval.json")))
 
-    def test_pre_calibration_smoke_does_not_gate_on_git_ids(self) -> None:
+    def test_full_calibration_smoke_does_not_gate_on_git_ids(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             args = self.main_args(root)
-            args.mode = "pre-calibration"
+            args.mode = "full"
             smoke = args.build_dir / "benchmark" / "smoke-reports" / "native" / "run"
             smoke.mkdir(parents=True)
             raw = smoke / "inspector_benchmark_test.json"
