@@ -154,11 +154,11 @@ be reviewed or merged as one undifferentiated batch.
 | `RU-2.2-evidence` | Evidence-only A1 after every RU-2.2 source unit is clean, identified by `(exact source hash,before/after-manifest SHA-256)`; it owns the approved-noise comparison and retained raw artifacts and makes no semantic source change. |
 | `RU-3A` | Ordered, non-overlapping units: after P-S1 ratification, `SOURCE_API_BREAK` comprises actions 1–5 and 10 because intermediate public headers/ordinary consumers do not compile; action 6 is independent; `D12_HOLD_BREAK` then comprises actions 7–9 and 11 because publishing D12 or structural custom borrowing while a custom/current renderer path retains a hold would be false. |
 | `RU-3B` | After P-Q1 and P-D7 ratification, `POINT_QUERY_CONTRACT` comprises actions 1, 7–9, 11, and 12 because evaluator/API/default implementation/point consumers/docs must expose one contract. `D7_INGESTION` comprises actions 6 and 13 so public ingestion/member behavior and normative docs cannot diverge. Actions 2–5 and 10 remain individual units. |
-| `RU-3C1` | Parity actions 2–4 form `FRAME_TRUTH_PARITY`; separate producers may be deleted only in the same change that installs their production replacement/evidence entry. |
+| `RU-3C1` | Parity actions 2–4 form `FRAME_TRUTH_PARITY`; separate producers may be deleted only in the same change that installs their production replacement/evidence entry. Its cursor/result action and therefore the atomic cluster are blocked until explicit owner ratification of P-C1 is recorded in a clean `RU-contract-ratification-record`. |
 | `RU-3C2` | Scheduler/reuse/docs actions 5–8 form `SHARED_ACQUISITION_SCHEDULER`; sharing, keys, cache migration, and normative production behavior move together so there is exactly one documented scheduler. |
 | `RU-3D` | Numbered Qt publication actions, one action per unit unless a future pre-delegation amendment names a necessary cluster. |
-| `RU-contract-ratification-record` | After the owner decision, one documentation source unit records each proposal's exact ratified/rejected text and statuses and numbers the now-authorized RU-4A actions; it receives the ordinary three-reviewer exact-hash loop. Current RU-4A scope bullets are not executable review actions. |
-| `RU-4A` | Numbered private core-contract actions created only by the reviewed ratification record after P-D2/P-R1/P-D15 owner decisions. |
+| `RU-contract-ratification-record` | After the owner decision, one documentation source unit records each proposal's exact ratified/rejected text and statuses and numbers the now-authorized actions; it receives the ordinary three-reviewer exact-hash loop. P-C1 must be recorded ratified before P-R1 and before RU-3C1 cursor/result work. Current RU-4A scope bullets are not executable review actions. |
+| `RU-4A` | Numbered private core-contract actions created only by the reviewed ratification record after P-C1/P-D2/P-R1/P-D15 owner decisions, with P-C1 ratified before P-R1. |
 | `RU-4B-common` | Numbered common selector/adapter/scenario implementation action, independently reviewed. |
 | `RU-4B-A` | Numbered private Candidate A implementation action, independently reviewed. |
 | `RU-4B-B` | Numbered private Candidate B implementation action, independently reviewed. |
@@ -230,7 +230,7 @@ ratification.
 
 | ID | Decision | Approved contract | Status and remaining evidence |
 |---|---|---|---|
-| D1 | Negative values | Algebraic cumulative stacking uses one private checked cumulative-step addition per member/position; a negative component descends from the previous cumulative value, preserving `h=f+g`. The returned immutable component/base/cumulative record is the sole composition/range/indicator truth. | **Approved 2026-07-10.** Retain absorption, signed-zero, cancellation, negative, and ordinary-rounding verification. |
+| D1 | Negative values | Algebraic cumulative stacking; a negative component descends from the previous cumulative value, preserving `h=f+g`. | **Approved 2026-07-10.** P-R1's precise emitted-record/cursor evaluator remains pending; after ratification retain absorption, signed-zero, cancellation, negative, and ordinary-rounding verification. |
 | D2 | Defined domain | Process each member in logical source order; collapse equal timestamps under D8; apply the nonfinite policy; construct its piecewise function and defined interval set; apply explicit right hold; intersect member interval sets; compose each resulting interval without bridging gaps. If mandatory interval endpoints exceed the bounded candidate representation, the complete group/view fails with no geometry. | **Amended and approved 2026-07-11.** Exact interval normalization and candidate capacities are pending proposal P-D2. |
 | D3 | Group topology | Optional `stack_group_id` on ordinary series; ascending series ID is order; callers use `apply_series_updates` when topology must change atomically. Individual add/remove may render intermediate membership. | **Approved 2026-07-10.** Caller-disciplined atomicity is the product contract. |
 | D4 | Sampling strategy | Unresolved between bounded exact event union and bounded shared grid. Ship exactly one, not both. | **Open.** Stage 4 A/B native-backend and visual evidence; owner selects the winner. |
@@ -238,7 +238,7 @@ ratification.
 | D6 | Busy/failure contract | BUSY may reuse only the last complete group/view for an identical non-content structural request. All members, range, indicators, statuses, and private rendered geometry come from that retained complete content; fresh and stale generations never mix. The public value-only result reports `STALE_BUSY` and retained sequences/content identity, never READY, but exposes no geometry. READY, EMPTY, FAILED, a budget failure, or structural change replaces or suppresses stale fallback. | **Amended and approved 2026-07-11.** Exact `structure_key`/`content_key` tuples are pending proposal P-D6. |
 | D7 | Floating timestamp API | The public `checked_seconds_to_ns(double) -> optional<int64_t>` ingestion helper converts the exact binary64 input value in seconds to the nearest mathematical integral nanosecond, with exact halves away from zero; it range-checks the rounded mathematical result before integer conversion and returns `nullopt` for nonfinite or nonrepresentable input. Typed member-pointer access accepts integral-nanosecond members only; a floating timestamp member pointer is ill-formed at compile time. | **Amended and approved 2026-07-11.** Callers convert once into integral-nanosecond storage. Compile-fail, exact-rational/`nextafter`, UBSan, migration, and no-hot-loop-conversion evidence gate Batch 3B. |
 | D8 | Duplicate timestamps | Treat both `data_snapshot_t` segments as one logical `at(i)` sequence. Among equal timestamps, greatest logical `i` wins before nonfinite, interpolation, and hold processing. If the winner is nonfinite, apply the nonfinite policy without reconsidering an earlier duplicate. | **Amended and approved 2026-07-11.** The exact equidistant NEAREST rule is pending proposal P-Q1. |
-| D9 | Pixel-parity indicators and frame result | Batch 3B defines the canonical evaluator and value result. A monotonic `cursor_state_id` increments on activation, every movement/request replacement, and deactivation. Batch 3C's single production frame entry copies it into the snapshot-free immutable ordinary frame plan and enclosing frame result, then constructs that result only after renderer/RHI disposition is known. READY presented content carries `content_cursor_state_id`; retained STALE keeps the old presented value even without a batch, and any present batch request ID equals its presented cursor-state ID. Per-series status/sequence/selected LOD, actual disposition, range, and value-only indicators still come from the exact executed plan. GUI config/cursor currency gates every mutation, including clears from absent/failure results. No independent indicator snapshot path exists; the ordinary result remains complete without P-R1/P-D15. | **Amended and approved 2026-07-11.** Retain activation/move/deactivation, delayed/no-batch/failure/stale currency, plan/result construction, one-frame latency, and ordinary-with-stack-fault independence tests. |
+| D9 | Pixel-parity indicators and frame result | Batch 3B defines the canonical evaluator and value result. Batch 3C's single production frame entry creates a snapshot-free immutable ordinary frame plan and, after renderer/RHI disposition is known, one immutable ordinary frame result. The result copies frame/config/view identities from the plan and contains per-series status, sequence, selected LOD, actual disposition, rendered range, and value-only indicators tagged with the current cursor request ID. The GUI rejects a result whose request ID is not current. No independent indicator snapshot path exists; Batch 3D may optimize copying/publication but may not add a second producer. This ordinary D9 result is complete without P-R1/P-D15 or any stack section. | **Amended and approved 2026-07-11.** Retain plan/result construction, one-frame latency, current-request rejection, disposition, and ordinary-with-stack-fault independence tests. |
 | D10 | Unchanged-frame reuse | Stable nonzero `current_sequence()` plus stable/non-conservative access semantics authorizes reuse; zero/unstable/conservative inputs rebuild and report why. | **Approved 2026-07-10.** The existing second-frame upload oracle may change after Checkpoint 2.1 retains its baseline. |
 | D11 | Widget threading and render-input publication | `Plot_widget` configuration, registry, and public API reads and mutations are Qt-GUI-thread-only; cross-thread callers use queued invocation. `QQuickRhiItemRenderer::synchronize()` copies the complete render input while the GUI thread is blocked, after which item and renderer share no mutable widget state. `Data_source` contents are separate and support concurrent producer, GUI-query, and render access through the source's own synchronization. | **Approved 2026-07-11.** Public thread-contract, synchronization, and migrated Qt tests gate Batch 3A/3D. |
 | D12 | Source acquisition domain and hold lifetime | Each `Data_source` object is one acquisition domain. Acquisition-taking methods are `try_snapshot`, `time_range`, `query_time_window`, `query_v_range`, planned `query_sample`, and any future method documented as taking a lock, snapshot, or hold. None may begin on a thread while that thread retains any hold from the same object. Metadata operations (`sample_stride`, LOD count/scale/list, `current_sequence`, `time_order`, direct-query-support flags, and equivalent documented metadata) are non-acquiring and safe while a hold is live. Distinct source objects must not return holds backed by the same non-recursive lock; shared backing must provide independent public-acquisition semantics or is nonconforming. Rejected holds release immediately; selected observations are consumed sequentially, and no surviving plan/result/cache/record context owns a snapshot. | **Approved 2026-07-11.** RU-3A publishes the contract and atomically makes every current per-series/custom path hold-free; RU-3C2 alone replaces independent acquisitions with cross-series/shared-key scheduling. No duplicate scheduler, capability enum, or domain token is introduced. |
@@ -259,21 +259,29 @@ that action occurs:
 - **P-D7:** exact integral timestamp-member admissibility trait;
 - **P-Q1:** the complete public point-query API, status, search, interpolation,
   ordering, and performance contract;
+- **P-C1:** monotonic cursor-state publication, current/presented identities,
+  immediate activation/movement/deactivation clearing, absent/failure currency,
+  retained stale identity, and the complete GUI transition matrix;
 - **P-R1:** self-describing ordered stack results, factory-enforced
   disposition/payload invariants, four terminal tagged source observations,
   closed stack failure/indicator types, checked cumulative-step records,
-  cursor-state-bound optional indicator batches and GUI transition matrix,
-  deterministic precedence, and stale-presentation vocabulary;
+  frozen-representation cursor evaluation, P-C1-bound optional indicator
+  batches, deterministic precedence, and stale-presentation vocabulary. P-R1
+  depends on ratified P-C1 and cannot be approved before it;
 - **P-D15:** allocation-free admission prepass, one exact counted stack-table
   backing, MAIN-before-PREVIEW immutable slices, `U_limit` accounting, exact
   renderer-owned-cap/allocation-lifetime requested-byte counters, resident byte
   caps, and allocation-failure distinctions.
 
 RU-3A `SOURCE_API_BREAK` cannot begin until P-S1 is ratified. RU-3B cannot
-begin until both P-Q1 and P-D7 are ratified. RU-3C2 cannot begin until P-D6 is
-ratified. RU-4A, RU-4B-common, RU-4B-A, RU-4B-B, RU-4B-evidence,
+begin until both P-Q1 and P-D7 are ratified. RU-3C1's cursor/result action—and
+therefore its atomic `FRAME_TRUTH_PARITY` cluster—cannot begin until P-C1 is
+explicitly owner-ratified and recorded by a clean
+`RU-contract-ratification-record`. RU-3C2 cannot begin until P-D6 is ratified.
+RU-4A, RU-4B-common, RU-4B-A, RU-4B-B, RU-4B-evidence,
 RU-4B-cleanup, and stack-related Stage 5 units cannot begin until P-D2, P-R1,
-and P-D15 are ratified. The owner decision is followed by
+and P-D15 are ratified, which necessarily requires prior P-C1 ratification. The
+owner decision is followed by
 `RU-contract-ratification-record`, which records exact ratified/rejected text
 and statuses and, for the stack proposals, numbers the authorized RU-4A actions.
 No affected implementation RU begins until that record is clean at one exact
@@ -487,7 +495,48 @@ The D2 normalization oracle is:
 | Candidate A fragmentation | Exact union must retain every normalized intersection endpoint and every selected member breakpoint required by the exact union within `R_A=K*B`; none is optional. Excess returns `FAILED(FRAGMENTATION_BUDGET)` before partial output. |
 | Candidate B fragmentation | The deterministic grid reserves every mandatory normalized endpoint within `R_B=N`; only remaining positions are optional grid positions. Excess returns `FAILED(FRAGMENTATION_BUDGET)` before partial output. |
 
+#### P-C1 — Cursor-state publication and GUI transition
+
+P-C1 is a pending proposal, not an approved amendment to D9. The GUI owns one
+monotonic `cursor_state_id`. Activation, every movement/request replacement,
+and deactivation atomically increment it and immediately clear/hide prior
+indicator tooltips, markers, and totals before requesting new work. A matching
+later result may repopulate them; a mismatch performs no mutation and cannot
+restore cleared state.
+
+Every executed frame plan and enclosing D9 result copy the current-attempt
+`cursor_state_id`. Presented READY content carries `content_cursor_state_id`
+from the exact executed plan. Retained STALE content keeps the old
+`content_cursor_state_id` unchanged even when its optional indicator batch is
+absent; a newer attempt or deactivation never rewrites retained identity. A
+present indicator batch's request ID must equal its presented
+`content_cursor_state_id` and is unconstructible otherwise.
+
+GUI result consumption applies this order after the event-side immediate clear:
+
+1. Reject stale enclosing config identity without mutation.
+2. Read current cursor activation independently of result payload. Inactive
+   state stays clear/hidden and ignores every delayed or retained result.
+3. If active, select the applicable currency before any result-driven mutation:
+   presented READY/STALE uses `content_cursor_state_id`; EMPTY/FAILED and an
+   enclosing result-storage failure use current-attempt `cursor_state_id`.
+   Mismatch performs no apply or clear.
+4. On a match, READY-status presented data replaces the complete indicator
+   state, EMPTY-status or absent presented payload clears/hides it, and matching
+   EMPTY/FAILED/result-storage failure clears its complete governed scope.
+
+Tests begin with displayed content and cover activation, movement/replacement,
+and deactivation; rapid A/B/C requests with every result order; old absent
+payload, group failure, and result-storage failure; movement followed by BUSY
+stale; matching/mismatching retained stale; and proof that delayed content never
+reappears after immediate clear/deactivation.
+
 #### P-R1 — Result authority, stale presentation, and failure precedence
+
+P-R1 depends on prior explicit owner ratification of P-C1. P-R1 cannot be
+approved, recorded as approved, or implemented while P-C1 remains pending or is
+rejected; reviewers and implementation agents cannot infer that dependency as
+satisfied from this proposal text.
 
 The D9 `frame_result_t` always contains its ordinary non-stack result section
 under the Batch 3C contract. Stack result storage failure never suppresses,
@@ -539,9 +588,10 @@ same order; every record's members are ascending `series_id`. Each public
 never have a `FAILED(reason)` disposition. These IDs are self-description labels
 only and never cache, retention, or reuse authority.
 The enclosing D9 result supplies the executed plan's frame/config/view identity,
-including the producer's `publication_frame_id` and current-attempt
-`cursor_state_id`; its current-config identity check rejects a delayed result
-after configuration or topology changes.
+including the producer's `publication_frame_id`; its current-config identity
+check rejects a delayed result after configuration or topology changes. Under
+prior ratified P-C1, that enclosing result additionally carries the
+current-attempt `cursor_state_id`.
 
 Every `stack_result_entry_t` has exactly one canonical disposition: `READY`,
 `EMPTY`, `STALE_BUSY`, or `FAILED(reason)`. Its complete public field set is the
@@ -583,16 +633,18 @@ dispositions `FAILED(RESULT_STORAGE_BUDGET)` and
 `FAILED(RESULT_STORAGE_ALLOCATION_FAILED)` are not enum members, never appear as
 entry failure reasons, and remain exclusive to `stack_result_section_t`.
 
-The private `checked_cumulative_step(series_id,base_y,component_y)` is the sole
-cumulative arithmetic primitive. It requires finite input values, performs the
-one ordinary binary64 addition `base_y+component_y` used by the stack plan,
-requires the result finite, and returns one private immutable
+For each emitted composition position/member, private
+`checked_cumulative_step(series_id,base_y,component_y)` is the sole cumulative
+arithmetic primitive. It requires finite input values, performs the one ordinary
+binary64 addition `base_y+component_y` used by the stack plan, requires the
+result finite, and returns one private immutable
 `{series_id,component_y,base_y,cumulative_y}` record. It preserves both input
 values bitwise; in particular, absorption such as `1e16+1` may round the
 cumulative back to `1e16` without changing the recorded component from `1`.
-Composition/GPU conversion, range, and indicator production consume this same
-executed record and never reconstruct component, base, or cumulative from other
-fields or perform a second cumulative addition.
+Each emitted position's ordered records enter the private immutable presented
+sequence. Geometry/GPU conversion and VISIBLE range consume those exact emitted
+records; neither reconstructs component, base, or cumulative or performs a
+second cumulative addition.
 
 The public `Stack_indicator_status` is closed to exactly
 `Stack_indicator_status::READY` and `Stack_indicator_status::EMPTY`.
@@ -604,10 +656,25 @@ member/requested-subset API. The batch contains `cursor_request_id` exactly once
 and one batch-level group-total status/value whose status matches every item.
 Only these factory-enforced variants exist:
 
+- The cursor evaluator never inserts an emitted position, changes geometry,
+  consumes `M`/`V_limit`/`H_limit`, changes admission/acquisition, or queries raw
+  source/pre-grid values. It samples only the already-frozen private presented
+  sequence under the selected candidate's exact representation rules. Candidate
+  A uses its bounded normalized/event-union interpolation, duplicate/nonfinite,
+  gap, and hold rules. Candidate B uses the finalized bounded grid approximation,
+  including exact interpolation on that grid and its displaced STEP transitions,
+  never the pre-grid curve. At an exact emitted position it may reuse the stored
+  record. Between positions it interpolates the stored `component_y`, `base_y`,
+  and `cumulative_y` independently under those same frozen rules, with no
+  cumulative addition or field reconstruction. The private immutable cursor-
+  sampled records must have canonical `+0.0` first base, each later base bitwise
+  equal to the preceding sampled cumulative, and final total equal to the last
+  cumulative. Outside the frozen common domain or in a frozen gap, the complete
+  group is all-EMPTY.
 - private/frame-producer-only
-  `stack_indicator_batch_t::ready(cursor_request_id,executed_records)` accepts
-  exactly `K` ascending executed or retained `checked_cumulative_step` records
-  from the published representation. It verifies the first `base_y` is
+  `stack_indicator_batch_t::ready(cursor_request_id,cursor_sampled_records)`
+  accepts exactly `K` ascending private cursor-sampled records from the frozen
+  executed or retained representation. It verifies the first `base_y` is
   canonical `+0.0` and every later `base_y` is bitwise the preceding record's
   `cumulative_y`, then copies record `component_y`/`base_y`/`cumulative_y` into
   public `component_y`/`stack_base_y`/`cumulative_y` and makes `stack_total_y`
@@ -618,9 +685,10 @@ Only these factory-enforced variants exist:
 - `stack_indicator_batch_t::empty(cursor_request_id,items)` requires exactly
   `K` ascending enabled-member items, every item EMPTY, and no stack total.
 
-The cumulative primitive's one addition uses the implementation's ordinary
-`double` operation; it is not repeated, algebraically reconstructed, contracted
-with adjacent work, or normalized for signed zero. Mixed READY/EMPTY items,
+The emitted-position cumulative primitive's one addition uses the
+implementation's ordinary `double` operation; it is not repeated, algebraically
+reconstructed, contracted with adjacent work, or normalized for signed zero.
+Cursor sampling performs no cumulative addition. Mixed READY/EMPTY items,
 publicly manufactured/inconsistent records, a nonfinite input/result,
 duplicate/missing/extra member, and a zero-length present batch are
 unconstructible. This uniform status follows the common published stack domain,
@@ -633,39 +701,17 @@ that plan had a request, with exactly `K` all-READY or all-EMPTY items.
 STALE_BUSY copies the complete retained batch and its old request ID.
 EMPTY and every group/view `FAILED(reason)` have no batch.
 
-The GUI owns a monotonic `cursor_state_id`. Activation, every movement/request
-replacement, and deactivation each increment it. Every executed frame plan and
-its enclosing D9 result copy the current-attempt `cursor_state_id`. READY
-PRESENTED_CONTENT additionally carries `content_cursor_state_id` copied from
-the exact executed plan. STALE_BUSY retains the old
-`content_cursor_state_id` unchanged with all retained presentation fields, even
-when its optional batch is absent; neither a newer attempt nor deactivation may
-rewrite it. A present batch's `cursor_request_id` must equal its enclosing
-PRESENTED_CONTENT `content_cursor_state_id` and is unconstructible otherwise.
-
-The GUI applies currency before every result-driven mutation in this order:
-
-1. Reject a stale enclosing config identity without mutation.
-2. Consult current GUI cursor activation independently of result payload. If it
-   is inactive, immediately clear/hide all stack tooltips, markers, and totals
-   and ignore the retained batch or delayed result completely. The deactivation
-   transition itself performs this clear immediately; result consumption
-   re-enforces the inactive invariant rather than waiting for another frame.
-3. If active, choose the applicable result currency: READY/STALE_BUSY use
-   `content_cursor_state_id`; group EMPTY/`FAILED(reason)` and either section
-   result-storage failure use the enclosing current-attempt `cursor_state_id`.
-   Compare it with the GUI's current `cursor_state_id` before any apply or clear;
-   mismatch leaves all GUI state unchanged.
-4. On a match, a READY-status batch from READY or STALE_BUSY replaces the whole
-   group's component/base/cumulative tooltip fields, markers at `cumulative_y`,
-   and total; an EMPTY-status batch clears the whole group; no batch because no
-   cursor request clears/hides the whole group; group EMPTY/FAILED clears its
-   whole group; and section failure clears all stack indicator groups.
-
-Thus an old no-batch result, group failure, or section failure cannot clear a
-newer cursor request; a retained batch cannot reappear after deactivation; and
-no transition partially applies, merges, clears, or relabels a mismatched
-payload.
+Subject only to prior P-C1 ratification, P-R1 binds stack presentation to P-C1's
+exact identities and GUI order. Each executed stack plan/enclosing result uses
+P-C1's current-attempt ID; READY PRESENTED_CONTENT uses its executed content ID;
+STALE_BUSY retains that old content ID with the complete retained presentation
+even when no batch exists; and a present batch ID equals the presented content
+ID. Matching READY/EMPTY/no-batch behavior governs one complete stack group,
+matching group EMPTY/FAILED clears that group, and matching section failure
+clears all stack groups. P-C1's config-first, immediate event-side clear,
+inactive ignore, applicable-ID comparison, mismatch-no-mutation, and rapid-
+request guarantees apply without modification. This P-R1 integration text does
+not ratify P-C1.
 
 `stack_result_section_t`, `stack_result_table_t`, `stack_result_entry_t`, and
 the per-series record have private storage and no public mutator or unrestricted
@@ -881,8 +927,8 @@ owners and transitions:
 
 - `renderer_owned_requested_live_bytes` is the sole
   `STACK_CPU_BYTES_LIMIT` oracle. A successful counted allocation made under
-  renderer ownership increments it by the exact allocator-request bytes; an
-  atomic transfer out of renderer ownership or renderer-owned destruction
+  renderer ownership increments it by the exact allocator-request bytes; actual
+  renderer-private deallocation or an explicit public-transfer boundary
   decrements it by those same bytes exactly once;
 - `allocation_requested_live_bytes` is allocation-lifetime evidence. Every
   successful counted allocation increments it by the exact allocator-request
@@ -897,15 +943,15 @@ stack-result backing while renderer-owned, and private retained stack entries.
 A private `renderer_retained_stack_entry_t` owns its P-D6 keys, retained
 geometry and resources, and exactly one value-only retained presentation
 record. Its presentation record and geometry/resources remain separately
-counted until their renderer ownership is released. Renderer builders,
-temporaries, current
-entries, and stale entries remain counted while the renderer owns, references,
-or aliases them. Each private allocation is counted exactly once until the
-renderer's final reference is released, even if some non-public external handle
-also shares it. A renderer-private allocation increments both counters at
-successful allocation and decrements both at its final renderer-owned
-deallocation. Separate process-memory evidence records physical/RSS/commit
-behavior and never participates in either exact requested-byte counter.
+counted until actual deallocation. Renderer-private retained/staging allocations,
+builders, temporaries, current entries, and stale entries never cross renderer
+ownership and expose no external owning handle. Every internal pointer,
+reference, or alias remains renderer ownership and changes neither counter. A
+renderer-private allocation increments both counters at successful allocation;
+only its actual deallocation decrements both exactly once. Dropping or copying
+an internal alias is not transfer or deallocation. Separate process-memory
+evidence records physical/RSS/commit behavior and never participates in either
+exact requested-byte counter.
 
 Of frame-result publication storage, only the stack table's exact allocator-
 request bytes—counted header/control, padding, and payload—are charged to
@@ -954,6 +1000,14 @@ allocator request, and decrements `allocation_requested_live_bytes` exactly
 once. Publication does not pretend the allocator request was destroyed, and
 final deallocation cannot debit the renderer-owned counter a second time.
 
+The public stack-result table is the only intentionally transferred counted
+allocation in this contract. Any future intentionally transferred counted
+allocation must use this same explicit public-table transition: atomically
+decrement `renderer_owned_requested_live_bytes` at ownership transfer, leave
+`allocation_requested_live_bytes` unchanged through aliases/copies/non-final
+destruction, and decrement it only at actual final deallocation. A private
+retained/staging allocation cannot be exported by calling an alias a transfer.
+
 Group/member observers derive each read-only nonowning view from the frozen
 validated offset/count metadata on that call. Neither backing nor handle stores
 raw group/member pointers, and no public backing/view references private
@@ -1001,9 +1055,9 @@ review owns findings and rationale. Before Batch 3 public implementation:
   split v1 GPU layout/formula, `Published_state`, `Frame_orchestrator`, a
   snapshot capability hierarchy, batch snapshots, or a separate 3P phase;
 - every action/gate distinguishes approved D2/D6-D15 text from pending
-  P-S1/P-D7/P-D2/P-D6/P-Q1/P-R1/P-D15; no affected RU starts before owner
-  ratification and the reviewed ratification record, and D4 remains separately
-  evidence-gated;
+  P-S1/P-D7/P-D2/P-D6/P-Q1/P-C1/P-R1/P-D15; P-C1 precedes P-R1 and no affected
+  RU starts before owner ratification and the reviewed ratification record, and
+  D4 remains separately evidence-gated;
 - governed Markdown/style, `actionlint`, and `git diff --check` pass, and the
   exact documentation commit receives the delegated three-reviewer closure
   required above before Batch 3 coding.
@@ -1449,13 +1503,13 @@ Primary files:
 - benchmark production-planner entry;
 - focused cache/layout tests.
 
-Hypothesis: one production frame entry and snapshot-free immutable plan remove duplicate snapshots/scans and ordinary range/render/result disagreement without increasing acquisition cost as retained history grows. The full-path boundary is production planning entry through executed renderer/RHI disposition and the ordinary D9 immutable frame result. RU-3C1 has no P-R1/P-D15 or stack-result-storage prerequisite.
+Hypothesis: one production frame entry and snapshot-free immutable plan remove duplicate snapshots/scans and ordinary range/render/result disagreement without increasing acquisition cost as retained history grows. The full-path boundary is production planning entry through executed renderer/RHI disposition and the ordinary D9 immutable frame result. RU-3C1 has no P-R1/P-D15 or stack-result-storage prerequisite, but its atomic cursor/result cluster is blocked by pending P-C1.
 
 Actions:
 
 1. Use full pre-layout framebuffer width as the deterministic LOD-budget width; final usable width changes transforms, not selected LOD.
 2. **3C1 parity:** add one production frame entry that creates one immutable per-series/per-view plan consumed by VISIBLE range and rendering. The plan owns status, sequence, selected LOD/window/spans, extrema, access/semantic facts, and derived normalized data, but no snapshot or hold.
-3. **3C1 result:** make GUI cursor activation, every movement/request replacement, and deactivation increment one monotonic `cursor_state_id`; copy it through the exact executed plan into the sole immutable ordinary D9 frame result constructed after renderer/RHI disposition. Presented indicator content retains its `content_cursor_state_id`, and any batch request ID equals it. GUI config/cursor currency gates every apply and clear, including absent/failure results; inactive state clears immediately and ignores delayed content. No independent ordinary range, indicator, or status producer remains after parity. Do not add P-R1's stack envelope or make ordinary publication depend on a stack proposal in this unit.
+3. **3C1 cursor/result:** implement approved D9's sole immutable ordinary frame result from the exact executed plan after renderer/RHI disposition, value-only indicators, and current-request rejection. Only after explicit P-C1 owner ratification and its clean ratification record, implement P-C1's monotonic event-side clear/current-presented identities/absent-failure currency in the same action. Because actions 2–4 are atomic, this action and `FRAME_TRUTH_PARITY` cannot begin while P-C1 is pending. No independent ordinary range, indicator, or status producer remains after parity. Do not add P-R1's stack envelope or make ordinary publication depend on a stack proposal in this unit.
 4. **3C1 evidence entry:** route the benchmark through the same production frame entry before generating parity evidence. Record the visible full-framebuffer-width LOD change explicitly rather than treating it as an invisible refactor.
 5. **3C2 acquisition/reuse:** implement the sole production D12 scheduler. Cache attempted status, sequence, and counters without retaining rejected holds; acquire each shared `(source,LOD)` observation once across series, then consume distinct same-source LODs/main-preview queries sequentially. Finish extrema/staging/custom prepare and destroy every hold before another acquisition on that source and before render-pass recording. Do not cache direct query results without their complete request/context/expected-sequence key.
 6. Replace RU-3A's truthful hold-free per-series independent acquisitions with the single frame/shared-key schedule from action 5, consuming the existing snapshot-free plan/cache/custom interfaces unchanged. Do not introduce a parallel scheduler or restore a hold-bearing plan.
@@ -1483,7 +1537,11 @@ Gate:
   match, owner-equivalent weak handles plus equal alias do match, and no key
   serializes/hashes a control-block address;
 - shared custom prepare finishes while its non-owning view is valid, the writer proceeds before record, no plan/result/cache/record context owns a hold, and source search proves exactly one production acquisition scheduler;
-- activation, movement/replacement, and deactivation monotonically advance cursor state; plan/result/presented identities come only from the executed plan. Active matching results apply/clear, active mismatches perform no mutation, and inactive state immediately clears/ignores delayed content, including old absent/failure results;
+- after P-C1 ratification/record only, its activation/movement/deactivation,
+  immediate clear, plan/result/presented identities, active applicable-ID
+  matches/mismatches, inactive ignore, rapid-request ordering, and old absent/
+  failure or stale-result gates pass exactly. Before ratification this gate is a
+  blocker, not an inferred product oracle;
 - at fixed W/visible interval, run 1x/10x/100x retained histories for direct/zero-copy, copy-on-snapshot, and unknown-order sources after a changed sequence: exact snapshot bytes/physical visits at 100x must not exceed the 1x value, and time/producer-lock metrics must satisfy the approved Stage 2 noise rule for any source class eligible for stacking; fallback classes that fail remain measured but are not silently declared stack-safe;
 - warning-clean initialized build and all focused tests pass;
 - the approved Stage 2 protocol passes for full-frame latency, allocations, snapshot bytes/time, alignment scans, producer wait, and memory.
@@ -1494,9 +1552,11 @@ Gate allocation:
   before/after pixel evidence;
 - `FRAME_TRUTH_PARITY` (actions 2–4) owns one production entry, snapshot-free
   ordinary plan, ordinary VISIBLE/render/result/indicator identity, benchmark production entry,
-  monotonic cursor-state propagation plus active/inactive apply/clear currency,
-  delayed-request/absence/failure rejection, and removal of independent range/indicator/status
-  producers; it neither owns nor waits for the stack result envelope;
+  approved D9 current-request rejection, and—only after its reviewed
+  ratification—P-C1 cursor-state propagation plus active/inactive apply/clear/
+  absence/failure currency, and removal of independent range/indicator/status
+  producers. It is blocked until P-C1's clean ratification record and neither
+  owns nor waits for the stack result envelope;
 - `SHARED_ACQUISITION_SCHEDULER` (actions 5–8) owns exactly-one-scheduler and
   shared-key acquisition counts, D12 sequential release/writer progress,
   P-D6 logical-key versus physical-segmentation reuse, classification/cache
@@ -1564,17 +1624,21 @@ metadata/API, and the losing candidate is deleted before Stage 5.
 
 ### Contract-ratification record — implementation prerequisite
 
-After the owner explicitly ratifies or rejects P-D2, P-R1, and P-D15,
+After the owner explicitly ratifies or rejects P-C1, P-D2, P-R1, and P-D15,
 `RU-contract-ratification-record/A1` records the exact accepted/rejected text
 and statuses in the sole register, updates every affected prerequisite, and
 numbers the now-authorized RU-4A source actions. This documentation source unit
 receives the normal three-reviewer exact-hash loop. No RU-4A or stack candidate
-implementation may infer actions directly from the current scope bullets.
+implementation may infer actions directly from the current scope bullets. The
+record must place ratified P-C1 before any approval of P-R1; it cannot record
+P-R1 approved if P-C1 remains pending/rejected. RU-3C1 cursor/result work waits
+for this same reviewed record.
 
 ### Batch 4A — Core stack contract implementation
 
-Batch 4A cannot begin until P-D2, P-R1, and P-D15 are owner-ratified and the
-reviewed ratification record has numbered its executable actions. The bullets
+Batch 4A cannot begin until P-C1, P-D2, P-R1, and P-D15 are owner-ratified in
+the required dependency order and the reviewed ratification record has numbered
+its executable actions. The bullets
 below are a scope inventory only, not review units or implementation authority.
 Authorized actions implement the approved backend-independent semantics and
 typed results without public RHI/Qt exposure; D4 remains separately open for
@@ -1586,9 +1650,11 @@ series ID and caller-batched topology; do not add a group descriptor. Scope:
 - D8 logical duplicate collapse before nonfinite processing;
 - nonfinite and hold behavior;
 - the register's complete D2 interval normalization, endpoint inclusion/merge, no-gap-bridging, Candidate A `R_A=K*B` and Candidate B `R_B=N` mandatory-endpoint limits, and `FAILED(FRAGMENTATION_BUDGET)` whole-group result;
-- one checked cumulative-step addition and immutable record consumed by
-  composition/range/indicator, with nonfinite/overflow as a typed whole-group
-  failure and no partial geometry;
+- one checked cumulative-step addition per emitted position and immutable
+  presented sequence consumed by geometry/GPU/VISIBLE, plus cursor sampling of
+  frozen component/base/cumulative fields with no new arithmetic/position/
+  budget/acquisition, with nonfinite/overflow as a typed whole-group failure and
+  no partial geometry;
 - D6 BUSY wholesale reuse, private retained-key eligibility, self-describing
   public group/view/member labels and ordering, retained content-frame/cursor-
   state/per-series-sequence provenance, and `STALE_BUSY` disposition;
@@ -1713,26 +1779,36 @@ Indicator-batch gates cover no request, all-READY, all-EMPTY at a gap/outside th
 domain, a step discontinuity, delayed request replacement, and retained stale
 ID. They prove exactly all `K` enabled members including `NONE`, ascending
 `series_id`, one batch-level `cursor_request_id` equal to presented cursor state,
-and private ordered executed/retained checked-step READY input. Absorption
-`1e16+1` preserves component `1` with cumulative `1e16`; negative,
-cancellation, STEP, signed-zero, and ordinary-rounding cases prove the first
-base is canonical `+0.0`, every later base is bitwise the prior cumulative, and
-total is bitwise the final cumulative. Composition, range, and indicator observe
-the same record without a second addition or arithmetic reconstruction. Public
-callers cannot manufacture records or inconsistent component/base/cumulative/
-total values.
+and private ordered cursor-sampled READY records from the frozen presented
+sequence. Emitted checked-step records are the sole geometry/GPU/VISIBLE truth;
+cursor evaluation changes no emitted position, geometry, `M`/`V_limit`/
+`H_limit`, admission, or acquisition. Candidate A tests exact emitted and
+between-event evaluation under its normalized/event-union duplicate/nonfinite/
+gap/hold rules, before/at/after STEP, and exact cursor/render parity. Candidate B
+tests exact-grid and between-grid evaluation, before/at/after displaced STEP
+transitions, narrow spikes, gaps, and holds,
+always against finalized grid output rather than raw/pre-grid data. Both
+independently interpolate stored component/base/cumulative fields with no
+cumulative add/reconstruction. Exact emitted samples may reuse records; frozen
+gap/out-of-domain returns the complete all-EMPTY batch. Absorption `1e16+1`
+preserves component `1` with cumulative `1e16`; signed-zero, negative,
+cancellation, and ordinary-rounding cases prove canonical first base, bitwise
+adjacency, final-total identity, and pixel markers at cumulative. Public callers
+cannot manufacture records or inconsistent component/base/cumulative/total.
 EMPTY items/total are valueless. Factories reject zero length, filtered subsets,
 mixed item status, missing/extra/duplicate members, nonfinite input/result, and
 broken adjacency. STALE_BUSY copies the entire retained batch/old ID.
 
-GUI tests start from previously displayed READY and cover monotonic activation,
-movement/request replacement, and deactivation. After config validation,
-inactive state clears/hides all and ignores every delayed/retained result. Active
-matching current-attempt ID allows EMPTY/FAILED/section-failure clears; active
-matching content ID allows READY/STALE apply or no-batch clear. Mismatch performs
-no mutation. Cases include old no-batch/group failure/section failure, delayed
-old result, matching/mismatching stale, READY→deactivate→BUSY stale, and proof
-that content never reappears after deactivation.
+After P-C1 ratification only, GUI tests start from previously displayed READY
+and prove activation, every movement/request replacement, and deactivation each
+atomically increment state and clear/hide before requesting. Matching content
+may repopulate; mismatch cannot restore cleared state. Rapid A/B/C requests run
+every result order. After config validation, inactive state ignores every
+delayed/retained result. Active matching current-attempt ID allows EMPTY/FAILED/
+section-failure clears; active matching content ID allows READY/STALE apply or
+no-batch clear. Cases include movement→BUSY stale/no batch/group failure/section
+failure, matching/mismatching stale, deactivation, and proof that content never
+reappears.
 
 Enum membership tests prove `Stack_failure_reason` has exactly the 19 listed
 members and every entry `FAILED(reason)` carries exactly one of them. Compile/
@@ -1773,6 +1849,11 @@ renderer-owned counter; copies and non-final destruction change neither; final
 deallocation decrements only the allocation-lifetime counter. Failed allocation
 changes neither, and destruction-before-publication plus renderer-private
 allocation/deallocation debit both exactly once without double debit.
+No-export gates prove retained/staging/private backing exposes no external owner;
+all internal alias/copy/drop operations retain renderer ownership and change
+neither counter; only actual private deallocation decrements both. Any
+intentionally transferred test allocation uses the public-table transition—
+renderer counter at transfer, allocation counter at final deallocation.
 Transition gates prove READY→BUSY→BUSY may publish stale, while READY→EMPTY→BUSY,
 READY→source FAILED→BUSY, READY→normalization FAILED→BUSY,
 READY→budget/allocation FAILED→BUSY, and READY(key A)→structural key B→BUSY(key
@@ -1813,7 +1894,7 @@ Numbered review units:
    manifest change restarts all three evidence reviews. A clean evidence unit
    establishes trustworthy comparison evidence; it does not select D4.
 
-The three source units implement the then-ratified P-D2/P-R1/P-D15 register
+The three source units implement the then-ratified P-C1/P-D2/P-R1/P-D15 register
 text exactly; the evidence unit verifies that implementation without changing
 it. The register is the sole formula, admission, result, and resident resource
 authority; this batch creates no duplicate definitions. The fixed scenario
@@ -1893,14 +1974,19 @@ Decision gate:
   transfer, refund, or readmission;
 - both candidates call the one private `checked_cumulative_step` per member/
   position and feed its unchanged immutable records to composition conversion,
-  range, and indicator paths; absorption/signed-zero/negative/cancellation/
-  ordinary-rounding replays prove there is no second cumulative arithmetic;
+  VISIBLE range, and the frozen private presented sequence. Their cursor
+  evaluators sample component/base/cumulative from that sequence independently
+  with no cumulative arithmetic, source query, new position, or budget/admission/
+  acquisition change. Absorption/signed-zero/negative/cancellation/ordinary-
+  rounding replays prove component preservation and cursor/render pixel parity;
 - common-adapter tests prove P-D15's stack-exclusive CPU scope, exact requested
   QRhi scope, instantaneous temporary-inclusive caps, preserve-old and
   debit-old replacement paths, narrow exact-array ownership/counting, exclusion
   of ordinary Stage 3 arrays, result construction/publication ownership
   boundary, exact independent public stack-table/no-alias behavior, private
-  retained geometry plus value-record ownership, the one exact repo-local
+  retained geometry plus value-record ownership with no external export,
+  internal-alias no-transition behavior and actual-deallocation-only dual debit,
+  public-table-only intentional transfer semantics, the one exact repo-local
   counted backing/control allocation, checked header/padding/payload layout,
   exact allocator-request `renderer_owned_requested_live_bytes` cap accounting,
   allocation-lifetime `allocation_requested_live_bytes` evidence, their exact
@@ -1917,6 +2003,10 @@ Decision gate:
   `FAILED(RESIDENT_BUDGET)`, in-cap CPU/QRhi
   `FAILED(RESOURCE_ALLOCATION_FAILED)`, and atomic complete install;
 - enabling/disabling previews leaves the admitted MAIN set and all MAIN counters unchanged; a constrained replay proves all MAIN units run in ascending `lowest_enabled_series_id` before any equivalently ordered PREVIEW unit;
+- `RU-4B-B` freezes Candidate B's cursor evaluator against the finalized grid,
+  exact between-grid interpolation, and displaced STEP transitions before any
+  evidence run. Any evaluator/source change invalidates and restarts Candidate B
+  source review and all dependent evidence;
 - both repeat the approved Stage 2 seven-run native-backend protocol with identical workloads and candidate-specific B/N caps;
 - present both candidates' performance and visual evidence without choosing a
   winner in the runner or reviewer disposition;
@@ -1955,7 +2045,7 @@ merged, split, or left unnumbered.
    production producer, and delete all benchmark-local winner copies in the
    same source unit.
 2. **A2 — internal frame integration:** integrate the selected bounded planner, exact
-   ratified P-D6/P-D2/P-R1/P-D15 contracts, VISIBLE plan identity, bounded
+   ratified P-D6/P-C1/P-D2/P-R1/P-D15 contracts, VISIBLE plan identity, bounded
    GLOBAL/GLOBAL_LOD scalar range, cache identities, and stack observations into
    an internal frame producer immediately consumed by the benchmark/internal
    entry. It has no public metadata or unreachable dormant path.
@@ -1970,7 +2060,7 @@ merged, split, or left unnumbered.
    stack_group_id` to ordinary descriptors/builders with ascending ID order and
    existing `apply_series_updates` topology semantics, and connect registry/
    frame entry to the already consumed internal production path.
-2. **A2 — activation Qt/result/contract:** add the immutable ratified P-R1
+2. **A2 — activation Qt/result/contract:** add the immutable ratified P-C1/P-R1
    stack-result extension to the already complete ordinary D9 frame result,
    expose cumulative indicators, Qt registry/update behavior, and
    independent main/preview planning; a missing/failed preview member suppresses
@@ -2032,7 +2122,9 @@ Gate allocation:
   derive views from validated offsets/counts without stored raw pointers;
   allocation, publication, copy/non-final destruction, final deallocation, and
   fault paths follow the exact two-counter lifetime/debit contract without
-  double debit.
+  double debit. Private retained/staging backing exposes no external owner;
+  internal aliases change neither counter and only actual deallocation debits
+  both. Every intentional transfer uses the public-table transition.
   Integration counters prove metadata/admission precedes table allocation,
   which precedes acquisition, and rejected units allocate no unit resource.
   The unit also owns normative API/migration/package docs and install/package
@@ -2103,14 +2195,19 @@ Correctness gate:
 - `Stack_failure_reason` membership is exact and result-storage dispositions
   cannot enter an entry reason. READY/STALE_BUSY have an absent indicator batch
   exactly without a plan request and a present exactly-K batch otherwise. The
-  all-READY/all-EMPTY domain, private one-add checked-step records shared by
-  composition/range/indicator, canonical first `+0.0`, bitwise adjacency/total,
-  signed zero, absorption `1e16+1`, ordinary rounding, negative/cancellation/
-  STEP, enabled-member ordering including `NONE`, and batch ID equality with
-  content cursor state pass. GUI tests cover monotonic activation/move/
-  deactivation; active applicable-ID matches/mismatches for READY/EMPTY/STALE/
-  group failure/section failure/no batch; inactive immediate all-clear/ignore;
-  delayed old absence/failure; READY→deactivate→BUSY stale; and no reappearance.
+  all-READY/all-EMPTY domain; private one-add emitted records shared by geometry/
+  GPU/VISIBLE; frozen A event-union and B finalized-grid cursor evaluators; exact
+  emitted and between-position samples; before/at/after STEP, spike, gap, hold,
+  absorption `1e16+1`, signed zero, ordinary rounding, negative/cancellation,
+  canonical first `+0.0`, bitwise adjacency/total, member ordering including
+  `NONE`, and cumulative-marker pixel parity pass. Cursor sampling performs no
+  add/reconstruction, raw query, new position, geometry/budget/admission/
+  acquisition change. Candidate B's evaluator freezes before evidence. After
+  P-C1 ratification only, batch/content ID equality and monotonic activation/
+  move/deactivation tests cover immediate clear, rapid A/B/C result orders,
+  active applicable-ID matches/mismatches for READY/EMPTY/STALE/group failure/
+  section failure/no batch, inactive ignore, delayed old absence/failure,
+  movement→BUSY stale, deactivation, and no reappearance.
   Public record manufacture and zero/filtered/mixed/inconsistent batches are
   unconstructible;
 - negative cancellation includes intermediate cumulative range;
@@ -2161,9 +2258,12 @@ Performance gate:
   `allocation_requested_live_bytes` exactly once. Successful allocation
   increments it and `renderer_owned_requested_live_bytes`; publication
   atomically decrements only the renderer-owned cap oracle, while copies and
-  non-final destruction change neither. Failed allocations change neither;
-  private renderer-only allocation/final destruction changes both, and no path
-  double-debits. Allocator bookkeeping/rounding and physical/OS-committed
+  non-final destruction change neither. Failed allocations change neither.
+  Private retained/staging backing never exports; internal aliases leave both
+  counters unchanged and only actual private deallocation decrements both. Any
+  intentional transfer follows the public-table renderer-at-transfer/allocation-
+  at-final-deallocation split, and no path double-debits. Allocator bookkeeping/
+  rounding and physical/OS-committed
   process memory remain separately evidenced and excluded. Every other capped
   stack array is charged by exact requested element/storage bytes;
 - structural-result probes exhaust every section/entry/member factory and
@@ -2176,9 +2276,9 @@ Performance gate:
   alone expose content frame/cursor ID, range, and the exact optional indicator
   batch; absent/
   all-READY/all-EMPTY/discontinuity/delayed/stale cases satisfy the closed
-  exactly-K private checked-step batch/item factories and copied bitwise-field
-  rules, while public record construction and zero/filter/mixed/inconsistent
-  states cannot compile;
+  exactly-K private cursor-sampled batch/item factories and copied bitwise-field
+  rules, while emitted checked-step records remain private and public record
+  construction and zero/filter/mixed/inconsistent states cannot compile;
   EMPTY and every failure, including post-composition numeric, resident-cap,
   CPU-allocation, and RHI-allocation failures, expose none and project every
   acquired source as terminal CURRENT_OBSERVATION;
