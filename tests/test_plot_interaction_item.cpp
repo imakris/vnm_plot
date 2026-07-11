@@ -302,7 +302,9 @@ bool test_indicator_reports_stack_sum_only_inside_common_domain()
         nearly_equal(upper_marker.value("marker_y").toDouble(), 4.5) &&
         nearly_equal(upper_marker.value("py").toDouble(), 55.0) &&
         lower_marker.value("stacked_marker").toBool() &&
-        upper_marker.value("stacked_marker").toBool(),
+        upper_marker.value("stacked_marker").toBool() &&
+        lower_marker.value("show_marker").toBool() &&
+        upper_marker.value("show_marker").toBool(),
         "stacked component marker metadata and geometry should use cumulative rendered values");
     TEST_ASSERT(sum.value("series_label").toString() == QStringLiteral("\u03a3"),
         "stacked indicator should label the aggregate with sigma");
@@ -314,6 +316,9 @@ bool test_indicator_reports_stack_sum_only_inside_common_domain()
     const QVariantList outside_common_domain = widget.get_indicator_samples(250.0, 100.0, 100.0);
     TEST_ASSERT(outside_common_domain.size() == 2,
         "stacked indicator should omit the sum outside the common source domain");
+    TEST_ASSERT(!outside_common_domain[0].toMap().value("show_marker").toBool() &&
+        !outside_common_domain[1].toMap().value("show_marker").toBool(),
+        "stacked component markers should stay hidden outside the common source domain");
 
     upper->stack_group = 0;
     widget.add_series(2, upper);
@@ -350,8 +355,12 @@ bool test_indicator_omits_sum_when_renderer_rejects_stack()
         0,
         2 * k_second_ns);
 
-    TEST_ASSERT(widget.get_indicator_samples(250.0, 100.0, 100.0).size() == 2,
+    const QVariantList nonfinite = widget.get_indicator_samples(250.0, 100.0, 100.0);
+    TEST_ASSERT(nonfinite.size() == 2,
         "finite hover bracket must not show a sum for a nonfinite-rejected rendered stack");
+    TEST_ASSERT(!nonfinite[0].toMap().value("show_marker").toBool() &&
+        !nonfinite[1].toMap().value("show_marker").toBool(),
+        "nonfinite-rejected stack component markers should stay hidden");
 
     auto* source = dynamic_cast<plot::Vector_data_source<indicator_sample_t>*>(lower->main_source());
     TEST_ASSERT(source, "stack regression fixture should retain its vector source");
@@ -367,8 +376,12 @@ bool test_indicator_omits_sum_when_renderer_rejects_stack()
         { {1, lower}, {2, upper} },
         0,
         2 * k_second_ns);
-    TEST_ASSERT(widget.get_indicator_samples(250.0, 100.0, 100.0).size() == 2,
+    const QVariantList nonmonotonic = widget.get_indicator_samples(250.0, 100.0, 100.0);
+    TEST_ASSERT(nonmonotonic.size() == 2,
         "finite hover bracket must not show a sum for a nonmonotonic-rejected rendered stack");
+    TEST_ASSERT(!nonmonotonic[0].toMap().value("show_marker").toBool() &&
+        !nonmonotonic[1].toMap().value("show_marker").toBool(),
+        "nonmonotonic-rejected stack component markers should stay hidden");
 
     return true;
 }

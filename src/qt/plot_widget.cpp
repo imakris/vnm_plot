@@ -1417,6 +1417,9 @@ QVariantList Plot_widget::get_samples_for_time(
         entry["py"]           = py;
         entry["color"]        = color;
         entry["series_label"] = QString::fromStdString(series->series_label);
+        if (stack) {
+            entry["show_marker"] = false;
+        }
         result.append(entry);
 
         if (stack) {
@@ -1450,6 +1453,7 @@ QVariantList Plot_widget::get_samples_for_time(
             QVariantMap     component    = result[result_index].toMap();
             component["marker_y"]        = marker_y;
             component["stacked_marker"]  = true;
+            component["show_marker"]     = true;
             component["py"]              = std::clamp(
                 (1.0 - (marker_y - vmin) / v_span) * plot_height,
                 0.0,
