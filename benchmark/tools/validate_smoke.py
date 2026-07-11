@@ -113,6 +113,8 @@ def validate(
     if args.stacked:
         if observation_total(payload, "renderer.stacking.output_sample_count") <= 0:
             raise RuntimeError("stacked AREA composition was not exercised")
+        if observation_total(payload, "renderer.stacking.resampled_group_count") <= 0:
+            raise RuntimeError("stacked AREA smoke did not exercise the bounded view grid")
         if int(metadata["stack_sum_pixel_count"]) <= 0:
             raise RuntimeError("stack sum overlay color #E6DFCC is absent from readback")
     else:

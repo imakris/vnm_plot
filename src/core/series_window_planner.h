@@ -119,11 +119,26 @@ struct stacked_sample_t
     float          base         = 0.0f;
 };
 
-// Compose independently planned LOD windows onto their timestamp union.
-// Output layers match input order and contain cumulative tops plus bases.
+inline constexpr std::size_t k_stack_max_output_samples_per_view = 1'048'576;
+
+struct stack_composition_stats_t
+{
+    std::size_t    timestamp_count = 0;
+    bool           resampled       = false;
+};
+
+std::size_t stack_timestamp_budget(
+    double                                         width_px,
+    std::size_t                                    layer_count);
+
+// Compose independently planned LOD windows onto their exact timestamp union
+// when it fits, otherwise onto a bounded shared grid. Output layers match input
+// order and contain cumulative tops plus bases.
 Stack_rejection_reason compose_stacked_series(
     const std::vector<const Series_view_plan*>&    plans,
-    std::vector<std::vector<stacked_sample_t>>&    layers);
+    std::vector<std::vector<stacked_sample_t>>&    layers,
+    std::size_t                                    timestamp_budget,
+    stack_composition_stats_t*                     stats = nullptr);
 
 const Data_access_policy& stacked_sample_access();
 

@@ -121,12 +121,20 @@ component's band between its cumulative base and top. Preview sources and
 styles are composed the same way in the preview view.
 
 Each source retains its independently selected LOD and timestamp grid. The
-renderer interpolates each selected source onto their timestamp union, clipped
-to their common selected-source time domain. Members must use matching
-`Series_interpolation` modes and provide finite values with monotonic timestamps
-in one drawable span. An incompatible group fails closed: the affected stack
-view is omitted and a diagnostic is logged instead of drawing misleading
-unstacked data.
+renderer uses their exact timestamp union when it fits the view's composition
+budget. Larger unions are interpolated onto a shared deterministic grid that
+targets half-pixel spacing, clipped to the common selected-source time domain.
+The grid retains both domain endpoints and is capped so one stack view never
+materializes more than 1,048,576 cumulative samples across all layers; very
+large layer counts therefore use a coarser grid. Main and preview use their own
+horizontal pixel widths and budgets. Members must use
+matching `Series_interpolation` modes and provide finite values with monotonic
+timestamps in one drawable span. An incompatible group fails closed: the
+affected stack view is omitted and a diagnostic is logged instead of drawing
+misleading unstacked data. Bounded resampling is an accepted `ACTIVE` result,
+not a rejection. Features narrower than half a pixel may be omitted, and a
+`STEP_AFTER` transition may move to the next grid timestamp; indicators and
+auto-fit continue to match the geometry actually rendered.
 
 Stack acceptance is also queryable without installing a log callback. C++ can
 call `Plot_widget::stack_status(group, Series_view_kind::MAIN)` (or `PREVIEW`)

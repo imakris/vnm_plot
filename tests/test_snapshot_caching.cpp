@@ -1486,10 +1486,14 @@ bool test_stacking_composes_different_timestamps_from_independent_lods()
     TEST_ASSERT(lower_plan.lod_level == 0 && upper_plan.lod_level == 1,
         "stack inputs must retain independent LOD choices");
 
+    plot::detail::stack_composition_stats_t exact_stats;
     std::vector<std::vector<plot::detail::stacked_sample_t>> layers;
     TEST_ASSERT(plot::detail::compose_stacked_series(
-        {&lower_plan, &upper_plan}, layers) == plot::Stack_rejection_reason::NONE,
+        {&lower_plan, &upper_plan}, layers, 101u, &exact_stats) ==
+            plot::Stack_rejection_reason::NONE,
         "different timestamp grids should compose");
+    TEST_ASSERT(!exact_stats.resampled,
+        "a timestamp union within the view budget should remain exact");
     TEST_ASSERT(layers.size() == 2 && layers[0].size() == layers[1].size(),
         "stack layers should share the timestamp union");
     TEST_ASSERT(layers[0].front().timestamp_ns == 2 &&
@@ -1581,7 +1585,7 @@ bool test_stacking_interpolates_sub_256ns_epoch_intervals()
 
     std::vector<std::vector<plot::detail::stacked_sample_t>> layers;
     TEST_ASSERT(plot::detail::compose_stacked_series(
-        {&lower_plan, &upper_plan}, layers) == plot::Stack_rejection_reason::NONE,
+        {&lower_plan, &upper_plan}, layers, 16u) == plot::Stack_rejection_reason::NONE,
         "sub-256ns current-epoch grids should compose");
     TEST_ASSERT(layers.size() == 2 && layers[0].size() == 3,
         "epoch stack should retain the exact timestamp union");
@@ -1594,10 +1598,191 @@ bool test_stacking_interpolates_sub_256ns_epoch_intervals()
     lower.insert(lower.begin() + 2, {k_epoch + 127, 5.0f});
     const auto duplicate_plan = make_plan(lower);
     TEST_ASSERT(plot::detail::compose_stacked_series(
-        {&duplicate_plan, &upper_plan}, layers) == plot::Stack_rejection_reason::NONE,
+        {&duplicate_plan, &upper_plan}, layers, 16u) == plot::Stack_rejection_reason::NONE,
         "duplicate epoch timestamps should compose");
     TEST_ASSERT(std::abs(layers[0][1].value - 5.0f) < 1e-6f,
         "stack composition should retain its last duplicate value policy");
+
+    return true;
+}
+
+bool test_stacking_bounds_independent_timestamp_grids()
+{
+    constexpr std::size_t k_layer_count       = 32;
+    constexpr std::size_t k_samples_per_layer = 10'000;
+    constexpr std::size_t k_timestamp_budget  = 2'281;
+
+    std::vector<std::vector<Test_sample>> sources(k_layer_count);
+    std::vector<plot::Series_view_plan> plans(k_layer_count);
+    std::vector<const plot::Series_view_plan*> plan_ptrs;
+    plan_ptrs.reserve(k_layer_count);
+    const Data_access_policy access = make_policy();
+    for (std::size_t layer = 0; layer < k_layer_count; ++layer) {
+        auto& samples = sources[layer];
+        samples.reserve(k_samples_per_layer);
+        for (std::size_t i = 0; i < k_samples_per_layer; ++i) {
+            samples.push_back({
+                static_cast<std::int64_t>(i * k_layer_count + layer),
+                static_cast<float>(layer + 1u)});
+        }
+        auto& plan = plans[layer];
+        plan.access            = &access;
+        plan.snapshot.snapshot = {
+            samples.data(), samples.size(), sizeof(Test_sample), 1};
+        plan.snapshot.sequence = 1;
+        plan.source_count      = samples.size();
+        plan.gpu_count         = samples.size();
+        plan.drawable_spans    = {{0, samples.size(), 0, samples.size()}};
+        plan.interpolation     = plot::Series_interpolation::LINEAR;
+        plan_ptrs.push_back(&plan);
+    }
+
+    plot::detail::stack_composition_stats_t stats;
+    std::vector<std::vector<plot::detail::stacked_sample_t>> layers;
+    TEST_ASSERT(plot::detail::compose_stacked_series(
+        plan_ptrs, layers, k_timestamp_budget, &stats) ==
+            plot::Stack_rejection_reason::NONE,
+        "32 independent timestamp grids should compose within the bounded grid");
+    TEST_ASSERT(stats.resampled && stats.timestamp_count == k_timestamp_budget,
+        "an oversized timestamp union should use the deterministic view grid");
+    TEST_ASSERT(layers.size() == k_layer_count &&
+        std::all_of(layers.begin(), layers.end(), [](const auto& layer) {
+            return layer.size() == k_timestamp_budget;
+        }),
+        "every cumulative layer should share the bounded timestamp count");
+    TEST_ASSERT(k_layer_count * k_timestamp_budget <=
+        plot::detail::k_stack_max_output_samples_per_view,
+        "bounded composition must stay below the per-view output ceiling");
+    TEST_ASSERT(layers.front().front().timestamp_ns == 31 &&
+        layers.front().back().timestamp_ns == 319'968,
+        "the bounded grid should retain both common-domain endpoints");
+    TEST_ASSERT(std::abs(layers.back().back().value - 528.0f) < 1e-5f,
+        "bounded interpolation should preserve the cumulative value at emitted timestamps");
+
+    return true;
+}
+
+bool test_stacking_bounded_grid_handles_interpolation_and_integer_extremes()
+{
+    const Data_access_policy access = make_policy();
+    const auto make_plan = [&access](std::vector<Test_sample>& samples,
+        plot::Series_interpolation interpolation) {
+        plot::Series_view_plan plan;
+        plan.access            = &access;
+        plan.snapshot.snapshot = {
+            samples.data(), samples.size(), sizeof(Test_sample), 1};
+        plan.snapshot.sequence = 1;
+        plan.source_count      = samples.size();
+        plan.gpu_count         = samples.size();
+        plan.drawable_spans    = {{0, samples.size(), 0, samples.size()}};
+        plan.interpolation     = interpolation;
+        return plan;
+    };
+    std::vector<std::vector<plot::detail::stacked_sample_t>> layers;
+    plot::detail::stack_composition_stats_t stats;
+
+    constexpr std::int64_t k_min = std::numeric_limits<std::int64_t>::min();
+    constexpr std::int64_t k_max = std::numeric_limits<std::int64_t>::max();
+    std::vector<Test_sample> full_a{{k_min, 0.0f}, {-1, 10.0f}, {k_max, 20.0f}};
+    std::vector<Test_sample> full_b{{k_min, 1.0f}, {1, 3.0f}, {k_max, 5.0f}};
+    auto a_plan = make_plan(full_a, plot::Series_interpolation::LINEAR);
+    auto b_plan = make_plan(full_b, plot::Series_interpolation::LINEAR);
+    TEST_ASSERT(plot::detail::compose_stacked_series(
+        {&a_plan, &b_plan}, layers, 3u, &stats) == plot::Stack_rejection_reason::NONE,
+        "the bounded grid should span the full int64 timestamp range");
+    TEST_ASSERT(stats.resampled && layers.front().size() == 3 &&
+        layers.front()[0].timestamp_ns == k_min &&
+        layers.front()[1].timestamp_ns == -1 &&
+        layers.front()[2].timestamp_ns == k_max,
+        "full-range grid timestamps should be distinct and retain both endpoints");
+
+    std::vector<Test_sample> step_a{{0, 1.0f}, {2, 2.0f}, {4, 3.0f}};
+    std::vector<Test_sample> step_b{{0, 10.0f}, {1, 20.0f}, {3, 30.0f}, {4, 40.0f}};
+    a_plan = make_plan(step_a, plot::Series_interpolation::STEP_AFTER);
+    b_plan = make_plan(step_b, plot::Series_interpolation::STEP_AFTER);
+    TEST_ASSERT(plot::detail::compose_stacked_series(
+        {&a_plan, &b_plan}, layers, 3u, &stats) == plot::Stack_rejection_reason::NONE,
+        "STEP_AFTER sources should compose on the bounded grid");
+    TEST_ASSERT(stats.resampled && layers.back()[0].value == 11.0f &&
+        layers.back()[1].value == 22.0f && layers.back()[2].value == 43.0f,
+        "bounded STEP_AFTER values should use the last source value at each grid timestamp");
+
+    std::vector<Test_sample> left{{0, 1.0f}, {10, 2.0f}};
+    std::vector<Test_sample> right{{10, 3.0f}, {20, 4.0f}};
+    a_plan = make_plan(left,  plot::Series_interpolation::LINEAR);
+    b_plan = make_plan(right, plot::Series_interpolation::LINEAR);
+    TEST_ASSERT(plot::detail::compose_stacked_series(
+        {&a_plan, &b_plan}, layers, 1u, &stats) == plot::Stack_rejection_reason::NONE &&
+        !stats.resampled && stats.timestamp_count == 1 &&
+        layers.back().front().timestamp_ns == 10,
+        "a single-timestamp common domain should remain exact under a one-point budget");
+
+    return true;
+}
+
+bool test_stacking_uses_separate_view_budgets_and_invalidates_resized_cache()
+{
+    auto lower_source = std::make_shared<Single_level_source>();
+    auto upper_source = std::make_shared<Single_level_source>();
+    for (std::int64_t timestamp = 0; timestamp <= 198; timestamp += 2) {
+        lower_source->samples.push_back({timestamp, 1.0f});
+    }
+    upper_source->samples.push_back({0, 2.0f});
+    for (std::int64_t timestamp = 1; timestamp < 198; timestamp += 2) {
+        upper_source->samples.push_back({timestamp, 2.0f});
+    }
+    upper_source->samples.push_back({198, 2.0f});
+
+    const Data_access_policy access = make_policy();
+    auto lower = std::make_shared<series_data_t>();
+    lower->data_source = lower_source;
+    lower->access      = access;
+    lower->stack_group = 1;
+    auto upper = std::make_shared<series_data_t>();
+    upper->data_source = upper_source;
+    upper->access      = access;
+    upper->stack_group = 1;
+    std::map<int, std::shared_ptr<const series_data_t>> series{{1, lower}, {2, upper}};
+
+    frame_layout_result_t layout;
+    layout.usable_width  = 10.0;
+    layout.usable_height = 50.0;
+    Plot_config config;
+    auto profiler    = std::make_shared<Observation_profiler>();
+    config.profiler  = profiler;
+    auto ctx = make_context(layout, config);
+    ctx.t1                      = 198;
+    ctx.t_available_max         = 198;
+    ctx.adjusted_preview_height = 20.0;
+    Series_renderer renderer;
+    Asset_loader assets;
+    renderer.initialize(assets);
+    renderer.render(ctx, series);
+
+    const auto& initial_main    = renderer.m_vbo_states.at(1).main_view.stack_cache_snapshot;
+    const auto& initial_preview = renderer.m_vbo_states.at(1).preview_view.stack_cache_snapshot;
+    TEST_ASSERT(initial_main.count == 21 && initial_preview.count == 199,
+        "main and preview should use their own pixel-derived timestamp budgets");
+    TEST_ASSERT(profiler->observations["renderer.stacking.resampled_group_count"] == 1.0 &&
+        profiler->observations["renderer.stacking.exact_group_count"] == 1.0,
+        "the renderer should report one bounded main grid and one exact preview union");
+    const void* initial_main_hold    = initial_main.hold.get();
+    const void* initial_preview_hold = initial_preview.hold.get();
+
+    layout.usable_width = 20.0;
+    renderer.render(ctx, series);
+    const auto& resized_main    = renderer.m_vbo_states.at(1).main_view.stack_cache_snapshot;
+    const auto& resized_preview = renderer.m_vbo_states.at(1).preview_view.stack_cache_snapshot;
+    TEST_ASSERT(resized_main.count == 41 && resized_main.hold.get() != initial_main_hold,
+        "resizing should invalidate and rebuild a resampled main grid");
+    TEST_ASSERT(resized_preview.count == 199 &&
+        resized_preview.hold.get() == initial_preview_hold,
+        "an unchanged preview budget should retain its exact cached union");
+    TEST_ASSERT(profiler->observations["renderer.stacking.cache_hit_count"] == 1.0,
+        "only the unchanged preview composition should hit its cache after resizing");
+    TEST_ASSERT(renderer.stack_view_statuses().at({1, plot::Series_view_kind::MAIN})
+        .status.state == plot::Stack_view_state::ACTIVE,
+        "bounded resampling should remain an active stack result");
 
     return true;
 }
@@ -1624,25 +1809,25 @@ bool test_stacking_reports_specific_rejection_reasons()
     auto b_plan = make_plan(b);
 
     TEST_ASSERT(plot::detail::compose_stacked_series(
-        {nullptr, &b_plan}, layers) == plot::Stack_rejection_reason::NO_DRAWABLE_DATA,
+        {nullptr, &b_plan}, layers, 16u) == plot::Stack_rejection_reason::NO_DRAWABLE_DATA,
         "missing plans should have a queryable rejection reason");
 
     b_plan.interpolation = plot::Series_interpolation::STEP_AFTER;
     TEST_ASSERT(plot::detail::compose_stacked_series(
-        {&a_plan, &b_plan}, layers) == plot::Stack_rejection_reason::MIXED_INTERPOLATION,
+        {&a_plan, &b_plan}, layers, 16u) == plot::Stack_rejection_reason::MIXED_INTERPOLATION,
         "mixed interpolation should have a queryable rejection reason");
     b_plan.interpolation = plot::Series_interpolation::LINEAR;
 
     a_plan.drawable_spans.push_back({1, 1, 1, 1});
     TEST_ASSERT(plot::detail::compose_stacked_series(
-        {&a_plan, &b_plan}, layers) == plot::Stack_rejection_reason::INCOMPATIBLE_DATA,
+        {&a_plan, &b_plan}, layers, 16u) == plot::Stack_rejection_reason::INCOMPATIBLE_DATA,
         "multiple drawable spans should report discontinuous data");
     a_plan.drawable_spans.resize(1);
 
     a[0].v = std::numeric_limits<float>::quiet_NaN();
     a_plan.nonfinite_policy = plot::Nonfinite_sample_policy::REJECT_WINDOW;
     TEST_ASSERT(plot::detail::compose_stacked_series(
-        {&a_plan, &b_plan}, layers) == plot::Stack_rejection_reason::INCOMPATIBLE_DATA,
+        {&a_plan, &b_plan}, layers, 16u) == plot::Stack_rejection_reason::INCOMPATIBLE_DATA,
         "nonfinite input should have a queryable rejection reason");
     a = {{0, 1.0f}, {1, 2.0f}};
     a_plan = make_plan(a);
@@ -1650,7 +1835,8 @@ bool test_stacking_reports_specific_rejection_reasons()
     a = {{0, 1.0f}, {2, 2.0f}, {1, 3.0f}};
     a_plan = make_plan(a);
     TEST_ASSERT(plot::detail::compose_stacked_series(
-        {&a_plan, &b_plan}, layers) == plot::Stack_rejection_reason::NONMONOTONIC_TIMESTAMPS,
+        {&a_plan, &b_plan}, layers, 16u) ==
+            plot::Stack_rejection_reason::NONMONOTONIC_TIMESTAMPS,
         "unordered timestamps should have a queryable rejection reason");
 
     a      = {{0, 1.0f}, {1, 2.0f}};
@@ -1658,8 +1844,14 @@ bool test_stacking_reports_specific_rejection_reasons()
     a_plan = make_plan(a);
     b_plan = make_plan(b);
     TEST_ASSERT(plot::detail::compose_stacked_series(
-        {&a_plan, &b_plan}, layers) == plot::Stack_rejection_reason::NO_COMMON_DOMAIN,
+        {&a_plan, &b_plan}, layers, 16u) == plot::Stack_rejection_reason::NO_COMMON_DOMAIN,
         "disjoint inputs should report no common domain");
+
+    b = {{0, 3.0f}, {1, 4.0f}};
+    b_plan = make_plan(b);
+    TEST_ASSERT(plot::detail::compose_stacked_series(
+        {&a_plan, &b_plan}, layers, 1u) == plot::Stack_rejection_reason::OUTPUT_LIMIT,
+        "a grid budget that cannot retain both endpoints should report its output limit");
 
     const float maximum = std::numeric_limits<float>::max();
     a      = {{0, maximum}, {1, maximum}};
@@ -1667,7 +1859,7 @@ bool test_stacking_reports_specific_rejection_reasons()
     a_plan = make_plan(a);
     b_plan = make_plan(b);
     TEST_ASSERT(plot::detail::compose_stacked_series(
-        {&a_plan, &b_plan}, layers) == plot::Stack_rejection_reason::CUMULATIVE_OVERFLOW,
+        {&a_plan, &b_plan}, layers, 16u) == plot::Stack_rejection_reason::CUMULATIVE_OVERFLOW,
         "nonfinite cumulative output should report overflow");
 
     return true;
@@ -2065,6 +2257,9 @@ int main()
     RUN_TEST(test_lod_selection_has_no_hysteresis);
     RUN_TEST(test_stacking_composes_different_timestamps_from_independent_lods);
     RUN_TEST(test_stacking_interpolates_sub_256ns_epoch_intervals);
+    RUN_TEST(test_stacking_bounds_independent_timestamp_grids);
+    RUN_TEST(test_stacking_bounded_grid_handles_interpolation_and_integer_extremes);
+    RUN_TEST(test_stacking_uses_separate_view_budgets_and_invalidates_resized_cache);
     RUN_TEST(test_stacking_reports_specific_rejection_reasons);
     RUN_TEST(test_snapshot_released_after_render);
     RUN_TEST(test_upload_origin_records_per_view_origin);

@@ -8,6 +8,8 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <new>
+#include <stdexcept>
 #include <vector>
 
 namespace vnm::plot::detail {
@@ -933,13 +935,46 @@ Series_view_plan plan_series_window(const series_window_plan_request_t& request)
     return plan;
 }
 
-Stack_rejection_reason compose_stacked_series(
+std::size_t stack_timestamp_budget(double width_px, std::size_t layer_count)
+{
+    if (layer_count == 0) {
+        return 0;
+    }
+    const std::size_t output_limited =
+        k_stack_max_output_samples_per_view / layer_count;
+    if (output_limited == 0 || !(width_px > 0.0) || !std::isfinite(width_px)) {
+        return output_limited;
+    }
+
+    const double ceil_width = std::ceil(width_px);
+    if (ceil_width > static_cast<double>((output_limited - 1u) / 2u)) {
+        return output_limited;
+    }
+    const auto  width         = static_cast<std::size_t>(ceil_width);
+    std::size_t doubled       = 0;
+    std::size_t pixel_limited = 0;
+    if (!checked_size_product(width,   2u, doubled) ||
+        !checked_size_add(doubled, 1u, pixel_limited))
+    {
+        return output_limited;
+    }
+    return std::min(pixel_limited, output_limited);
+}
+
+namespace {
+
+Stack_rejection_reason compose_stacked_series_impl(
     const std::vector<const Series_view_plan*>&    plans,
-    std::vector<std::vector<stacked_sample_t>>&    layers)
+    std::vector<std::vector<stacked_sample_t>>&    layers,
+    std::size_t                                    timestamp_budget,
+    stack_composition_stats_t*                     stats)
 {
     struct point_t { std::int64_t t; float v; };
 
     layers.clear();
+    if (timestamp_budget == 0) {
+        return Stack_rejection_reason::OUTPUT_LIMIT;
+    }
     if (plans.size() < 2) {
         return Stack_rejection_reason::NO_DRAWABLE_DATA;
     }
@@ -1018,7 +1053,17 @@ Stack_rejection_reason compose_stacked_series(
         return Stack_rejection_reason::NO_COMMON_DOMAIN;
     }
 
+    bool                     resampled = false;
     std::vector<std::size_t> merge_indices(points.size(), 0);
+    for (std::size_t i = 0; i < points.size(); ++i) {
+        merge_indices[i] = static_cast<std::size_t>(std::lower_bound(
+            points[i].begin(),
+            points[i].end(),
+            overlap_start,
+            [](const point_t& point, std::int64_t timestamp) {
+                return point.t < timestamp;
+            }) - points[i].begin());
+    }
     for (;;) {
         bool         found = false;
         std::int64_t next  = 0;
@@ -1032,9 +1077,15 @@ Stack_rejection_reason compose_stacked_series(
                 found = true;
             }
         }
-        if (!found)                { break;                      }
-        if (next > overlap_end)    { break;                      }
-        if (next >= overlap_start) { timestamps.push_back(next); }
+        if (!found)             { break; }
+        if (next > overlap_end) { break; }
+        if (next >= overlap_start) {
+            if (timestamps.size() == timestamp_budget) {
+                resampled = true;
+                break;
+            }
+            timestamps.push_back(next);
+        }
         for (std::size_t i = 0; i < points.size(); ++i) {
             while (merge_indices[i]           <  points[i].size() &&
                 points[i][merge_indices[i]].t == next)
@@ -1042,6 +1093,54 @@ Stack_rejection_reason compose_stacked_series(
                 ++merge_indices[i];
             }
         }
+    }
+
+    if (resampled) {
+        timestamps.clear();
+        if (overlap_start == overlap_end) {
+            timestamps.push_back(overlap_start);
+        }
+        else {
+            if (timestamp_budget < 2) {
+                return Stack_rejection_reason::OUTPUT_LIMIT;
+            }
+            const auto span = positive_span_ns(overlap_start, overlap_end);
+            if (!span) {
+                return Stack_rejection_reason::OUTPUT_LIMIT;
+            }
+            const auto          denominator = static_cast<std::uint64_t>(timestamp_budget - 1u);
+            const std::uint64_t step        = *span / denominator;
+            const std::uint64_t remainder   = *span % denominator;
+            std::uint64_t       offset      = 0;
+            std::uint64_t       carry       = 0;
+            timestamps.reserve(timestamp_budget);
+            for (std::size_t i = 0; i < timestamp_budget; ++i) {
+                timestamps.push_back(saturating_add_duration_ns(overlap_start, offset));
+                if (i + 1u == timestamp_budget) {
+                    break;
+                }
+                offset += step;
+                carry  += remainder;
+                if (carry >= denominator) {
+                    ++offset;
+                    carry -= denominator;
+                }
+            }
+            if (timestamps.back() != overlap_end) {
+                return Stack_rejection_reason::OUTPUT_LIMIT;
+            }
+        }
+    }
+
+    std::size_t output_samples = 0;
+    if (!checked_size_product(plans.size(), timestamps.size(), output_samples) ||
+        output_samples > k_stack_max_output_samples_per_view)
+    {
+        return Stack_rejection_reason::OUTPUT_LIMIT;
+    }
+    if (stats) {
+        stats->timestamp_count = timestamps.size();
+        stats->resampled       = resampled;
     }
 
     layers.assign(plans.size(), {});
@@ -1083,6 +1182,36 @@ Stack_rejection_reason compose_stacked_series(
     return timestamps.empty()
         ? Stack_rejection_reason::NO_DRAWABLE_DATA
         : Stack_rejection_reason::NONE;
+}
+
+} // anonymous namespace
+
+Stack_rejection_reason compose_stacked_series(
+    const std::vector<const Series_view_plan*>&    plans,
+    std::vector<std::vector<stacked_sample_t>>&    layers,
+    std::size_t                                    timestamp_budget,
+    stack_composition_stats_t*                     stats)
+{
+    if (stats) {
+        *stats = {};
+    }
+    try {
+        return compose_stacked_series_impl(plans, layers, timestamp_budget, stats);
+    }
+    catch (const std::bad_alloc&) {
+        layers.clear();
+        if (stats) {
+            *stats = {};
+        }
+        return Stack_rejection_reason::OUTPUT_LIMIT;
+    }
+    catch (const std::length_error&) {
+        layers.clear();
+        if (stats) {
+            *stats = {};
+        }
+        return Stack_rejection_reason::OUTPUT_LIMIT;
+    }
 }
 
 const Data_access_policy& stacked_sample_access()

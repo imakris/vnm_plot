@@ -159,6 +159,7 @@ private:
         bool                           line_window_geometry_dirty = true;
         std::vector<std::uint64_t>     stack_cache_key;
         data_snapshot_t                stack_cache_snapshot;
+        bool                           stack_cache_resampled      = false;
         bool                           last_stack_view_suppressed = false;
 
         // Per-view RHI resources. Defined out-of-line in series_renderer.cpp

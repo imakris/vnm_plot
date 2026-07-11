@@ -56,9 +56,10 @@ constexpr glm::vec4 k_stack_sum_color_light(
     32.0f / 255.0f,
     51.0f / 255.0f,
     1.0f);
-constexpr float k_default_color_epsilon    = 0.01f;
-constexpr int   k_stack_sum_z_order        = 20;
-constexpr float k_stack_sum_width_extra_px = 2.0f;
+constexpr float         k_default_color_epsilon     = 0.01f;
+constexpr int           k_stack_sum_z_order         = 20;
+constexpr float         k_stack_sum_width_extra_px  = 2.0f;
+constexpr std::uint64_t k_stack_grid_policy_version = 1;
 
 const char* stack_rejection_reason_text(Stack_rejection_reason reason)
 {
@@ -1064,7 +1065,8 @@ void Series_renderer::prepare(
         const auto clear_stack_cache = [&](series_draw_state_t& member) {
             auto& state = view_state_for(member);
             state.stack_cache_key.clear();
-            state.stack_cache_snapshot = {};
+            state.stack_cache_snapshot  = {};
+            state.stack_cache_resampled = false;
         };
         const auto set_reuses_uploaded_geometry =
             [view_kind](series_draw_state_t& member, bool value) {
@@ -1104,7 +1106,7 @@ void Series_renderer::prepare(
             plans.reserve(members.size());
             std::size_t input_samples = 0;
             std::vector<std::uint64_t> cache_key;
-            cache_key.reserve(members.size() * 20u);
+            cache_key.reserve(members.size() * 22u + 2u);
             bool cacheable = true;
             for (const auto* member : members) {
                 const Series_view_plan* plan = view_kind == Series_view_kind::MAIN
@@ -1166,6 +1168,12 @@ void Series_renderer::prepare(
                 continue;
             }
 
+            const std::size_t timestamp_budget = detail::stack_timestamp_budget(
+                plans.front()->width_px,
+                plans.size());
+            cache_key.push_back(k_stack_grid_policy_version);
+            cache_key.push_back(static_cast<std::uint64_t>(timestamp_budget));
+
             const bool cache_hit = cacheable && std::all_of(
                 members.begin(),
                 members.end(),
@@ -1176,9 +1184,19 @@ void Series_renderer::prepare(
                         state.stack_cache_snapshot;
                 });
             std::vector<std::vector<detail::stacked_sample_t>> layers;
+            detail::stack_composition_stats_t composition_stats;
             const Stack_rejection_reason rejection = cache_hit
                 ? Stack_rejection_reason::NONE
-                : detail::compose_stacked_series(plans, layers);
+                : detail::compose_stacked_series(
+                    plans,
+                    layers,
+                    timestamp_budget,
+                    &composition_stats);
+            if (cache_hit) {
+                const auto& cached = view_state_for(*members.front());
+                composition_stats.timestamp_count = cached.stack_cache_snapshot.count;
+                composition_stats.resampled       = cached.stack_cache_resampled;
+            }
             if (rejection != Stack_rejection_reason::NONE) {
                 published.status.state  = Stack_view_state::SUPPRESSED;
                 published.status.reason = rejection;
@@ -1202,6 +1220,9 @@ void Series_renderer::prepare(
                     "Stack composition suppressed: " +
                     std::string(stack_rejection_reason_text(rejection)) +
                     " (group " + std::to_string(group) + ")");
+                if (profiler && rejection == Stack_rejection_reason::OUTPUT_LIMIT) {
+                    profiler->record_counter("renderer.stacking.output_limit_count");
+                }
                 continue;
             }
             std::size_t output_samples = 0;
@@ -1229,12 +1250,13 @@ void Series_renderer::prepare(
                 if (!cache_hit) {
                     auto samples = std::make_shared<std::vector<detail::stacked_sample_t>>(
                         std::move(layers[i]));
-                    view_state.stack_cache_snapshot = {
+                    view_state.stack_cache_snapshot  = {
                         samples->data(), samples->size(),
                         sizeof(detail::stacked_sample_t),
                         m_frame_id,
                         nullptr, 0, samples};
-                    view_state.stack_cache_key      = cache_key;
+                    view_state.stack_cache_key       = cache_key;
+                    view_state.stack_cache_resampled = composition_stats.resampled;
                 }
                 set_reuses_uploaded_geometry(
                     *members[i],
@@ -1279,6 +1301,12 @@ void Series_renderer::prepare(
                 profiler->record_observation(
                     "renderer.stacking.output_sample_count",
                     static_cast<double>(output_samples));
+                profiler->record_observation(
+                    "renderer.stacking.grid_timestamp_count",
+                    static_cast<double>(composition_stats.timestamp_count));
+                profiler->record_counter(composition_stats.resampled
+                    ? "renderer.stacking.resampled_group_count"
+                    : "renderer.stacking.exact_group_count");
                 if (cache_hit) {
                     profiler->record_counter("renderer.stacking.cache_hit_count");
                 }
