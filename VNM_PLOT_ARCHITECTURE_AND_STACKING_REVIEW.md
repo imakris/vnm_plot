@@ -432,11 +432,19 @@ function:
 - The stack section/table/entry/member types have private storage, no public
   mutation or unrestricted construction, and frame-producer-only named tagged
   factories. COMPLETE alone owns a table; result-storage failures own none.
-  READY/STALE_BUSY require content ID/range/presented indicators and request
-  IDs, while EMPTY and every failure expose none. NOT_EVALUATED contains only
-  `series_id`;
-  CURRENT_OBSERVATION contains only structural ID and source-attempt fields;
-  disposition-mismatched observers return absent/null.
+  READY/STALE_BUSY require content ID/range and a present indicator collection;
+  it may be empty, while each contained item has its exact request ID. EMPTY and
+  every failure expose no collection. NOT_EVALUATED contains only `series_id`.
+  CURRENT_OBSERVATION is exactly `observed_ready` with completed derivation plus
+  attempted LOD/exact sequence/optional logical window, `observed_empty` with
+  attempted LOD/exact sequence including zero/no window, or `observed_busy`/
+  `observed_failed` with attempted LOD/zero sequence/no window. `UNSUPPORTED` is
+  not a completed acquisition. PRESENTED_CONTENT separately carries selected
+  LOD/window. Mismatched observers return absent/null.
+- Public `Stack_failure_reason` contains exactly the register's 19 named stack
+  reasons. `failed(reason,observations)` accepts only it. Result-storage budget
+  and allocation failures remain enclosing section dispositions and are never
+  entry enum members.
 - P-R1/P-D15 add a fixed allocation-free `stack_result_section_t` envelope to
   the ordinary result. Its exact dispositions are `COMPLETE`,
   `FAILED(RESULT_STORAGE_BUDGET)`, and
@@ -566,23 +574,28 @@ per allocation until final renderer-reference release. A private
 `renderer_retained_stack_entry_t` owns P-D6 keys, retained geometry/resources,
 and one value-only retained presentation record. The public
 `stack_result_entry_t` contains only `stack_group_id`, `Stack_view_kind`,
-disposition, per-series `series_id`/origin/status/sequence/LOD/window, rendered
-range, value-only indicators/request IDs, and `content_frame_id`; it contains no
-geometry, spans, samples, resources, source identities, or cache keys. The exact
-independent public stack table is counted while renderer-owned, populated
-without later renderer-side allocation, then moved atomically to GUI/public
-ownership and debited without publication allocation or aliasing private
-backing. It owns every byte referenced by its read-only group/member
-slices; those non-owning views live exactly as long as the table and remain
-valid through publication/move. An external copy either shares immutable public
-backing or deep-copies and rebases all slices. No public slice references a
-private retained renderer entry. Ordinary D9 result storage remains outside the
-stack cap. Of result-publication storage, only the stack group/view/member table
-is charged to `STACK_CPU_BYTES_LIMIT`. The private retained target's replacement
-transaction either preserves the old target while a complete
-replacement fits or debits it before retrying, but every resident/allocation/
-frame/output budget failure ultimately removes target eligibility and stale
-fallback. No partial set is installed and no opaque pipeline/SRB/texture
+disposition, per-series `series_id`/origin/status/sequence and origin-tagged
+attempted-or-selected LOD/window, rendered range, value-only indicators/request
+IDs, and `content_frame_id`; it contains no geometry, spans, samples, resources,
+source identities, or cache keys. The exact
+public stack-table builder allocates and counts payload plus immutable ownership-
+control bytes before stack work, privately populates and validates offsets/
+counts, and freezes the backing before publication. Publication atomically
+moves/debits the renderer handle without allocation or a private alias.
+
+`stack_result_table_t` is a copyable immutable handle. Every copy shares the
+same public-only backing identity with zero allocation or payload duplication;
+move/publication/non-final destruction preserve it, and final-handle destruction
+releases it. Each observer call derives a read-only view from validated offset/
+count metadata; no raw group/member pointer is stored and no path rebases a
+view. No public backing/view references a private retained renderer entry.
+Ordinary D9 result storage remains outside the stack cap. Of result-publication
+storage, the stack group/view/member payload and ownership-control bytes are
+charged to `STACK_CPU_BYTES_LIMIT` while renderer-owned. The private retained
+target's replacement transaction either preserves the old target while a
+complete replacement fits or debits it before retrying, but every resident/
+allocation/frame/output budget failure ultimately removes target eligibility
+and stale fallback. No partial set is installed and no opaque pipeline/SRB/texture
 residency is claimed. The sole register owns the exact formulas, counted scopes,
 order, statuses, and transaction algorithm. Pending P-R1 owns the corresponding
 immutable result presentation.
@@ -714,9 +727,11 @@ evidence-gated, and labelled executable refinements remain owner-pending.
 | BUSY/FAILED/EMPTY | BUSY/EMPTY continue in ascending acquisition order so a later first FAILED can stop and outrank; otherwise EMPTY outranks BUSY. STALE_BUSY keeps current `publication_frame_id`, reuses private retained geometry, and copies only the retained value record into the independent public table; current attempts remain trace/counters. Without retained content, BUSY is `FAILED(SOURCE_BUSY)` with all required entries CURRENT_OBSERVATION. READY replaces retention; EMPTY/every failure/budget/allocation/structural change clears it, so only consecutive BUSY can stale. |
 | Multiple failures | Pending P-R1 selects one canonical disposition by phase/series/reason order. Every result has publication identity; only READY/STALE_BUSY have presented identity. A pre-acquisition stop is all NOT_EVALUATED; completed partial attempts are CURRENT_OBSERVATION and only later series after first source FAILED are NOT_EVALUATED. |
 | Result self-description/order | Every group/view record contains `stack_group_id` and MAIN/PREVIEW kind; every member, including `FAILED(reason)`/`NOT_EVALUATED`, contains `series_id`. All MAIN groups ordered by lowest enabled series ID precede equivalently ordered PREVIEW groups; members ascend by series ID. Delayed/topology-changed results remain self-describing, while enclosing executed-plan config identity rejects stale consumption and labels never authorize reuse. |
-| Public result privacy | `stack_result_entry_t` contains only structural IDs/view kind, disposition, per-series origin/status/sequence/LOD/window, rendered range, value-only indicators/request IDs, and content frame ID. No geometry, span, sample, resource, source identity, weak owner, alias pointer, `structure_key`, or `content_key` is exposed, serialized, copied, or accepted by the public result/API. Private `renderer_retained_stack_entry_t` owns keys, retained geometry/resources, and one value-only retained presentation record. |
-| Result structural states | Section/table/entry/member storage is private and frame-producer tagged factories are the only construction path. COMPLETE alone has a table. READY/STALE_BUSY require content ID/range/presented indicators/request IDs; EMPTY and every failure expose none. NOT_EVALUATED has only `series_id`; CURRENT_OBSERVATION has only label/source-attempt facts. Matched const observers expose payload and mismatched observers are absent/null. |
-| Result ownership | Before stack work, allocate the exact independent public stack table and populate it without later renderer-side allocation. It owns every byte referenced by its read-only group/member slices, whose validity is exactly the table lifetime and survives publication/move. External copy shares immutable public backing or deep-copies/rebases all slices; no public view aliases private state. READY atomically installs private geometry/resources with its retained value record; STALE_BUSY reuses private geometry and copies only that value record into the current public table. |
+| Public result privacy | `stack_result_entry_t` contains only structural IDs/view kind, disposition, per-series origin/status/sequence and attempted-or-selected LOD/window, rendered range, value-only indicators/request IDs, and content frame ID. No geometry, span, sample, resource, source identity, weak owner, alias pointer, `structure_key`, or `content_key` is exposed, serialized, copied, or accepted by the public result/API. Private `renderer_retained_stack_entry_t` owns keys, retained geometry/resources, and one value-only retained presentation record. |
+| Source-observation variants | CURRENT_OBSERVATION is exactly `observed_ready` with completed derivation plus attempted LOD/exact sequence/optional logical window, `observed_empty` with attempted LOD/exact sequence including zero/no window, or `observed_busy`/`observed_failed` with attempted LOD/zero sequence/no window. `UNSUPPORTED` cannot construct it. PRESENTED_CONTENT alone carries selected LOD/window. |
+| Result structural states | Section/table/entry/member storage is private and frame-producer tagged factories are the only construction path. COMPLETE alone has a table. READY/STALE_BUSY require content ID/range and a present indicator collection; it may be empty and every item has its request ID. EMPTY and every failure expose none. NOT_EVALUATED has only `series_id`. Matched const observers expose payload and mismatched observers are absent/null. |
+| Failure enum boundary | Public `Stack_failure_reason` contains exactly the register's 19 stack reasons and is the only entry failure-reason type. Result-storage budget/allocation failures are enclosing section dispositions only and cannot appear in the enum or an entry. |
+| Result ownership | Before stack work, allocate/count all stack-result payload and immutable ownership-control bytes, populate and validate offsets/counts privately, and freeze the public-only backing. `stack_result_table_t` copies are zero-allocation immutable handles to the same backing identity. Publication/move/non-final destruction preserve it; final-handle destruction releases it. Observers derive views per call from offsets/counts, with no stored raw pointers, rebasing, or private alias. READY atomically installs private geometry/resources with its retained value record; STALE_BUSY reuses private geometry and copies only that value record into the current public table. |
 | Fragment/frame/resident budget | Pending P-D2 endpoint/breakpoint excess is `FAILED(FRAGMENTATION_BUDGET)`; pending P-D15 admission is `FAILED(FRAME_BUDGET)`, cap excess `FAILED(RESIDENT_BUDGET)`, and in-cap API failure `FAILED(RESOURCE_ALLOCATION_FAILED)`. No case emits a partial group, and every P-D15 budget/allocation failure removes target stale eligibility. |
 | Result storage fault | The fixed allocation-free `stack_result_section_t` publishes `FAILED(RESULT_STORAGE_BUDGET)` or `FAILED(RESULT_STORAGE_ALLOCATION_FAILED)` without a stack table, stack acquisition, or stack geometry; first/replacement faults clear every stack stale entry while ordinary D9 pixels, statuses, counters, planning, rendering, and results remain unchanged. |
 | Post-composition failure payload | Numeric, resident-cap, CPU-allocation, and RHI-allocation failures have no content ID, rendered range, or indicator; completed source-attempt observations remain the only permitted member payload. |
