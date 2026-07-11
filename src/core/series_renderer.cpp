@@ -33,9 +33,32 @@ namespace {
 
 using detail::load_qsb;
 
-constexpr glm::vec4 k_default_series_color(0.16f, 0.45f, 0.64f, 1.0f);
-constexpr glm::vec4 k_default_series_color_dark(0.30f, 0.63f, 0.88f, 1.0f);
-constexpr float k_default_color_epsilon = 0.01f;
+constexpr glm::vec4 k_default_series_color(
+    0.16f,
+    0.45f,
+    0.64f,
+    1.0f);
+
+constexpr glm::vec4 k_default_series_color_dark(
+    0.30f,
+    0.63f,
+    0.88f,
+    1.0f);
+
+constexpr glm::vec4 k_stack_sum_color_dark(
+    230.0f / 255.0f,
+    223.0f / 255.0f,
+    204.0f / 255.0f,
+    1.0f);
+
+constexpr glm::vec4 k_stack_sum_color_light(
+    25.0f / 255.0f,
+    32.0f / 255.0f,
+    51.0f / 255.0f,
+    1.0f);
+constexpr float k_default_color_epsilon    = 0.01f;
+constexpr int   k_stack_sum_z_order        = 20;
+constexpr float k_stack_sum_width_extra_px = 2.0f;
 
 std::vector<std::size_t> source_lod_scales(const Data_source& source)
 {
@@ -55,6 +78,27 @@ bool is_default_series_color(const glm::vec4& color)
     return glm::all(glm::lessThan(
         glm::abs(color - k_default_series_color),
         glm::vec4(k_default_color_epsilon)));
+}
+
+glm::vec4 builtin_draw_color(
+    const frame_context_t& ctx,
+    const glm::vec4&       series_color,
+    Display_style          primitive_style,
+    const sample_window_t& window,
+    float                  area_fill_alpha)
+{
+    glm::vec4 color = series_color;
+    if (primitive_style == Display_style::AREA) {
+        const bool use_dark_default_color =
+            ctx.dark_mode && is_default_series_color(color);
+        color.w *= area_fill_alpha;
+        if (use_dark_default_color) {
+            color = k_default_series_color_dark;
+            color.w *= area_fill_alpha;
+        }
+    }
+    color.w *= window.window_alpha;
+    return color;
 }
 
 bool line_window_sample_count(
@@ -256,6 +300,7 @@ struct Series_renderer::vbo_view_state_t::rhi_buffers_t
     };
     srb_entry_t                    dots_srb;
     srb_entry_t                    line_srb;
+    srb_entry_t                    stack_sum_line_srb;
     srb_entry_t                    area_fill_srb;
 
 };
@@ -461,18 +506,21 @@ struct Series_renderer::rhi_state_t
             CUSTOM
         };
 
-        kind_t                     kind            = kind_t::CUSTOM;
-        int                        z_order         = 0;
-        int                        series_id       = 0;
-        Series_view_kind           view_kind       = Series_view_kind::MAIN;
-        std::size_t                series_order    = 0;
-        std::size_t                insertion_order = 0;
-        Qrhi_series_layer_state*   state           = nullptr;
-        const series_data_t*       series          = nullptr;
+        kind_t                     kind              = kind_t::CUSTOM;
+        int                        z_order           = 0;
+        int                        series_id         = 0;
+        Series_view_kind           view_kind         = Series_view_kind::MAIN;
+        std::size_t                series_order      = 0;
+        std::size_t                insertion_order   = 0;
+        Qrhi_series_layer_state*   state             = nullptr;
+        const series_data_t*       series            = nullptr;
         sample_window_t            window;
-        QRhiBuffer*                view_ubo        = nullptr;
-        Display_style              primitive_style = Display_style::LINE;
-        vbo_view_state_t*          view_state      = nullptr;
+        QRhiBuffer*                view_ubo          = nullptr;
+        Display_style              primitive_style   = Display_style::LINE;
+        vbo_view_state_t*          view_state        = nullptr;
+        bool                       stack_sum_overlay = false;
+        glm::vec4                  draw_color{};
+        float                      line_width_px     = 0.0f;
         // Built-in LINE/AREA strips, computed once in prepare and reused by the
         // record pass instead of recomputing from window. Empty for DOTS.
         std::vector<detail::builtin_segment_span_t>
@@ -648,6 +696,9 @@ void Series_renderer::cleanup_resources()
     m_last_recorded_draw_styles.clear();
     m_last_recorded_draw_series_ids.clear();
     m_last_recorded_draw_view_kinds.clear();
+    m_last_recorded_stack_sum_overlays.clear();
+    m_last_recorded_draw_colors.clear();
+    m_last_recorded_line_widths.clear();
     m_last_qrhi_layer_cache_size = 0;
 }
 
@@ -673,6 +724,9 @@ void Series_renderer::prepare(
     m_last_recorded_draw_styles.clear();
     m_last_recorded_draw_series_ids.clear();
     m_last_recorded_draw_view_kinds.clear();
+    m_last_recorded_stack_sum_overlays.clear();
+    m_last_recorded_draw_colors.clear();
+    m_last_recorded_line_widths.clear();
     m_last_qrhi_layer_cache_size = m_rhi_state->qrhi_layer_cache.size();
 
     const auto clear_retired_series_resources = [&]() {
@@ -1141,6 +1195,12 @@ void Series_renderer::prepare(
                     plan.snapshot.snapshot = {};
                 }
             }
+            if (view_kind == Series_view_kind::MAIN) {
+                members.back()->main_stack_sum_overlay = true;
+            }
+            else {
+                members.back()->preview_stack_sum_overlay = true;
+            }
             if (profiler) {
                 profiler->record_observation(
                     "renderer.stacking.input_sample_count",
@@ -1330,9 +1390,10 @@ void Series_renderer::prepare(
         {
             std::shared_ptr<const Qrhi_series_layer>
                            layer;
-            bool           is_builtin      = false;
-            Display_style  primitive_style = Display_style::NONE;
-            int            z_order         = 0;
+            bool           is_builtin        = false;
+            Display_style  primitive_style   = Display_style::NONE;
+            int            z_order           = 0;
+            bool           stack_sum_overlay = false;
         };
 
         // Built-in LINE/DOTS/AREA all read the primary value lane. A range-only
@@ -1376,6 +1437,17 @@ void Series_renderer::prepare(
                 true,
                 Display_style::DOTS,
                 builtin_primitive_z_order(Display_style::DOTS)});
+        }
+        const bool stack_sum_overlay = plan.view_kind == Series_view_kind::MAIN
+            ? draw_state.main_stack_sum_overlay
+            : draw_state.preview_stack_sum_overlay;
+        if (access_has_value && stack_sum_overlay) {
+            planned_draws.push_back({
+                nullptr,
+                true,
+                Display_style::LINE,
+                k_stack_sum_z_order,
+                true});
         }
         for (const auto& layer : qrhi_layers_for(*draw_state.series)) {
             if (layer && layer->draws_view(plan.view_kind)) {
@@ -1462,22 +1534,37 @@ void Series_renderer::prepare(
                 }
 
                 std::vector<builtin_segment_span_t> prepared_segment_spans;
+                const glm::vec4 series_color = planned_draw.stack_sum_overlay
+                    ? (ctx.dark_mode ? k_stack_sum_color_dark : k_stack_sum_color_light)
+                    : draw_state.series->color;
+                const glm::vec4 draw_color = builtin_draw_color(
+                    ctx,
+                    series_color,
+                    planned_draw.primitive_style,
+                    window,
+                    area_fill_alpha);
+                const float draw_line_width_px = planned_draw.stack_sum_overlay
+                    ? line_width_px + k_stack_sum_width_extra_px
+                    : line_width_px;
                 if (rhi_prepare_series_primitive(
-                        ctx, draw_state.series.get(), planned_draw.primitive_style, view_state, window,
-                        line_width_px, point_diameter_px, area_fill_alpha, &prepared_segment_spans))
+                        ctx, planned_draw.primitive_style, view_state, window, draw_color, draw_line_width_px,
+                        point_diameter_px, planned_draw.stack_sum_overlay, &prepared_segment_spans))
                 {
                     rhi_state_t::prepared_draw_command_t command;
                     command.kind =
                         rhi_state_t::prepared_draw_command_t::kind_t::BUILTIN;
-                    command.z_order         = planned_draw.z_order;
-                    command.series_id       = draw_state.id;
-                    command.view_kind       = plan.view_kind;
-                    command.series_order    = draw_state.series_order;
-                    command.insertion_order = next_draw_insertion_order++;
-                    command.series          = draw_state.series.get();
-                    command.window          = window;
-                    command.primitive_style = planned_draw.primitive_style;
-                    command.view_state      = &view_state;
+                    command.z_order           = planned_draw.z_order;
+                    command.series_id         = draw_state.id;
+                    command.view_kind         = plan.view_kind;
+                    command.series_order      = draw_state.series_order;
+                    command.insertion_order   = next_draw_insertion_order++;
+                    command.series            = draw_state.series.get();
+                    command.window            = window;
+                    command.primitive_style   = planned_draw.primitive_style;
+                    command.view_state        = &view_state;
+                    command.stack_sum_overlay = planned_draw.stack_sum_overlay;
+                    command.draw_color        = draw_color;
+                    command.line_width_px     = draw_line_width_px;
                     command.builtin_segment_spans =
                         std::move(prepared_segment_spans);
                     m_rhi_state->prepared_draws.push_back(std::move(command));
@@ -1815,6 +1902,9 @@ void Series_renderer::render(
                         : Display_style::NONE);
         m_last_recorded_draw_series_ids.push_back(command.series_id);
         m_last_recorded_draw_view_kinds.push_back(command.view_kind);
+        m_last_recorded_stack_sum_overlays.push_back(command.stack_sum_overlay);
+        m_last_recorded_draw_colors.push_back(command.draw_color);
+        m_last_recorded_line_widths.push_back(command.line_width_px);
 
         if (command.kind ==
             rhi_state_t::prepared_draw_command_t::kind_t::BUILTIN)
@@ -1825,6 +1915,7 @@ void Series_renderer::render(
                     command.primitive_style,
                     *command.view_state,
                     command.window,
+                    command.stack_sum_overlay,
                     command.builtin_segment_spans);
             }
             continue;
@@ -2073,18 +2164,15 @@ bool Series_renderer::rhi_prepare_series_view_samples(
 
 bool Series_renderer::rhi_prepare_series_primitive(
     const frame_context_t&                         ctx,
-    const series_data_t*                           series,
     Display_style                                  primitive_style,
     vbo_view_state_t&                              view_state,
     const sample_window_t&                         window,
+    const glm::vec4&                               draw_color,
     float                                          line_width_px,
     float                                          point_diameter_px,
-    float                                          area_fill_alpha,
+    bool                                           stack_sum_overlay,
     std::vector<detail::builtin_segment_span_t>*   out_segment_spans)
 {
-    if (!series) {
-        return false;
-    }
     QRhi* rhi = ctx.rhi;
     QRhiResourceUpdateBatch* updates = ctx.rhi_updates;
 
@@ -2162,7 +2250,11 @@ bool Series_renderer::rhi_prepare_series_primitive(
 
     auto& primary_srb_entry = is_dots
         ? view_state.rhi->dots_srb
-        : (is_area ? view_state.rhi->area_fill_srb : view_state.rhi->line_srb);
+        : (is_area
+            ? view_state.rhi->area_fill_srb
+            : (stack_sum_overlay
+                ? view_state.rhi->stack_sum_line_srb
+                : view_state.rhi->line_srb));
     if (!ensure_ubo(primary_srb_entry)) {
         return false;
     }
@@ -2182,7 +2274,8 @@ bool Series_renderer::rhi_prepare_series_primitive(
     // them as RWByteAddressBuffer UAVs and D3D11 SM 5.0 vertex shaders
     // accept zero UAVs; QRhi requires HLSL 5.0 bytecode for D3D11, so any
     // storage-buffer access in the vertex stage fails to compile.
-    if (!is_dots && !is_area) {
+    if (!is_dots && !is_area && (!stack_sum_overlay || view_state.line_draw_spans.empty()))
+    {
         view_state.line_draw_spans.clear();
         std::size_t total_window_count = 0;
         std::size_t total_padded_count = 0;
@@ -2480,21 +2573,10 @@ bool Series_renderer::rhi_prepare_series_primitive(
     series_view_uniform_std140_t view_block{};
     std::memcpy(view_block.pmv, glm::value_ptr(ctx.pmv), sizeof(float) * 16);
 
-    glm::vec4 draw_color = series->color;
-    if (is_area) {
-        const bool use_dark_default_color =
-            ctx.dark_mode && is_default_series_color(draw_color);
-        draw_color.w *= area_fill_alpha;
-        if (use_dark_default_color) {
-            draw_color = k_default_series_color_dark;
-            draw_color.w *= area_fill_alpha;
-        }
-    }
-    draw_color.w        *= window.window_alpha;
-    view_block.color[0]  = draw_color.r;
-    view_block.color[1]  = draw_color.g;
-    view_block.color[2]  = draw_color.b;
-    view_block.color[3]  = draw_color.a;
+    view_block.color[0] = draw_color.r;
+    view_block.color[1] = draw_color.g;
+    view_block.color[2] = draw_color.b;
+    view_block.color[3] = draw_color.a;
 
     view_block.t_min    = detail::to_view_seconds(
         window.t_min_ns, window.t_origin_ns);
@@ -2558,6 +2640,7 @@ void Series_renderer::rhi_record_series_primitive(
     Display_style          primitive_style,
     vbo_view_state_t&      view_state,
     const sample_window_t& window,
+    bool                   stack_sum_overlay,
     const std::vector<detail::builtin_segment_span_t>&
                            segment_spans)
 {
@@ -2597,7 +2680,11 @@ void Series_renderer::rhi_record_series_primitive(
 
     auto& srb_entry = is_dots
         ? view_state.rhi->dots_srb
-        : (is_area ? view_state.rhi->area_fill_srb : view_state.rhi->line_srb);
+        : (is_area
+            ? view_state.rhi->area_fill_srb
+            : (stack_sum_overlay
+                ? view_state.rhi->stack_sum_line_srb
+                : view_state.rhi->line_srb));
     if (!srb_entry.srb) {
         return;
     }

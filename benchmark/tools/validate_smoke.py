@@ -113,6 +113,8 @@ def validate(
     if args.stacked:
         if observation_total(payload, "renderer.stacking.output_sample_count") <= 0:
             raise RuntimeError("stacked AREA composition was not exercised")
+        if int(metadata["stack_sum_pixel_count"]) <= 0:
+            raise RuntimeError("stack sum overlay color #E6DFCC is absent from readback")
     else:
         if observation_total(payload, "renderer.frame.upload.primary_count") != 0:
             raise RuntimeError("static unchanged primary uploads are not zero")

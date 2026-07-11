@@ -1305,11 +1305,26 @@ bool Benchmark_rhi_offscreen_runner::render_frame(
         }
         m_pixel_checksum = checksum;
         m_pixel_nonuniform_count = 0;
+        m_stack_sum_pixel_count = 0;
         if (readback.data.size() >= 4) {
-            const char* pixels = readback.data.constData();
+            const auto* pixels = reinterpret_cast<const unsigned char*>(
+                readback.data.constData());
             for (qsizetype offset = 4; offset + 4 <= readback.data.size(); offset += 4) {
                 if (std::memcmp(pixels, pixels + offset, 4) != 0) {
                     ++m_pixel_nonuniform_count;
+                }
+            }
+            for (qsizetype offset = 0; offset + 4 <= readback.data.size(); offset += 4) {
+                const bool rgba =
+                    pixels[offset]     == 230 &&
+                    pixels[offset + 1] == 223 &&
+                    pixels[offset + 2] == 204;
+                const bool bgra =
+                    pixels[offset]     == 204 &&
+                    pixels[offset + 1] == 223 &&
+                    pixels[offset + 2] == 230;
+                if (rgba || bgra) {
+                    ++m_stack_sum_pixel_count;
                 }
             }
         }
@@ -1322,6 +1337,9 @@ bool Benchmark_rhi_offscreen_runner::render_frame(
         m_profiler.record_observation(
             "benchmark.frame.pixel_nonuniform_count",
             static_cast<double>(m_pixel_nonuniform_count));
+        m_profiler.record_observation(
+            "benchmark.frame.stack_sum_pixel_count",
+            static_cast<double>(m_stack_sum_pixel_count));
     }
     if (measured) {
         const Thread_allocation_measurement allocations = allocation_scope.finish();

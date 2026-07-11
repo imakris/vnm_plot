@@ -193,14 +193,16 @@ private:
     // own state (vbo_state) is owned by m_vbo_states.
     struct series_draw_state_t
     {
-        int                id           = 0;
-        std::size_t        series_order = 0;
+        int                id                        = 0;
+        std::size_t        series_order              = 0;
         std::shared_ptr<const series_data_t>
                            series;
-        vbo_state_t*       vbo_state    = nullptr;
+        vbo_state_t*       vbo_state                 = nullptr;
         Series_view_plan   main_plan;
         Series_view_plan   preview_plan;
-        bool               has_preview  = false;
+        bool               has_preview               = false;
+        bool               main_stack_sum_overlay    = false;
+        bool               preview_stack_sum_overlay = false;
     };
 
     Asset_loader*                                          m_asset_loader = nullptr;
@@ -214,6 +216,9 @@ private:
     std::vector<Display_style>                             m_last_recorded_draw_styles;
     std::vector<int>                                       m_last_recorded_draw_series_ids;
     std::vector<Series_view_kind>                          m_last_recorded_draw_view_kinds;
+    std::vector<bool>                                      m_last_recorded_stack_sum_overlays;
+    std::vector<glm::vec4>                                 m_last_recorded_draw_colors;
+    std::vector<float>                                     m_last_recorded_line_widths;
     std::size_t                                            m_last_qrhi_layer_cache_size = 0;
 
     // The full implementation sits in series_renderer.cpp where the QRhi
@@ -246,13 +251,13 @@ private:
 
     bool rhi_prepare_series_primitive(
         const frame_context_t& ctx,
-        const series_data_t*   series,
         Display_style          primitive_style,
         vbo_view_state_t&      view_state,
         const sample_window_t& window,
+        const glm::vec4&       draw_color,
         float                  line_width_px,
         float                  point_diameter_px,
-        float                  area_fill_alpha,
+        bool                   stack_sum_overlay,
         std::vector<detail::builtin_segment_span_t>*
                                out_segment_spans = nullptr);
 
@@ -261,6 +266,7 @@ private:
         Display_style          primitive_style,
         vbo_view_state_t&      view_state,
         const sample_window_t& window,
+        bool                   stack_sum_overlay,
         const std::vector<detail::builtin_segment_span_t>&
                                segment_spans);
 };

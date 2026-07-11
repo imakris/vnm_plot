@@ -572,6 +572,8 @@ int main(int argc, char* argv[])
         meta.reproduction["pixel_checksum"] = std::to_string(benchmark.pixel_checksum());
         meta.reproduction["pixel_nonuniform_count"] =
             std::to_string(benchmark.pixel_nonuniform_count());
+        meta.reproduction["stack_sum_pixel_count"] =
+            std::to_string(benchmark.stack_sum_pixel_count());
         meta.reproduction["qt_version"] = qVersion();
         meta.reproduction["requested_graphics_backend"] = config.graphics_backend;
         meta.reproduction["scenario"] = config.scenario;

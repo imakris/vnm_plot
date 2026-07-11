@@ -3409,6 +3409,154 @@ bool test_range_only_access_skips_builtin_value_styles()
     return true;
 }
 
+bool test_stacked_sum_overlay_uses_top_geometry_and_theme()
+{
+    constexpr std::int64_t k_second_ns = 1'000'000'000LL;
+    const auto make_source = [&](float offset) {
+        auto source = std::make_shared<Test_source>();
+        source->set_samples({
+            { 0LL, offset + 1.0f },
+            { 1LL * k_second_ns, offset + 2.0f },
+            { 2LL * k_second_ns, offset + 3.0f },
+            {3LL * k_second_ns,   offset + 4.0f}
+        });
+        return source;
+    };
+    const auto make_series = [&](int group, plot::Display_style style,
+        float offset, const glm::vec4& color) {
+        auto series         = std::make_shared<plot::series_data_t>();
+        series->data_source = make_source(offset);
+        series->access      = make_access_policy();
+        series->stack_group = group;
+        series->style       = style;
+        series->color       = color;
+        return series;
+    };
+
+    std::map<int, std::shared_ptr<const plot::series_data_t>> series_map;
+    series_map[10] = make_series(
+        1, plot::Display_style::AREA, 0.0f, glm::vec4(0.8f, 0.1f, 0.2f, 1.0f));
+    series_map[20] = make_series(
+        1, plot::Display_style::AREA, 10.0f, glm::vec4(0.1f, 0.8f, 0.2f, 1.0f));
+    series_map[30] = make_series(
+        2, plot::Display_style::DOTS, 20.0f, glm::vec4(0.1f, 0.2f, 0.8f, 1.0f));
+    series_map[40] = make_series(
+        2, plot::Display_style::DOTS, 30.0f, glm::vec4(0.8f, 0.2f, 0.7f, 1.0f));
+    series_map[45] = make_series(
+        3, plot::Display_style::LINE, 40.0f, glm::vec4(0.2f, 0.7f, 0.8f, 1.0f));
+    series_map[50] = make_series(
+        3, plot::Display_style::LINE, 45.0f, glm::vec4(0.7f, 0.8f, 0.2f, 1.0f));
+    series_map[55] = make_series(
+        5, plot::Display_style::LINE, 48.0f, glm::vec4(0.3f, 0.6f, 0.9f, 1.0f));
+    auto rejected_lower = make_series(
+        4, plot::Display_style::LINE, 50.0f, glm::vec4(0.4f, 0.5f, 0.6f, 1.0f));
+    auto rejected_upper = make_series(
+        4, plot::Display_style::LINE, 60.0f, glm::vec4(0.6f, 0.5f, 0.4f, 1.0f));
+    rejected_upper->interpolation = plot::Series_interpolation::STEP_AFTER;
+    series_map[60]                = rejected_lower;
+    series_map[70]                = rejected_upper;
+
+    plot::Asset_loader asset_loader;
+    plot::Series_renderer renderer;
+    renderer.initialize(asset_loader);
+
+    Offscreen_rhi_fixture rhi_fixture;
+    std::string error_message;
+    TEST_ASSERT(rhi_fixture.initialize(error_message), error_message);
+
+    plot::Plot_config config;
+    config.line_width_px = 1.5;
+    const plot::frame_layout_result_t layout = make_layout();
+    plot::frame_context_t ctx = make_context(layout, config);
+    ctx.adjusted_preview_height              = 40.0;
+    ctx.preview_v0                           = 0.0f;
+    ctx.preview_v1                           = 80.0f;
+    ctx.dark_mode                            = true;
+    std::vector<layer_event_t> events;
+    TEST_ASSERT(
+        rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
+        error_message);
+
+    const auto close_color = [](const glm::vec4& actual, const glm::vec4& expected) {
+        return glm::all(glm::lessThan(
+            glm::abs(actual - expected), glm::vec4(0.0001f)));
+    };
+    const glm::vec4 dark_sum_color(
+        230.0f / 255.0f, 223.0f / 255.0f, 204.0f / 255.0f, 1.0f);
+    std::size_t overlay_count = 0;
+    for (std::size_t i = 0; i < renderer.m_last_recorded_stack_sum_overlays.size(); ++i) {
+        if (!renderer.m_last_recorded_stack_sum_overlays[i]) {
+            continue;
+        }
+        ++overlay_count;
+        TEST_ASSERT(renderer.m_last_recorded_draw_styles[i] == plot::Display_style::LINE,
+            "stack sum overlay must use the built-in LINE path");
+        TEST_ASSERT(renderer.m_last_recorded_draw_z_orders[i] == 20,
+            "stack sum overlay must record above component primitives");
+        TEST_ASSERT(renderer.m_last_recorded_draw_series_ids[i] == 20 ||
+            renderer.m_last_recorded_draw_series_ids[i] == 40 ||
+            renderer.m_last_recorded_draw_series_ids[i] == 50,
+            "only the final member of each successful stack may own an overlay");
+        TEST_ASSERT(close_color(renderer.m_last_recorded_draw_colors[i], dark_sum_color),
+            "dark stack sum overlay color must be #E6DFCC");
+        TEST_ASSERT(renderer.m_last_recorded_line_widths[i] == 3.5f,
+            "stack sum overlay must be two pixels thicker than configured lines");
+        for (std::size_t j = i + 1; j < renderer.m_last_recorded_draw_view_kinds.size(); ++j) {
+            TEST_ASSERT(renderer.m_last_recorded_draw_view_kinds[j] !=
+                renderer.m_last_recorded_draw_view_kinds[i] ||
+                renderer.m_last_recorded_draw_z_orders[j] >= 20,
+                "stack sum overlay must follow every component primitive in its view");
+        }
+    }
+    TEST_ASSERT(overlay_count == 6,
+        "three successful groups must produce one main and one preview overlay each");
+
+    const auto top_state = renderer.m_vbo_states.find(20);
+    TEST_ASSERT(top_state != renderer.m_vbo_states.end(),
+        "top stack member must retain renderer state");
+    TEST_ASSERT(top_state->second.main_view.staging.size() == 4 &&
+        top_state->second.main_view.staging.front().y == 12.0f &&
+        top_state->second.main_view.staging.back().y == 18.0f,
+        "stack sum overlay must reuse the final cumulative layer geometry");
+    TEST_ASSERT(top_state->second.main_view.last_sample_upload_count == 1 &&
+        top_state->second.main_view.last_line_window_upload_count == 1,
+        "AREA-only stack top and sum overlay must share one sample and LINE upload");
+    const auto line_top_state = renderer.m_vbo_states.find(50);
+    TEST_ASSERT(line_top_state != renderer.m_vbo_states.end() &&
+        line_top_state->second.main_view.last_line_window_upload_count == 1,
+        "LINE stack top and sum overlay must not duplicate the LINE-window upload");
+
+    bool lower_component_color_preserved = false;
+    for (std::size_t i = 0; i < renderer.m_last_recorded_draw_series_ids.size(); ++i) {
+        if (renderer.m_last_recorded_draw_series_ids[i] == 10 &&
+            !renderer.m_last_recorded_stack_sum_overlays[i])
+        {
+            lower_component_color_preserved = close_color(
+                renderer.m_last_recorded_draw_colors[i],
+                glm::vec4(0.8f, 0.1f, 0.2f, 0.3f));
+        }
+    }
+    TEST_ASSERT(lower_component_color_preserved,
+        "sum overlay must not recolor component primitives");
+
+    ctx.dark_mode = false;
+    events.clear();
+    TEST_ASSERT(
+        rhi_fixture.render_layer_frame(renderer, ctx, series_map, events, error_message),
+        error_message);
+    const glm::vec4 light_sum_color(
+        25.0f / 255.0f, 32.0f / 255.0f, 51.0f / 255.0f, 1.0f);
+    for (std::size_t i = 0; i < renderer.m_last_recorded_stack_sum_overlays.size(); ++i) {
+        if (renderer.m_last_recorded_stack_sum_overlays[i]) {
+            TEST_ASSERT(close_color(
+                renderer.m_last_recorded_draw_colors[i], light_sum_color),
+                "light stack sum overlay color must be #192033");
+        }
+    }
+
+    return true;
+}
+
 } // namespace
 
 int main()
@@ -3453,6 +3601,7 @@ int main()
     RUN_TEST(test_external_layer_replans_when_snapshot_advances_after_sequence_probe);
     RUN_TEST(test_layer_state_recreated_for_program_identity_changes);
     RUN_TEST(test_range_only_access_skips_builtin_value_styles);
+    RUN_TEST(test_stacked_sum_overlay_uses_top_geometry_and_theme);
 
     std::cout << "Results: " << passed << " passed, " << failed << " failed" << std::endl;
     return failed > 0 ? 1 : 0;
