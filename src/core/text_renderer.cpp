@@ -304,7 +304,7 @@ bool Text_renderer::render_axis_labels(
 
         const float baseline_target =
             label_y - k_scissor_pad_px
-                    - k_v_label_vertical_nudge_px * static_cast<float>(ctx.adjusted_font_px);
+        - k_v_label_vertical_nudge_px * static_cast<float>(ctx.adjusted_font_px);
         const float pen_y = baseline_target - baseline_off;
 
         const float text_width = m_fonts->measure_text_px(state.text.c_str());

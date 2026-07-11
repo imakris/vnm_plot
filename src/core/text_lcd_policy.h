@@ -70,10 +70,8 @@ constexpr bool text_lcd_draw_is_eligible(
 
     switch (surface) {
         case text_lcd_draw_surface_t::VERTICAL_AXIS_LABEL:
-        case text_lcd_draw_surface_t::HORIZONTAL_AXIS_LABEL:
-            return has_opaque_backing;
-        default:
-            return false;
+        case text_lcd_draw_surface_t::HORIZONTAL_AXIS_LABEL: return has_opaque_backing;
+        default:                                             return false;
     }
 }
 

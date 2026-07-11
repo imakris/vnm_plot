@@ -127,17 +127,12 @@ text_lcd_resolved_subpixel_order_t resolve_text_lcd_subpixel_order_for_window(
 text_lcd_resolved_subpixel_order_t text_lcd_from_qt_subpixel_hint(int qt_subpixel_hint)
 {
     switch (qt_subpixel_hint) {
-        case static_cast<int>(QPlatformScreen::Subpixel_RGB):
-            return text_lcd_resolved_subpixel_order_t::RGB;
-        case static_cast<int>(QPlatformScreen::Subpixel_BGR):
-            return text_lcd_resolved_subpixel_order_t::BGR;
-        case static_cast<int>(QPlatformScreen::Subpixel_VRGB):
-            return text_lcd_resolved_subpixel_order_t::VRGB;
-        case static_cast<int>(QPlatformScreen::Subpixel_VBGR):
-            return text_lcd_resolved_subpixel_order_t::VBGR;
+        case static_cast<int>(QPlatformScreen::Subpixel_RGB):  return text_lcd_resolved_subpixel_order_t::RGB;
+        case static_cast<int>(QPlatformScreen::Subpixel_BGR):  return text_lcd_resolved_subpixel_order_t::BGR;
+        case static_cast<int>(QPlatformScreen::Subpixel_VRGB): return text_lcd_resolved_subpixel_order_t::VRGB;
+        case static_cast<int>(QPlatformScreen::Subpixel_VBGR): return text_lcd_resolved_subpixel_order_t::VBGR;
         case static_cast<int>(QPlatformScreen::Subpixel_None):
-        default:
-            return text_lcd_resolved_subpixel_order_t::NONE;
+        default:                                               return text_lcd_resolved_subpixel_order_t::NONE;
     }
 }
 
@@ -155,12 +150,9 @@ text_lcd_resolved_subpixel_order_t text_lcd_from_windows_font_smoothing_settings
     }
 
     switch (smoothing_orientation) {
-        case k_win_font_smoothing_orientation_rgb:
-            return text_lcd_resolved_subpixel_order_t::RGB;
-        case k_win_font_smoothing_orientation_bgr:
-            return text_lcd_resolved_subpixel_order_t::BGR;
-        default:
-            return text_lcd_resolved_subpixel_order_t::NONE;
+        case k_win_font_smoothing_orientation_rgb: return text_lcd_resolved_subpixel_order_t::RGB;
+        case k_win_font_smoothing_orientation_bgr: return text_lcd_resolved_subpixel_order_t::BGR;
+        default:                                   return text_lcd_resolved_subpixel_order_t::NONE;
     }
 }
 

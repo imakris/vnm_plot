@@ -1207,17 +1207,10 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
             auto  write      = res.h_labels.begin();
             for (auto it = res.h_labels.begin(); it != res.h_labels.end(); ++it) {
                 float w = 0.f;
-                if (use_monospace && advance > 0.f) {
-                    w = advance * float(it->text.size());
-                }
-                else
-                if (params.measure_text_func) {
-                    w = params.measure_text_func(it->text.c_str());
-                }
-                else
-                if (advance > 0.f) {
-                    w = advance * float(it->text.size());
-                }
+                if (use_monospace && advance > 0.f) { w = advance * float(it->text.size());           } else
+                if (params.measure_text_func)       { w = params.measure_text_func(it->text.c_str()); } else
+                if (advance > 0.f)                  { w = advance * float(it->text.size()); }
+
                 if (it->position.x >= prev_right + min_gap) {
                     prev_right = it->position.x + w;
                     if (write != it) {
