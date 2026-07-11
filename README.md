@@ -80,9 +80,64 @@ auto series = vnm::plot::Series_builder()
 plot_widget->add_series(0, series);
 ```
 
-To stack ordinary series, give two or more builders the same non-zero
-`.stack_group(group_id)` and use `AREA` to show each band. Plot ids determine
-bottom-to-top order; each source keeps its own timestamps and selected LOD.
+### Stacked series
+
+Give two or more ordinary series the same non-zero stack group. Group `0`
+keeps a series independent.
+
+```cpp
+auto f_source = std::make_shared<vnm::plot::Vector_data_source<sample_t>>();
+f_source->set_data(std::vector<sample_t>{{0, 1.0f}, {1'000'000'000, 2.0f}});
+
+auto g_source = std::make_shared<vnm::plot::Vector_data_source<sample_t>>();
+g_source->set_data(std::vector<sample_t>{{0, 3.0f}, {1'000'000'000, 4.0f}});
+
+const auto access = vnm::plot::make_access_policy<sample_t>(
+    &sample_t::t_ns,
+    &sample_t::value);
+
+auto f = vnm::plot::Series_builder()
+    .style(vnm::plot::Display_style::AREA)
+    .stack_group(1)
+    .data_source(f_source)
+    .access(access)
+    .build_shared();
+
+auto g = vnm::plot::Series_builder()
+    .style(vnm::plot::Display_style::AREA)
+    .stack_group(1)
+    .data_source(g_source)
+    .access(access)
+    .build_shared();
+
+plot_widget->add_series(10, f); // bottom
+plot_widget->add_series(20, g); // top; cumulative value is f + g
+```
+
+Series are stacked bottom-to-top in ascending plot-ID order. Reordering a
+stack therefore also means updating the caller's plot-ID mapping and series
+registrations. `LINE` and `DOTS` draw cumulative values; `AREA` fills each
+component's band between its cumulative base and top. Preview sources and
+styles are composed the same way in the preview view.
+
+Each source retains its independently selected LOD and timestamp grid. The
+renderer interpolates each selected source onto their timestamp union, clipped
+to their common selected-source time domain. Members must use matching
+`Series_interpolation` modes and provide finite values with monotonic timestamps
+in one drawable span. An incompatible group fails closed: the affected stack
+view is omitted and a diagnostic is logged instead of drawing misleading
+unstacked data.
+
+The final cumulative value gets an automatic line overlay two pixels thicker
+than `Plot_config::line_width_px`: `#E6DFCC` in dark mode and `#192033` in light
+mode. This applies to the main and preview views for `LINE`, `DOTS`, and `AREA`
+stacks.
+
+`PlotIndicator` keeps component text values raw while placing their markers on
+the cumulative rendered layers. It adds a text-only `Σ` total and the note
+"Markers show cumulative stack positions". `Plot_widget::auto_adjust_view()`
+(used by the function plotter's **Fit Vertical** button) fits current cumulative
+stack geometry, including `AREA` bases.
 
 **Thread Safety**
 `Plot_widget` renders on a separate RHI render thread. Treat `series_data_t` as immutable once added. To change series config (style, access policy, preview config, color), update a copy and call `add_series` again with the same id to replace it. Make sure your `Data_source` implementation is safe to read from the render thread.
@@ -192,11 +247,13 @@ cmake --build build
 
 - `vnm_plot_hello` - renders a sine wave using the example function-source helper
 - `vnm_plot_preview_config` - preview uses a separate data source and AREA style via `preview_config`
-- `function_plotter` - multiple functions, per-series styles, expression evaluation via mexce
+- `function_plotter` - expressions, per-series styles, and a stacked-series demo via mexce
 
 `function_plotter` is opt-in because it depends on Qt Multimedia and `mexce`.
 Build it with `-DVNM_PLOT_BUILD_EXAMPLES=ON -DVNM_PLOT_BUILD_FUNCTION_PLOTTER=ON`;
 point at a local mexce checkout with `-DMEXCE_LOCAL_PATH=...`.
+Use its **Σ** control to stack functions, drag a function's color accent or
+label to change bottom-to-top order, and use **Fit Vertical** to fit the stack.
 
 ## Configuration
 

@@ -1012,8 +1012,9 @@ struct series_data_t
     Nonfinite_sample_policy            nonfinite_policy      = Nonfinite_sample_policy::BREAK_SEGMENT;
     glm::vec4                          color                 = glm::vec4(0.16f, 0.45f, 0.64f, 1.0f);
     std::string                        series_label;
-    // Non-zero values opt ordinary series into one stack. Series are stacked
-    // in their plot id order; zero preserves independent rendering.
+    // Non-zero values opt ordinary series into one cumulative stack. Zero
+    // preserves independent rendering. Members are ordered bottom-to-top by
+    // ascending plot ID, so reordering also requires updating plot IDs.
     int                                stack_group           = 0;
 
     Data_source_ref                    data_source;

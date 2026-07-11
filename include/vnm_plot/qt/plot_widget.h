@@ -198,7 +198,9 @@ public:
     Q_INVOKABLE virtual void adjust_t_from_pivot_and_scale(double pivot, double scale);
     Q_INVOKABLE virtual void adjust_v_from_mouse_diff(float ref_height, float diff);
     Q_INVOKABLE virtual void adjust_v_from_pivot_and_scale(float pivot, float scale);
-    Q_INVOKABLE void        adjust_v_to_target(float target_vmin, float target_vmax);
+    Q_INVOKABLE void         adjust_v_to_target(float target_vmin, float target_vmax);
+    // Fit visible data. Current renderer-composed stacks contribute their
+    // cumulative geometry (including AREA bases), not raw component ranges.
     Q_INVOKABLE void        auto_adjust_view(bool adjust_t, double extra_v_scale);
     Q_INVOKABLE void        auto_adjust_view(bool adjust_t, double extra_v_scale, bool anchor_zero);
     Q_INVOKABLE virtual bool can_zoom_in() const;
@@ -210,8 +212,14 @@ public:
     Q_INVOKABLE void        set_show_if_calculated_preview_height_below_min(bool v);
     Q_INVOKABLE void        set_preview_height_steps(int steps);
 
-    // Q_INVOKABLEs that take or return timestamps cross the QML boundary
-    // in milliseconds-since-epoch. Result maps also report entry["x"] in ms.
+    // Q_INVOKABLEs that take or return timestamps cross the QML boundary in
+    // milliseconds-since-epoch. Each result map contains x, y, px, py, color,
+    // and series_label; y_text is present when a value formatter is configured.
+    // Interpolated stacked results keep component y values raw, add marker_y
+    // and stacked_marker for cumulative marker positions, and may set
+    // show_marker false when no rendered position is available. A successful
+    // stack also adds a text-only synthetic series_label "Σ" row with its
+    // cumulative y and show_marker false. Nearest results remain raw samples.
     Q_INVOKABLE QVariantList get_indicator_samples(
         double x_ms,
         double plot_width,

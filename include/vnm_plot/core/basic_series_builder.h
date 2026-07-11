@@ -58,6 +58,8 @@ public:
         return derived();
     }
 
+    /// Join a cumulative stack. Zero disables stacking; equal non-zero values
+    /// form a group whose bottom-to-top order is the ascending plot-ID order.
     Derived& stack_group(int group)
     {
         m_series.stack_group = group;
