@@ -665,6 +665,7 @@ void Series_renderer::prepare(
     const std::map<int, std::shared_ptr<const series_data_t>>&
                            series)
 {
+    m_main_stack_validity.clear();
     m_rhi_state->frame_draw_states.clear();
     m_rhi_state->prepared_draws.clear();
     m_rhi_state->frame_plan_ready = false;
@@ -1082,6 +1083,13 @@ void Series_renderer::prepare(
                     continue;
             }
             std::size_t output_samples = 0;
+            if (view_kind == Series_view_kind::MAIN) {
+                auto& validity = m_main_stack_validity[group];
+                validity.reserve(plans.size());
+                for (const Series_view_plan* plan : plans) {
+                    validity.push_back({plan->source, plan->lod_level, plan->snapshot.sequence});
+                }
+            }
             for (std::size_t i = 0; i < members.size(); ++i) {
                 Series_view_plan& plan = view_kind == Series_view_kind::MAIN
                     ? members[i]->main_plan

@@ -122,7 +122,7 @@ Layout_calculator::parameters_t build_layout_params(
         return default_format_timestamp(ts_ns, step_ns);
     };
     params.format_timestamp_revision = config.format_timestamp_revision;
-    params.format_value_func = [config_ptr](
+    params.format_value_func         = [config_ptr](
         double                         value,
         const value_format_context_t&  context) -> std::string
     {
@@ -159,6 +159,7 @@ struct Plot_renderer::impl_t
         text_lcd_resolved_subpixel_order_t auto_text_lcd_subpixel_order =
             text_lcd_resolved_subpixel_order_t::NONE;
         std::uint64_t  config_revision = 0;
+        std::uint64_t  series_revision = 0;
     };
 
     const Plot_widget*             owner                  = nullptr;
@@ -220,7 +221,8 @@ void Plot_renderer::synchronize(QQuickRhiItem* item)
     }
     {
         std::shared_lock lock(widget->m_series_mutex);
-        m_impl->snapshot.series = widget->m_series;
+        m_impl->snapshot.series          = widget->m_series;
+        m_impl->snapshot.series_revision = widget->m_series_revision.load(std::memory_order_acquire);
     }
     m_impl->snapshot.v_auto = widget->m_v_auto.load(std::memory_order_acquire);
     m_impl->snapshot.visible_info_flags =
@@ -489,6 +491,13 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
 
         if (m_impl->series_initialized) {
             m_impl->series.prepare(ctx, snapshot.series);
+            if (m_impl->owner) {
+                m_impl->owner->set_rendered_stack_validity(
+                    m_impl->series,
+                    ctx.t0,
+                    ctx.t1,
+                    snapshot.series_revision);
+            }
         }
         // Chrome runs in two queueing phases so backgrounds and the main grid
         // stay behind the series while the zero line and preview overlay stay

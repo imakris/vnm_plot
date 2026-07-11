@@ -25,6 +25,7 @@ namespace vnm::plot {
 
 class Asset_loader;
 class Profiler;
+class Plot_widget;
 
 namespace detail {
 struct series_window_planner_state_t;
@@ -82,6 +83,18 @@ public:
                                series);
 
 private:
+    friend class Plot_widget;
+
+    struct stack_source_revision_t
+    {
+        const Data_source* source   = nullptr;
+        std::size_t        lod      = 0;
+        std::uint64_t      sequence = 0;
+    };
+
+    const std::map<int, std::vector<stack_source_revision_t>>&
+    main_stack_validity() const { return m_main_stack_validity; }
+
     struct gpu_sample_t
     {
         float t_rel;
@@ -187,22 +200,23 @@ private:
         bool               has_preview  = false;
     };
 
-    Asset_loader*                          m_asset_loader = nullptr;
-    std::unordered_map<int, vbo_state_t>   m_vbo_states;
+    Asset_loader*                                          m_asset_loader = nullptr;
+    std::unordered_map<int, vbo_state_t>                   m_vbo_states;
     // Consolidated once-per-series error log deduplication.
     // Key encodes (series_id, error_category) as uint64_t.
-    std::unordered_set<uint64_t>           m_logged_errors;
+    std::unordered_set<uint64_t>                           m_logged_errors;
+    std::map<int, std::vector<stack_source_revision_t>>    m_main_stack_validity;
     // Private test instrumentation for the QRhi prepare/render split.
-    std::vector<int>                       m_last_recorded_draw_z_orders;
-    std::vector<Display_style>             m_last_recorded_draw_styles;
-    std::vector<int>                       m_last_recorded_draw_series_ids;
-    std::vector<Series_view_kind>          m_last_recorded_draw_view_kinds;
-    std::size_t                            m_last_qrhi_layer_cache_size = 0;
+    std::vector<int>                                       m_last_recorded_draw_z_orders;
+    std::vector<Display_style>                             m_last_recorded_draw_styles;
+    std::vector<int>                                       m_last_recorded_draw_series_ids;
+    std::vector<Series_view_kind>                          m_last_recorded_draw_view_kinds;
+    std::size_t                                            m_last_qrhi_layer_cache_size = 0;
 
     // The full implementation sits in series_renderer.cpp where the QRhi
     // types are complete.
     struct rhi_state_t;
-    std::unique_ptr<rhi_state_t>           m_rhi_state;
+    std::unique_ptr<rhi_state_t>                           m_rhi_state;
 
     uint64_t m_frame_id = 0; // Monotonic frame counter for snapshot caching
 

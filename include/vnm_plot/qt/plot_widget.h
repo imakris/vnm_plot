@@ -30,6 +30,7 @@ class QQuickWindow;
 namespace vnm::plot {
 
 class Plot_renderer;
+class Series_renderer;
 class Plot_time_axis;
 
 // -----------------------------------------------------------------------------
@@ -250,8 +251,25 @@ protected:
     void timerEvent(QTimerEvent* ev) override;
     void adjust_t_to_target(qint64 target_tmin_ns, qint64 target_tmax_ns);
     std::pair<float, float> manual_v_range() const;
-    bool rendered_v_range(float& out_min, float& out_max) const;
-    bool rendered_t_range(qint64& out_min_ns, qint64& out_max_ns) const;
+
+    bool rendered_v_range(
+        float& out_min,
+        float& out_max) const;
+
+    bool rendered_t_range(
+        qint64&                out_min_ns,
+        qint64&                out_max_ns) const;
+
+    void set_rendered_stack_validity(
+        const Series_renderer& renderer,
+        qint64                 t_min_ns,
+        qint64                 t_max_ns) const;
+
+    void set_rendered_stack_validity(
+        const Series_renderer& renderer,
+        qint64                 t_min_ns,
+        qint64                 t_max_ns,
+        std::uint64_t          series_revision) const;
 
 private:
     enum class Indicator_sample_mode
@@ -267,6 +285,12 @@ private:
         double mouse_px,
         Indicator_sample_mode
                mode) const;
+
+    bool rendered_stack_group_valid(
+        int                    group,
+        std::size_t            member_count,
+        qint64                 t_min_ns,
+        qint64                 t_max_ns) const;
 
     // Plot_renderer reads m_config / m_data_cfg under the matching shared_mutexes
     // during synchronize(); friending lets it touch those members directly
@@ -289,6 +313,7 @@ private:
     std::map<int, std::shared_ptr<const series_data_t>>
                                    m_series;
     mutable std::shared_mutex      m_series_mutex;
+    std::atomic<std::uint64_t>     m_series_revision{0};
 
     // UI state
     std::atomic<bool>              m_v_auto{true};
@@ -301,6 +326,18 @@ private:
     mutable std::atomic<qint64>    m_rendered_t_min{0};
     mutable std::atomic<qint64>    m_rendered_t_max{1};
     mutable std::atomic<bool>      m_rendered_t_range_valid{false};
+    struct rendered_stack_source_revision_t
+    {
+        const Data_source* source   = nullptr;
+        std::size_t        lod      = 0;
+        std::uint64_t      sequence = 0;
+    };
+    mutable std::mutex             m_rendered_stack_validity_mutex;
+    mutable std::map<int, std::vector<rendered_stack_source_revision_t>>
+                                   m_rendered_stack_validity;
+    mutable qint64                 m_rendered_stack_t_min                        = 0;
+    mutable qint64                 m_rendered_stack_t_max                        = 0;
+    mutable std::uint64_t          m_rendered_stack_series_revision              = 0;
     std::atomic<double>            m_vbar_width_px{0.0};
     QBasicTimer                    m_vbar_width_timer;
     QElapsedTimer                  m_vbar_width_anim_elapsed;

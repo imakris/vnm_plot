@@ -4,6 +4,7 @@
 #include <vnm_plot/qt/plot_time_axis.h>
 #include <vnm_plot/core/constants.h>
 #include <vnm_plot/core/algo.h>
+#include <vnm_plot/rhi/series_renderer.h>
 
 #include <QGuiApplication>
 #include <QDebug>
@@ -191,8 +192,8 @@ void Plot_widget::apply_series_updates(const std::vector<std::pair<int, std::sha
         for (auto& [id, series] : copies) {
             m_series[id] = std::move(series);
         }
+        m_series_revision.fetch_add(1, std::memory_order_release);
     }
-
     update();
 }
 
@@ -200,6 +201,7 @@ void Plot_widget::remove_series(int id)
 {
     std::unique_lock lock(m_series_mutex);
     m_series.erase(id);
+    m_series_revision.fetch_add(1, std::memory_order_release);
     update();
 }
 
@@ -207,6 +209,7 @@ void Plot_widget::clear()
 {
     std::unique_lock lock(m_series_mutex);
     m_series.clear();
+    m_series_revision.fetch_add(1, std::memory_order_release);
     update();
 }
 
@@ -1451,9 +1454,9 @@ QVariantList Plot_widget::get_samples_for_time(
     }
 
     for (const auto& [group, stack] : indicator_stacks) {
-        (void) group;
         if (stack.member_count < 2 || stack.sampled_count != stack.member_count ||
-            !stack.compatible || !stack.in_common_domain || !std::isfinite(stack.cumulative))
+            !stack.compatible || !stack.in_common_domain || !std::isfinite(stack.cumulative) ||
+            !rendered_stack_group_valid(group, stack.member_count, tmin_ns, tmax_ns))
         {
             continue;
         }
@@ -1579,6 +1582,66 @@ bool Plot_widget::rendered_t_range(qint64& out_min_ns, qint64& out_max_ns) const
     out_min_ns = m_rendered_t_min.load(std::memory_order_acquire);
     out_max_ns = m_rendered_t_max.load(std::memory_order_acquire);
     return true;
+}
+
+void Plot_widget::set_rendered_stack_validity(
+    const Series_renderer& renderer,
+    qint64                 t_min_ns,
+    qint64                 t_max_ns) const
+{
+    set_rendered_stack_validity(
+        renderer,
+        t_min_ns,
+        t_max_ns,
+        m_series_revision.load(std::memory_order_acquire));
+}
+
+void Plot_widget::set_rendered_stack_validity(
+    const Series_renderer& renderer,
+    qint64                 t_min_ns,
+    qint64                 t_max_ns,
+    std::uint64_t          series_revision) const
+{
+    std::lock_guard lock(m_rendered_stack_validity_mutex);
+    m_rendered_stack_validity.clear();
+    m_rendered_stack_t_min           = t_min_ns;
+    m_rendered_stack_t_max           = t_max_ns;
+    m_rendered_stack_series_revision = series_revision;
+    for (const auto& [group, revisions] : renderer.main_stack_validity()) {
+        auto& stored = m_rendered_stack_validity[group];
+        stored.reserve(revisions.size());
+        for (const auto& revision : revisions) {
+            stored.push_back({revision.source, revision.lod, revision.sequence});
+        }
+    }
+}
+
+bool Plot_widget::rendered_stack_group_valid(
+    int                    group,
+    std::size_t            member_count,
+    qint64                 t_min_ns,
+    qint64                 t_max_ns) const
+{
+    std::lock_guard lock(m_rendered_stack_validity_mutex);
+    if (m_series_revision.load(std::memory_order_acquire) != m_rendered_stack_series_revision ||
+        t_min_ns                                          != m_rendered_stack_t_min           ||
+        t_max_ns                                          != m_rendered_stack_t_max)
+    {
+        return false;
+    }
+    const auto found = m_rendered_stack_validity.find(group);
+    if (found == m_rendered_stack_validity.end() || found->second.size() != member_count) {
+        return false;
+    }
+    return std::all_of(
+        found->second.begin(),
+        found->second.end(),
+        [](const auto& revision) {
+            return
+                revision.source        &&
+                revision.sequence != 0 &&
+                revision.source->current_sequence(revision.lod) == revision.sequence;
+        });
 }
 
 bool Plot_widget::consume_view_state_reset_request()

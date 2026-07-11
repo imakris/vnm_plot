@@ -4,6 +4,8 @@
 
 #include <vnm_plot/core/access_policy.h>
 #include <vnm_plot/core/time_units.h>
+#include <vnm_plot/rhi/asset_loader.h>
+#include <vnm_plot/rhi/series_renderer.h>
 #include <vnm_plot/qt/plot_widget.h>
 #include <vnm_plot/qt/plot_interaction_item.h>
 #include <vnm_plot/qt/plot_time_axis.h>
@@ -16,6 +18,7 @@
 #include <cmath>
 #include <iostream>
 #include <limits>
+#include <map>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -28,6 +31,18 @@ class test_interaction_item_t : public plot::Plot_interaction_item
 {
 public:
     using plot::Plot_interaction_item::mousePressEvent;
+};
+
+class indicator_test_widget_t : public plot::Plot_widget
+{
+public:
+    void publish_stack_validity(
+        const plot::Series_renderer&   renderer,
+        std::int64_t                   t_min_ns,
+        std::int64_t                   t_max_ns)
+    {
+        set_rendered_stack_validity(renderer, t_min_ns, t_max_ns);
+    }
 };
 
 struct zoom_state_t
@@ -123,6 +138,31 @@ void configure_indicator_widget(
             {k_second_ns, 10.0f}
         },
         interpolation));
+}
+
+void publish_rendered_stack_validity(
+    indicator_test_widget_t&   widget,
+    const std::map<int, std::shared_ptr<const plot::series_data_t>>&
+                               series,
+    std::int64_t               t_min_ns,
+    std::int64_t               t_max_ns)
+{
+    plot::frame_layout_result_t layout;
+    layout.usable_width  = 100.0;
+    layout.usable_height = 100.0;
+    plot::Plot_config config;
+    plot::frame_context_t context{layout};
+    context.t0     = t_min_ns;
+    context.t1     = t_max_ns;
+    context.win_w  = 100;
+    context.win_h  = 100;
+    context.config = &config;
+
+    plot::Asset_loader assets;
+    plot::Series_renderer renderer;
+    renderer.initialize(assets);
+    renderer.render(context, series);
+    widget.publish_stack_validity(renderer, t_min_ns, t_max_ns);
 }
 
 bool test_zoom_math_is_invariant_to_timer_cadence()
@@ -221,7 +261,7 @@ bool test_indicator_samples_step_after_holds_previous_sample()
 bool test_indicator_reports_stack_sum_only_inside_common_domain()
 {
     constexpr std::int64_t k_second_ns = 1'000'000'000LL;
-    plot::Plot_widget widget;
+    indicator_test_widget_t widget;
     configure_view(widget, 0, 2 * k_second_ns, 0.0f, 10.0f);
 
     auto lower = make_sample_series(
@@ -233,6 +273,11 @@ bool test_indicator_reports_stack_sum_only_inside_common_domain()
     lower->stack_group  = upper->stack_group = 1;
     widget.add_series(1, lower);
     widget.add_series(2, upper);
+    publish_rendered_stack_validity(
+        widget,
+        { {1, lower}, {2, upper} },
+        0,
+        2 * k_second_ns);
 
     const QVariantList stacked = widget.get_indicator_samples(750.0, 100.0, 100.0);
     TEST_ASSERT(stacked.size() == 3, "stacked indicator should retain components and add one sum");
@@ -254,6 +299,55 @@ bool test_indicator_reports_stack_sum_only_inside_common_domain()
     const QVariantList unstacked = widget.get_indicator_samples(750.0, 100.0, 100.0);
     TEST_ASSERT(unstacked.size() == 2,
         "unstacked indicator should contain only component values");
+
+    return true;
+}
+
+bool test_indicator_omits_sum_when_renderer_rejects_stack()
+{
+    constexpr std::int64_t k_second_ns = 1'000'000'000LL;
+    indicator_test_widget_t widget;
+    configure_view(widget, 0, 2 * k_second_ns, 0.0f, 10.0f);
+
+    auto lower = make_sample_series(
+        {
+            { 0, 1.0f },
+            { k_second_ns / 2, 1.0f },
+            { k_second_ns, std::numeric_limits<float>::quiet_NaN() },
+            { 3 * k_second_ns / 2, 1.0f },
+            { 2 * k_second_ns, 1.0f },
+        },
+        plot::Series_interpolation::LINEAR);
+    auto upper = make_sample_series(
+        {{0, 2.0f}, {2 * k_second_ns, 2.0f}}, plot::Series_interpolation::LINEAR);
+    lower->stack_group = upper->stack_group = 1;
+    widget.add_series(1, lower);
+    widget.add_series(2, upper);
+    publish_rendered_stack_validity(
+        widget,
+        { {1, lower}, {2, upper} },
+        0,
+        2 * k_second_ns);
+
+    TEST_ASSERT(widget.get_indicator_samples(250.0, 100.0, 100.0).size() == 2,
+        "finite hover bracket must not show a sum for a nonfinite-rejected rendered stack");
+
+    auto* source = dynamic_cast<plot::Vector_data_source<indicator_sample_t>*>(lower->main_source());
+    TEST_ASSERT(source, "stack regression fixture should retain its vector source");
+    source->set_data({
+        { 0,                   1.0f },
+        { k_second_ns / 2,     1.0f },
+        { 3 * k_second_ns / 2, 1.0f },
+        { k_second_ns,         1.0f },
+        { 2 * k_second_ns,     1.0f },
+    });
+    publish_rendered_stack_validity(
+        widget,
+        { {1, lower}, {2, upper} },
+        0,
+        2 * k_second_ns);
+    TEST_ASSERT(widget.get_indicator_samples(250.0, 100.0, 100.0).size() == 2,
+        "finite hover bracket must not show a sum for a nonmonotonic-rejected rendered stack");
 
     return true;
 }
@@ -476,6 +570,7 @@ int main(int argc, char** argv)
     RUN_TEST(test_indicator_samples_linearly_interpolate_between_samples);
     RUN_TEST(test_indicator_samples_step_after_holds_previous_sample);
     RUN_TEST(test_indicator_reports_stack_sum_only_inside_common_domain);
+    RUN_TEST(test_indicator_omits_sum_when_renderer_rejects_stack);
     RUN_TEST(test_nearest_samples_choose_closer_sample);
     RUN_TEST(test_auto_adjust_view_uses_visible_samples_for_value_and_time_range);
     RUN_TEST(test_auto_adjust_view_includes_step_after_held_sample);
