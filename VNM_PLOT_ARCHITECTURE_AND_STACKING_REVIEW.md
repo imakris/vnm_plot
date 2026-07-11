@@ -20,6 +20,15 @@ must not be presented here as approved product oracle. Stage 4 may implement
 both candidates only through private/internal evidence paths; the owner must
 select D4 before any Stage 5 public stack exposure.
 
+The plan has one consolidated ratification record,
+`RU-contract-ratification-record/A1`. It runs only after the owner disposes all
+eight pending proposals—P-S1, P-D7, P-Q1, P-D6, P-C1, P-D2, P-R1, and P-D15—
+in a dependency-consistent set: P-R1 may be ratified only with P-C1 ratified
+before or in the same disposition. Its exact documentation hash must pass three
+reviews before any affected implementation. It is not split or reused and
+numbers RU-4A actions only for ratified stack contracts. D4 remains a later
+nondelegated evidence decision outside A1.
+
 ## Executive conclusion
 
 **Failure headline: 19 failed or terminated executions were observed—nine CI jobs/workflows, one style gate, five local/environment diagnostics, and four report-validation commands; their provenance, recovery, and ownership are grouped below.**
@@ -237,11 +246,12 @@ behavior, exact tie, expected-sequence, default/direct-override, and
 no-nested-acquisition rules. In particular, unrelated physically visited
 nonfinite history cannot reject a finite chosen NEAREST winner. This review
 deliberately does not restate that operative contract. P-Q1 is not
-owner-ratified, so RU-3B cannot begin.
+owner-ratified or recorded in review-clean consolidated A1, so RU-3B cannot
+begin.
 
-Route `auto_adjust_view()` through the same range producer used by frame auto-range. The stack planner and stacked indicator must consume the frozen rendered representation rather than implement another source query. Approved D9 publishes the cursor request with the executed snapshot-free plan/result and rejects a non-current request. Pending P-C1—not approved D9—separately proposes monotonic activation/movement/deactivation cursor state, current/presented identities, immediate clearing, and absent/failure currency. P-R1 depends on explicit prior P-C1 ratification. Do not independently query after render, because the source may have advanced. A direct source query remains valid for non-pixel-parity operations only when selected LOD and expected sequence are supplied; a mismatch discards that invocation without synchronous retry/spin, while a later scheduled request is independent.
+Route `auto_adjust_view()` through the same range producer used by frame auto-range. The stack planner and stacked indicator must consume the frozen rendered representation rather than implement another source query. Approved D9 publishes the cursor request with the executed snapshot-free plan/result and rejects a non-current request. Pending P-C1—not approved D9—separately proposes monotonic activation/movement/deactivation cursor state, current/presented identities, immediate clearing, and absent/failure currency. P-R1 requires P-C1 ratification before or in the same owner disposition, recorded together by review-clean consolidated A1. Do not independently query after render, because the source may have advanced. A direct source query remains valid for non-pixel-parity operations only when selected LOD and expected sequence are supplied; a mismatch discards that invocation without synchronous retry/spin, while a later scheduled request is independent.
 
-**Verification:** unordered timestamps `[0,90,10,100]` queried at 11 resolve to 10. Exact midpoint cases choose the greater timestamp identically for ascending, descending, unordered, negative, wrapped-duplicate, and signed-extreme inputs without overflow. Cover every nonfinite/status/expected-sequence outcome and a million-sample indexed override that proves bounded work and default/direct parity. Tooltip values match the displayed selected LOD. If P-C1 is ratified, its separate verification covers atomic activation/movement/deactivation clear, rapid request orderings, and rejection of delayed old READY/STALE/no-batch/group-failure/section-failure state.
+**Verification:** unordered timestamps `[0,90,10,100]` queried at 11 resolve to 10. Exact midpoint cases choose the greater timestamp identically for ascending, descending, unordered, negative, wrapped-duplicate, and signed-extreme inputs without overflow. Cover every nonfinite/status/expected-sequence outcome and a million-sample indexed override that proves bounded work and default/direct parity. Tooltip values match the displayed selected LOD. If P-C1 is ratified and recorded by review-clean consolidated A1, its separate verification covers atomic activation/movement/deactivation clear, rapid request orderings, and rejection of delayed old READY/STALE/no-batch/group-failure/section-failure state.
 
 ### P5 — `Data_source::snapshot()` erases EMPTY, BUSY, and FAILED distinctions
 
@@ -416,12 +426,13 @@ function:
   additionally requires stable nonzero sequences/D10; a zero-key may identify
   retained STALE_BUSY content. Both keys and their weak-owner/alias identity are
   renderer-private; public results expose neither key nor source identity.
-- Pending P-R1 depends on prior explicit owner ratification of pending P-C1; it
+- Pending P-R1 requires pending P-C1 to be ratified before or in the same owner
+  disposition and both to be recorded by review-clean consolidated A1; P-R1
   cannot be approved or implemented first. It leaves the ordinary approved D9
-  result unconditional and, under ratified P-C1, gives only each
+  result unconditional and, under A1-recorded ratified P-C1, gives only each
   `COMPLETE` stack result table's READY/STALE_BUSY entries an optional presented
-  `content_frame_id` plus `content_cursor_state_id`. Under ratified P-C1, every
-  executed plan and enclosing D9 result also carries the current-attempt
+  `content_frame_id` plus `content_cursor_state_id`. Under A1-recorded ratified
+  P-C1, every executed plan and enclosing D9 result also carries the current-attempt
   monotonic `cursor_state_id`; activation, movement/request replacement, and
   deactivation each increment it. Every group/view record carries value-only
   `stack_group_id` and `Stack_view_kind::MAIN`/
@@ -535,8 +546,8 @@ duplicate the operative formulas.
 
 Do not choose a default from asymptotic argument alone. Prototype both outside the public API with identical independent LOD selection and hard `M`, `V_limit`, and `H_limit` counters plus identical D15 frame admission. Compare native-backend compose time, `V_observed`, total bytes, allocations, producer wait, and full-frame p50/p95/p99 for K={2,8,32} and W={800,3840}; retain hashed artifacts for phase-shifted narrow spikes, mixed LINEAR/STEP_AFTER discontinuities, gaps, and cancellation. The evidence unit records no human verdict; the owner reviews that exact evidence identity, records the comparative visual verdict, and selects one strategy before its tests become product oracle. Do not ship two speculative modes.
 
-For either candidate, final construction must satisfy the then-ratified P-D15
-checked accounting exactly; acquisition/copy/alignment remain separately
+For either candidate, final construction must satisfy the A1-recorded ratified
+P-D15 checked accounting exactly; acquisition/copy/alignment remain separately
 measured.
 
 `C` should remain internal until native-backend quality/performance results show that callers need control. Verify the hard output/byte bounds and explicit budget failures for both prototypes.
@@ -646,7 +657,7 @@ and one value-only retained presentation record. The public
 disposition, per-series `series_id`/origin/status/sequence and origin-tagged
 terminal-attempted-or-selected LOD/window, rendered range, optional indicator
 batch, `content_frame_id`, and READY/STALE `content_cursor_state_id`. Under
-ratified P-C1, the enclosing D9 result also carries current-attempt
+A1-recorded ratified P-C1, the enclosing D9 result also carries current-attempt
 `cursor_state_id`. The stack result contains no geometry, spans, samples,
 resources, source identities, visit counters, or cache keys.
 
@@ -777,17 +788,18 @@ Gate: static second frame has zero library restage/upload; a LINE mutation uploa
 
 Files: `include/vnm_plot/core/types.h`, `basic_series_builder.h`, `access_policy.h`, `algo.h`, `time_units.h`, `src/core/types.cpp`, `series_window_planner.*`, new `frame_series_planner.*`, auto/frame range, `include/vnm_plot/rhi/series_renderer.h`, `src/core/series_renderer.cpp`, `plot_renderer.cpp`, `plot_widget.cpp`, `examples/hello_plot`, `examples/function_plotter`, `benchmark/include/benchmark_data_source.h`, `benchmark/include/benchmark_window.h`, `benchmark/src/benchmark_window.cpp`, `README.md`, and focused tests.
 
-Deliverable: after P-S1 ratification, RU-3A supplies shared ownership,
-top-level snapshot-result sequence, exact D12 public method/domain contract,
-structural custom borrowing, and atomic removal of every current per-series
-plan/cache/record hold. RU-3B, only after P-Q1 and P-D7 ratification, supplies
-checked floating ingestion, integral-only members, and canonical
-`query_sample`/range semantics. RU-3C2 solely replaces independent hold-free
-acquisitions with cross-series/shared-key scheduling; it does not repeat hold
-removal. RU-3C1 supplies snapshot-free frame truth and VISIBLE/render/D9
-identity, but its atomic cursor/result cluster waits for explicit P-C1 owner
-ratification and the reviewed register update. No stack-only public metadata or
-unused planner lands in this stage.
+Deliverable: after owner-ratified P-S1 and review-clean consolidated A1, RU-3A
+supplies shared ownership, top-level snapshot-result sequence, exact D12 public
+method/domain contract, structural custom borrowing, and atomic removal of every
+current per-series plan/cache/record hold. RU-3B, only after owner-ratified
+P-D7/P-Q1 and review-clean consolidated A1, supplies checked floating ingestion,
+integral-only members, and canonical `query_sample`/range semantics. RU-3C2
+solely replaces independent hold-free acquisitions with cross-series/shared-key
+scheduling; it does not repeat hold removal. RU-3C1 supplies snapshot-free frame
+truth and VISIBLE/render/D9 identity, but its atomic cursor/result cluster waits
+for owner-ratified P-C1 recorded in review-clean consolidated A1. RU-3C2's P-D6
+reuse work likewise waits for owner-ratified P-D6 in that A1. No stack-only
+public metadata or unused planner lands in this stage.
 
 Gate: RU-3A proves snapshot READY/EMPTY/BUSY/FAILED top-level sequence semantics, D12 conformance, writer-before-record, and no surviving current hold. RU-3B separately proves proposed cursor and range gates plus D7 trait/rational boundaries. RU-3C2 proves exactly one shared scheduler and one acquisition per shared key. RU-3C1 proves frame/range/render/result parity. Each RU retains its own ASan/TSan/UBSan, warning-clean, and no-regression evidence; one later gate never retroactively makes an earlier hash truthful.
 
@@ -872,10 +884,12 @@ LOD ladders: independently select bounded source-local LOD windows, use the
 eventual D4-selected bounded event-union or shared-grid evaluator, accumulate
 double-precision cumulative bands, and upload one cached group representation.
 The plan register—not this recommendation—identifies approved portions of
-D1-D3/D5-D15. D4 and P-S1/P-D7/P-D2/P-D6/P-Q1/P-R1/P-D15 remain owner
-decisions. The
-architecture is viable if those pending contracts are ratified or amended
-before their affected RUs; this review cannot manufacture that approval.
+D1-D3/D5-D15. D4 and
+P-S1/P-D7/P-D2/P-D6/P-Q1/P-C1/P-R1/P-D15 remain owner decisions. The
+architecture is viable if all eight pending proposals are explicitly disposed,
+recorded together by review-clean consolidated A1, and each affected contract is
+ratified before its RU. D4 remains the later evidence decision. This review
+cannot manufacture either approval.
 
 Scalar/range, duplicate, BUSY, style/custom-layer, cache, and budget text is
 owner-approved only where the plan labels it approved. The precise proposals

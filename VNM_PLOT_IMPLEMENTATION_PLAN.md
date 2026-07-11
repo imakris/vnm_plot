@@ -152,13 +152,13 @@ be reviewed or merged as one undifferentiated batch.
 | `RU-2.1-calibration` | Evidence-only fixed 108-execution capture/proposal generation, identified by `(exact source hash, proposal-manifest SHA-256)`; owner proposal-hash approval is a separate non-delegated decision. |
 | `RU-2.2` | Numbered Checkpoint 2.2 source actions. Actions 2–4 plus action 6 unconditionally form atomic `CACHE_KEY_MIGRATION`: owner identity, upload key, content revision, and LINE derivative change together so reuse remains ABA-safe. A1, A5, A7, and A8 remain individual source units. |
 | `RU-2.2-evidence` | Evidence-only A1 after every RU-2.2 source unit is clean, identified by `(exact source hash,before/after-manifest SHA-256)`; it owns the approved-noise comparison and retained raw artifacts and makes no semantic source change. |
-| `RU-3A` | Ordered, non-overlapping units: after P-S1 ratification, `SOURCE_API_BREAK` comprises actions 1–5 and 10 because intermediate public headers/ordinary consumers do not compile; action 6 is independent; `D12_HOLD_BREAK` then comprises actions 7–9 and 11 because publishing D12 or structural custom borrowing while a custom/current renderer path retains a hold would be false. |
-| `RU-3B` | After P-Q1 and P-D7 ratification, `POINT_QUERY_CONTRACT` comprises actions 1, 7–9, 11, and 12 because evaluator/API/default implementation/point consumers/docs must expose one contract. `D7_INGESTION` comprises actions 6 and 13 so public ingestion/member behavior and normative docs cannot diverge. Actions 2–5 and 10 remain individual units. |
-| `RU-3C1` | Parity actions 2–4 form `FRAME_TRUTH_PARITY`; separate producers may be deleted only in the same change that installs their production replacement/evidence entry. Its cursor/result action and therefore the atomic cluster are blocked until explicit owner ratification of P-C1 is recorded in a clean `RU-contract-ratification-record`. |
-| `RU-3C2` | Scheduler/reuse/docs actions 5–8 form `SHARED_ACQUISITION_SCHEDULER`; sharing, keys, cache migration, and normative production behavior move together so there is exactly one documented scheduler. |
+| `RU-3A` | Ordered, non-overlapping units: after P-S1 is owner-ratified and the consolidated `RU-contract-ratification-record/A1` exact hash is review-clean, `SOURCE_API_BREAK` comprises actions 1–5 and 10 because intermediate public headers/ordinary consumers do not compile; action 6 is independent; `D12_HOLD_BREAK` then comprises actions 7–9 and 11 because publishing D12 or structural custom borrowing while a custom/current renderer path retains a hold would be false. |
+| `RU-3B` | After P-D7 and P-Q1 are owner-ratified and the consolidated `RU-contract-ratification-record/A1` exact hash is review-clean, `POINT_QUERY_CONTRACT` comprises actions 1, 7–9, 11, and 12 because evaluator/API/default implementation/point consumers/docs must expose one contract. `D7_INGESTION` comprises actions 6 and 13 so public ingestion/member behavior and normative docs cannot diverge. Actions 2–5 and 10 remain individual units. |
+| `RU-3C1` | Parity actions 2–4 form `FRAME_TRUTH_PARITY`; separate producers may be deleted only in the same change that installs their production replacement/evidence entry. Its cursor/result action and therefore the atomic cluster are blocked until P-C1 is owner-ratified and recorded in the review-clean consolidated `RU-contract-ratification-record/A1`. |
+| `RU-3C2` | Scheduler/reuse/docs actions 5–8 form `SHARED_ACQUISITION_SCHEDULER`; sharing, keys, cache migration, and normative production behavior move together so there is exactly one documented scheduler. Its P-D6 work requires owner-ratified P-D6 recorded in the review-clean consolidated `RU-contract-ratification-record/A1`. |
 | `RU-3D` | Numbered Qt publication actions, one action per unit unless a future pre-delegation amendment names a necessary cluster. |
-| `RU-contract-ratification-record` | After the owner decision, one documentation source unit records each proposal's exact ratified/rejected text and statuses and numbers the now-authorized actions; it receives the ordinary three-reviewer exact-hash loop. P-C1 must be recorded ratified before P-R1 and before RU-3C1 cursor/result work. Current RU-4A scope bullets are not executable review actions. |
-| `RU-4A` | Numbered private core-contract actions created only by the reviewed ratification record after P-C1/P-D2/P-R1/P-D15 owner decisions, with P-C1 ratified before P-R1. |
+| `RU-contract-ratification-record/A1` | The single consolidated documentation source unit runs only after the owner explicitly ratifies or rejects all eight pending proposals in a dependency-consistent set: P-S1, P-D7, P-Q1, P-D6, P-C1, P-D2, P-R1, and P-D15. P-R1 may be ratified only when P-C1 is ratified before or in the same owner disposition. A1 records all eight exact texts and statuses, updates every affected prerequisite/stop, and numbers now-authorized RU-4A actions only for ratified stack contracts. Its exact hash receives the ordinary three-reviewer loop before any affected implementation. It is neither reusable nor divisible into waves. D4 is outside A1. |
+| `RU-4A` | Numbered private core-contract actions created only by review-clean `RU-contract-ratification-record/A1` for the owner-ratified P-C1/P-D2/P-R1/P-D15 stack contracts, with P-C1 ratified before or together with P-R1. |
 | `RU-4B-common` | Numbered common selector/adapter/scenario implementation action, independently reviewed. |
 | `RU-4B-A` | Numbered private Candidate A implementation action, independently reviewed. |
 | `RU-4B-B` | Numbered private Candidate B implementation action, independently reviewed. |
@@ -249,8 +249,8 @@ ratification.
 ### Proposed executable refinements pending owner ratification
 
 This subsection records precise proposals in the sole decision register so the
-owner can ratify them in one explicit action. It is not product oracle until
-that action occurs:
+owner can dispose of all of them in one explicit action. It is not product
+oracle until that action occurs:
 
 - **P-D6:** exact compact `structure_key`/`content_key` membership;
 - **P-D2:** exact interval normalization and Candidate A/B fragmentation
@@ -267,25 +267,30 @@ that action occurs:
   closed stack failure/indicator types, checked cumulative-step records,
   frozen-representation cursor evaluation, P-C1-bound optional indicator
   batches, deterministic precedence, and stale-presentation vocabulary. P-R1
-  depends on ratified P-C1 and cannot be approved before it;
+  requires P-C1 ratification before or in the same owner disposition;
 - **P-D15:** allocation-free admission prepass, one exact counted stack-table
   backing, MAIN-before-PREVIEW immutable slices, `U_limit` accounting, exact
   renderer-owned-cap/allocation-lifetime requested-byte counters, resident byte
   caps, and allocation-failure distinctions.
 
-RU-3A `SOURCE_API_BREAK` cannot begin until P-S1 is ratified. RU-3B cannot
-begin until both P-Q1 and P-D7 are ratified. RU-3C1's cursor/result action—and
-therefore its atomic `FRAME_TRUTH_PARITY` cluster—cannot begin until P-C1 is
-explicitly owner-ratified and recorded by a clean
-`RU-contract-ratification-record`. RU-3C2 cannot begin until P-D6 is ratified.
-RU-4A, RU-4B-common, RU-4B-A, RU-4B-B, RU-4B-evidence,
-RU-4B-cleanup, and stack-related Stage 5 units cannot begin until P-D2, P-R1,
-and P-D15 are ratified, which necessarily requires prior P-C1 ratification. The
-owner decision is followed by
-`RU-contract-ratification-record`, which records exact ratified/rejected text
-and statuses and, for the stack proposals, numbers the authorized RU-4A actions.
-No affected implementation RU begins until that record is clean at one exact
-documentation hash. Ratification does not select D4.
+The owner must explicitly ratify or reject all eight proposals—P-S1, P-D7,
+P-Q1, P-D6, P-C1, P-D2, P-R1, and P-D15—before the one consolidated
+`RU-contract-ratification-record/A1` runs. A1 is documentation-only: it records
+the exact ratified/rejected text and status of all eight, updates every affected
+prerequisite or stop, and receives the three-reviewer exact-hash loop. A1 cannot
+begin on a set that ratifies P-R1 inconsistently with P-C1. It numbers now-
+authorized RU-4A actions only for ratified stack contracts; no Stage 3 proposal
+creates a second record or separately unnumbered wave. A1 is a one-time
+consolidated unit, not a record that later decisions reuse.
+
+No affected implementation begins before A1's exact hash is review-clean and
+its own controlling proposal is owner-ratified: RU-3A requires P-S1; RU-3B
+requires P-D7 and P-Q1; RU-3C1 cursor/result and therefore
+`FRAME_TRUTH_PARITY` require P-C1; RU-3C2 reuse requires P-D6; and RU-4A,
+RU-4B-common/A/B/evidence/cleanup, plus stack-related Stage 5 require P-C1,
+P-D2, P-R1, and P-D15. Rejection of a controlling proposal preserves the
+affected stop until a separately reviewed plan amendment replaces that work.
+D4 is a later nondelegated evidence decision and is not part of A1.
 
 #### P-S1 — Snapshot-result sequence and factories
 
@@ -533,10 +538,11 @@ reappears after immediate clear/deactivation.
 
 #### P-R1 — Result authority, stale presentation, and failure precedence
 
-P-R1 depends on prior explicit owner ratification of P-C1. P-R1 cannot be
-approved, recorded as approved, or implemented while P-C1 remains pending or is
-rejected; reviewers and implementation agents cannot infer that dependency as
-satisfied from this proposal text.
+P-R1 depends on explicit owner ratification of P-C1 before or in the same owner
+disposition. P-R1 cannot be ratified, recorded as ratified, or implemented while
+P-C1 remains pending or is rejected; reviewers and implementation agents cannot
+infer that dependency as satisfied from this proposal text. Implementation also
+waits for the review-clean consolidated A1 that records both dispositions.
 
 The D9 `frame_result_t` always contains its ordinary non-stack result section
 under the Batch 3C contract. Stack result storage failure never suppresses,
@@ -590,7 +596,7 @@ only and never cache, retention, or reuse authority.
 The enclosing D9 result supplies the executed plan's frame/config/view identity,
 including the producer's `publication_frame_id`; its current-config identity
 check rejects a delayed result after configuration or topology changes. Under
-prior ratified P-C1, that enclosing result additionally carries the
+A1-recorded ratified P-C1, that enclosing result additionally carries the
 current-attempt `cursor_state_id`.
 
 Every `stack_result_entry_t` has exactly one canonical disposition: `READY`,
@@ -701,8 +707,9 @@ that plan had a request, with exactly `K` all-READY or all-EMPTY items.
 STALE_BUSY copies the complete retained batch and its old request ID.
 EMPTY and every group/view `FAILED(reason)` have no batch.
 
-Subject only to prior P-C1 ratification, P-R1 binds stack presentation to P-C1's
-exact identities and GUI order. Each executed stack plan/enclosing result uses
+Under P-C1 ratified before or with P-R1 and both recorded by review-clean
+consolidated A1, P-R1 binds stack presentation to P-C1's exact identities and
+GUI order. Each executed stack plan/enclosing result uses
 P-C1's current-attempt ID; READY PRESENTED_CONTENT uses its executed content ID;
 STALE_BUSY retains that old content ID with the complete retained presentation
 even when no batch exists; and a present batch ID equals the presented content
@@ -1055,9 +1062,11 @@ review owns findings and rationale. Before Batch 3 public implementation:
   split v1 GPU layout/formula, `Published_state`, `Frame_orchestrator`, a
   snapshot capability hierarchy, batch snapshots, or a separate 3P phase;
 - every action/gate distinguishes approved D2/D6-D15 text from pending
-  P-S1/P-D7/P-D2/P-D6/P-Q1/P-C1/P-R1/P-D15; P-C1 precedes P-R1 and no affected
-  RU starts before owner ratification and the reviewed ratification record, and
-  D4 remains separately evidence-gated;
+  P-S1/P-D7/P-Q1/P-D6/P-C1/P-D2/P-R1/P-D15; the single consolidated A1 records
+  all eight only after their owner dispositions, P-C1 governs a consistent P-R1
+  disposition, and no affected RU starts before its controlling proposal is
+  ratified and A1's exact hash is review-clean. D4 remains separately evidence-
+  gated and outside A1;
 - governed Markdown/style, `actionlint`, and `git diff --check` pass, and the
   exact documentation commit receives the delegated three-reviewer closure
   required above before Batch 3 coding.
@@ -1341,17 +1350,18 @@ Hypothesis: ownership/status changes move lifetime checks to descriptor publicat
 
 Actions:
 
-`SOURCE_API_BREAK` runs first after P-S1 ratification and its clean
-ratification record; independent action 6 follows; `D12_HOLD_BREAK` runs last.
-The clusters do not overlap.
+`SOURCE_API_BREAK` runs first only after P-S1 is owner-ratified and the
+consolidated `RU-contract-ratification-record/A1` exact hash is review-clean;
+independent action 6 follows; `D12_HOLD_BREAK` runs last. The clusters do not
+overlap.
 
 1. Replace `Data_source_ref` in ordinary and preview descriptors with `shared_ptr<Data_source>`.
 2. Remove raw-reference setters/builders without a no-op-deleter bridge.
 3. Make `Benchmark_data_source` own/share its `Ring_buffer`; changing only the source pointer type would leave a teardown UAF.
 4. Remove ambiguous `Data_source::snapshot()` and `Data_source::identity()`; migrate their production/cache callers atomically to explicit status handling and the D14 owner/object/sequence/semantics facts.
-5. After P-S1 ratification, implement its top-level snapshot-result sequence
-   and named factories exactly; no local action text defines a second factory
-   contract.
+5. Under owner-ratified P-S1 as recorded by review-clean consolidated A1,
+   implement its top-level snapshot-result sequence and named factories exactly;
+   no local action text defines a second factory contract.
 6. Publish and enforce the D11 GUI-thread-only widget contract, preserve the
    separate internally synchronized `Data_source` concurrency contract, and add
    queued-cross-thread/illegal-direct-call oracles in the same source unit; this
@@ -1371,7 +1381,8 @@ Gate:
 - `rg "Data_source_ref|set_data_source_ref|data_source_ref\("` has no public, production, example, or benchmark hits, and source search proves the `Data_source::identity()` virtual and every cache call/field are absent;
 - Ubuntu Clang ASan (`-fsanitize=address`) ordinary/preview lifetime and benchmark teardown pass;
 - Ubuntu Clang TSan core/update-remove stress is run with `-fsanitize=thread`; if Qt/QRhi cannot link or run under TSan, record `UNSUPPORTED` with compiler/linker evidence and run the same stress test without sanitizer on all four CI platforms;
-- after P-S1 ratification, four-status construction tests prove its exact
+- under owner-ratified P-S1 recorded by review-clean consolidated A1, four-
+  status construction tests prove its exact
   factories: READY cannot coexist with an invalid snapshot and copies payload
   sequence; EMPTY nonzero is an exact empty revision while zero is explicitly
   unavailable/unstable; BUSY/FAILED carry no payload and zero sequence; no
@@ -1408,9 +1419,10 @@ Primary files:
 - focused range/interaction tests.
 
 Prerequisite: approved D7/D8 govern conversion and duplicate collapse, but
-P-Q1 and P-D7 both require explicit owner ratification and a clean ratification
-record before RU-3B begins. D9 renderer-pinned publication belongs to RU-3C1,
-where the shared frame plan exists.
+RU-3B begins only after P-D7 and P-Q1 are explicitly owner-ratified and the
+consolidated `RU-contract-ratification-record/A1` exact hash recording them is
+review-clean. D9 renderer-pinned publication belongs to RU-3C1, where the shared
+frame plan exists.
 
 Hypothesis: one canonical evaluator preserves render semantics while indexed sources eliminate full LOD-0 UI copies/scans; the measurement boundary is evaluator/range request through its canonical value result.
 
@@ -1503,18 +1515,18 @@ Primary files:
 - benchmark production-planner entry;
 - focused cache/layout tests.
 
-Hypothesis: one production frame entry and snapshot-free immutable plan remove duplicate snapshots/scans and ordinary range/render/result disagreement without increasing acquisition cost as retained history grows. The full-path boundary is production planning entry through executed renderer/RHI disposition and the ordinary D9 immutable frame result. RU-3C1 has no P-R1/P-D15 or stack-result-storage prerequisite, but its atomic cursor/result cluster is blocked by pending P-C1.
+Hypothesis: one production frame entry and snapshot-free immutable plan remove duplicate snapshots/scans and ordinary range/render/result disagreement without increasing acquisition cost as retained history grows. The full-path boundary is production planning entry through executed renderer/RHI disposition and the ordinary D9 immutable frame result. RU-3C1 has no P-R1/P-D15 or stack-result-storage prerequisite, but its atomic cursor/result cluster remains blocked unless P-C1 is owner-ratified and consolidated A1 is review-clean.
 
 Actions:
 
 1. Use full pre-layout framebuffer width as the deterministic LOD-budget width; final usable width changes transforms, not selected LOD.
 2. **3C1 parity:** add one production frame entry that creates one immutable per-series/per-view plan consumed by VISIBLE range and rendering. The plan owns status, sequence, selected LOD/window/spans, extrema, access/semantic facts, and derived normalized data, but no snapshot or hold.
-3. **3C1 cursor/result:** implement approved D9's sole immutable ordinary frame result from the exact executed plan after renderer/RHI disposition, value-only indicators, and current-request rejection. Only after explicit P-C1 owner ratification and its clean ratification record, implement P-C1's monotonic event-side clear/current-presented identities/absent-failure currency in the same action. Because actions 2–4 are atomic, this action and `FRAME_TRUTH_PARITY` cannot begin while P-C1 is pending. No independent ordinary range, indicator, or status producer remains after parity. Do not add P-R1's stack envelope or make ordinary publication depend on a stack proposal in this unit.
+3. **3C1 cursor/result:** implement approved D9's sole immutable ordinary frame result from the exact executed plan after renderer/RHI disposition, value-only indicators, and current-request rejection. Only after P-C1 is explicitly owner-ratified and recorded in review-clean consolidated `RU-contract-ratification-record/A1`, implement P-C1's monotonic event-side clear/current-presented identities/absent-failure currency in the same action. Because actions 2–4 are atomic, this action and `FRAME_TRUTH_PARITY` cannot begin while P-C1 is pending/rejected or A1 is not review-clean. No independent ordinary range, indicator, or status producer remains after parity. Do not add P-R1's stack envelope or make ordinary publication depend on a stack proposal in this unit.
 4. **3C1 evidence entry:** route the benchmark through the same production frame entry before generating parity evidence. Record the visible full-framebuffer-width LOD change explicitly rather than treating it as an invisible refactor.
 5. **3C2 acquisition/reuse:** implement the sole production D12 scheduler. Cache attempted status, sequence, and counters without retaining rejected holds; acquire each shared `(source,LOD)` observation once across series, then consume distinct same-source LODs/main-preview queries sequentially. Finish extrema/staging/custom prepare and destroy every hold before another acquisition on that source and before render-pass recording. Do not cache direct query results without their complete request/context/expected-sequence key.
 6. Replace RU-3A's truthful hold-free per-series independent acquisitions with the single frame/shared-key schedule from action 5, consuming the existing snapshot-free plan/cache/custom interfaces unchanged. Do not introduce a parallel scheduler or restore a hold-bearing plan.
-7. After P-D6 ratification and its clean ratification record, implement its
-   compact `structure_key`/`content_key` exactly for BUSY fallback and
+7. After P-D6 is owner-ratified and recorded in review-clean consolidated A1,
+   implement its compact `structure_key`/`content_key` exactly for BUSY fallback and
    READY/geometry reuse with D10 eligibility. Cache UNKNOWN classification only
    under P-D6's weak-owner/alias source identity, stable nonzero observed
    sequence, and access semantics.
@@ -1537,11 +1549,12 @@ Gate:
   match, owner-equivalent weak handles plus equal alias do match, and no key
   serializes/hashes a control-block address;
 - shared custom prepare finishes while its non-owning view is valid, the writer proceeds before record, no plan/result/cache/record context owns a hold, and source search proves exactly one production acquisition scheduler;
-- after P-C1 ratification/record only, its activation/movement/deactivation,
+- under owner-ratified P-C1 recorded by review-clean consolidated A1 only, its
+  activation/movement/deactivation,
   immediate clear, plan/result/presented identities, active applicable-ID
   matches/mismatches, inactive ignore, rapid-request ordering, and old absent/
-  failure or stale-result gates pass exactly. Before ratification this gate is a
-  blocker, not an inferred product oracle;
+  failure or stale-result gates pass exactly. Before P-C1 is ratified and A1 is
+  review-clean, this gate is a blocker, not an inferred product oracle;
 - at fixed W/visible interval, run 1x/10x/100x retained histories for direct/zero-copy, copy-on-snapshot, and unknown-order sources after a changed sequence: exact snapshot bytes/physical visits at 100x must not exceed the 1x value, and time/producer-lock metrics must satisfy the approved Stage 2 noise rule for any source class eligible for stacking; fallback classes that fail remain measured but are not silently declared stack-safe;
 - warning-clean initialized build and all focused tests pass;
 - the approved Stage 2 protocol passes for full-frame latency, allocations, snapshot bytes/time, alignment scans, producer wait, and memory.
@@ -1552,10 +1565,11 @@ Gate allocation:
   before/after pixel evidence;
 - `FRAME_TRUTH_PARITY` (actions 2–4) owns one production entry, snapshot-free
   ordinary plan, ordinary VISIBLE/render/result/indicator identity, benchmark production entry,
-  approved D9 current-request rejection, and—only after its reviewed
-  ratification—P-C1 cursor-state propagation plus active/inactive apply/clear/
+  approved D9 current-request rejection, and—only after owner-ratified P-C1 is
+  recorded by review-clean consolidated A1—cursor-state propagation plus active/
+  inactive apply/clear/
   absence/failure currency, and removal of independent range/indicator/status
-  producers. It is blocked until P-C1's clean ratification record and neither
+  producers. It is blocked until that P-C1/A1 prerequisite and neither
   owns nor waits for the stack result envelope;
 - `SHARED_ACQUISITION_SCHEDULER` (actions 5–8) owns exactly-one-scheduler and
   shared-key acquisition counts, D12 sequential release/writer progress,
@@ -1624,22 +1638,31 @@ metadata/API, and the losing candidate is deleted before Stage 5.
 
 ### Contract-ratification record — implementation prerequisite
 
-After the owner explicitly ratifies or rejects P-C1, P-D2, P-R1, and P-D15,
-`RU-contract-ratification-record/A1` records the exact accepted/rejected text
-and statuses in the sole register, updates every affected prerequisite, and
-numbers the now-authorized RU-4A source actions. This documentation source unit
-receives the normal three-reviewer exact-hash loop. No RU-4A or stack candidate
-implementation may infer actions directly from the current scope bullets. The
-record must place ratified P-C1 before any approval of P-R1; it cannot record
-P-R1 approved if P-C1 remains pending/rejected. RU-3C1 cursor/result work waits
-for this same reviewed record.
+There is exactly one ratification record source unit:
+`RU-contract-ratification-record/A1`. It begins only after the owner explicitly
+ratifies or rejects all eight pending proposals in a dependency-consistent set
+in the sole register: P-S1, P-D7, P-Q1, P-D6, P-C1, P-D2, P-R1, and P-D15. P-R1
+may be ratified only when P-C1 is ratified before or in the same owner
+disposition. A1 records all eight exact accepted or rejected texts and statuses
+in one documentation change and updates every affected prerequisite or stop.
+
+A1 numbers now-authorized RU-4A source actions only for the ratified stack
+contracts. Stage 3 proposals remain governed by their existing named units and
+gain no separate action-numbering wave. A1 receives the normal three-reviewer
+exact-hash loop, and no affected implementation begins until that exact hash is
+review-clean and its specific controlling proposal is ratified. A1 is not
+partially run, reused, or followed by an unnumbered ratification record. D4
+remains the later nondelegated evidence decision and is outside A1. No RU-4A or
+stack candidate implementation may infer actions directly from the current
+scope bullets.
 
 ### Batch 4A — Core stack contract implementation
 
 Batch 4A cannot begin until P-C1, P-D2, P-R1, and P-D15 are owner-ratified in
-the required dependency order and the reviewed ratification record has numbered
-its executable actions. The bullets
-below are a scope inventory only, not review units or implementation authority.
+the required dependency order and review-clean consolidated
+`RU-contract-ratification-record/A1` has numbered its executable actions. The
+bullets below are a scope inventory only, not review units or implementation
+authority.
 Authorized actions implement the approved backend-independent semantics and
 typed results without public RHI/Qt exposure; D4 remains separately open for
 evidence. D3 uses `std::optional<int> stack_group_id` with ascending existing
@@ -1673,7 +1696,8 @@ fragmentation plus would-be overflow, and proof that a frame-rejected unit makes
 no acquisition. This batch does not select D4, add a public stack API, or add an
 alternate result/status channel.
 
-After pending-contract ratification, executable D2/P-R1 cases include LINEAR
+After review-clean consolidated A1 records ratified P-D2/P-R1, executable cases
+include LINEAR
 and STEP_AFTER constant right hold versus DRAW_NOTHING; no left/cross-break
 extension; REJECT failure before would-be EMPTY; normalization-before-intersect;
 Candidate A retaining every intersection endpoint and selected breakpoint with
@@ -1799,7 +1823,8 @@ EMPTY items/total are valueless. Factories reject zero length, filtered subsets,
 mixed item status, missing/extra/duplicate members, nonfinite input/result, and
 broken adjacency. STALE_BUSY copies the entire retained batch/old ID.
 
-After P-C1 ratification only, GUI tests start from previously displayed READY
+Under owner-ratified P-C1 recorded by review-clean consolidated A1 only, GUI
+tests start from previously displayed READY
 and prove activation, every movement/request replacement, and deactivation each
 atomically increment state and clear/hide before requesting. Matching content
 may repopulate; mismatch cannot restore cleared state. Rapid A/B/C requests run
@@ -1894,8 +1919,9 @@ Numbered review units:
    manifest change restarts all three evidence reviews. A clean evidence unit
    establishes trustworthy comparison evidence; it does not select D4.
 
-The three source units implement the then-ratified P-C1/P-D2/P-R1/P-D15 register
-text exactly; the evidence unit verifies that implementation without changing
+The three source units implement exactly the P-C1/P-D2/P-R1/P-D15 text ratified
+and recorded by review-clean consolidated A1; the evidence unit verifies that
+implementation without changing
 it. The register is the sole formula, admission, result, and resident resource
 authority; this batch creates no duplicate definitions. The fixed scenario
 manifest supplies `C`, frame totals, workloads, and all other evidence inputs
@@ -2045,7 +2071,7 @@ merged, split, or left unnumbered.
    production producer, and delete all benchmark-local winner copies in the
    same source unit.
 2. **A2 — internal frame integration:** integrate the selected bounded planner, exact
-   ratified P-D6/P-C1/P-D2/P-R1/P-D15 contracts, VISIBLE plan identity, bounded
+   A1-recorded ratified P-D6/P-C1/P-D2/P-R1/P-D15 contracts, VISIBLE plan identity, bounded
    GLOBAL/GLOBAL_LOD scalar range, cache identities, and stack observations into
    an internal frame producer immediately consumed by the benchmark/internal
    entry. It has no public metadata or unreachable dormant path.
@@ -2060,7 +2086,7 @@ merged, split, or left unnumbered.
    stack_group_id` to ordinary descriptors/builders with ascending ID order and
    existing `apply_series_updates` topology semantics, and connect registry/
    frame entry to the already consumed internal production path.
-2. **A2 — activation Qt/result/contract:** add the immutable ratified P-C1/P-R1
+2. **A2 — activation Qt/result/contract:** add the immutable A1-recorded ratified P-C1/P-R1
    stack-result extension to the already complete ordinary D9 frame result,
    expose cumulative indicators, Qt registry/update behavior, and
    independent main/preview planning; a missing/failed preview member suppresses
@@ -2202,9 +2228,10 @@ Correctness gate:
   canonical first `+0.0`, bitwise adjacency/total, member ordering including
   `NONE`, and cumulative-marker pixel parity pass. Cursor sampling performs no
   add/reconstruction, raw query, new position, geometry/budget/admission/
-  acquisition change. Candidate B's evaluator freezes before evidence. After
-  P-C1 ratification only, batch/content ID equality and monotonic activation/
-  move/deactivation tests cover immediate clear, rapid A/B/C result orders,
+  acquisition change. Candidate B's evaluator freezes before evidence. Under
+  owner-ratified P-C1 recorded by review-clean consolidated A1 only, batch/
+  content ID equality and monotonic activation/move/deactivation tests cover
+  immediate clear, rapid A/B/C result orders,
   active applicable-ID matches/mismatches for READY/EMPTY/STALE/group failure/
   section failure/no batch, inactive ignore, delayed old absence/failure,
   movement→BUSY stale, deactivation, and no reappearance.
