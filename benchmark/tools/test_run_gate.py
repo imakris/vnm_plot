@@ -166,7 +166,7 @@ class GateEvidenceTests(unittest.TestCase):
             self.assertIn("evidence.txt", manifest["artifact_hashes"])
             self.assertNotIn("gate_manifest.json", manifest["artifact_hashes"])
 
-    def test_finalize_rejects_unapproved_checkpoint_pass(self) -> None:
+    def test_finalize_rejects_checkpoint_pass(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             attempt = root / "attempt"
@@ -187,7 +187,7 @@ class GateEvidenceTests(unittest.TestCase):
                 "diff": "",
             }
             gate = run_gate.Gate(args, attempt, source, {"status": "test"})
-            with self.assertRaisesRegex(RuntimeError, "approve_gate.py"):
+            with self.assertRaisesRegex(RuntimeError, "not recorded"):
                 gate.finalize("PASS", 0)
 
     def test_multi_config_executable_is_resolved(self) -> None:
@@ -275,6 +275,223 @@ class GateEvidenceTests(unittest.TestCase):
             self.assertEqual(manifest["status"], "FAIL")
             self.assertIn("preflight unavailable", manifest["reason"])
             self.assertIn("failure.txt", manifest["artifact_hashes"])
+
+    def test_pre_calibration_stops_after_resolving_one_executable(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            args = self.main_args(root)
+            args.mode = "pre-calibration"
+            args.source_root.mkdir()
+            pipeline = args.standards_root / "tools" / "style_pipeline.py"
+            pipeline.parent.mkdir(parents=True)
+            pipeline.write_text("# test fixture\n", encoding="utf-8")
+            source = {
+                "commit": "locator-only",
+                "slug": "source-clean",
+                "dirty": False,
+                "diff": "",
+            }
+
+            def pass_phase(gate: run_gate.Gate, name: str, *_: object, **__: object) -> None:
+                gate.phases.append({"name": name, "status": "PASS"})
+
+            def retain_smoke(gate: run_gate.Gate) -> None:
+                gate.phases.append({"name": "retain-smoke-evidence", "status": "PASS"})
+
+            with (
+                mock.patch.object(run_gate, "parse_args", return_value=args),
+                mock.patch.object(run_gate, "source_identity", return_value=source),
+                mock.patch.object(
+                    run_gate,
+                    "preflight",
+                    return_value={"dependency": {"dirty": False}},
+                ),
+                mock.patch.object(
+                    run_gate,
+                    "resolve_actionlint",
+                    return_value=(root / "actionlint", {}),
+                ),
+                mock.patch.object(
+                    run_gate,
+                    "initialize_msvc_environment",
+                    return_value={"status": "not-required"},
+                ),
+                mock.patch.object(
+                    run_gate.Gate,
+                    "run_phase",
+                    autospec=True,
+                    side_effect=pass_phase,
+                ),
+                mock.patch.object(run_gate.Gate, "refresh_configured_preflight"),
+                mock.patch.object(
+                    run_gate.Gate,
+                    "retain_smoke",
+                    autospec=True,
+                    side_effect=retain_smoke,
+                ),
+                mock.patch.object(
+                    run_gate,
+                    "resolve_benchmark_executable",
+                    return_value=args.build_dir / "benchmark" / "vnm_plot_benchmark",
+                ) as resolve_executable,
+            ):
+                self.assertEqual(run_gate.main(), 0)
+
+            resolve_executable.assert_called_once_with(args.build_dir, args.config)
+            manifest_path = next(args.build_dir.rglob("gate_manifest.json"))
+            attempt_dir = manifest_path.parent
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            self.assertEqual(manifest["mode"], "pre-calibration")
+            self.assertEqual(manifest["status"], "PRE_CALIBRATION_READY")
+            self.assertNotEqual(manifest["status"], "PASS")
+            self.assertEqual(
+                [phase["name"] for phase in manifest["phases"]],
+                [
+                    "style",
+                    "actionlint",
+                    "configure",
+                    "build",
+                    "ctest",
+                    "retain-smoke-evidence",
+                ],
+            )
+            self.assertFalse((attempt_dir / "calibration").exists())
+            self.assertNotIn("calibration_proposal", manifest["inputs"])
+            self.assertFalse(list(attempt_dir.rglob("owner_approval.json")))
+
+    def test_pre_calibration_smoke_does_not_gate_on_git_ids(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            args = self.main_args(root)
+            args.mode = "pre-calibration"
+            smoke = args.build_dir / "benchmark" / "smoke-reports" / "native" / "run"
+            smoke.mkdir(parents=True)
+            raw = smoke / "inspector_benchmark_test.json"
+            raw.write_text(
+                json.dumps(
+                    {
+                        "metadata": {
+                            "warmup_frames": 0,
+                            "measured_frames": 0,
+                            "build_source_dirty": "false",
+                            "build_source_diff_sha256": "diff",
+                            "source_diff_sha256": "diff",
+                            "source_dirty": "false",
+                            "source_tree": "worktree-content",
+                            "build_dependency_dirty": "false",
+                            "dependency_dirty": "false",
+                            "build_source_commit": "different-commit",
+                            "build_source_tree": "different-git-tree",
+                            "source_commit": "different-commit",
+                            "build_dependency_commit": "different-dependency",
+                            "dependency_commit": "different-dependency",
+                            "env.GALLIUM_DRIVER": "unset",
+                            "env.LP_NUM_THREADS": "unset",
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            trace = smoke / "benchmark_phase_trace_test.jsonl"
+            trace.write_text("validated by mock\n", encoding="utf-8")
+            run_gate.write_json(
+                smoke / "smoke_invocation.json",
+                {"renderer_environment": {}},
+            )
+            run_gate.write_json(
+                smoke / "smoke_validation.json",
+                {
+                    "status": "PASS",
+                    "artifact": raw.name,
+                    "artifact_sha256": run_gate.sha256_file(raw),
+                    "phase_trace": trace.name,
+                    "phase_trace_sha256": run_gate.sha256_file(trace),
+                },
+            )
+
+            attempt = root / "attempt"
+            (attempt / "preflight").mkdir(parents=True)
+            source = {
+                "commit": "locator-only",
+                "dirty": False,
+                "diff": "",
+                "diff_sha256": "diff",
+                "git_tree": "git-tree-locator",
+                "exact_tree_sha256": "worktree-content",
+            }
+            gate = run_gate.Gate(
+                args,
+                attempt,
+                source,
+                {
+                    "dependency": {
+                        "commit": "dependency-locator",
+                        "dirty": False,
+                    },
+                    "environment": {},
+                },
+            )
+            with mock.patch.object(run_gate, "parse_and_validate_phase_trace"):
+                gate.retain_smoke()
+            self.assertEqual(gate.phases[-1]["status"], "PASS")
+
+    def test_full_gate_rejects_missing_calibration_proposal(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            args = self.main_args(root)
+            args.mode = "full"
+            args.source_root.mkdir()
+            pipeline = args.standards_root / "tools" / "style_pipeline.py"
+            pipeline.parent.mkdir(parents=True)
+            pipeline.write_text("# test fixture\n", encoding="utf-8")
+            source = {
+                "commit": "locator-only",
+                "slug": "source-clean",
+                "dirty": False,
+                "diff": "",
+            }
+
+            def pass_phase(gate: run_gate.Gate, name: str, *_: object, **__: object) -> None:
+                gate.phases.append({"name": name, "status": "PASS"})
+
+            with (
+                mock.patch.object(run_gate, "parse_args", return_value=args),
+                mock.patch.object(run_gate, "source_identity", return_value=source),
+                mock.patch.object(
+                    run_gate,
+                    "preflight",
+                    return_value={"dependency": {"dirty": False}},
+                ),
+                mock.patch.object(
+                    run_gate,
+                    "resolve_actionlint",
+                    return_value=(root / "actionlint", {}),
+                ),
+                mock.patch.object(
+                    run_gate,
+                    "initialize_msvc_environment",
+                    return_value={"status": "not-required"},
+                ),
+                mock.patch.object(
+                    run_gate.Gate,
+                    "run_phase",
+                    autospec=True,
+                    side_effect=pass_phase,
+                ),
+                mock.patch.object(run_gate.Gate, "refresh_configured_preflight"),
+                mock.patch.object(run_gate.Gate, "retain_smoke"),
+                mock.patch.object(
+                    run_gate,
+                    "resolve_benchmark_executable",
+                    return_value=args.build_dir / "benchmark" / "vnm_plot_benchmark",
+                ),
+            ):
+                self.assertEqual(run_gate.main(), 1)
+
+            manifest_path = next(args.build_dir.rglob("gate_manifest.json"))
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            self.assertEqual(manifest["status"], "FAIL")
+            self.assertIn("did not produce", manifest["reason"])
 
 
 if __name__ == "__main__":

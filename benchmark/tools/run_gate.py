@@ -556,27 +556,37 @@ class Gate:
                 dependency = preflight.get("dependency", {})
                 expected = {
                     "build_source_dirty": "false" if not expected_source["dirty"] else "true",
-                    "build_source_commit": expected_source["commit"],
                     "build_source_diff_sha256": expected_source["diff_sha256"],
-                    "build_source_tree": expected_source["git_tree"],
-                    "source_commit": expected_source["commit"],
                     "source_diff_sha256": expected_source["diff_sha256"],
                     "source_dirty": "true" if expected_source["dirty"] else "false",
                     "source_tree": expected_source["exact_tree_sha256"],
                 }
+                if self.args.mode != "pre-calibration":
+                    expected.update(
+                        {
+                            "build_source_commit": expected_source["commit"],
+                            "build_source_tree": expected_source["git_tree"],
+                            "source_commit": expected_source["commit"],
+                        }
+                    )
                 if dependency.get("commit"):
                     expected.update(
                         {
-                            "build_dependency_commit": dependency["commit"],
                             "build_dependency_dirty": (
                                 "true" if dependency.get("dirty") else "false"
                             ),
-                            "dependency_commit": dependency["commit"],
                             "dependency_dirty": (
                                 "true" if dependency.get("dirty") else "false"
                             ),
                         }
                     )
+                    if self.args.mode != "pre-calibration":
+                        expected.update(
+                            {
+                                "build_dependency_commit": dependency["commit"],
+                                "dependency_commit": dependency["commit"],
+                            }
+                        )
                 environment = preflight.get("environment", {})
                 mismatches = {
                     field: {"expected": value, "actual": metadata.get(field)}
@@ -634,8 +644,7 @@ class Gate:
     def finalize(self, status: str, exit_status: int, reason: str = "") -> None:
         if status == "PASS":
             raise RuntimeError(
-                "checkpoint PASS may only be recorded by approve_gate.py after "
-                "owner review of the retained calibration proposal"
+                "checkpoint PASS is not recorded by the checkpoint runner"
             )
         self.manifest["status"] = status
         self.manifest["exit_status"] = exit_status
@@ -723,7 +732,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch", default="batch-2")
     parser.add_argument("--checkpoint", default="2.1")
     parser.add_argument("--config", default="Release")
-    parser.add_argument("--mode", choices=("full", "ci-retain"), default="full")
+    parser.add_argument(
+        "--mode",
+        choices=("full", "pre-calibration", "ci-retain"),
+        default="full",
+    )
     parser.add_argument("--recovery-of")
     parser.add_argument("--upstream-status", default="success")
     parser.add_argument("--actionlint", type=Path)
@@ -859,6 +872,14 @@ def main() -> int:
             )
             gate.retain_smoke()
             executable = resolve_benchmark_executable(args.build_dir, args.config)
+            if args.mode == "pre-calibration":
+                gate.finalize(
+                    "PRE_CALIBRATION_READY",
+                    0,
+                    "pre-calibration checkpoint passed; calibration and approval were not run",
+                )
+                print(attempt_dir)
+                return 0
             calibration_dir = attempt_dir / "calibration"
             gate.run_phase(
                 "calibration",
@@ -873,18 +894,17 @@ def main() -> int:
                 timeout=7200,
             )
             proposal = calibration_dir / "proposed_noise_margins.json"
-            proposal_sha256 = sha256_file(proposal)
+            if not proposal.is_file():
+                raise RuntimeError("calibration did not produce a review proposal")
             gate.manifest["inputs"]["calibration_proposal"] = {
                 "path": proposal.relative_to(attempt_dir).as_posix(),
-                "sha256": proposal_sha256,
             }
         gate.finalize(
             "CALIBRATION_REVIEW_REQUIRED",
             2,
-            "owner approval must reference the retained calibration proposal SHA256",
+            "the retained calibration proposal requires owner review",
         )
         print(attempt_dir)
-        print(f"proposal_sha256={proposal_sha256}")
         return 2
     except Exception as exc:  # noqa: BLE001 - retain the exact failed phase.
         retain_gate_failure(gate, exc)

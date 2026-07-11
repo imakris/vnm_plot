@@ -375,13 +375,4 @@ set_tests_properties(benchmark_gate_tool_tests PROPERTIES
     ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1"
 )
 
-add_test(
-    NAME benchmark_gate_approval_tool_tests
-    COMMAND "${Python3_EXECUTABLE}"
-        "${CMAKE_CURRENT_SOURCE_DIR}/tools/test_approve_gate.py"
-)
-set_tests_properties(benchmark_gate_approval_tool_tests PROPERTIES
-    TIMEOUT 60
-    ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1"
-)
 endif()

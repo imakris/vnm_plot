@@ -111,20 +111,16 @@ python benchmark\tools\run_gate.py `
   --checkpoint 2.1
 ```
 
-The full runner ends with `CALIBRATION_REVIEW_REQUIRED` and prints the retained
-proposal SHA256. It cannot approve its own output. After the repository owner
-has inspected that exact proposal, the owner records approval against its hash:
+To stop truthfully before calibration, run the same checkpoint prefix with
+`--mode pre-calibration`. It requires a clean worktree and dependency, passing
+style, `actionlint`, configure, build, CTest, retained smoke validation, and
+exactly one benchmark executable for the requested build configuration. It then
+records terminal status `PRE_CALIBRATION_READY`; this is not checkpoint `PASS`.
+The attempt contains no calibration, proposal, or approval artifact.
 
-```powershell
-python benchmark\tools\approve_gate.py `
-  --attempt-dir <retained-gate-attempt> `
-  --proposal-sha256 <reviewed-sha256> `
-  --approved-by <owner-identity>
-```
-
-Only that explicit second step can transition a complete, clean checkpoint gate
-to `PASS`. CI smoke packaging is labeled `DIAGNOSTIC_PASS` and is never a
-checkpoint approval.
+The full runner ends with `CALIBRATION_REVIEW_REQUIRED` and the retained attempt
+path. It cannot approve its own output or transition the checkpoint to `PASS`.
+CI smoke packaging is labeled `DIAGNOSTIC_PASS` and is not checkpoint approval.
 
 On Windows the full runner initializes the Visual Studio x64 environment when
 the current shell has not done so. It resolves pinned `actionlint` 1.7.12 from
