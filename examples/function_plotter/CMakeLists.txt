@@ -91,10 +91,35 @@ target_include_directories(function_plotter PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+if(VNM_PLOT_BUILD_TESTS)
+    enable_testing()
+    add_executable(test_function_plotter_stacking
+        test_function_plotter_stacking.cpp
+        function_plotter.cpp
+        function_plotter.h
+    )
+    target_link_libraries(test_function_plotter_stacking PRIVATE
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Quick
+        Qt6::Multimedia
+        vnm_plot::qtquick
+        mexce_lib
+    )
+    target_include_directories(test_function_plotter_stacking PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../common
+        ${CMAKE_CURRENT_SOURCE_DIR}
+    )
+    add_test(NAME FunctionPlotterStacking COMMAND test_function_plotter_stacking)
+endif()
+
 # windows.h ships min/max as macros; std::min / std::max in this TU expand
 # wrong without NOMINMAX, breaking the format_timestamp lambda's digit clamp.
 if(WIN32)
     target_compile_definitions(function_plotter PRIVATE NOMINMAX)
+    if(TARGET test_function_plotter_stacking)
+        target_compile_definitions(test_function_plotter_stacking PRIVATE NOMINMAX)
+    endif()
 endif()
 
 # Deploy Qt runtime DLLs next to the example so it can be launched by

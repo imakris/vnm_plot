@@ -133,6 +133,7 @@ class Function_plotter : public QAbstractListModel
     Q_PROPERTY(double xMax READ x_max WRITE set_x_max NOTIFY range_changed)
     Q_PROPERTY(vnm::plot::Plot_widget* plot_widget READ plot_widget WRITE set_plot_widget NOTIFY plot_widget_changed)
     Q_PROPERTY(int functionCount READ function_count NOTIFY function_count_changed)
+    Q_PROPERTY(bool stackFunctions READ stack_functions WRITE set_stack_functions NOTIFY stack_functions_changed)
 
 public:
     enum Roles {
@@ -166,6 +167,9 @@ public:
 
     int function_count() const { return static_cast<int>(m_entries.size()); }
 
+    bool stack_functions() const { return m_stack_functions; }
+    void set_stack_functions(bool stacked);
+
     // Plot widget connection
     vnm::plot::Plot_widget* plot_widget() const { return m_plot_widget; }
     void set_plot_widget(vnm::plot::Plot_widget* widget);
@@ -188,6 +192,7 @@ signals:
     void range_changed();
     void plot_widget_changed();
     void function_count_changed();
+    void stack_functions_changed();
 
 private:
     void regenerate_all_samples();
@@ -204,6 +209,7 @@ private:
 
     double m_x_min = -10.0;
     double m_x_max = 10.0;
+    bool m_stack_functions = false;
 
     vnm::plot::Plot_widget* m_plot_widget = nullptr;
 };

@@ -41,6 +41,21 @@ ApplicationWindow {
                 font.bold: true
                 color: textColor
             }
+
+            Item { Layout.fillWidth: true }
+
+            Text {
+                text: "Stack functions"
+                font.pixelSize: fontSize
+                color: dimTextColor
+            }
+
+            Local.StyleToggleButton {
+                glyph: "\u03a3"
+                tooltip: "Stack functions cumulatively"
+                active: functionPlotter.stackFunctions
+                onActivated: functionPlotter.stackFunctions = !functionPlotter.stackFunctions
+            }
         }
 
         // Row 2: Function entries (dynamic list)

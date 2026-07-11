@@ -516,6 +516,7 @@ void Function_entry::setup_series()
     m_series = vnm::plot::Series_builder()
         .enabled(true)
         .style(vnm::plot::Display_style::LINE)
+        .stack_group(m_plotter && m_plotter->stack_functions() ? 1 : 0)
         .data_source_ref(m_data_source)
         .access(plot_examples::make_function_sample_policy_typed())
         .build_shared();
@@ -664,6 +665,26 @@ void Function_plotter::set_x_max(double v)
     }
 }
 
+void Function_plotter::set_stack_functions(bool stacked)
+{
+    if (m_stack_functions == stacked) {
+        return;
+    }
+
+    m_stack_functions = stacked;
+    std::vector<std::pair<int, std::shared_ptr<vnm::plot::series_data_t>>> updates;
+    updates.reserve(m_entries.size());
+    for (const auto& entry : m_entries) {
+        auto series = entry->series();
+        series->stack_group = stacked ? 1 : 0;
+        updates.emplace_back(entry->series_id(), std::move(series));
+    }
+    if (m_plot_widget) {
+        m_plot_widget->apply_series_updates(updates);
+    }
+
+    emit stack_functions_changed();
+}
 
 void Function_plotter::set_plot_widget(vnm::plot::Plot_widget* widget)
 {
