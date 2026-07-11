@@ -16,7 +16,9 @@ snapshot capability/batch APIs, `Data_source::identity()`, registry
 incarnations, `geometry_revision`, series-instance tokens, and the split v1 GPU
 layout. The accepted follow-up left D4 unresolved; later exact executable
 refinements are proposals pending owner ratification in the plan register and
-must not be presented here as approved product oracle.
+must not be presented here as approved product oracle. Stage 4 may implement
+both candidates only through private/internal evidence paths; the owner must
+select D4 before any Stage 5 public stack exposure.
 
 ## Executive conclusion
 
@@ -50,8 +52,9 @@ Four historical model reviews were used, followed by a separate Codex claim audi
 External review artifacts remain outside this repository. The listed historical
 Fable session is evidence for this review only; its availability/exclusion and
 its model vote do not govern implementation review policy. Current review units,
-exact-hash three-xhigh loops, architecture lens, and ambiguity-only Fable use are
-defined solely by `VNM_PLOT_IMPLEMENTATION_PLAN.md`.
+exact source/evidence-identity three-xhigh loops, architecture lens, and
+ambiguity-only Fable use are defined solely by
+`VNM_PLOT_IMPLEMENTATION_PLAN.md`.
 
 Claims are labelled as follows:
 
@@ -109,7 +112,7 @@ Concrete recovery and result:
 4. Configure from a checkout with no sibling dependency present, then run install/package-consumer smoke tests so local directory leakage cannot mask the fetched `master` state.
 5. Record the resolved dependency commit in CI artifacts for diagnosis and benchmark comparison, without pinning it.
 
-The dependency repository's own `c03a350` push workflows passed on [Linux](https://github.com/imakris/vnm_msdf_text/actions/runs/29083205733), [macOS](https://github.com/imakris/vnm_msdf_text/actions/runs/29083205779), and [FreeBSD](https://github.com/imakris/vnm_msdf_text/actions/runs/29083205767). Its [Windows workflow](https://github.com/imakris/vnm_msdf_text/actions/runs/29083204930) failed at workflow level with zero jobs and no logs. Cause is **unresolved**: run a GitHub Actions-aware validator such as `actionlint` on `.github/workflows/ci-windows.yml`, inspect expression-context availability—particularly job-level `runner.temp`—and land/rerun a focused workflow-only correction. Do not guess at a product-code fix. This dependency workflow failure keeps Batch 0 open even though all eight dependent `vnm_plot` attempt-2 jobs are green.
+The dependency repository's own `c03a350` push workflows passed on [Linux](https://github.com/imakris/vnm_msdf_text/actions/runs/29083205733), [macOS](https://github.com/imakris/vnm_msdf_text/actions/runs/29083205779), and [FreeBSD](https://github.com/imakris/vnm_msdf_text/actions/runs/29083205767). Its [Windows workflow](https://github.com/imakris/vnm_msdf_text/actions/runs/29083204930) historically failed at workflow level with zero jobs and no logs. That historical cause was the invalid job-level `runner.temp` use; the focused correction subsequently passed all dependency platforms at `vnm_msdf_text@b9c216a`. Batch 0 is closed. This paragraph preserves failure provenance and creates no active remediation instruction.
 
 ### Repository style gate: one failed execution
 
@@ -135,7 +138,12 @@ Two independently written mechanical source-reference checks hit the same PowerS
 
 The corrected local command built successfully and CTest passed **21/21 tests in 1.60 seconds**. The build also emitted C4459 shadow warnings for `k_ns_per_ms` and `k_ns_per_second` in `include/vnm_plot/core/algo.h:717-718` and `src/qt/plot_widget.cpp:1277`, shadowing canonical constants in `time_units.h`. The concrete fix is to remove the local duplicates and use the canonical constants, then enable this warning as an error for project code after the existing warnings are cleared.
 
-Failure ownership is explicit: dependency publication and the four `vnm_plot` workflow reruns are complete; dependency Batch 0 still owns its jobless Windows workflow; Batch 0A owns the 14 style violations; Batch 2 owns the shadow warnings; local gate automation owns initialized MSVC/platform selection; and the benchmark-integrity batch owns cold-start instrumentation. The concrete recommendation is to delegate the remaining remediation groups to those responsible agents/batches and require each to return its named gate evidence before closure. The green `vnm_plot` attempt 2 does not erase the eight initial failures or their provenance.
+Historical failure ownership is explicit: dependency publication and the four
+`vnm_plot` workflow reruns completed; dependency Batch 0 closed at `b9c216a`;
+style Batches 1B/1C closed at `vnm_plot@2ec8013`; Batch 2 owns the shadow
+warnings; local gate automation owns initialized MSVC/platform selection; and
+the benchmark-integrity batch owns cold-start instrumentation. Later green
+evidence does not erase the initial failures or their provenance.
 
 ### 2026-07-10 Batch 2 execution addendum
 
@@ -176,11 +184,11 @@ artifacts cannot approve the checkpoint.
 
 ## Prioritized architecture and performance findings
 
-### P0 — The intentional cross-repository `master` oracle exposed delivery order; dependent CI recovered, dependency Windows CI remains open
+### P0 — Historical live-`master` delivery-order failure; closed at dependency `b9c216a`
 
-**Classification: Source-confirmed delivery failure and partial recovery under an owner-approved policy.** Both fallback declarations deliberately use the owner's moving `master`; the first attempts correctly exposed that the consumer reached `master` before the required dependency contract did. After `c03a350` reached dependency `master`, all eight dependent `vnm_plot` attempt-2 jobs passed. The dependency's own Windows workflow still fails before creating jobs.
+**Classification: Historical source-confirmed delivery failure, recovered under an owner-approved policy.** Both fallback declarations deliberately use the owner's moving `master`; the first attempts correctly exposed that the consumer reached `master` before the required dependency contract did. After `c03a350` reached dependency `master`, all eight dependent `vnm_plot` attempt-2 jobs passed. The dependency Windows workflow was then corrected and all dependency platforms passed at `b9c216a`.
 
-**Remediation:** completed for the consumer break: publish the sibling change to its `master`, keep `vnm_plot` tracking `master`, and rerun all dependent workflows. Keep Batch 0 open until the dependency Windows workflow passes, add resolved dependency commit metadata, and retain no-sibling/install/package consumption coverage. For future coupled changes, push the dependency contract first and confirm its CI before pushing the consumer; if live integration breaks, leave it red until the repositories are compatible rather than masking it with a revision pin.
+**Resolution:** Batch 0 is closed at `vnm_msdf_text@b9c216a`. The stable policy remains unversioned package discovery and FetchContent `master`, with the resolved dependency commit recorded in evidence and no-sibling/install/package consumption retained.
 
 **Performance relevance:** no direct runtime effect. Because the dependency intentionally moves, every benchmark artifact must record its resolved commit so before/after binaries remain attributable without changing the `master` policy.
 
@@ -221,14 +229,12 @@ sharing gate cannot retroactively justify a hold-bearing RU-3A hash.
 
 **Classification: Source-confirmed correctness and performance issue.** `auto_adjust_view()` snapshots/scans LOD 0 at `src/qt/plot_widget.cpp:1106-1147`. Indicators snapshot LOD 0 at `1312-1371` and use `bracket_timestamp()`, which infers order from endpoints and binary-searches (`include/vnm_plot/core/algo.h:615-675`) despite `Data_source` supporting `UNORDERED`. These paths also bypass the renderer's complete nonfinite policy.
 
-**Pending P-Q1 rationale:** add one core `resolve_sample_at` evaluator and the proposed Batch 3B request/value contract: `Sample_query_mode::{NEAREST,INTERPOLATE}`, point-specific context, request timestamp/expected sequence, value-only result, and `Data_source::query_sample`. The default performs one acquisition and returns its top-level result sequence without post-hoc `current_sequence`; indexed overrides do not nest acquisition. This exact API/tie contract is not owner-ratified, so RU-3B cannot begin. Proposed behavior:
-
-- ascending/descending timestamp brackets and duplicate-run boundaries: O(log n), with additional policy-required visits counted;
-- unknown: classify within the acquired snapshot; RU-3C2 may cache only by owner/object, stable nonzero observed sequence, and access semantics;
-- unordered nearest: O(n) correct global nearest; exact equidistance chooses the greater timestamp by unsigned nanosecond distance, then that timestamp's D8 winner;
-- unordered interpolation: explicit unsupported unless the source supplies a direct semantic query;
-- after D8 collapse, SKIP/BREAK remove candidates, ZERO retains zero, and REJECT fails before EMPTY; NEAREST is globally closest even outside interpolation domain; INTERPOLATE follows D2 gaps, no-left extrapolation, and LINEAR/STEP_AFTER constant right hold;
-- all paths use the same status/sequence producer; a nonzero expected-sequence mismatch is discarded/retried.
+**Pending P-Q1 rationale:** one point producer avoids the present divergent
+ordering, nonfinite, hold, and status behavior. The sole register now owns the
+complete request/value types, bounded point-support search, ordered/UNKNOWN/
+UNORDERED behavior, exact tie, expected-sequence, default/direct-override, and
+no-nested-acquisition rules. This review deliberately does not restate that
+operative contract. P-Q1 is not owner-ratified, so RU-3B cannot begin.
 
 Route `auto_adjust_view()` through the same range producer used by frame auto-range. The stack planner and stacked indicator must call the same evaluator rather than implement another interpolation loop. For pixel-parity indicators, the UI publishes the cursor timestamp; the sole 3C frame result copies value-only indicators and identities from the exact executed snapshot-free plan plus final renderer/RHI disposition, accepting one-frame latency. Do not independently query after render, because the source may have advanced. A direct source query remains valid for non-pixel-parity operations only when selected LOD and expected sequence are supplied and mismatch is discarded/retried.
 
@@ -245,11 +251,11 @@ Route `auto_adjust_view()` through the same range producer used by frame auto-ra
 - FAILED: suppress that operation and report once through the configured diagnostic path;
 - READY: consume while retaining its hold.
 
-Use invariant-safe named construction and a top-level sequence independent of
-payload. READY validates a snapshot and copies its sequence; EMPTY may carry an
-exact zero/nonzero empty revision with no snapshot; BUSY/FAILED carry neither a
-snapshot nor a claimed sequence. Do not reread `current_sequence()` after the
-operation or leave a deprecated alias.
+Pending P-S1 in the sole register defines invariant-safe construction and a
+top-level sequence independent of payload. In particular, EMPTY nonzero is an
+exact observed empty revision while zero means the revision is unavailable or
+unstable; zero is not an exact revision and never authorizes reuse. Do not
+reread `current_sequence()` after the operation or leave a deprecated alias.
 
 **Verification:** a four-state source must prove no view mutation on BUSY, an observable diagnostic on FAILED, no draw on EMPTY, and normal consumption on READY.
 
@@ -265,7 +271,7 @@ operation or leave a deprecated alias.
 
 **Classification: Source-confirmed correctness issue.** `include/vnm_plot/core/access_policy.h:63-77` multiplies a floating member by `1e9` and casts directly to `int64_t`. NaN, infinity, or out-of-range finite values make the conversion invalid/undefined. README and typed API tests make floating seconds an adopted behavior, so it cannot simply be ignored.
 
-**Remediation:** D7 exposes public `checked_seconds_to_ns(double) -> optional<int64_t>` for caller ingestion into integral-nanosecond storage. It rounds the exact binary64 mathematical value times `1e9` to nearest, exact halves away from zero, range-checks before conversion, and rejects nonfinite/nonrepresentable values. Member pointers accept only non-bool integral types whose whole range fits `int64_t`: signed `int64_t` is valid; bool, float/double, `uint64_t`, and wider types are ill-formed.
+**Remediation:** D7 exposes public `checked_seconds_to_ns(double) -> optional<int64_t>` for caller ingestion into integral-nanosecond storage. It rounds the exact binary64 mathematical value times `1e9` to nearest, exact halves away from zero, range-checks before conversion, and rejects nonfinite/nonrepresentable values. Pending P-D7 in the sole register owns the exact `remove_cv_t`, integral/non-bool, signed/unsigned `numeric_limits::digits` admissibility trait; this review does not create a second operative definition.
 
 **Verification:** compile-fail/detection tests reject floating member pointers and migrate existing examples/docs. An exact binary64-rational oracle covers positive/negative integers and halves (`+/-1/1024` seconds is an exact half-nanosecond case after scaling); `std::nextafter` neighbours around both signed rounded-result boundaries identify representable accepted/rejected inputs instead of inventing a one-nanosecond step at that magnitude. NaN/infinities fail under UBSan, and accessor/full-frame evidence proves no hot-loop conversion.
 
@@ -377,27 +383,28 @@ function:
 - ASCENDING and DESCENDING use direction-aware cursors. UNKNOWN classifies within one acquired snapshot; proposed RU-3C2 reuse requires owner/object, stable nonzero observed sequence, and access semantics. Truly UNORDERED data is `FAILED(UNORDERED_STACK_INPUT)`; sorting every frame is expensive and semantically ambiguous.
 - LINEAR consecutive finite knots define closed spans. STEP_AFTER is right-continuous on the same closed domain and retains left/right event order at a jump. Touching spans merge only when the function is defined at their shared endpoint; `BREAK_SEGMENT` removes the knot and incident spans, `SKIP` reconnects surviving neighbours, `REPLACE_WITH_ZERO` substitutes finite zero, and `REJECT_WINDOW` is `FAILED(NONFINITE_REJECTED)`.
 - Under pending P-D2, normalize every member before intersection. REJECT failure precedes would-be EMPTY. Both LINEAR and STEP_AFTER HOLD_LAST_FORWARD extend the latest defined value constantly through the closed right endpoint, never left/cross-break; DRAW_NOTHING does not. Candidate A must retain every intersection endpoint and selected breakpoint within `R_A=K*B`; Candidate B reserves endpoints then optional grid positions within `R_B=N`; excess is `FAILED(FRAGMENTATION_BUDGET)`.
-- Pending P-D6's `structure_key` gates BUSY fallback. Its `content_key` is only a compact tuple: structure, selected LODs, atomically observed sequences including zero, exact window/span indices/timestamps, origin, and deterministic planner/format parameters. It owns no samples, winners, arrays, extrema, events, geometry, or GPU objects. READY reuse additionally requires stable nonzero sequences/D10; a zero-key may identify retained STALE_BUSY content. FAILED then EMPTY suppress stale before BUSY.
-- Pending P-R1 gives each `(group,view)` one disposition and each series explicit NOT_EVALUATED/OBSERVED state. It selects `FAILED(reason)` by deterministic phase precedence without speculative work or fabricated observations.
-- Accumulation remains double, but pending P-R1 checks finite double and finite representable v1 float bottom/top after every addition before any partial emit; tests cover float maxima, negatives, cancellation, and ordinary rounding.
+- Pending P-D6's `structure_key` gates BUSY fallback. Its `content_key` is the
+  register's compact scalar observation tuple, including logical window and
+  fixed two-segment mapping but excluding normalized/drawable spans, values,
+  arrays, and resources. READY reuse additionally requires stable nonzero
+  sequences/D10; a zero-key may identify retained STALE_BUSY content.
+- Pending P-R1 gives each `(group,view)` one disposition and tags every
+  per-series presentation entry with its `content_frame_id`/`content_key`.
+  STALE_BUSY presentation is copied wholly from retained content; current
+  attempts remain trace/counters only. Without retained content, BUSY is
+  `FAILED(SOURCE_BUSY)` and only completed current observations are presented.
+- Accumulation remains double. Pending P-R1 requires a finite double after each
+  addition and a finite v1 float after conversion; ordinary finite rounding is
+  accepted and exact float roundtrip is not required.
 - Snapshots from different sources are individually stable, not transactionally simultaneous. Different LOD snapshots of the same source have no stronger atomicity guarantee. The contract must say this. Applications needing atomic cross-signal or cross-LOD publication must publish through one coordinated snapshot/revision contract.
 
 ### Bounded independent LOD planning and unresolved sampling strategy
 
 **Approved common constraints; D4 strategy unresolved.** Neither “merge all LOD 0 samples” nor “give every member a full one-sample-per-pixel input before an unbounded union” is acceptable. The first grows with history; the second can emit approximately `K^2*width` cumulative band samples.
 
-Let:
-
-- `W` be full framebuffer plot width before label layout;
-- `K` be enabled group members;
-- `C` be an internal calibrated total band-samples-per-pixel budget, initially 2;
-- `D` be 1 for all-LINEAR groups and 2 when STEP_AFTER output can require paired left/right events;
-- `M = floor(C * W)` be the hard emitted band-ordinate-pair budget;
-- `A = align_up(sizeof(actual_stack_uniform_std140), QRhi uniform-buffer alignment)` use the real static-asserted uniform record rather than a guessed size;
-- `U_limit` be the metadata-only uniform-block reservation fixed before admission;
-- `U_observed` be actual updates, with `U_observed<=U_limit`;
-- `H_limit = 40*M + A*U_limit` be the checked reservation for 12-byte base records, shared spans, padded boundaries, and aligned uniform capacity;
-- `V_limit=2*M` be the fixed per-group/view visit reservation and hard limit; measured visits are reported as `V_observed`.
+Pending P-D15 in the sole register owns the exact `W/K/C/D/M`, visit,
+candidate-independent uniform-slot, upload-reservation, frame-admission, and
+resident-resource formulas. They are intentionally not duplicated here.
 
 Extend the planner request with separate `render_width_px` and `max_visible_samples`; do not overload shader/view width. Every strategy selects each source independently and includes brackets/holds. If a coarsest complete window exceeds the per-input cap, return `FAILED(LOD_BUDGET_EXCEEDED)` rather than dropping input or using raw history.
 
@@ -407,7 +414,9 @@ Extend the planner request with separate `render_width_px` and `max_visible_samp
 
 Do not choose a default from asymptotic argument alone. Prototype both outside the public API with identical independent LOD selection and hard `M`, `V_limit`, and `H_limit` counters plus identical D15 frame admission. Compare native-backend compose time, `V_observed`, total bytes, allocations, producer wait, and full-frame p50/p95/p99 for K={2,8,32} and W={800,3840}; visually inspect phase-shifted narrow spikes, mixed LINEAR/STEP_AFTER discontinuities, gaps, and cancellation. The owner selects one strategy before its tests become product oracle; do not ship two speculative modes.
 
-For either candidate, final construction counts every update/padding byte against `H_limit`, uses `sizeof(actual_uniform)*U_observed`, and requires `U_observed<=U_limit`. Format changes re-derive bounds/tests. Excess is `FAILED(STACK_OUTPUT_BUDGET_EXCEEDED)`; acquisition/copy/alignment remain separately measured.
+For either candidate, final construction must satisfy the then-ratified P-D15
+checked accounting exactly; acquisition/copy/alignment remain separately
+measured.
 
 `C` should remain internal until native-backend quality/performance results show that callers need control. Verify the hard output/byte bounds and explicit budget failures for both prototypes.
 
@@ -429,11 +438,22 @@ stack composition plans ----------> stacked range and stacked renderer
 executed-plan disposition ---------> one immutable frame result
 ```
 
-D13 makes each renderer registration slot the lifecycle owner. Pending P-D6's compact `structure_key` contains only non-content request facts. Its compact `content_key` adds selected LODs, observed sequences including zero, exact selected window/span indices/timestamps, origin, and deterministic planner/format parameters—never payload/derived arrays/resources. D14 removes `Data_source::identity()`; no incarnation/revision/reset token exists.
+D13 makes each renderer registration slot the lifecycle owner. Pending P-D6's
+compact `structure_key` contains only non-content request facts. Its compact
+`content_key` uses the register's scalar LOD/sequence/logical-window/fixed-
+segment-mapping/hold-endpoint/origin/version tuple—never normalized or drawable
+spans, payload values, arrays, or resources. D14 removes
+`Data_source::identity()`; no incarnation/revision/reset token exists.
 
 READY composite reuse requires identical `content_key`, stable nonzero sequences, and non-conservative semantics. Otherwise correctness wins: recompute the bounded group and record why. BUSY compares only `structure_key`, retains the previous complete `content_key` wholesale, and never consumes a partially fresh operand set.
 
-Reuse vectors and preserve capacity so steady-state composition allocates zero heap blocks. Do not implement suffix-only incremental recomposition from `current_sequence()`: the current contract does not promise append-only immutable prefixes or report the first changed index. If profiling later proves this necessary, first add an explicit source change-range contract, then key and test it.
+Pending P-D15 replaces unspecified geometric vector growth with exact-capacity
+internal stack storage so live/temporary cap accounting is truthful; unchanged
+steady state still reuses the exact capacity and allocates zero heap blocks. Do
+not implement suffix-only incremental recomposition from `current_sequence()`:
+the current contract does not promise append-only immutable prefixes or report
+the first changed index. If profiling later proves this necessary, first add an
+explicit source change-range contract, then key and test it.
 
 ### GPU representation and draw order
 
@@ -442,15 +462,11 @@ per-member interleaved `{float t_rel, float bottom, float top}` blocks and
 `static_assert(sizeof(record)==12)`. Both D4 candidates use this exact record;
 there is no v1 split-time alternative or layout experiment.
 
-Let `E` be emitted events, `K` enabled members, and `K*E<=M`. Base bytes are
-`12*K*E`. Group-shared span metadata costs `8*group_span_count`. Each visible
-LINE member has a separately keyed padded `{float t_rel,float top}` buffer with
-`8*sum_line(span_length+2)` bytes and four prev/p0/p1/next bindings. Actual
-uniform uploads use
-`sizeof(actual_stack_uniform_std140)*U_observed`, where
-`U_observed<=U_limit`; aligned reservation uses `A*U_limit`. Pending P-D15's
-checked conservative cap is `H_limit=40*M+A*U_limit`. If formats or ownership
-change, re-derive the formula and tests in the same amendment.
+The layout uses group-shared span metadata and a separately keyed padded
+`{float t_rel,float top}` LINE boundary buffer with four prev/p0/p1/next
+bindings. Pending P-D15 in the sole register owns all exact byte, uniform-slot,
+alignment, and cap arithmetic. If formats or ownership change, amend and
+ratify that register text and its tests before implementation.
 
 Prepare/upload outside the render pass and bind/draw inside. Draw filled bands
 in component order, then cumulative boundaries so the final line represents
@@ -467,23 +483,16 @@ requires a separate owner-approved use case.
 
 ### Frame-wide and resident resource ownership
 
-Pending P-D15 keeps per-group/per-view `M`, `V_limit=2*M`, and `H_limit` and proposes one
-shared frame budget for both views. Admission is metadata-only and view-major:
-all MAIN `(group,view)` units in ascending `lowest_enabled_series_id`, then all
-PREVIEW units in the same order. Before acquisition/allocation each unit charges
-the complete fixed `(M,V_limit,H_limit)` reservation against
-`FRAME_M_LIMIT`, `FRAME_V_LIMIT`, and `FRAME_H_LIMIT`. Rejection publishes
-`FAILED(FRAME_BUDGET)`, emits no geometry, and does no later work; actual use never
-refunds or readmits. Preview enablement therefore cannot change a MAIN result.
-
-Pending P-D15 requires internal exact-capacity CPU storage rather than
-unspecified vector growth. RHI retires non-current resources, calculates
-projected installed CPU/QRhi bytes against `STACK_CPU_BYTES_LIMIT` and
-`STACK_QRHI_BYTES_LIMIT`, allocates temporary resources, then installs
-atomically. Cap excess is `FAILED(RESIDENT_BUDGET)`; an in-cap CPU or QRhi API
-failure is `FAILED(RESOURCE_ALLOCATION_FAILED)`. Pending P-R1 publishes one
-group disposition plus per-series NOT_EVALUATED/OBSERVED state. No failure
-leaves partial cache/geometry or claims opaque driver residency.
+Pending P-D15 proposes deterministic metadata-only MAIN-before-PREVIEW frame
+admission and hard instantaneous live caps for explicitly scoped stack-only CPU
+storage and exact requested stack QRhi buffers. Exact-capacity internal CPU
+storage makes committed/temporary bytes truthful. Its replacement transaction
+either preserves the old target while a complete replacement fits, or debits
+that target before retrying and leaves it absent on failure; no partial set is
+installed and no opaque pipeline/SRB/texture residency is claimed. The sole
+register owns the exact formulas, counted scopes, order, statuses, and
+transaction algorithm. Pending P-R1 owns the corresponding immutable result
+presentation.
 
 ### Auto-range, preview, and indicators
 
@@ -518,21 +527,31 @@ At the cursor, evaluate the published rendered representation and return, per me
 
 Each batch must be independently useful, reviewed, and measured. Do not land unused scaffolding or compatibility paths.
 
-### Batch 0 — Restore dependency and CI integrity (consumer recovered; dependency Windows still open)
+### Batch 0 — Historical dependency and CI integrity closure
 
 Files/tools: `vnm_plot/CMakeLists.txt` and package smoke configuration; separately authorized sibling `vnm_msdf_text/.github/workflows/ci-windows.yml`; `actionlint` (or equivalent GitHub Actions-aware validation) plus an actual GitHub workflow rerun.
 
-Deliverable: required dependency contract is present on `master` and all eight dependent `vnm_plot` jobs are green. Remaining deliverables are a valid green dependency Windows workflow, resolved dependency commit recording, and retained no-sibling install/consumer smoke.
+Historical result: required dependency contract is present on `master`, all
+eight dependent `vnm_plot` jobs passed, and dependency Linux/Windows/macOS/
+FreeBSD passed at `vnm_msdf_text@b9c216a`. Batch 0 is closed; resolved dependency
+commit recording and no-sibling install/consumer smoke remain standing gates,
+not open Batch 0 work.
 
-Gate: `actionlint`/workflow validation passes and dependency Windows creates real jobs; exact fetched revision is recorded; dependency Linux/Windows/macOS/FreeBSD workflows pass; dependent `vnm_plot` Linux/Windows/macOS/FreeBSD text-OFF/text-ON pass.
+Historical gate: workflow validation and real Windows jobs passed at `b9c216a`;
+the exact fetched revision was recorded; dependency and dependent four-platform
+matrices passed.
 
-### Batch 0A — Close existing style debt without semantic mixing
+### Batch 0A — Historical style debt closure
 
 Files: `src/core/series_renderer.cpp:95`, `src/core/types.cpp:47-53,389-394`, and `tests/test_msdf_lcd_shader_reference.cpp:217-225`.
 
-Deliverable: only the 14 reported case-layout/indentation corrections, with the five current-commit and nine older/perpetuated violations preserved in the commit message provenance. Do not mix stack or hot-path changes into this batch.
+Historical deliverable: the formatting-only baseline and necessary
+non-behavioral style-gate repairs closed as plan Batches 1B/1C at
+`vnm_plot@2ec8013`; their failure provenance remains in the ledger.
 
-Gate: rerun the governed style pipeline from its first stage and require it to pass; run the initialized Release build and 21-test CTest gate to prove formatting changed no behavior. The shadowed time constants are handled in Batch 2 because their removal changes source tokens beyond formatting.
+Historical gate: the governed pipeline, initialized Release build, CTest 21/21,
+and hosted matrix passed at `2ec8013`. The shadowed time constants remain a
+separate Batch 3B source action because their removal changes source tokens.
 
 ### Batch 1 — Truthful hot-path observations and unchanged-frame reuse
 
@@ -546,7 +565,15 @@ Gate: static second frame has zero library restage/upload; a LINE mutation uploa
 
 Files: `include/vnm_plot/core/types.h`, `basic_series_builder.h`, `access_policy.h`, `algo.h`, `time_units.h`, `src/core/types.cpp`, `series_window_planner.*`, new `frame_series_planner.*`, auto/frame range, `include/vnm_plot/rhi/series_renderer.h`, `src/core/series_renderer.cpp`, `plot_renderer.cpp`, `plot_widget.cpp`, `examples/hello_plot`, `examples/function_plotter`, `benchmark/include/benchmark_data_source.h`, `benchmark/include/benchmark_window.h`, `benchmark/src/benchmark_window.cpp`, `README.md`, and focused tests.
 
-Deliverable: RU-3A supplies shared ownership, top-level snapshot-result sequence, exact D12 public method/domain contract, structural custom borrowing, and atomic removal of every current per-series plan/cache/record hold. RU-3B, only after P-Q1 ratification, supplies checked floating ingestion, integral-only members, and canonical `query_sample`/range semantics. RU-3C2 solely replaces independent hold-free acquisitions with cross-series/shared-key scheduling; it does not repeat hold removal. RU-3C1 supplies snapshot-free frame truth and VISIBLE/render/D9 identity. No stack-only public metadata or unused planner lands in this stage.
+Deliverable: after P-S1 ratification, RU-3A supplies shared ownership,
+top-level snapshot-result sequence, exact D12 public method/domain contract,
+structural custom borrowing, and atomic removal of every current per-series
+plan/cache/record hold. RU-3B, only after P-Q1 and P-D7 ratification, supplies
+checked floating ingestion, integral-only members, and canonical
+`query_sample`/range semantics. RU-3C2 solely replaces independent hold-free
+acquisitions with cross-series/shared-key scheduling; it does not repeat hold
+removal. RU-3C1 supplies snapshot-free frame truth and VISIBLE/render/D9
+identity. No stack-only public metadata or unused planner lands in this stage.
 
 Gate: RU-3A proves snapshot READY/EMPTY/BUSY/FAILED top-level sequence semantics, D12 conformance, writer-before-record, and no surviving current hold. RU-3B separately proves proposed cursor and range gates plus D7 trait/rational boundaries. RU-3C2 proves exactly one shared scheduler and one acquisition per shared key. RU-3C1 proves frame/range/render/result parity. Each RU retains its own ASan/TSan/UBSan, warning-clean, and no-regression evidence; one later gate never retroactively makes an earlier hash truthful.
 
@@ -576,7 +603,7 @@ evidence-gated, and labelled executable refinements remain owner-pending.
 | Case | Required observable result |
 |---|---|
 | Offset LINEAR timestamp grids | Candidate A includes both breakpoint sets; Candidate B evaluates both curves at every shared grid point. In either prototype, the final boundary is the double-precision sum at every emitted position. |
-| Sampling strategy A/B | Pending P-D15 gives both candidates identical `M`, `V_limit`, `U_limit`, `H_limit`, fixed reservations/totals, and workloads; evidence selects one strategy before oracle approval. |
+| Sampling strategy A/B | Pending P-D15 gives both candidates identical fixed reservations/totals and workloads; the evidence unit compares without selecting, then the owner chooses D4. |
 | Mixed LINEAR and STEP_AFTER | Candidate A emits left/right at the true selected-curve timestamp; Candidate B emits left/right at its sampled grid transition. Both avoid a diagonal bridge, and indicators match the chosen representation; Candidate B's displacement is part of visual A/B approval. |
 | Unrelated LOD counts/scales | Each source records an independently selected level satisfying its budget; no same-index assumption appears. |
 | Coarsest LOD exceeds budget | Group reports `FAILED(LOD_BUDGET_EXCEEDED)`; there is no LOD-0 fallback or partial render. |
@@ -588,8 +615,8 @@ evidence-gated, and labelled executable refinements remain owner-pending.
 | Negative/cancellation `100 + -100` | Second band descends to zero; range still includes the first cumulative 100. |
 | Disjoint/partially overlapping domains | Only intersection renders, except explicit right hold; no left extrapolation. GLOBAL/GLOBAL_LOD intersect selected-level domains first and return EMPTY when disjoint. |
 | Nonfinite policies | BREAK/SKIP/ZERO/REJECT outcomes match the canonical evaluator and affect the whole sum where undefined. |
-| BUSY/FAILED/EMPTY | FAILED then EMPTY suppress stale before BUSY. BUSY reuses a previous complete group wholesale only on `structure_key` match, ignores all fresh operands, and reports `STALE_BUSY` with retained sequences/`content_key`; generations never mix. |
-| Multiple failures | Pending P-R1 selects one canonical disposition by phase/series/reason order and gives each series NOT_EVALUATED/OBSERVED state; no reason set/speculative work/fabricated observation exists. |
+| BUSY/FAILED/EMPTY | FAILED then EMPTY suppress stale before BUSY. STALE_BUSY presentation, including every tagged series entry, is copied wholesale from one retained complete `structure_key` match; current partial attempts remain trace/counters only. Without retained content, BUSY is `FAILED(SOURCE_BUSY)`. |
+| Multiple failures | Pending P-R1 selects one canonical disposition by phase/series/reason order and gives each tagged series entry NOT_EVALUATED/OBSERVED state; only completed current observations appear in a current failure and no reason set/speculative work/fabricated observation exists. |
 | Fragment/frame/resident budget | Pending P-D2 endpoint/breakpoint excess is `FAILED(FRAGMENTATION_BUDGET)`; pending P-D15 admission is `FAILED(FRAME_BUDGET)`, cap excess `FAILED(RESIDENT_BUDGET)`, and in-cap API failure `FAILED(RESOURCE_ALLOCATION_FAILED)`. No case emits a partial group. |
 | Main/preview admission | Pending P-D15 admits all MAIN units by ascending lowest ID before PREVIEW; previews cannot change MAIN admission. |
 | Group topology update | One `apply_series_updates` publishes the complete new group in one map revision. Individual add/remove commits intermediate topology and may render a valid partial membership; documentation/tests require batching when atomic topology matters. |
@@ -617,7 +644,8 @@ LOD ladders: independently select bounded source-local LOD windows, use the
 eventual D4-selected bounded event-union or shared-grid evaluator, accumulate
 double-precision cumulative bands, and upload one cached group representation.
 The plan register—not this recommendation—identifies approved portions of
-D1-D3/D5-D15. D4 and P-D2/P-D6/P-Q1/P-R1/P-D15 remain owner decisions. The
+D1-D3/D5-D15. D4 and P-S1/P-D7/P-D2/P-D6/P-Q1/P-R1/P-D15 remain owner
+decisions. The
 architecture is viable if those pending contracts are ratified or amended
 before their affected RUs; this review cannot manufacture that approval.
 
