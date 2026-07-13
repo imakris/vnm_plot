@@ -27,11 +27,6 @@
 #include <utility>
 #include <vector>
 
-#ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#endif
-
 // Forward declare the Qt-generated resource init function (at global scope)
 int qInitResources_vnm_plot();
 
@@ -47,30 +42,13 @@ inline void vnm_plot_init_qt_resources()
 
 namespace {
 
-// Get DPI scaling factor for a specific window
-double dpi_scaling_for_window([[maybe_unused]] void* native_handle)
+double dpi_scaling_for_window(const QWindow* window)
 {
-#ifdef _WIN32
-    // Use the provided window handle, or fall back to primary screen
-    HWND hwnd = static_cast<HWND>(native_handle);
-    if (hwnd) {
-        return GetDpiForWindow(hwnd) / 96.0;
+    if (window) {
+        return window->devicePixelRatio();
     }
-    // Fallback: use system DPI
-    HDC hdc = GetDC(nullptr);
-    if (hdc) {
-        int dpi = GetDeviceCaps(hdc, LOGPIXELSX);
-        ReleaseDC(nullptr, hdc);
-        return dpi / 96.0;
-    }
-    return 1.0;
-#else
     const auto* const screen = QGuiApplication::primaryScreen();
-    if (!screen) {
-        return 1.0;
-    }
-    return screen->logicalDotsPerInch() / 96.0;
-#endif
+    return screen ? screen->devicePixelRatio() : 1.0;
 }
 
 } // anonymous namespace
@@ -861,14 +839,7 @@ void Plot_widget::publish_measured_vbar_width(double px) const
 
 double Plot_widget::update_dpi_scaling_factor()
 {
-    // Get the native window handle for accurate DPI on multi-monitor setups
-    void* native_handle = nullptr;
-#ifdef _WIN32
-    if (auto* qwin = window()) {
-        native_handle = reinterpret_cast<void*>(qwin->winId());
-    }
-#endif
-    const double scaling = dpi_scaling_for_window(native_handle);
+    const double scaling = dpi_scaling_for_window(window());
     if (std::abs(m_scaling_factor - scaling) > 1e-6) {
         m_scaling_factor = scaling;
         emit scaling_factor_changed();

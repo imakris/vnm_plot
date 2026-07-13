@@ -118,7 +118,7 @@ bool test_view_seconds_subtracts_before_floating_conversion()
     return true;
 }
 
-bool test_embedded_shaders_retain_desktop_glsl_330_and_410()
+bool test_embedded_shaders_retain_required_glsl_profiles()
 {
     std::vector<const char*> shaders = {
         "generic_rect.vert.qsb",
@@ -140,15 +140,21 @@ bool test_embedded_shaders_retain_desktop_glsl_330_and_410()
     for (const char* path : shaders) {
         const QShader shader = plot::detail::load_qsb(path);
         TEST_ASSERT(shader.isValid(), "embedded QSB shader must deserialize");
+        bool has_glsl_es_300 = false;
         bool has_glsl_330 = false;
         bool has_glsl_410 = false;
         for (const QShaderKey& key : shader.availableShaders()) {
             if (key.source() != QShader::GlslShader) {
                 continue;
             }
-            has_glsl_330 = has_glsl_330 || key.sourceVersion().version() == 330;
-            has_glsl_410 = has_glsl_410 || key.sourceVersion().version() == 410;
+            const auto version = key.sourceVersion();
+            has_glsl_es_300 = has_glsl_es_300 ||
+                              (version.version() == 300 &&
+                               version.flags().testFlag(QShaderVersion::GlslEs));
+            has_glsl_330 = has_glsl_330 || version.version() == 330;
+            has_glsl_410 = has_glsl_410 || version.version() == 410;
         }
+        TEST_ASSERT(has_glsl_es_300, "embedded QSB shader must retain GLSL ES 300");
         TEST_ASSERT(has_glsl_330, "embedded QSB shader must retain desktop GLSL 330");
         TEST_ASSERT(has_glsl_410, "embedded QSB shader must retain desktop GLSL 410");
     }
@@ -170,7 +176,7 @@ int main()
     RUN_TEST(test_qrhi_grown_capacity_bytes_checks_headroom_overflow);
     RUN_TEST(test_qrhi_buffer_offset_checks_scaled_offsets);
     RUN_TEST(test_view_seconds_subtracts_before_floating_conversion);
-    RUN_TEST(test_embedded_shaders_retain_desktop_glsl_330_and_410);
+    RUN_TEST(test_embedded_shaders_retain_required_glsl_profiles);
 
     std::cout << "Passed: " << passed << ", Failed: " << failed << std::endl;
     return failed == 0 ? 0 : 1;

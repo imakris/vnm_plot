@@ -12,6 +12,7 @@ Item {
     property PlotTimeAxis time_axis: null
     property string indicator_x_label: "x"
     property string indicator_y_label: "y"
+    property alias stacked_marker_note: indicator.stacked_marker_note
 
     signal main_plot_clicked(real timestamp_ms)
     signal main_plot_sample_hovered(real timestamp_ms)
@@ -105,6 +106,36 @@ Item {
             }
 
             root.main_plot_clicked(timestampMs)
+        }
+    }
+
+    PinchHandler {
+        target: null
+        enabled: root.interaction_enabled
+        minimumPointCount: 2
+        maximumPointCount: 2
+
+        onScaleChanged: delta => {
+            if (!active || !isFinite(delta) || delta <= 0) {
+                return
+            }
+
+            const usableWidth = plot.width - plot.vbar_width_qml
+            if (usableWidth <= 0) {
+                return
+            }
+
+            const pivot = Math.max(
+                0,
+                Math.min(1, centroid.position.x / usableWidth))
+            plot.adjust_t_from_pivot_and_scale(pivot, 1 / delta)
+        }
+
+        onActiveChanged: {
+            if (active) {
+                indicator.set_mouse_in_plot(false)
+                root.clear_hover_sample()
+            }
         }
     }
 

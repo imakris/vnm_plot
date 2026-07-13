@@ -14,6 +14,7 @@ Item {
     property bool link_indicator: false
     property string x_value_label: "x"
     property string y_value_label: "y"
+    property string stacked_marker_note: "Markers show cumulative stack positions"
 
     readonly property var time_axis: plot_widget ? plot_widget.time_axis : null
 
@@ -135,7 +136,7 @@ Item {
     function cumulative_marker_note(samples) {
         for (var i = 0; i < samples.length; ++i) {
             if (samples[i].stacked_marker === true) {
-                return "Markers show cumulative stack positions"
+                return root.stacked_marker_note
             }
         }
         return ""
@@ -334,15 +335,29 @@ Item {
                 var text_width = Math.max(
                     ctx.measureText(x_axis_txt).width,
                     bullet_width + max_value_width)
+                var panel_margin = 10
+                var max_text_width = Math.max(
+                    1,
+                    width - panel_margin * 2 - box_padding_x * 2)
+                text_width = Math.min(text_width, max_text_width)
                 var marker_note_lines = root.wrap_text(ctx, marker_note, text_width)
                 var box_width = text_width + box_padding_x * 2
 
                 var x0 = (x_line > width / 2) ? x_line - 10 - box_width : x_line + 10
+                x0 = Math.max(
+                    panel_margin,
+                    Math.min(x0, width - panel_margin - box_width))
                 var x1 = x0 + box_width
-                var y0 = 10
-                var y1 = y0 + box_padding_y * 2 + line_height *
-                    (lines.length + 1 + marker_note_lines.length)
+                var y0 = panel_margin
+                var y1 = Math.min(
+                    height - panel_margin,
+                    y0 + box_padding_y * 2 + line_height *
+                        (lines.length + 1 + marker_note_lines.length))
 
+                ctx.save()
+                ctx.beginPath()
+                ctx.rect(x0, y0, box_width, Math.max(0, y1 - y0))
+                ctx.clip()
                 ctx.strokeStyle = "#ffffff"
                 ctx.fillStyle = "#ccdadada"
                 ctx.beginPath()
@@ -388,6 +403,7 @@ Item {
                             y0 + box_padding_y + line_height * (lines.length + 2 + ni))
                     }
                 }
+                ctx.restore()
 
                 for (var di = 0; di < lines.length; ++di) {
                     if (!lines[di].show_marker) {

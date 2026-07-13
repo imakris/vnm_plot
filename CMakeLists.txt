@@ -491,8 +491,8 @@ message(STATUS "vnm_plot: Building RHI library")
 #
 # Bake every shader in shaders/qsb/ into a multi-profile .qsb artifact and
 # embed it under :/vnm_plot/shaders/qsb/<name>.qsb. Profile set covers Vulkan
-# (SPIR-V), Metal 1.2 + 2.1, D3D11 (HLSL 5.0), and desktop GL 3.30 + 4.10 so
-# RHI can pick a working artifact on every supported backend.
+# (SPIR-V), Metal 1.2 + 2.1, D3D11 (HLSL 5.0), OpenGL ES 3.0, and desktop
+# GL 3.30 + 4.10 so RHI can pick a working artifact on every supported backend.
 # -----------------------------------------------------------------------------
 
 set(VNM_PLOT_QSB_SHADERS
@@ -517,8 +517,8 @@ endif()
 
 # Each input shader yields :/vnm_plot/shaders/qsb/<name>.<ext>.qsb.
 # The RHI shaders use vertex attributes and std140 uniform blocks, so retain
-# desktop GLSL 330 for GL 3.3 contexts and GLSL 410 for existing GL 4 paths.
-# Mobile GL ES remains out of scope for this desktop renderer.
+# GLSL ES 300 for mobile contexts, desktop GLSL 330 for GL 3.3 contexts, and
+# GLSL 410 for existing GL 4 paths.
 foreach(_vnm_plot_qsb_shader IN LISTS VNM_PLOT_QSB_SHADERS)
     get_filename_component(_vnm_plot_qsb_output_dir
         "${CMAKE_CURRENT_BINARY_DIR}/.qsb/${_vnm_plot_qsb_shader}"
@@ -531,7 +531,7 @@ unset(_vnm_plot_qsb_shader)
 qt_add_shaders(vnm_plot_rhi "vnm_plot_qsb_shaders"
     PREFIX "/vnm_plot"
     BASE   "${CMAKE_CURRENT_SOURCE_DIR}"
-    GLSL   "330,410"
+    GLSL   "300 es,330,410"
     HLSL   "50"
     MSL    "12,21"
     OUTPUT_TARGETS VNM_PLOT_RHI_RESOURCE_TARGETS
