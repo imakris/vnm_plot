@@ -2235,6 +2235,50 @@ bool test_stacking_reports_specific_rejection_reasons()
     return true;
 }
 
+bool test_stacked_area_preserves_signed_component_bands()
+{
+    const Data_access_policy access = make_policy();
+    const auto make_plan = [&access](std::vector<Test_sample>& samples) {
+        plot::Series_view_plan plan;
+        plan.access            = &access;
+        plan.snapshot.snapshot = {
+            samples.data(), samples.size(), sizeof(Test_sample), 1};
+        plan.snapshot.sequence = 1;
+        plan.source_count      = samples.size();
+        plan.gpu_count         = samples.size();
+        plan.drawable_spans    = {{0, samples.size(), 0, samples.size()}};
+        return plan;
+    };
+
+    std::vector<Test_sample> lower{{0, -100.0f}, {1, 0.0f}, {2, 100.0f}};
+    std::vector<Test_sample> upper{{0,   25.0f}, {1, 0.0f}, {2, -150.0f}};
+    auto lower_plan = make_plan(lower);
+    auto upper_plan = make_plan(upper);
+
+    std::vector<std::vector<plot::detail::stacked_sample_t>> layers;
+    TEST_ASSERT(plot::detail::compose_stacked_series(
+        {&lower_plan, &upper_plan}, layers, 16u) == plot::Stack_rejection_reason::NONE,
+        "signed and zero account-equity components should compose");
+    TEST_ASSERT(layers.size() == 2 && layers[0].size() == 3 && layers[1].size() == 3,
+        "signed stack should preserve every input timestamp");
+    TEST_ASSERT(
+        layers[0][0].base == 0.0f  && layers[0][0].value == -100.0f &&
+        layers[0][1].base == 0.0f  && layers[0][1].value == 0.0f    &&
+        layers[0][2].base == 0.0f  && layers[0][2].value == 100.0f,
+        "bottom area layer should span zero to its signed component value");
+    TEST_ASSERT(
+        layers[1][0].base == -100.0f  && layers[1][0].value == -75.0f &&
+        layers[1][1].base == 0.0f     && layers[1][1].value == 0.0f   &&
+        layers[1][2].base == 100.0f   && layers[1][2].value == -50.0f,
+        "upper area layer should span the previous cumulative value to the signed total");
+
+    const Data_access_policy& stacked_access = plot::detail::stacked_sample_access();
+    const auto descending_band = stacked_access.get_range(&layers[1][2]);
+    TEST_ASSERT(descending_band.first == 100.0f && descending_band.second == -50.0f,
+        "area access should retain a descending signed band without clamping or reordering");
+    return true;
+}
+
 bool test_snapshot_released_after_render()
 {
     auto data_source = std::make_shared<Single_level_source>();
@@ -2634,6 +2678,7 @@ int main()
     RUN_TEST(test_stacking_bounded_grid_handles_interpolation_and_integer_extremes);
     RUN_TEST(test_stacking_uses_separate_view_budgets_and_invalidates_resized_cache);
     RUN_TEST(test_stacking_reports_specific_rejection_reasons);
+    RUN_TEST(test_stacked_area_preserves_signed_component_bands);
     RUN_TEST(test_snapshot_released_after_render);
     RUN_TEST(test_upload_origin_records_per_view_origin);
     RUN_TEST(test_upload_invalidates_when_origin_changes_across_snap_bucket);
