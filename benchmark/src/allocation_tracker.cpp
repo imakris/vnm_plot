@@ -12,12 +12,13 @@
 namespace {
 
 thread_local bool g_measure_allocations = false;
-thread_local std::uint32_t g_allocation_suppression_depth = 0;
 thread_local std::uint64_t g_allocation_count = 0;
 thread_local std::uint64_t g_allocation_bytes = 0;
 void record_allocation(std::size_t size) noexcept
 {
-    if (g_measure_allocations && g_allocation_suppression_depth == 0) {
+    if (g_measure_allocations &&
+        vnm::benchmark::detail::thread_allocation_suppression_depth == 0)
+    {
         ++g_allocation_count;
         g_allocation_bytes += static_cast<std::uint64_t>(size);
     }
@@ -79,18 +80,6 @@ Thread_allocation_measurement end_thread_allocation_measurement() noexcept
 {
     g_measure_allocations = false;
     return {g_allocation_count, g_allocation_bytes};
-}
-
-void suspend_thread_allocation_measurement() noexcept
-{
-    ++g_allocation_suppression_depth;
-}
-
-void resume_thread_allocation_measurement() noexcept
-{
-    if (g_allocation_suppression_depth > 0) {
-        --g_allocation_suppression_depth;
-    }
 }
 
 }  // namespace vnm::benchmark
