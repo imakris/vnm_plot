@@ -864,7 +864,7 @@ bool test_built_in_label_backgrounds_are_opaque_for_lcd()
 {
     const plot::Color_palette dark                    = plot::Color_palette::dark();
     const plot::Color_palette light                   = plot::Color_palette::light();
-    const auto                expected_light_vertical = plot::hex_to_vec4("ff959595");
+    const auto                expected_light_vertical = plot::hex_to_vec4("ffc1c6c9");
 
     TEST_ASSERT(dark.h_label_background.a >= 0.999f,
         "dark horizontal label background should be opaque for LCD backing");

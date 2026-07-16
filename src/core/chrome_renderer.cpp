@@ -365,6 +365,7 @@ void Chrome_renderer::render_preview_overlay(
     prims.batch_rect(separator_color, {float(x0 - 1), float(pbtm - pband_h), float(x1 + 1), float(pbtm - pband_h + 1)});
     prims.batch_rect(separator_color, {float(x0 - 1), float(ptop + pband_h), float(x0), float(pbtm - pband_h)});
     prims.batch_rect(separator_color, {float(x1), float(ptop + pband_h), float(x1 + 1), float(pbtm - pband_h)});
+    prims.batch_rect(separator_color, {0, float(pbtm - 1), float(win_w), float(pbtm)});
 
     // The overlay must paint after the series so it dims any out-of-window
     // samples. Closing the rect batch here keeps the API self-contained: the
