@@ -320,9 +320,10 @@ target_link_libraries(layout_tool PRIVATE vnm_plot::layout)
 target_link_libraries(rhi_tool PRIVATE vnm_plot::rhi)
 ```
 
-This source tree declares CMake project version `0.1.0`. Use `master` for this
-source line, or replace it with a chosen release tag or commit when your
-application needs a frozen revision.
+This source tree declares CMake project version `0.1.0`. Varinomics-owned
+consumers intentionally track `master` so integration breakage surfaces and is
+fixed immediately instead of being hidden by revision pins. External consumers
+may still use installed or package-manager-provided builds.
 
 Install exports are find_package-ready only when exported dependencies are
 already imported package targets. Configure with `-DVNM_PLOT_USE_SYSTEM_LIBS=ON`
