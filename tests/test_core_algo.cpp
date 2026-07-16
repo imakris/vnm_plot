@@ -9,14 +9,18 @@
 #include <vnm_plot/core/time_units.h>
 #include <vnm_plot/core/types.h>
 #include <vnm_plot/rhi/text_renderer.h>
+#include "../src/core/label_fade_tracker.h"
 #include "../src/core/lcd_policy.h"
 
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
 #include <limits>
+#include <map>
 #include <optional>
+#include <string>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -730,6 +734,98 @@ bool test_horizontal_label_fade_keys_preserve_int64_timestamps()
     return true;
 }
 
+bool test_label_fades_start_at_threshold_and_finish_after_zoom_stops()
+{
+    struct label_t
+    {
+        std::int64_t value = 0;
+        std::string  text;
+    };
+
+    using clock_t = std::chrono::steady_clock;
+    plot::Text_renderer::horizontal_axis_fade_tracker_t tracker;
+    std::vector<label_t> labels{{1, "one"}};
+    std::map<std::int64_t, float> drawn;
+    std::map<std::string, float> drawn_text;
+    auto now = clock_t::time_point{} + std::chrono::seconds(1);
+
+    const auto update = [&](bool animate_changes) {
+        drawn.clear();
+        drawn_text.clear();
+        return plot::detail::update_and_draw_faded_labels(
+            labels,
+            tracker,
+            180.0f,
+            animate_changes,
+            now,
+            [](const label_t& label) { return label.value; },
+            [&](std::int64_t key, const std::string& text, float alpha) {
+                drawn[key] += alpha;
+                drawn_text[text] = alpha;
+            });
+    };
+
+    TEST_ASSERT(!update(true) && drawn[1] == 1.0f,
+        "the first label set should render opaque without a startup fade");
+
+    labels[0].text = "one.0";
+    TEST_ASSERT(update(true) && drawn_text["one"] == 1.0f && drawn_text.count("one.0") == 0,
+        "a formatting change should retain the old text on its threshold-crossing frame");
+    now += std::chrono::milliseconds(90);
+    TEST_ASSERT(update(false)
+        && std::abs(drawn_text["one"] - 0.5f) < 1e-6f
+        && std::abs(drawn_text["one.0"] - 0.5f) < 1e-6f,
+        "old and new text should crossfade on the label fade clock");
+    labels[0].text = "one";
+    TEST_ASSERT(update(true)
+        && std::abs(drawn_text["one"] - 0.5f) < 1e-6f
+        && std::abs(drawn_text["one.0"] - 0.5f) < 1e-6f,
+        "reversing a formatting change should not pop either text");
+    now += std::chrono::milliseconds(90);
+    TEST_ASSERT(!update(false) && drawn_text["one"] == 1.0f && drawn_text.count("one.0") == 0,
+        "a reversed formatting change should settle on the original text");
+
+    now += std::chrono::seconds(10);
+    labels.push_back({2, "two"});
+    TEST_ASSERT(update(true) && tracker.states.at(2).alpha == 0.0f && drawn.count(2) == 0,
+        "a label crossing the zoom threshold should start at zero despite prior idle time");
+
+    now += std::chrono::milliseconds(90);
+    TEST_ASSERT(update(false) && std::abs(tracker.states.at(2).alpha - 0.5f) < 1e-6f,
+        "an incoming label should keep fading after the zoom span stops changing");
+    now += std::chrono::milliseconds(90);
+    TEST_ASSERT(!update(false) && tracker.states.at(2).alpha == 1.0f,
+        "an incoming label should settle fully opaque");
+
+    now += std::chrono::seconds(10);
+    labels.pop_back();
+    TEST_ASSERT(update(true) && tracker.states.at(2).alpha == 1.0f && drawn.count(2) == 1,
+        "an outgoing label should remain visible on its threshold-crossing frame");
+    now += std::chrono::milliseconds(90);
+    TEST_ASSERT(update(false) && std::abs(tracker.states.at(2).alpha - 0.5f) < 1e-6f,
+        "an outgoing label should keep fading after the zoom span stops changing");
+
+    labels.push_back({2, "two"});
+    TEST_ASSERT(update(true) && tracker.states.at(2).direction == 1,
+        "a zoom reversal should reverse the active fade without popping");
+    now += std::chrono::milliseconds(90);
+    TEST_ASSERT(!update(false) && tracker.states.at(2).alpha == 1.0f,
+        "a reversed fade should settle fully opaque");
+
+    labels.pop_back();
+    TEST_ASSERT(update(true), "the final fade-out should start");
+    now += std::chrono::milliseconds(180);
+    TEST_ASSERT(!update(false) && tracker.states.count(2) == 0 && drawn.count(2) == 0,
+        "an outgoing label should be removed after the fade completes");
+
+    now += std::chrono::seconds(10);
+    labels.push_back({3, "three"});
+    TEST_ASSERT(!update(false) && tracker.states.at(3).alpha == 1.0f,
+        "non-zoom label-set changes should remain immediate");
+
+    return true;
+}
+
 bool test_lcd_policy_helpers()
 {
     using request_t  = plot::lcd_request_t;
@@ -973,6 +1069,7 @@ int main()
     RUN_TEST(test_time_unit_helpers_handle_edges);
     RUN_TEST(test_timestamp_positions_preserve_epoch_nanoseconds);
     RUN_TEST(test_horizontal_label_fade_keys_preserve_int64_timestamps);
+    RUN_TEST(test_label_fades_start_at_threshold_and_finish_after_zoom_stops);
     RUN_TEST(test_lcd_policy_helpers);
     RUN_TEST(test_built_in_label_backgrounds_are_opaque_for_lcd);
     RUN_TEST(test_grid_lcd_order_selection);

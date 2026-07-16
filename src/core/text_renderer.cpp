@@ -5,6 +5,7 @@
 #include <vnm_plot/core/lcd.h>
 #include <vnm_plot/rhi/font_renderer.h>
 #include <vnm_plot/core/time_units.h>
+#include "label_fade_tracker.h"
 #include "label_pane_geometry.h"
 #include "lcd_policy.h"
 
@@ -14,7 +15,6 @@
 #include <cmath>
 #include <cstdio>
 #include <string>
-#include <unordered_set>
 
 namespace vnm::plot {
 using detail::k_h_label_vertical_nudge_px;
@@ -110,93 +110,6 @@ text_lcd_t text_lcd_for_background(
     return lcd;
 }
 
-template <typename Labels, typename Tracker, typename KeyFunc, typename DrawFunc>
-bool update_and_draw_faded_labels(
-    const Labels&  labels,
-    Tracker&       tracker,
-    float          fade_duration_ms,
-    KeyFunc&&      key_fn,
-    DrawFunc&&     draw_fn)
-{
-    using key_t = typename Tracker::key_type;
-
-    const auto now   = std::chrono::steady_clock::now();
-    float      dt_ms = 0.0f;
-    if (tracker.initialized) {
-        dt_ms = std::chrono::duration_cast<std::chrono::duration<float, std::milli>>(now - tracker.last_update).count();
-    }
-    tracker.last_update = now;
-    tracker.initialized = true;
-
-    const float step = fade_duration_ms > 0.0f
-        ? std::clamp(dt_ms / fade_duration_ms, 0.0f, 1.0f)
-        : 1.0f;
-
-    std::unordered_set<key_t> current_values;
-    current_values.reserve(labels.size());
-
-    for (const auto& label : labels) {
-        const key_t key = key_fn(label);
-        current_values.insert(key);
-
-        auto it = tracker.states.find(key);
-        if (it == tracker.states.end()) {
-            Text_renderer::label_fade_state_t state;
-            state.alpha     = 0.0f;
-            state.direction = 1;
-            state.text      = label.text;
-            tracker.states.emplace(key, std::move(state));
-        }
-        else {
-            auto& state = it->second;
-            state.text  = label.text;
-            if (state.direction < 0) {
-                state.direction = 1;
-            }
-        }
-    }
-
-    for (auto& entry : tracker.states) {
-        if (current_values.find(entry.first) == current_values.end()) {
-            auto& state = entry.second;
-            if (state.direction >= 0) {
-                state.direction = -1;
-            }
-        }
-    }
-
-    bool any_active = false;
-    constexpr float k_alpha_eps = 1e-6f;
-    for (auto it = tracker.states.begin(); it != tracker.states.end(); ) {
-        auto& state = it->second;
-
-        if (state.direction != 0 && step > 0.0f) {
-            state.alpha += step * static_cast<float>(state.direction);
-        }
-        state.alpha = std::clamp(state.alpha, 0.0f, 1.0f);
-
-        if (state.direction > 0 && state.alpha >= 1.0f - k_alpha_eps) {
-            state.alpha     = 1.0f;
-            state.direction = 0;
-        }
-        if (state.direction < 0 && state.alpha <= 0.0f + k_alpha_eps) {
-            state.alpha = 0.0f;
-        }
-
-        if (state.direction < 0 && state.alpha <= 0.0f) {
-            it = tracker.states.erase(it);
-            continue;
-        }
-
-        if (state.alpha     >  0.0f) { draw_fn(it->first, state); }
-        if (state.direction != 0)    { any_active = true;         }
-
-        ++it;
-    }
-
-    return any_active;
-}
-
 } // anonymous namespace
 
 Text_renderer::Text_renderer(Font_renderer* fr)
@@ -270,7 +183,7 @@ bool Text_renderer::render_axis_labels(
     const double v_span       = double(ctx.v1) - double(ctx.v0);
 
     text_scissor_t label_scissor;
-    glm::vec4 label_backing_rect;
+    glm::vec4 label_backing_rect {};
     bool have_label_backing = false;
     if (ctx.rhi) {
         have_label_backing =
@@ -278,23 +191,18 @@ bool Text_renderer::render_axis_labels(
             detail::framebuffer_scissor_from_top_left_rect(
                 label_backing_rect, ctx.win_w, ctx.win_h, label_scissor);
         if (!label_scissor.enabled) {
-            if (fade_labels) {
-                return update_and_draw_faded_labels(
-                    pl.v_labels,
-                    m_vertical_fade,
-                    k_label_fade_duration_ms,
-                    [](const v_label_t& label) { return label.value; },
-                    [](double, const label_fade_state_t&) {});
-            }
-            const auto now = std::chrono::steady_clock::now();
-            m_vertical_fade.states.clear();
-            m_vertical_fade.last_update = now;
-            m_vertical_fade.initialized = true;
-            return false;
+            return detail::update_and_draw_faded_labels(
+                pl.v_labels,
+                m_vertical_fade,
+                k_label_fade_duration_ms,
+                fade_labels,
+                std::chrono::steady_clock::now(),
+                [](const v_label_t& label) { return label.value; },
+                [](double, const std::string&, float) {});
         }
     }
 
-    const auto draw_label = [&](double value, const label_fade_state_t& state) {
+    const auto draw_label = [&](double value, const std::string& text, float alpha) {
         if (!(v_span > 0.0) || !(pl.usable_height > 0.0)) {
             return;
         }
@@ -307,7 +215,7 @@ bool Text_renderer::render_axis_labels(
         - k_v_label_vertical_nudge_px * static_cast<float>(ctx.adjusted_font_px);
         const float pen_y = baseline_target - baseline_off;
 
-        const float text_width = m_fonts->measure_text_px(state.text.c_str());
+        const float text_width = m_fonts->measure_text_px(text.c_str());
         float       pen_x      = right_edge_x - text_width;
         if (pen_x < min_x) {
             pen_x = min_x;
@@ -322,57 +230,38 @@ bool Text_renderer::render_axis_labels(
         if (label_lcd_possible &&
             label_scissor.enabled &&
             have_label_backing &&
-            state.alpha >= detail::k_lcd_opaque_alpha_cutoff)
+            alpha >= detail::k_lcd_opaque_alpha_cutoff)
         {
             have_text_bounds = m_fonts->text_visual_bounds_px(
-                state.text.c_str(), snapped_x, snapped_y, text_bounds);
+                text.c_str(), snapped_x, snapped_y, text_bounds);
             if (have_text_bounds) {
                 text_fits_label_backing = rect_contains(label_backing_rect, text_bounds);
             }
         }
 
-        m_fonts->batch_text(snapped_x, snapped_y, state.text.c_str());
+        m_fonts->batch_text(snapped_x, snapped_y, text.c_str());
         if (ctx.rhi) {
             const bool label_lcd_eligible =
                 label_lcd_possible                                    &&
                 label_scissor.enabled                                 &&
-                state.alpha >= detail::k_lcd_opaque_alpha_cutoff &&
+                alpha >= detail::k_lcd_opaque_alpha_cutoff &&
                 text_fits_label_backing;
             const text_lcd_t label_lcd =
                 text_lcd_for_background(ctx, palette.v_label_background, label_lcd_eligible);
             glm::vec4 color = font_color;
-            if (fade_labels) {
-                color.a *= state.alpha;
-            }
+            color.a *= alpha;
             m_fonts->rhi_queue_draw(ctx, ctx.pmv, color, label_scissor, {}, label_lcd);
         }
     };
 
-    bool any_active = false;
-    if (fade_labels) {
-        any_active = update_and_draw_faded_labels(
-            pl.v_labels,
-            m_vertical_fade,
-            k_label_fade_duration_ms,
-            [](const v_label_t& label) { return label.value; },
-            draw_label);
-    }
-    else {
-        const auto now = std::chrono::steady_clock::now();
-        m_vertical_fade.states.clear();
-        for (const auto& label : pl.v_labels) {
-            label_fade_state_t state;
-            state.alpha     = 1.0f;
-            state.direction = 0;
-            state.text      = label.text;
-            m_vertical_fade.states.emplace(label.value, state);
-            draw_label(label.value, state);
-        }
-        m_vertical_fade.last_update = now;
-        m_vertical_fade.initialized = true;
-    }
-
-    return any_active;
+    return detail::update_and_draw_faded_labels(
+        pl.v_labels,
+        m_vertical_fade,
+        k_label_fade_duration_ms,
+        fade_labels,
+        std::chrono::steady_clock::now(),
+        [](const v_label_t& label) { return label.value; },
+        draw_label);
 }
 
 bool Text_renderer::render_info_overlay(
@@ -405,7 +294,7 @@ bool Text_renderer::render_info_overlay(
         text_shadow_for_background(ctx.plot_body_background, ctx.adjusted_font_px);
     const auto t_span = positive_span_ns_as_long_double(ctx.t0, ctx.t1);
 
-    const auto draw_label = [&](std::int64_t t_ns, const label_fade_state_t& state) {
+    const auto draw_label = [&](std::int64_t t_ns, const std::string& text, float alpha) {
         if (!t_span || !(pl.usable_width > 0.0)) {
             return;
         }
@@ -425,7 +314,7 @@ bool Text_renderer::render_info_overlay(
         bool text_fits_label_backing = false;
         if (ctx.rhi && label_scissor.enabled && have_label_backing) {
             have_text_bounds = m_fonts->text_visual_bounds_px(
-                state.text.c_str(), pen_x, pen_y, text_bounds);
+                text.c_str(), pen_x, pen_y, text_bounds);
             if (have_text_bounds) {
                 text_fits_label_scissor =
                     fit_rect_vertically_within(text_bounds, pen_y, label_backing_rect);
@@ -435,49 +324,31 @@ bool Text_renderer::render_info_overlay(
             }
         }
 
-        m_fonts->batch_text(pen_x, pen_y, state.text.c_str());
+        m_fonts->batch_text(pen_x, pen_y, text.c_str());
         if (ctx.rhi) {
             const bool label_lcd_eligible =
                 label_lcd_possible                                    &&
                 label_scissor.enabled                                 &&
-                state.alpha >= detail::k_lcd_opaque_alpha_cutoff &&
+                alpha >= detail::k_lcd_opaque_alpha_cutoff &&
                 text_fits_label_backing;
             const text_lcd_t label_lcd =
                 text_lcd_for_background(ctx, palette.h_label_background, label_lcd_eligible);
             glm::vec4 color = font_color;
-            if (fade_labels) {
-                color.a *= state.alpha;
-            }
+            color.a *= alpha;
             const text_scissor_t draw_scissor =
                 label_scissor.enabled ? label_scissor : text_scissor_t{};
             m_fonts->rhi_queue_draw(ctx, ctx.pmv, color, draw_scissor, {}, label_lcd);
         }
     };
 
-    bool any_active = false;
-    if (fade_labels) {
-        any_active = update_and_draw_faded_labels(
-            pl.h_labels,
-            m_horizontal_fade,
-            k_label_fade_duration_ms,
-            [](const h_label_t& label) { return label.value; },
-            draw_label);
-    }
-    else {
-        const auto now = std::chrono::steady_clock::now();
-        m_horizontal_fade.states.clear();
-        for (const auto& label : pl.h_labels) {
-            label_fade_state_t state;
-            state.alpha     = 1.0f;
-            state.direction = 0;
-            state.text      = label.text;
-            const std::int64_t key = label.value;
-            m_horizontal_fade.states.emplace(key, state);
-            draw_label(key, state);
-        }
-        m_horizontal_fade.last_update = now;
-        m_horizontal_fade.initialized = true;
-    }
+    const bool any_active = detail::update_and_draw_faded_labels(
+        pl.h_labels,
+        m_horizontal_fade,
+        k_label_fade_duration_ms,
+        fade_labels,
+        std::chrono::steady_clock::now(),
+        [](const h_label_t& label) { return label.value; },
+        draw_label);
 
     const bool show_value_range =
         (ctx.visible_info_flags & k_visible_info_value_range) != 0;

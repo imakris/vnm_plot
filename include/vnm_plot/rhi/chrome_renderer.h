@@ -8,6 +8,7 @@
 namespace vnm::plot {
 
 class Primitive_renderer;
+class Text_renderer;
 
 // -----------------------------------------------------------------------------
 // Chrome Renderer
@@ -19,7 +20,10 @@ public:
     Chrome_renderer() = default;
 
     // Batches background rects, calculates grid parameters, and draws grid.
-    void render_grid_and_backgrounds(const frame_context_t& ctx, Primitive_renderer& prims);
+    void render_grid_and_backgrounds(
+        const frame_context_t& ctx,
+        Primitive_renderer&    prims,
+        const Text_renderer*   prepared_text = nullptr);
 
     // Draws a single horizontal gridline at value 0, regardless of grid_visibility.
     void render_zero_line(const frame_context_t& ctx, Primitive_renderer& prims);

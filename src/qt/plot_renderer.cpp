@@ -6,6 +6,7 @@
 #include <vnm_plot/core/layout_calculator.h>
 #include <vnm_plot/core/plot_config.h>
 #include <vnm_plot/core/lcd.h>
+#include <vnm_plot/core/time_units.h>
 #include <vnm_plot/rhi/asset_loader.h>
 #include <vnm_plot/rhi/chrome_renderer.h>
 #include <vnm_plot/rhi/font_renderer.h>
@@ -18,6 +19,7 @@
 
 #include <QColor>
 #include <QMatrix4x4>
+#include <QMetaObject>
 #include <QQuickWindow>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -75,6 +77,15 @@ label_pane_opacity_t label_pane_opacity_for_text(const frame_context_t& ctx)
         detail::vertical_axis_label_pane_rect(ctx, pane_rect);
     return opacity;
 }
+
+#if defined(VNM_PLOT_ENABLE_TEXT)
+bool spans_approx_equal(long double a, long double b)
+{
+    const long double diff  = std::abs(a - b);
+    const long double scale = std::max(1.0L, std::max(std::abs(a), std::abs(b)));
+    return diff <= scale * detail::k_eps;
+}
+#endif
 
 Layout_calculator::parameters_t build_layout_params(
     float                  v_min,
@@ -175,6 +186,9 @@ struct Plot_renderer::impl_t
 #if defined(VNM_PLOT_ENABLE_TEXT)
     std::unique_ptr<Font_renderer> fonts;
     std::unique_ptr<Text_renderer> text;
+    long double                    last_vertical_label_span   = 0.0L;
+    long double                    last_horizontal_label_span = 0.0L;
+    bool                           label_spans_initialized    = false;
 #endif
     std::chrono::steady_clock::time_point last_render_callback;
     bool series_initialized = false;
@@ -313,6 +327,25 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
     const float preview_v_max = frame_plan.preview_v_range.max;
 
 #if defined(VNM_PLOT_ENABLE_TEXT)
+    const long double vertical_label_span =
+        static_cast<long double>(v_max) - static_cast<long double>(v_min);
+    const auto horizontal_label_span = positive_span_ns_as_long_double(
+        snapshot.data_cfg.t_min,
+        snapshot.data_cfg.t_max);
+    const bool fade_v_labels =
+        m_impl->label_spans_initialized             &&
+        vertical_label_span > 0.0L                  &&
+        m_impl->last_vertical_label_span > 0.0L     &&
+        !spans_approx_equal(vertical_label_span, m_impl->last_vertical_label_span);
+    const bool fade_h_labels =
+        m_impl->label_spans_initialized             &&
+        horizontal_label_span                       &&
+        m_impl->last_horizontal_label_span > 0.0L   &&
+        !spans_approx_equal(*horizontal_label_span, m_impl->last_horizontal_label_span);
+    m_impl->last_vertical_label_span = vertical_label_span;
+    m_impl->last_horizontal_label_span = horizontal_label_span.value_or(0.0L);
+    m_impl->label_spans_initialized = true;
+
     if (m_impl->fonts) {
         m_impl->fonts->set_log_callbacks(log_error, log_debug);
     }
@@ -500,31 +533,43 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
                     snapshot.series_revision);
             }
         }
+
+        const Text_renderer* prepared_text = nullptr;
+#if defined(VNM_PLOT_ENABLE_TEXT)
+        if (m_impl->text && config.show_text) {
+            const label_pane_opacity_t pane_opacity = label_pane_opacity_for_text(ctx);
+            const bool fades_active = m_impl->text->prepare(
+                ctx,
+                fade_v_labels,
+                fade_h_labels,
+                pane_opacity.vertical_axis_label_pane_is_opaque,
+                pane_opacity.horizontal_axis_label_pane_is_opaque);
+            prepared_text = m_impl->text.get();
+            if (fades_active && m_impl->owner) {
+                QMetaObject::invokeMethod(
+                    const_cast<Plot_widget*>(m_impl->owner),
+                    "update",
+                    Qt::QueuedConnection);
+            }
+        }
+#endif
+
         // Chrome runs in two queueing phases so backgrounds and the main grid
         // stay behind the series while the zero line and preview overlay stay
         // in front. Both phases write to ctx.rhi_updates before beginPass so
         // all uploads are submitted atomically; the checkpoint between them
         // lets record_draws() replay the back-layer slice, then the series
         // renders, then record_draws() replays the front-layer slice.
-        m_impl->chrome.render_grid_and_backgrounds(ctx, m_impl->primitives);
+        m_impl->chrome.render_grid_and_backgrounds(
+            ctx,
+            m_impl->primitives,
+            prepared_text);
         const std::size_t back_layer_end = m_impl->primitives.queued_op_count();
         m_impl->chrome.render_zero_line(ctx, m_impl->primitives);
         if (snapshot.adjusted_preview_height > 0.0) {
             m_impl->chrome.render_preview_overlay(ctx, m_impl->primitives);
         }
         const std::size_t front_layer_end = m_impl->primitives.queued_op_count();
-
-#if defined(VNM_PLOT_ENABLE_TEXT)
-        if (m_impl->text && config.show_text) {
-            const label_pane_opacity_t pane_opacity = label_pane_opacity_for_text(ctx);
-            m_impl->text->prepare(
-                ctx,
-                false,
-                false,
-                pane_opacity.vertical_axis_label_pane_is_opaque,
-                pane_opacity.horizontal_axis_label_pane_is_opaque);
-        }
-#endif
 
         cb->beginPass(rt, clear_color, QRhiDepthStencilClearValue(1.0f, 0), rhi_updates);
         cb->setViewport(QRhiViewport(0, 0, win_w, win_h));

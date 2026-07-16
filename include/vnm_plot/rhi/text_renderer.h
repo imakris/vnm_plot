@@ -14,6 +14,7 @@
 namespace vnm::plot {
 
 class Font_renderer;
+class Chrome_renderer;
 
 // -----------------------------------------------------------------------------
 // Text Renderer
@@ -29,7 +30,7 @@ public:
 
     // QRhi path: build all text draw batches and upload resources before beginPass().
     bool prepare(const frame_context_t& ctx, bool fade_v_labels, bool fade_h_labels);
-    // Pane opacity inputs describe chrome panes already queued for this frame;
+    // Pane opacity inputs describe chrome panes rendered for this frame;
     // false keeps LCD disabled for that axis label surface.
     bool prepare(
         const frame_context_t& ctx,
@@ -43,9 +44,11 @@ public:
 
     struct label_fade_state_t
     {
-        float          alpha     = 0.0f;
-        int            direction = 0; // +1 fade-in, -1 fade-out, 0 steady
+        float          alpha        = 0.0f;
+        int            direction    = 0; // +1 fade-in, -1 fade-out, 0 steady
         std::string    text;
+        std::string    previous_text;
+        float          text_mix     = 1.0f; // 0 = previous text, 1 = current text
     };
 
     template<typename Key>
@@ -62,6 +65,8 @@ public:
     using horizontal_axis_fade_tracker_t = axis_fade_tracker_t<std::int64_t>;
 
 private:
+    friend class Chrome_renderer;
+
     Font_renderer*                 m_fonts                   = nullptr;
 
     // Cached timestamps to avoid repeated allocation/formatting (int64 ns).
@@ -73,7 +78,7 @@ private:
     std::string                    m_cached_from_ts;
     std::string                    m_cached_to_ts;
 
-    static constexpr float k_label_fade_duration_ms          = 250.0f;
+    static constexpr float k_label_fade_duration_ms          = 180.0f;
 
     vertical_axis_fade_tracker_t   m_vertical_fade;
     horizontal_axis_fade_tracker_t m_horizontal_fade;

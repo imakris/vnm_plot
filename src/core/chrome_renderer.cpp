@@ -1,5 +1,6 @@
 #include <vnm_plot/rhi/chrome_renderer.h>
 #include <vnm_plot/rhi/primitive_renderer.h>
+#include <vnm_plot/rhi/text_renderer.h>
 #include <vnm_plot/core/color_palette.h>
 #include <vnm_plot/core/constants.h>
 #include <vnm_plot/core/plot_config.h>
@@ -109,7 +110,8 @@ grid_layer_params_t Chrome_renderer::calculate_grid_params(
 
 void Chrome_renderer::render_grid_and_backgrounds(
     const frame_context_t& ctx,
-    Primitive_renderer&    prims)
+    Primitive_renderer&    prims,
+    const Text_renderer*   prepared_text)
 {
     vnm::plot::Profiler* profiler = ctx.config ? ctx.config->profiler.get() : nullptr;
     VNM_PLOT_PROFILE_SCOPE(
@@ -231,6 +233,7 @@ void Chrome_renderer::render_grid_and_backgrounds(
 
     const auto build_tick_levels = [&](
         auto&&                     get_pos,
+        auto&&                     get_alpha,
         const auto&                labels,
         const grid_layer_params_t& main_levels)
     {
@@ -239,11 +242,15 @@ void Chrome_renderer::render_grid_and_backgrounds(
             if (ticks.count >= grid_layer_params_t::k_max_levels) {
                 break;
             }
+            const float label_alpha = std::clamp(get_alpha(label), 0.0f, 1.0f);
+            if (label_alpha <= 0.0f) {
+                continue;
+            }
             const float pos   = get_pos(label);
             const auto  props = match_level_properties(pos, main_levels);
             ticks.spacing_px[ticks.count]   = 1e6f;
             ticks.start_px[ticks.count]     = pos;
-            ticks.alpha[ticks.count]        = props.first;
+            ticks.alpha[ticks.count]        = props.first * label_alpha;
             ticks.thickness_px[ticks.count] = props.second;
             ++ticks.count;
         }
@@ -251,10 +258,48 @@ void Chrome_renderer::render_grid_and_backgrounds(
     };
 
     grid_layer_params_t empty_levels;
-    const grid_layer_params_t vertical_tick_levels = build_tick_levels(
-        [](const v_label_t& l) { return l.y; }, pl.v_labels, vertical_levels);
-    const grid_layer_params_t horizontal_tick_levels = build_tick_levels(
-        [](const h_label_t& l) { return l.position.x; }, pl.h_labels, horizontal_levels);
+    grid_layer_params_t vertical_tick_levels;
+    grid_layer_params_t horizontal_tick_levels;
+    if (prepared_text) {
+        const double v_span = double(ctx.v1) - double(ctx.v0);
+        if (v_span > 0.0) {
+            const double px_per_unit = pl.usable_height / v_span;
+            vertical_tick_levels = build_tick_levels(
+                [&](const auto& entry) {
+                    return static_cast<float>(
+                        pl.usable_height - (entry.first - double(ctx.v0)) * px_per_unit);
+                },
+                [](const auto& entry) { return entry.second.alpha; },
+                prepared_text->m_vertical_fade.states,
+                vertical_levels);
+        }
+
+        const auto t_span = positive_span_ns_as_long_double(ctx.t0, ctx.t1);
+        if (t_span) {
+            const long double px_per_unit =
+                static_cast<long double>(pl.usable_width) / *t_span;
+            horizontal_tick_levels = build_tick_levels(
+                [&](const auto& entry) {
+                    return static_cast<float>(
+                        span_ns_as_long_double(ctx.t0, entry.first) * px_per_unit);
+                },
+                [](const auto& entry) { return entry.second.alpha; },
+                prepared_text->m_horizontal_fade.states,
+                horizontal_levels);
+        }
+    }
+    else {
+        vertical_tick_levels = build_tick_levels(
+            [](const v_label_t& label) { return label.y; },
+            [](const v_label_t&) { return 1.0f; },
+            pl.v_labels,
+            vertical_levels);
+        horizontal_tick_levels = build_tick_levels(
+            [](const h_label_t& label) { return label.position.x; },
+            [](const h_label_t&) { return 1.0f; },
+            pl.h_labels,
+            horizontal_levels);
+    }
     const grid_layer_params_t vertical_tick_levels_gl = flip_grid_levels_y(vertical_tick_levels, main_size.y);
 
     if (grid_visibility > 0.0 && pl.v_bar_width > 0.5 && vertical_tick_levels_gl.count > 0) {
