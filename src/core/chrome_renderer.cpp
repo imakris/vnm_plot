@@ -6,6 +6,7 @@
 #include <vnm_plot/core/time_grid.h>
 #include <vnm_plot/core/algo.h>
 #include <vnm_plot/core/time_units.h>
+#include "lcd_policy.h"
 #include "label_pane_geometry.h"
 
 #include <glm/glm.hpp>
@@ -129,13 +130,24 @@ void Chrome_renderer::render_grid_and_backgrounds(
     const glm::vec4 tick_rgb           = grid_rgb;
     const glm::vec4 preview_background = palette.preview_background;
     const glm::vec4 separator_color    = palette.separator;
+    const lcd_subpixel_order_t frame_order = detail::lcd_effective_order_for_frame(
+        ctx.config ? &ctx.config->lcd_request : nullptr,
+        ctx.lcd_subpixel_order);
+    const bool plot_body_is_opaque =
+        (ctx.config == nullptr || !ctx.config->clear_to_transparent) &&
+        ctx.plot_body_background.a >= detail::k_lcd_opaque_alpha_cutoff;
+    const lcd_subpixel_order_t grid_order = detail::grid_lcd_subpixel_order(
+        frame_order,
+        ctx.plot_body_background.a,
+        plot_body_is_opaque);
 
     // Background panes and separators (batch_rect is CPU work)
     prims.batch_rect(preview_background,
         glm::vec4(0.f, float(ctx.win_h) - float(ctx.adjusted_preview_height), float(ctx.win_w), float(ctx.win_h)));
 
     glm::vec4 label_pane_rect;
-    if (detail::horizontal_axis_label_pane_rect(ctx, label_pane_rect)) {
+    const bool has_h_label_pane = detail::horizontal_axis_label_pane_rect(ctx, label_pane_rect);
+    if (has_h_label_pane) {
         prims.batch_rect(h_label_color, label_pane_rect);
     }
     if (detail::vertical_axis_label_pane_rect(ctx, label_pane_rect)) {
@@ -181,7 +193,15 @@ void Chrome_renderer::render_grid_and_backgrounds(
     const grid_layer_params_t vertical_levels_gl = flip_grid_levels_y(vertical_levels, main_size.y);
 
     if (grid_visibility > 0.0) {
-        prims.draw_grid_shader(ctx, main_origin, main_size, grid_rgb, vertical_levels_gl, horizontal_levels);
+        prims.draw_grid_shader(
+            ctx,
+            main_origin,
+            main_size,
+            grid_rgb,
+            vertical_levels_gl,
+            horizontal_levels,
+            grid_order,
+            ctx.plot_body_background);
     }
 
     const auto match_level_properties = [](
@@ -241,14 +261,34 @@ void Chrome_renderer::render_grid_and_backgrounds(
         const glm::vec2 top_left{float(pl.usable_width), 0.0f};
         const glm::vec2 size{float(pl.v_bar_width), float(pl.usable_height)};
         const glm::vec2 origin = to_gl_origin(ctx, top_left, size);
-        prims.draw_grid_shader(ctx, origin, size, tick_rgb, vertical_tick_levels_gl, empty_levels);
+        prims.draw_grid_shader(
+            ctx,
+            origin,
+            size,
+            tick_rgb,
+            vertical_tick_levels_gl,
+            empty_levels,
+            lcd_subpixel_order_t::NONE,
+            v_label_color);
     }
 
     if (grid_visibility > 0.0 && ctx.base_label_height_px > 0.5 && horizontal_tick_levels.count > 0) {
         const glm::vec2 top_left{0.0f, float(pl.usable_height)};
         const glm::vec2 size{float(pl.usable_width), float(ctx.base_label_height_px)};
         const glm::vec2 origin = to_gl_origin(ctx, top_left, size);
-        prims.draw_grid_shader(ctx, origin, size, tick_rgb, empty_levels, horizontal_tick_levels);
+        const lcd_subpixel_order_t gutter_order = detail::grid_lcd_subpixel_order(
+            frame_order,
+            h_label_color.a,
+            has_h_label_pane && grid_order != lcd_subpixel_order_t::NONE);
+        prims.draw_grid_shader(
+            ctx,
+            origin,
+            size,
+            tick_rgb,
+            empty_levels,
+            horizontal_tick_levels,
+            gutter_order,
+            h_label_color);
     }
 }
 
@@ -285,13 +325,29 @@ void Chrome_renderer::render_zero_line(
     zero_level.thickness_px[0] = 1.2f;
 
     grid_layer_params_t empty_levels;
-    prims.draw_grid_shader(ctx, main_origin, main_size, color, zero_level, empty_levels);
+    prims.draw_grid_shader(
+        ctx,
+        main_origin,
+        main_size,
+        color,
+        zero_level,
+        empty_levels,
+        lcd_subpixel_order_t::NONE,
+        ctx.plot_body_background);
 
     if (pl.v_bar_width > 0.5) {
         const glm::vec2 v_bar_top_left{float(pl.usable_width), 0.0f};
         const glm::vec2 v_bar_size{float(pl.v_bar_width), float(pl.usable_height)};
         const glm::vec2 v_bar_origin = to_gl_origin(ctx, v_bar_top_left, v_bar_size);
-        prims.draw_grid_shader(ctx, v_bar_origin, v_bar_size, color, zero_level, empty_levels);
+        prims.draw_grid_shader(
+            ctx,
+            v_bar_origin,
+            v_bar_size,
+            color,
+            zero_level,
+            empty_levels,
+            lcd_subpixel_order_t::NONE,
+            palette.v_label_background);
     }
 }
 

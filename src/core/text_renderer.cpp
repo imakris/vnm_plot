@@ -2,11 +2,11 @@
 #include <vnm_plot/core/color_palette.h>
 #include <vnm_plot/core/constants.h>
 #include <vnm_plot/core/plot_config.h>
-#include <vnm_plot/core/text_lcd.h>
+#include <vnm_plot/core/lcd.h>
 #include <vnm_plot/rhi/font_renderer.h>
 #include <vnm_plot/core/time_units.h>
 #include "label_pane_geometry.h"
-#include "text_lcd_policy.h"
+#include "lcd_policy.h"
 
 #include <glm/glm.hpp>
 
@@ -88,13 +88,13 @@ text_shadow_t text_shadow_for_background(const glm::vec4& background, double fon
     return shadow;
 }
 
-text_lcd_resolved_subpixel_order_t text_lcd_frame_order(const frame_context_t& ctx)
+lcd_subpixel_order_t lcd_frame_order(const frame_context_t& ctx)
 {
     // Keep request resolution at the draw boundary: Qt supplies the AUTO result
     // in the frame context, while direct-RHI explicit requests can rely on config.
-    return detail::text_lcd_effective_order_for_frame(
-        ctx.config ? &ctx.config->text_lcd_request : nullptr,
-        ctx.text_lcd_subpixel_order);
+    return detail::lcd_effective_order_for_frame(
+        ctx.config ? &ctx.config->lcd_request : nullptr,
+        ctx.lcd_subpixel_order);
 }
 
 text_lcd_t text_lcd_for_background(
@@ -104,8 +104,8 @@ text_lcd_t text_lcd_for_background(
 {
     text_lcd_t lcd;
     lcd.subpixel_order   = draw_lcd_eligible
-        ? text_lcd_frame_order(ctx)
-        : text_lcd_resolved_subpixel_order_t::NONE;
+        ? lcd_frame_order(ctx)
+        : lcd_subpixel_order_t::NONE;
     lcd.background_color = background;
     return lcd;
 }
@@ -256,7 +256,7 @@ bool Text_renderer::render_axis_labels(
     const bool                               dark_mode   = ctx.dark_mode;
     const glm::vec4                          font_color  = text_color_for_theme(dark_mode);
     const Color_palette                      palette     = resolved_color_palette(ctx.config, dark_mode);
-    const text_lcd_resolved_subpixel_order_t frame_order = text_lcd_frame_order(ctx);
+    const lcd_subpixel_order_t frame_order = lcd_frame_order(ctx);
     const bool label_lcd_possible = detail::text_lcd_draw_is_eligible(
         detail::text_lcd_draw_surface_t::VERTICAL_AXIS_LABEL,
         frame_order,
@@ -322,7 +322,7 @@ bool Text_renderer::render_axis_labels(
         if (label_lcd_possible &&
             label_scissor.enabled &&
             have_label_backing &&
-            state.alpha >= detail::k_text_lcd_opaque_alpha_cutoff)
+            state.alpha >= detail::k_lcd_opaque_alpha_cutoff)
         {
             have_text_bounds = m_fonts->text_visual_bounds_px(
                 state.text.c_str(), snapped_x, snapped_y, text_bounds);
@@ -336,7 +336,7 @@ bool Text_renderer::render_axis_labels(
             const bool label_lcd_eligible =
                 label_lcd_possible                                    &&
                 label_scissor.enabled                                 &&
-                state.alpha >= detail::k_text_lcd_opaque_alpha_cutoff &&
+                state.alpha >= detail::k_lcd_opaque_alpha_cutoff &&
                 text_fits_label_backing;
             const text_lcd_t label_lcd =
                 text_lcd_for_background(ctx, palette.v_label_background, label_lcd_eligible);
@@ -384,7 +384,7 @@ bool Text_renderer::render_info_overlay(
     const bool                               dark_mode   = ctx.dark_mode;
     const glm::vec4                          font_color  = text_color_for_theme(dark_mode);
     const Color_palette                      palette     = resolved_color_palette(ctx.config, dark_mode);
-    const text_lcd_resolved_subpixel_order_t frame_order = text_lcd_frame_order(ctx);
+    const lcd_subpixel_order_t frame_order = lcd_frame_order(ctx);
     const bool label_lcd_possible = detail::text_lcd_draw_is_eligible(
         detail::text_lcd_draw_surface_t::HORIZONTAL_AXIS_LABEL,
         frame_order,
@@ -440,7 +440,7 @@ bool Text_renderer::render_info_overlay(
             const bool label_lcd_eligible =
                 label_lcd_possible                                    &&
                 label_scissor.enabled                                 &&
-                state.alpha >= detail::k_text_lcd_opaque_alpha_cutoff &&
+                state.alpha >= detail::k_lcd_opaque_alpha_cutoff &&
                 text_fits_label_backing;
             const text_lcd_t label_lcd =
                 text_lcd_for_background(ctx, palette.h_label_background, label_lcd_eligible);

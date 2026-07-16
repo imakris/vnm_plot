@@ -220,12 +220,12 @@ file(WRITE "${_consumer_source_dir}/main.cpp" [=[
 
 int main()
 {
-    using plot_order_t = vnm::plot::text_lcd_resolved_subpixel_order_t;
+    using plot_order_t = vnm::plot::lcd_subpixel_order_t;
     using shared_order_t = vnm::msdf_text::lcd::Resolved_lcd_subpixel_order;
 
     static_assert(std::is_same_v<plot_order_t, shared_order_t>);
 
-    constexpr auto request = vnm::plot::text_lcd_explicit_request(plot_order_t::RGB);
+    constexpr auto request = vnm::plot::lcd_explicit_request(plot_order_t::RGB);
     static_assert(!request.automatic);
     static_assert(request.resolved_order == shared_order_t::RGB);
 

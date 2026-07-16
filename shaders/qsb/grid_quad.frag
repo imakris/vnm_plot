@@ -17,6 +17,8 @@ layout(std140, binding = 0) uniform Block
     float win_h;
     vec4  v_levels[GRID_LEVEL_MAX];
     vec4  t_levels[GRID_LEVEL_MAX];
+    float lcd_subpixel_order;
+    vec4  background_color;
 } u;
 
 layout(location = 0) out vec4 out_color;
@@ -42,6 +44,69 @@ float accumulate_lines(int count, float coord, vec4 levels[GRID_LEVEL_MAX])
     return mask;
 }
 
+vec3 filtered_lcd_coverage(
+    int count,
+    float coord,
+    vec4 levels[GRID_LEVEL_MAX],
+    bool forward_order)
+{
+    float sample_0 = 0.0;
+    float sample_1 = 0.0;
+    float sample_2 = 0.0;
+    float sample_3 = 0.0;
+    float sample_4 = 0.0;
+    float sample_5 = 0.0;
+    float sample_6 = 0.0;
+
+    for (int i = 0; i < count && i < GRID_LEVEL_MAX; ++i) {
+        vec4 level = levels[i];
+        float spacing = level.x;
+        if (spacing <= 0.0) {
+            continue;
+        }
+
+        float wrapped = mod(coord - level.y, spacing);
+        float dist = min(wrapped, spacing - wrapped);
+        if (dist >= level.w * 0.1 + 2.0) {
+            continue;
+        }
+
+        sample_0 = max(sample_0, line_mask(coord - 1.0,       spacing, level.y, level.w) * level.z);
+        sample_1 = max(sample_1, line_mask(coord - 2.0 / 3.0, spacing, level.y, level.w) * level.z);
+        sample_2 = max(sample_2, line_mask(coord - 1.0 / 3.0, spacing, level.y, level.w) * level.z);
+        sample_3 = max(sample_3, line_mask(coord,             spacing, level.y, level.w) * level.z);
+        sample_4 = max(sample_4, line_mask(coord + 1.0 / 3.0, spacing, level.y, level.w) * level.z);
+        sample_5 = max(sample_5, line_mask(coord + 2.0 / 3.0, spacing, level.y, level.w) * level.z);
+        sample_6 = max(sample_6, line_mask(coord + 1.0,       spacing, level.y, level.w) * level.z);
+    }
+
+    float filter_edge = 0.03125;
+    float filter_side = 0.30078125;
+    float filter_center = 0.3359375;
+    float first_coverage =
+        sample_0 * filter_edge +
+        sample_1 * filter_side +
+        sample_2 * filter_center +
+        sample_3 * filter_side +
+        sample_4 * filter_edge;
+    float center_coverage =
+        sample_1 * filter_edge +
+        sample_2 * filter_side +
+        sample_3 * filter_center +
+        sample_4 * filter_side +
+        sample_5 * filter_edge;
+    float last_coverage =
+        sample_2 * filter_edge +
+        sample_3 * filter_side +
+        sample_4 * filter_center +
+        sample_5 * filter_side +
+        sample_6 * filter_edge;
+
+    return forward_order
+        ? vec3(first_coverage, center_coverage, last_coverage)
+        : vec3(last_coverage, center_coverage, first_coverage);
+}
+
 void main()
 {
     float frag_y = (u.framebuffer_y_up != 0)
@@ -56,12 +121,43 @@ void main()
     }
 
     float v_mask = accumulate_lines(u.v_count, frag.y, u.v_levels);
-    float t_mask = accumulate_lines(u.t_count, frag.x, u.t_levels);
-    float mask   = max(v_mask, t_mask);
+    bool lcd_rgb = u.lcd_subpixel_order > 0.5 && u.lcd_subpixel_order < 1.5;
+    bool lcd_bgr = u.lcd_subpixel_order > 1.5 && u.lcd_subpixel_order < 2.5;
+    bool lcd_enabled =
+        (lcd_rgb || lcd_bgr) &&
+        u.background_color.a >= 0.999;
 
-    if (mask <= 0.001) {
+    if (!lcd_enabled) {
+        float t_mask = accumulate_lines(u.t_count, frag.x, u.t_levels);
+        float mask = max(v_mask, t_mask);
+        if (mask <= 0.001) {
+            discard;
+        }
+        out_color = vec4(u.grid_color.rgb, u.grid_color.a * clamp(mask, 0.0, 1.0));
+        return;
+    }
+
+    vec3 t_coverage = filtered_lcd_coverage(
+        u.t_count,
+        frag.x,
+        u.t_levels,
+        lcd_rgb);
+    vec3 coverage = u.grid_color.a * clamp(
+        max(vec3(v_mask), t_coverage),
+        vec3(0.0),
+        vec3(1.0));
+    float alpha = max(coverage.r, max(coverage.g, coverage.b));
+    if (alpha <= 0.001) {
         discard;
     }
 
-    out_color = vec4(u.grid_color.rgb, u.grid_color.a * clamp(mask, 0.0, 1.0));
+    vec3 precomposed_rgb = mix(
+        u.background_color.rgb,
+        u.grid_color.rgb,
+        coverage);
+    vec3 straight_rgb =
+        (precomposed_rgb -
+            u.background_color.rgb * (1.0 - alpha)) /
+        alpha;
+    out_color = vec4(clamp(straight_rgb, 0.0, 1.0), alpha);
 }

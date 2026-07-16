@@ -1,5 +1,5 @@
 #include <vnm_plot/rhi/font_renderer.h>
-#include <vnm_plot/core/text_lcd.h>
+#include <vnm_plot/core/lcd.h>
 #include <vnm_plot/rhi/asset_loader.h>
 #include "platform_paths.h"
 #include "rhi_helpers.h"
@@ -1322,7 +1322,7 @@ void Font_renderer::rhi_queue_draw(
     const bool has_shadow    = shadow.radius_px > 0.0f && shadow.color.a > 0.0f;
     text_lcd_t effective_lcd = lcd;
     if (has_shadow) {
-        effective_lcd.subpixel_order = text_lcd_resolved_subpixel_order_t::NONE;
+        effective_lcd.subpixel_order = lcd_subpixel_order_t::NONE;
     }
 
     const std::size_t first_call_index = acquire_call();

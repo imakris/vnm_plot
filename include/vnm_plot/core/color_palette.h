@@ -68,7 +68,7 @@ struct Color_palette
     static Color_palette light()
     {
         Color_palette p;
-        p.background              = hex_to_vec4("ffffffff");
+        p.background              = hex_to_vec4("ffCDD2D5");
         p.h_label_background      = hex_to_vec4("ffbadaef");
         p.v_label_background      = hex_to_vec4("ffc1c6c9");
         p.preview_background      = hex_to_vec4("ffeeeeee");

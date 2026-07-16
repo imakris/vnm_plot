@@ -94,14 +94,14 @@ if(TARGET vnm_plot_qtquick)
     add_executable(test_plot_time_axis test_plot_time_axis.cpp)
     target_link_libraries(test_plot_time_axis PRIVATE vnm_plot::qtquick)
 
-    add_executable(test_text_lcd_resolver test_text_lcd_resolver.cpp)
-    target_link_libraries(test_text_lcd_resolver
+    add_executable(test_lcd_resolver test_lcd_resolver.cpp)
+    target_link_libraries(test_lcd_resolver
         PRIVATE
             vnm_plot::qtquick
             Qt6::GuiPrivate
             Qt6::Gui
     )
-    target_include_directories(test_text_lcd_resolver PRIVATE
+    target_include_directories(test_lcd_resolver PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/../src/qt
     )
 endif()
@@ -110,7 +110,7 @@ if(TARGET vnm_plot_qtquick)
     set_target_properties(
         test_plot_interaction_item
         test_plot_time_axis
-        test_text_lcd_resolver
+        test_lcd_resolver
         PROPERTIES
         CXX_STANDARD 17
         CXX_STANDARD_REQUIRED ON
@@ -178,7 +178,7 @@ endif()
 if(TARGET vnm_plot_qtquick)
     vnm_plot_add_test(PlotInteractionItem test_plot_interaction_item)
     vnm_plot_add_test(PlotTimeAxis test_plot_time_axis)
-    vnm_plot_add_test(TextLcdResolver test_text_lcd_resolver)
+    vnm_plot_add_test(LcdResolver test_lcd_resolver)
 endif()
 
 set(_vnm_plot_package_smoke_viable TRUE)
@@ -298,8 +298,8 @@ if(WIN32)
     if(TARGET test_plot_time_axis)
         list(APPEND _vnm_plot_windows_test_targets test_plot_time_axis)
     endif()
-    if(TARGET test_text_lcd_resolver)
-        list(APPEND _vnm_plot_windows_test_targets test_text_lcd_resolver)
+    if(TARGET test_lcd_resolver)
+        list(APPEND _vnm_plot_windows_test_targets test_lcd_resolver)
     endif()
     if(TARGET test_msdf_lcd_shader_reference)
         list(APPEND _vnm_plot_windows_test_targets test_msdf_lcd_shader_reference)
@@ -382,5 +382,5 @@ endforeach()
 if(TARGET vnm_plot_qtquick)
     message(STATUS "  - test_plot_interaction_item")
     message(STATUS "  - test_plot_time_axis")
-    message(STATUS "  - test_text_lcd_resolver")
+    message(STATUS "  - test_lcd_resolver")
 endif()

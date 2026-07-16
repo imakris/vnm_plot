@@ -13,6 +13,6 @@
 #include <vnm_plot/core/plot_config.h>
 #include <vnm_plot/core/series_builder.h>
 #include <vnm_plot/core/series_window.h>
-#include <vnm_plot/core/text_lcd.h>
+#include <vnm_plot/core/lcd.h>
 #include <vnm_plot/core/time_units.h>
 #include <vnm_plot/core/types.h>

@@ -51,6 +51,8 @@ static_assert(sizeof(Rect_block_std140) == 64,
 //         float win_h;                 // offset 44
 //         vec4  v_levels[GRID_LEVEL_MAX]; // offset 48
 //         vec4  t_levels[GRID_LEVEL_MAX]; // offset 560
+//         float lcd_subpixel_order;        // offset 1072
+//         vec4  background_color;          // offset 1088
 //     } u;
 //
 // Verified against `qsb --dump shaders/qsb/grid_quad.frag.qsb`.
@@ -65,6 +67,9 @@ struct Grid_block_std140
     float      win_h;               // offset  44
     float      v_levels[32][4];     // offset  48 (32 * 16 = 512 bytes)
     float      t_levels[32][4];     // offset 560 (32 * 16 = 512 bytes)
+    float      lcd_subpixel_order;  // offset 1072
+    float      padding[3];          // offset 1076
+    float      background_color[4]; // offset 1088
 };
 static_assert(offsetof(Grid_block_std140, plot_size_px)     ==    0, "plot_size_px offset");
 static_assert(offsetof(Grid_block_std140, region_origin_px) ==    8, "region_origin_px offset");
@@ -75,7 +80,9 @@ static_assert(offsetof(Grid_block_std140, framebuffer_y_up) ==   40, "framebuffe
 static_assert(offsetof(Grid_block_std140, win_h)            ==   44, "win_h offset");
 static_assert(offsetof(Grid_block_std140, v_levels)         ==   48, "v_levels offset");
 static_assert(offsetof(Grid_block_std140, t_levels)         ==  560, "t_levels offset");
-static_assert(sizeof(Grid_block_std140)                     == 1072, "Grid UBO mirror size");
+static_assert(offsetof(Grid_block_std140, lcd_subpixel_order) == 1072, "lcd_subpixel_order offset");
+static_assert(offsetof(Grid_block_std140, background_color) == 1088, "background_color offset");
+static_assert(sizeof(Grid_block_std140)                     == 1104, "Grid UBO mirror size");
 
 constexpr std::uint32_t k_rect_ubo_bytes = sizeof(Rect_block_std140);
 constexpr std::uint32_t k_grid_ubo_bytes = sizeof(Grid_block_std140);
@@ -498,7 +505,9 @@ void Primitive_renderer::draw_grid_shader(
     const glm::vec2&           size,
     const glm::vec4&           color,
     const grid_layer_params_t& vertical_levels,
-    const grid_layer_params_t& horizontal_levels)
+    const grid_layer_params_t& horizontal_levels,
+    lcd_subpixel_order_t        vertical_subpixel_order,
+    const glm::vec4&            background_color)
 {
     VNM_PLOT_PROFILE_SCOPE(m_profiler, "renderer.frame.prims.draw_grid");
 
@@ -603,6 +612,12 @@ void Primitive_renderer::draw_grid_shader(
             block.t_levels[i][2] = horizontal_levels.alpha[i];
             block.t_levels[i][3] = horizontal_levels.thickness_px[i];
         }
+        block.lcd_subpixel_order =
+            vnm::msdf_text::lcd::shader_uniform_value(vertical_subpixel_order);
+        block.background_color[0] = background_color.r;
+        block.background_color[1] = background_color.g;
+        block.background_color[2] = background_color.b;
+        block.background_color[3] = background_color.a;
 
         updates->updateDynamicBuffer(call.ubo.get(), 0, sizeof(block), &block);
 

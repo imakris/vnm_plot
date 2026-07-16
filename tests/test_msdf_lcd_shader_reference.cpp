@@ -1,7 +1,7 @@
 // vnm_plot MSDF LCD shader-reference drift checks
 
 #include "test_macros.h"
-#include "../src/core/text_lcd_policy.h"
+#include "../src/core/lcd_policy.h"
 
 #include <vnm_msdf_text/lcd_contract.h>
 #include <vnm_msdf_text/lcd_shader_reference.h>
@@ -405,7 +405,7 @@ bool test_plot_shader_binds_lcd_reference_literals()
         "plot shader LCD filtered coverage return order must preserve channel direction");
     TEST_ASSERT(contains_glsl_token_sequence(shader_tokens, lcd_enabled_statement()),
         "plot shader opacity cutoff expression must match shared reference");
-    TEST_ASSERT(plot::detail::k_text_lcd_opaque_alpha_cutoff ==
+    TEST_ASSERT(plot::detail::k_lcd_opaque_alpha_cutoff ==
         ref::k_lcd_opaque_alpha_cutoff,
         "plot CPU opacity cutoff must match shared shader reference");
 

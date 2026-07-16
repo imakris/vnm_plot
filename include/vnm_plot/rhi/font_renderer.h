@@ -3,7 +3,7 @@
 // VNM Plot Library - RHI Font Renderer
 // MSDF text rendering with font loading, measurement, and QRhi rendering.
 
-#include <vnm_plot/core/text_lcd.h>
+#include <vnm_plot/core/lcd.h>
 #include <vnm_plot/rhi/frame_context.h>
 
 #include <glm/glm.hpp>
@@ -39,8 +39,7 @@ struct text_shadow_t
 
 struct text_lcd_t
 {
-    text_lcd_resolved_subpixel_order_t subpixel_order =
-        text_lcd_resolved_subpixel_order_t::NONE;
+    lcd_subpixel_order_t subpixel_order = lcd_subpixel_order_t::NONE;
     glm::vec4  background_color = glm::vec4(0.f);
 };
 

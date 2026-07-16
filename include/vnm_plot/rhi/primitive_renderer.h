@@ -69,7 +69,9 @@ public:
         const glm::vec2&           size,
         const glm::vec4&           color,
         const grid_layer_params_t& vertical_levels,
-        const grid_layer_params_t& horizontal_levels);
+        const grid_layer_params_t& horizontal_levels,
+        lcd_subpixel_order_t        vertical_subpixel_order,
+        const glm::vec4&            background_color);
 
     // Snapshot of how many ops have been queued so far this frame. The host
     // captures this between chrome phases and passes it to record_draws() to

@@ -1,11 +1,11 @@
 #include "plot_renderer.h"
-#include "text_lcd_resolver.h"
+#include "lcd_resolver.h"
 #include <vnm_plot/qt/plot_widget.h>
 #include <vnm_plot/core/color_palette.h>
 #include <vnm_plot/core/constants.h>
 #include <vnm_plot/core/layout_calculator.h>
 #include <vnm_plot/core/plot_config.h>
-#include <vnm_plot/core/text_lcd.h>
+#include <vnm_plot/core/lcd.h>
 #include <vnm_plot/rhi/asset_loader.h>
 #include <vnm_plot/rhi/chrome_renderer.h>
 #include <vnm_plot/rhi/font_renderer.h>
@@ -14,7 +14,7 @@
 #include <vnm_plot/rhi/text_renderer.h>
 #include "../core/frame_range_planner.h"
 #include "../core/label_pane_geometry.h"
-#include "../core/text_lcd_policy.h"
+#include "../core/lcd_policy.h"
 
 #include <QColor>
 #include <QMatrix4x4>
@@ -58,7 +58,7 @@ struct label_pane_opacity_t
 
 bool color_is_opaque(const glm::vec4& color)
 {
-    return color.a >= detail::k_text_lcd_opaque_alpha_cutoff;
+    return color.a >= detail::k_lcd_opaque_alpha_cutoff;
 }
 
 label_pane_opacity_t label_pane_opacity_for_text(const frame_context_t& ctx)
@@ -156,8 +156,7 @@ struct Plot_renderer::impl_t
         double         adjusted_preview_height = 0.0;
         double         vbar_width_pixels       = 0.0;
         glm::vec4      window_background       = glm::vec4(0.f, 0.f, 0.f, 1.f);
-        text_lcd_resolved_subpixel_order_t auto_text_lcd_subpixel_order =
-            text_lcd_resolved_subpixel_order_t::NONE;
+        lcd_subpixel_order_t auto_lcd_subpixel_order = lcd_subpixel_order_t::NONE;
         std::uint64_t  config_revision = 0;
         std::uint64_t  series_revision = 0;
     };
@@ -234,15 +233,15 @@ void Plot_renderer::synchronize(QQuickRhiItem* item)
     if (QQuickWindow* window = widget->window()) {
         m_impl->snapshot.window_background = qcolor_to_vec4(window->color());
     }
-    // Only AUTO needs platform probing here. The core text renderer combines
-    // this with the request again so direct-RHI explicit requests need no
+    // Only AUTO needs platform probing here. The core renderers combine this
+    // with the request again so direct-RHI explicit requests need no
     // prefilled frame order.
-    m_impl->snapshot.auto_text_lcd_subpixel_order =
-        m_impl->snapshot.config.text_lcd_request.automatic
-            ? resolve_text_lcd_subpixel_order_for_window(
-                m_impl->snapshot.config.text_lcd_request,
+    m_impl->snapshot.auto_lcd_subpixel_order =
+        m_impl->snapshot.config.lcd_request.automatic
+            ? resolve_lcd_subpixel_order_for_window(
+                m_impl->snapshot.config.lcd_request,
                 widget->window())
-            : text_lcd_resolved_subpixel_order_t::NONE;
+            : lcd_subpixel_order_t::NONE;
     m_impl->snapshot.config_revision = widget->m_config_revision.load(std::memory_order_acquire);
 }
 
@@ -468,7 +467,7 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
     ctx.visible_info_flags       = snapshot.visible_info_flags;
     ctx.dark_mode                = config.dark_mode;
     ctx.plot_body_background     = plot_body_background;
-    ctx.text_lcd_subpixel_order  = snapshot.auto_text_lcd_subpixel_order;
+    ctx.lcd_subpixel_order       = snapshot.auto_lcd_subpixel_order;
     ctx.config                   = &config;
     ctx.rhi                      = rhi_ptr;
     ctx.cb                       = cb;
