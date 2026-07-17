@@ -283,13 +283,13 @@ void Chrome_renderer::render_grid_and_backgrounds(
                     return static_cast<float>(
                         span_ns_as_long_double(ctx.t0, entry.first) * px_per_unit);
                 },
-                [](const auto& entry) { return entry.second.alpha; },
-                prepared_text->m_horizontal_fade.states,
+                [](const auto& entry) { return entry.second; },
+                prepared_text->m_horizontal_fade.visible_alphas,
                 horizontal_levels);
         }
     }
     else {
-        vertical_tick_levels = build_tick_levels(
+        vertical_tick_levels   = build_tick_levels(
             [](const v_label_t& label) { return label.y; },
             [](const v_label_t&) { return 1.0f; },
             pl.v_labels,

@@ -132,8 +132,9 @@ Layout_calculator::parameters_t build_layout_params(
         }
         return default_format_timestamp(ts_ns, step_ns);
     };
-    params.format_timestamp_revision = config.format_timestamp_revision;
-    params.format_value_func         = [config_ptr](
+    params.format_timestamp_revision     = config.format_timestamp_revision;
+    params.horizontal_axis_left_to_right = config.horizontal_axis_left_to_right;
+    params.format_value_func             = [config_ptr](
         double                         value,
         const value_format_context_t&  context) -> std::string
     {
@@ -156,20 +157,20 @@ struct Plot_renderer::impl_t
     // locks.
     struct render_snapshot_t
     {
-        Plot_config    config;
-        data_config_t  data_cfg;
+        Plot_config            config;
+        data_config_t          data_cfg;
         std::map<int, std::shared_ptr<const series_data_t>>
-                       series;
-        bool           v_auto                  = true;
-        int            visible_info_flags      = k_visible_info_none;
-        double         adjusted_font_px        = 10.0;
-        double         base_label_height_px    = 14.0;
-        double         adjusted_preview_height = 0.0;
-        double         vbar_width_pixels       = 0.0;
-        glm::vec4      window_background       = glm::vec4(0.f, 0.f, 0.f, 1.f);
-        lcd_subpixel_order_t auto_lcd_subpixel_order = lcd_subpixel_order_t::NONE;
-        std::uint64_t  config_revision = 0;
-        std::uint64_t  series_revision = 0;
+                               series;
+        bool                   v_auto                  = true;
+        int                    visible_info_flags      = k_visible_info_none;
+        double                 adjusted_font_px        = 10.0;
+        double                 base_label_height_px    = 14.0;
+        double                 adjusted_preview_height = 0.0;
+        double                 vbar_width_pixels       = 0.0;
+        glm::vec4              window_background       = glm::vec4(0.f, 0.f, 0.f, 1.f);
+        lcd_subpixel_order_t   auto_lcd_subpixel_order = lcd_subpixel_order_t::NONE;
+        std::uint64_t          config_revision         = 0;
+        std::uint64_t          series_revision         = 0;
     };
 
     const Plot_widget*             owner                  = nullptr;
@@ -333,18 +334,18 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
         snapshot.data_cfg.t_min,
         snapshot.data_cfg.t_max);
     const bool fade_v_labels =
-        m_impl->label_spans_initialized             &&
-        vertical_label_span > 0.0L                  &&
-        m_impl->last_vertical_label_span > 0.0L     &&
+        m_impl->label_spans_initialized                                           &&
+        vertical_label_span > 0.0L                                                &&
+        m_impl->last_vertical_label_span > 0.0L                                   &&
         !spans_approx_equal(vertical_label_span, m_impl->last_vertical_label_span);
     const bool fade_h_labels =
-        m_impl->label_spans_initialized             &&
-        horizontal_label_span                       &&
-        m_impl->last_horizontal_label_span > 0.0L   &&
+        m_impl->label_spans_initialized                                                &&
+        horizontal_label_span                                                          &&
+        m_impl->last_horizontal_label_span > 0.0L                                      &&
         !spans_approx_equal(*horizontal_label_span, m_impl->last_horizontal_label_span);
-    m_impl->last_vertical_label_span = vertical_label_span;
+    m_impl->last_vertical_label_span   = vertical_label_span;
     m_impl->last_horizontal_label_span = horizontal_label_span.value_or(0.0L);
-    m_impl->label_spans_initialized = true;
+    m_impl->label_spans_initialized    = true;
 
     if (m_impl->fonts) {
         m_impl->fonts->set_log_callbacks(log_error, log_debug);

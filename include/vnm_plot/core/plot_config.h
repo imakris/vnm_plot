@@ -16,6 +16,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <utility>
 
 namespace vnm::plot {
 
@@ -124,6 +125,9 @@ struct Plot_config
     // effective output of format_timestamp changes without replacing the
     // callback identity (e.g. captured/stateful data updates).
     std::uint64_t                              format_timestamp_revision = 0;
+    // Direction used to traverse duplicate horizontal-label runs. This
+    // retention policy does not reverse the time-to-X mapping.
+    bool                                       horizontal_axis_left_to_right = true;
     // Generic value formatter for Y-axis labels, indicator values, and info
     // overlay values. Applications own units, locale, and domain-specific
     // precision. If null, vnm_plot uses its neutral numeric defaults.
@@ -199,12 +203,48 @@ inline std::string default_format_timestamp(std::int64_t timestamp_ns, std::int6
     constexpr std::int64_t k_ns_per_minute = 60 * k_ns_per_second;
     const std::int64_t whole_seconds =
         floor_div_int64(timestamp_ns, k_ns_per_second);
+    std::int64_t fractional_ns = timestamp_ns % k_ns_per_second;
+    if (fractional_ns < 0) {
+        fractional_ns += k_ns_per_second;
+    }
+
+    int fractional_digits = 0;
+    for (std::int64_t quantum = k_ns_per_second;
+        step_ns > 0 && step_ns < quantum && fractional_digits < 9;
+        quantum /= 10)
+    {
+        ++fractional_digits;
+    }
+
+    const auto with_fraction = [&](std::string text, std::int64_t fraction_ns) {
+        if (fractional_digits > 0) {
+            text += '.';
+            text += std::to_string(k_ns_per_second + fraction_ns)
+                .substr(1, static_cast<std::size_t>(fractional_digits));
+        }
+        return text;
+    };
+    const auto fallback = [&] {
+        if (fractional_digits == 0) {
+            return std::to_string(whole_seconds) + "s";
+        }
+
+        const std::int64_t truncated_seconds  = timestamp_ns / k_ns_per_second;
+        std::int64_t       fraction_magnitude = timestamp_ns % k_ns_per_second;
+        if (fraction_magnitude < 0) {
+            fraction_magnitude = -fraction_magnitude;
+        }
+        std::string text = timestamp_ns < 0 && truncated_seconds == 0
+            ? "-0"
+            : std::to_string(truncated_seconds);
+        return with_fraction(std::move(text), fraction_magnitude) + "s";
+    };
 
     if constexpr (std::numeric_limits<time_t>::is_signed) {
         if (whole_seconds < static_cast<std::int64_t>(std::numeric_limits<time_t>::min()) ||
             whole_seconds > static_cast<std::int64_t>(std::numeric_limits<time_t>::max()))
         {
-            return std::to_string(whole_seconds) + "s";
+            return fallback();
         }
     }
     else {
@@ -212,7 +252,7 @@ inline std::string default_format_timestamp(std::int64_t timestamp_ns, std::int6
             static_cast<std::uint64_t>(whole_seconds) >
                 static_cast<std::uint64_t>(std::numeric_limits<time_t>::max()))
         {
-            return std::to_string(whole_seconds) + "s";
+            return fallback();
         }
     }
     time_t t = static_cast<time_t>(whole_seconds);
@@ -220,11 +260,11 @@ inline std::string default_format_timestamp(std::int64_t timestamp_ns, std::int6
 
 #ifdef _WIN32
     if (gmtime_s(&tm_buf, &t) != 0) {
-        return std::to_string(whole_seconds) + "s";
+        return fallback();
     }
 #else
     if (gmtime_r(&t, &tm_buf) == nullptr) {
-        return std::to_string(whole_seconds) + "s";
+        return fallback();
     }
 #endif
 
@@ -235,7 +275,7 @@ inline std::string default_format_timestamp(std::int64_t timestamp_ns, std::int6
     else {
         std::strftime(buf, sizeof(buf), "%H:%M:%S", &tm_buf);
     }
-    return buf;
+    return with_fraction(buf, fractional_ns);
 }
 
 } // namespace vnm::plot

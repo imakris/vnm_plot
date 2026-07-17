@@ -165,10 +165,10 @@ bool Text_renderer::render_axis_labels(
     bool                   fade_labels,
     bool                   vertical_axis_label_pane_is_opaque)
 {
-    const auto&                              pl          = ctx.layout;
-    const bool                               dark_mode   = ctx.dark_mode;
-    const glm::vec4                          font_color  = text_color_for_theme(dark_mode);
-    const Color_palette                      palette     = resolved_color_palette(ctx.config, dark_mode);
+    const auto&                pl          = ctx.layout;
+    const bool                 dark_mode   = ctx.dark_mode;
+    const glm::vec4            font_color  = text_color_for_theme(dark_mode);
+    const Color_palette        palette     = resolved_color_palette(ctx.config, dark_mode);
     const lcd_subpixel_order_t frame_order = lcd_frame_order(ctx);
     const bool label_lcd_possible = detail::text_lcd_draw_is_eligible(
         detail::text_lcd_draw_surface_t::VERTICAL_AXIS_LABEL,
@@ -242,8 +242,8 @@ bool Text_renderer::render_axis_labels(
         m_fonts->batch_text(snapped_x, snapped_y, text.c_str());
         if (ctx.rhi) {
             const bool label_lcd_eligible =
-                label_lcd_possible                                    &&
-                label_scissor.enabled                                 &&
+                label_lcd_possible                         &&
+                label_scissor.enabled                      &&
                 alpha >= detail::k_lcd_opaque_alpha_cutoff &&
                 text_fits_label_backing;
             const text_lcd_t label_lcd =
@@ -269,10 +269,10 @@ bool Text_renderer::render_info_overlay(
     bool                   fade_labels,
     bool                   horizontal_axis_label_pane_is_opaque)
 {
-    const auto&                              pl          = ctx.layout;
-    const bool                               dark_mode   = ctx.dark_mode;
-    const glm::vec4                          font_color  = text_color_for_theme(dark_mode);
-    const Color_palette                      palette     = resolved_color_palette(ctx.config, dark_mode);
+    const auto&                pl          = ctx.layout;
+    const bool                 dark_mode   = ctx.dark_mode;
+    const glm::vec4            font_color  = text_color_for_theme(dark_mode);
+    const Color_palette        palette     = resolved_color_palette(ctx.config, dark_mode);
     const lcd_subpixel_order_t frame_order = lcd_frame_order(ctx);
     const bool label_lcd_possible = detail::text_lcd_draw_is_eligible(
         detail::text_lcd_draw_surface_t::HORIZONTAL_AXIS_LABEL,
@@ -327,8 +327,8 @@ bool Text_renderer::render_info_overlay(
         m_fonts->batch_text(pen_x, pen_y, text.c_str());
         if (ctx.rhi) {
             const bool label_lcd_eligible =
-                label_lcd_possible                                    &&
-                label_scissor.enabled                                 &&
+                label_lcd_possible                         &&
+                label_scissor.enabled                      &&
                 alpha >= detail::k_lcd_opaque_alpha_cutoff &&
                 text_fits_label_backing;
             const text_lcd_t label_lcd =
@@ -348,7 +348,9 @@ bool Text_renderer::render_info_overlay(
         fade_labels,
         std::chrono::steady_clock::now(),
         [](const h_label_t& label) { return label.value; },
-        draw_label);
+        draw_label,
+        true,
+        !ctx.config || ctx.config->horizontal_axis_left_to_right);
 
     const bool show_value_range =
         (ctx.visible_info_flags & k_visible_info_value_range) != 0;

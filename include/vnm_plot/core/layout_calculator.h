@@ -53,6 +53,7 @@ public:
         // Both arguments are int64 nanoseconds (API convention).
         std::function<std::string(std::int64_t, std::int64_t)>    format_timestamp_func;
         std::uint64_t                                             format_timestamp_revision = 0;
+        bool                                                      horizontal_axis_left_to_right = true;
         std::function<std::string(double, const value_format_context_t&)>
                                                                   format_value_func;
         std::uint64_t                                             format_value_revision = 0;

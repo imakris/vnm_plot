@@ -45,7 +45,7 @@ public:
     struct label_fade_state_t
     {
         float          alpha        = 0.0f;
-        int            direction    = 0; // +1 fade-in, -1 fade-out, 0 steady
+        int            direction    = 0;    // +1 fade-in, -1 fade-out, 0 steady
         std::string    text;
         std::string    previous_text;
         float          text_mix     = 1.0f; // 0 = previous text, 1 = current text
@@ -57,6 +57,7 @@ public:
         using key_type = Key;
 
         std::map<Key, label_fade_state_t>      states;
+        std::map<Key, float>                   visible_alphas;
         std::chrono::steady_clock::time_point  last_update{};
         bool                                   initialized = false;
     };

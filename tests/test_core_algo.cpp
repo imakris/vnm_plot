@@ -567,6 +567,233 @@ bool test_format_axis_fixed_or_int()
     return true;
 }
 
+bool test_default_timestamp_precision_follows_step()
+{
+    constexpr std::int64_t k_second = plot::k_ns_per_second;
+
+    TEST_ASSERT(plot::default_format_timestamp(0, k_second) == "00:00:00",
+        "whole-second ticks should not include a fractional part");
+    TEST_ASSERT(plot::default_format_timestamp(200'000'000, 200'000'000) == "00:00:00.2",
+        "200 ms ticks should use tenths");
+    TEST_ASSERT(plot::default_format_timestamp(20'000'000, 20'000'000) == "00:00:00.02",
+        "20 ms ticks should use hundredths");
+    TEST_ASSERT(plot::default_format_timestamp(1, 1) == "00:00:00.000000001",
+        "1 ns ticks should retain nanosecond precision");
+    TEST_ASSERT(plot::default_format_timestamp(-200'000'000, 200'000'000) == "23:59:59.8",
+        "negative timestamps should use the preceding second's positive fraction");
+
+    const std::string minimum =
+        plot::default_format_timestamp(std::numeric_limits<std::int64_t>::min(), 1);
+    TEST_ASSERT(
+        minimum == "00:12:43.145224192" ||
+            minimum == "-9223372036.854775808s",
+        "the minimum timestamp should be exact on calendar and fallback paths");
+
+    return true;
+}
+
+bool test_horizontal_label_fades_do_not_restore_duplicate_text()
+{
+    struct label_t
+    {
+        std::int64_t   value = 0;
+        std::string    text;
+    };
+
+    using clock_t = std::chrono::steady_clock;
+    for (const bool left_to_right : {true, false}) {
+        for (const auto [old_key, new_key] : {
+            std::pair<std::int64_t, std::int64_t>{1, 2},
+            std::pair<std::int64_t, std::int64_t>{2, 1}})
+        {
+            plot::Text_renderer::horizontal_axis_fade_tracker_t tracker;
+            std::vector<label_t> labels{{old_key, "same"}};
+            std::map<std::int64_t, float> drawn;
+            auto now = clock_t::time_point{} + std::chrono::seconds(1);
+
+            const auto update = [&] {
+                drawn.clear();
+                return plot::detail::update_and_draw_faded_labels(
+                    labels,
+                    tracker,
+                    180.0f,
+                    true,
+                    now,
+                    [](const label_t& label) { return label.value; },
+                    [&](std::int64_t key, const std::string&, float alpha) {
+                        drawn[key] += alpha;
+                    },
+                    true,
+                    left_to_right);
+            };
+
+            TEST_ASSERT(!update() && drawn.count(old_key) == 1,
+                "the initial horizontal label should render normally");
+
+            labels = {{new_key, "same"}};
+            update();
+            now += std::chrono::milliseconds(179);
+            TEST_ASSERT(update(), "a moving label should remain active near the fade boundary");
+
+            const std::int64_t expected_key = left_to_right
+                ? std::min(old_key, new_key)
+                : std::max(old_key, new_key);
+            TEST_ASSERT(
+                drawn.size() == 1 &&
+                    drawn.count(expected_key) == 1 &&
+                    drawn.at(expected_key) >= 0.99f &&
+                    tracker.visible_alphas.size() == 1 &&
+                    tracker.visible_alphas.count(expected_key) == 1 &&
+                    tracker.visible_alphas.at(expected_key) >= 0.99f,
+                "the axis-first moving label and extension should retain the stronger opacity");
+
+            now += std::chrono::milliseconds(1);
+            TEST_ASSERT(!update() &&
+                drawn.size() == 1 &&
+                drawn.count(new_key) == 1 &&
+                tracker.states.size() == 1 &&
+                tracker.states.count(new_key) == 1,
+                "the fade should converge to the current label position");
+        }
+    }
+
+    return true;
+}
+
+bool test_horizontal_label_crossfades_suppress_rendered_duplicate_text()
+{
+    struct label_t
+    {
+        std::int64_t   value = 0;
+        std::string    text;
+    };
+    struct draw_t
+    {
+        std::int64_t   value = 0;
+        std::string    text;
+        float          alpha = 0.0f;
+    };
+
+    using clock_t = std::chrono::steady_clock;
+    for (const bool left_to_right : {true, false}) {
+        plot::Text_renderer::horizontal_axis_fade_tracker_t tracker;
+        std::vector<label_t> labels{{1, "A"}, {2, "B"}};
+        std::vector<draw_t> drawn;
+        auto now = clock_t::time_point{} + std::chrono::seconds(1);
+
+        const auto update = [&] {
+            drawn.clear();
+            return plot::detail::update_and_draw_faded_labels(
+                labels,
+                tracker,
+                180.0f,
+                true,
+                now,
+                [](const label_t& label) { return label.value; },
+                [&](std::int64_t key, const std::string& text, float alpha) {
+                    drawn.push_back({key, text, alpha});
+                },
+                true,
+                left_to_right);
+        };
+
+        update();
+        labels = {{1, "B"}, {2, "C"}};
+        update();
+        now += std::chrono::milliseconds(90);
+        TEST_ASSERT(update(), "the midpoint should remain an active text crossfade");
+
+        const auto first_b = std::find_if(
+            drawn.begin(),
+            drawn.end(),
+            [](const draw_t& draw) { return draw.text == "B"; });
+        TEST_ASSERT(first_b != drawn.end(),
+            "the shared crossfade text should remain visible");
+        TEST_ASSERT(std::count_if(
+            drawn.begin(),
+            drawn.end(),
+            [](const draw_t& draw) { return draw.text == "B"; }) == 1,
+            "shared text emitted by adjacent crossfade states should render once");
+        TEST_ASSERT(first_b->value == 1,
+            "a final string should take precedence over an adjacent transitional copy");
+        TEST_ASSERT(std::abs(first_b->alpha - 0.5f) < 1e-6f,
+            "duplicate suppression should preserve the text crossfade opacity budget");
+
+        tracker = {};
+        labels  = {{1, "A"}, {2, "B"}};
+        now     = clock_t::time_point{} + std::chrono::seconds(2);
+        update();
+        labels = {{1, "B"}, {2, "A"}};
+        update();
+        now += std::chrono::milliseconds(90);
+        TEST_ASSERT(update(), "swapped text should remain an active midpoint crossfade");
+
+        const auto drawn_a = std::find_if(
+            drawn.begin(),
+            drawn.end(),
+            [](const draw_t& draw) { return draw.text == "A"; });
+        const auto drawn_b = std::find_if(
+            drawn.begin(),
+            drawn.end(),
+            [](const draw_t& draw) { return draw.text == "B"; });
+        TEST_ASSERT(
+            drawn.size() == 2 &&
+                drawn_a != drawn.end() &&
+                drawn_a->value == 2 &&
+                std::abs(drawn_a->alpha - 0.5f) < 1e-6f &&
+                drawn_b != drawn.end() &&
+                drawn_b->value == 1 &&
+                std::abs(drawn_b->alpha - 0.5f) < 1e-6f &&
+                tracker.visible_alphas.size() == 2 &&
+                std::abs(tracker.visible_alphas.at(1) - 0.5f) < 1e-6f &&
+                std::abs(tracker.visible_alphas.at(2) - 0.5f) < 1e-6f,
+            "swapped text should keep final copies, crossfade opacity, and matching extensions");
+    }
+
+    for (const bool left_to_right : {true, false}) {
+        plot::Text_renderer::horizontal_axis_fade_tracker_t tracker;
+        const auto add_state = [&](std::int64_t key, const std::string& text) {
+            auto& state    = tracker.states[key];
+            state.alpha    = 1.0f;
+            state.text     = text;
+            state.text_mix = 1.0f;
+        };
+        add_state(1, "A");
+        add_state(2, "B");
+        add_state(3, "A");
+        tracker.states.at(2).previous_text = "A";
+        tracker.states.at(2).text_mix      = 0.5f;
+        tracker.initialized                = true;
+        tracker.last_update =
+            clock_t::time_point{} + std::chrono::seconds(3);
+
+        const std::vector<label_t> labels{{1, "A"}, {2, "B"}, {3, "A"}};
+        std::vector<draw_t> drawn;
+        plot::detail::update_and_draw_faded_labels(
+            labels,
+            tracker,
+            180.0f,
+            true,
+            tracker.last_update,
+            [](const label_t& label) { return label.value; },
+            [&](std::int64_t key, const std::string& text, float alpha) {
+                drawn.push_back({key, text, alpha});
+            },
+            true,
+            left_to_right);
+
+        TEST_ASSERT(std::count_if(
+            drawn.begin(),
+            drawn.end(),
+            [](const draw_t& draw) { return draw.text == "A"; }) == 2,
+            "transitional text must not bridge nonconsecutive final equal strings");
+        TEST_ASSERT(tracker.visible_alphas.size() == 3,
+            "nonconsecutive final labels should retain both pane extensions");
+    }
+
+    return true;
+}
+
 bool test_time_unit_helpers_handle_edges()
 {
     constexpr std::int64_t k_min = std::numeric_limits<std::int64_t>::min();
@@ -738,8 +965,8 @@ bool test_label_fades_start_at_threshold_and_finish_after_zoom_stops()
 {
     struct label_t
     {
-        std::int64_t value = 0;
-        std::string  text;
+        std::int64_t   value = 0;
+        std::string    text;
     };
 
     using clock_t = std::chrono::steady_clock;
@@ -1066,6 +1293,9 @@ int main()
     RUN_TEST(test_snapshot_count1_clamps_malformed_count2);
     RUN_TEST(test_layout_cache_key_distinguishes_adjacent_int64_time_windows);
     RUN_TEST(test_format_axis_fixed_or_int);
+    RUN_TEST(test_default_timestamp_precision_follows_step);
+    RUN_TEST(test_horizontal_label_fades_do_not_restore_duplicate_text);
+    RUN_TEST(test_horizontal_label_crossfades_suppress_rendered_duplicate_text);
     RUN_TEST(test_time_unit_helpers_handle_edges);
     RUN_TEST(test_timestamp_positions_preserve_epoch_nanoseconds);
     RUN_TEST(test_horizontal_label_fade_keys_preserve_int64_timestamps);

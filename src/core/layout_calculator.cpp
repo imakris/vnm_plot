@@ -1205,7 +1205,19 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
 
             float prev_right = -std::numeric_limits<float>::max();
             auto  write      = res.h_labels.begin();
+            std::string previous_text;
+            bool        have_previous_text = false;
             for (auto it = res.h_labels.begin(); it != res.h_labels.end(); ++it) {
+                const auto next = std::next(it);
+                const bool duplicate = params.horizontal_axis_left_to_right
+                    ? have_previous_text && it->text == previous_text
+                    : next != res.h_labels.end() && it->text == next->text;
+                previous_text      = it->text;
+                have_previous_text = true;
+                if (duplicate) {
+                    continue;
+                }
+
                 float w = 0.f;
                 if (use_monospace && advance > 0.f) { w = advance * float(it->text.size());           } else
                 if (params.measure_text_func)       { w = params.measure_text_func(it->text.c_str()); } else

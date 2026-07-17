@@ -63,7 +63,7 @@ plot::Layout_calculator::parameters_t make_minimal_params(
         std::int64_t step_ns) -> std::string
     {
         recorded_calls.push_back({timestamp_ns, step_ns});
-        return std::string("L");
+        return std::to_string(timestamp_ns);
     };
     return params;
 }
@@ -249,6 +249,97 @@ bool test_horizontal_axis_handles_full_int64_time_span()
     return true;
 }
 
+bool test_horizontal_axis_suppresses_only_consecutive_equal_text()
+{
+    std::vector<Recorded_call> recorded;
+    auto params = make_minimal_params(0, 60LL * k_ns_per_second, recorded);
+    params.format_timestamp_revision     = 1;
+    params.monospace_char_advance_px     = 0.0f;
+    params.monospace_advance_is_reliable = false;
+    params.measure_text_func             = [](const char*) { return 0.0f; };
+    params.format_timestamp_func         = [](std::int64_t timestamp_ns, std::int64_t) {
+        return std::to_string(timestamp_ns / (10LL * k_ns_per_second) % 2);
+    };
+
+    plot::Layout_calculator calc;
+    const auto result = calc.calculate(params);
+
+    TEST_ASSERT(result.h_labels.size() > 2,
+        "alternating formatter runs should retain nonconsecutive equal strings");
+    for (std::size_t i = 1; i < result.h_labels.size(); ++i) {
+        TEST_ASSERT(result.h_labels[i - 1].text != result.h_labels[i].text,
+            "consecutive equal rendered strings should be suppressed");
+    }
+
+    const std::string first_text = result.h_labels.front().text;
+    TEST_ASSERT(std::count_if(
+        result.h_labels.begin(),
+        result.h_labels.end(),
+        [&](const plot::h_label_t& label) { return label.text == first_text; }) > 1,
+        "equal strings separated by a different string should remain visible");
+
+    params.format_timestamp_revision = 2;
+    params.format_timestamp_func     = [](std::int64_t timestamp_ns, std::int64_t) {
+        return std::to_string(timestamp_ns);
+    };
+    const auto unique_result = calc.calculate(params);
+    TEST_ASSERT(unique_result.h_labels.size() > 1,
+        "unique formatting should expose both candidate endpoints");
+    const float leftmost_x  = unique_result.h_labels.front().position.x;
+    const float rightmost_x = unique_result.h_labels.back().position.x;
+
+    params.format_timestamp_revision = 3;
+    params.format_timestamp_func     = [](std::int64_t, std::int64_t) {
+        return std::string("same");
+    };
+    const auto constant_result = calc.calculate(params);
+    TEST_ASSERT(constant_result.h_labels.size() == 1,
+        "a single consecutive run should retain only its first label");
+    TEST_ASSERT(constant_result.h_labels.front().position.x == leftmost_x,
+        "left-to-right duplicate suppression should retain the exact leftmost label");
+
+    params.horizontal_axis_left_to_right = false;
+    const auto reversed_result = calc.calculate(params);
+    TEST_ASSERT(reversed_result.h_labels.size() == 1,
+        "right-to-left duplicate suppression should retain one label");
+    TEST_ASSERT(reversed_result.h_labels.front().position.x == rightmost_x,
+        "right-to-left duplicate suppression should retain the exact rightmost label");
+
+    return true;
+}
+
+bool test_default_subsecond_layout_labels_are_distinct()
+{
+    std::vector<Recorded_call> recorded;
+    auto params = make_minimal_params(0, 2LL * k_ns_per_second, recorded);
+    params.usable_width                  = 1600.0;
+    params.monospace_char_advance_px     = 4.0f;
+    params.monospace_advance_is_reliable = true;
+    params.measure_text_func             = [](const char* text) {
+        return static_cast<float>(std::strlen(text)) * 4.0f;
+    };
+    params.format_timestamp_func = plot::default_format_timestamp;
+
+    plot::Layout_calculator calc;
+    const auto result = calc.calculate(params);
+
+    TEST_ASSERT(result.h_labels.size() > 2,
+        "a two-second view should produce multiple horizontal labels");
+    TEST_ASSERT(std::any_of(
+        result.h_labels.begin(),
+        result.h_labels.end(),
+        [](const plot::h_label_t& label) {
+            return label.text.find('.') != std::string::npos;
+        }),
+        "subsecond layout labels should include fractional seconds");
+    for (std::size_t i = 1; i < result.h_labels.size(); ++i) {
+        TEST_ASSERT(result.h_labels[i - 1].text != result.h_labels[i].text,
+            "adjacent default subsecond layout labels should be distinguishable");
+    }
+
+    return true;
+}
+
 bool test_vertical_labels_keep_dense_level_when_glyphs_fit()
 {
     std::vector<Recorded_call> recorded;
@@ -300,6 +391,8 @@ int main()
     RUN_TEST(test_format_timestamp_receives_nanosecond_units);
     RUN_TEST(test_format_timestamp_step_matches_nanosecond_seconds_grid);
     RUN_TEST(test_horizontal_axis_handles_full_int64_time_span);
+    RUN_TEST(test_horizontal_axis_suppresses_only_consecutive_equal_text);
+    RUN_TEST(test_default_subsecond_layout_labels_are_distinct);
     RUN_TEST(test_vertical_labels_keep_dense_level_when_glyphs_fit);
 
     std::cout << "Results: " << passed << " passed, " << failed << " failed" << std::endl;
