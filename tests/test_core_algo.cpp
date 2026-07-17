@@ -592,6 +592,33 @@ bool test_default_timestamp_precision_follows_step()
     return true;
 }
 
+bool test_default_elapsed_time_distinguishes_day_boundaries()
+{
+    constexpr std::int64_t k_minute = 60 * plot::k_ns_per_second;
+    constexpr std::int64_t k_day    = 24 * 60 * k_minute;
+
+    TEST_ASSERT(plot::default_format_elapsed_time(0, k_minute) == "00:00",
+        "zero elapsed time should retain a compact clock label");
+    TEST_ASSERT(plot::default_format_elapsed_time(k_day - k_minute, k_minute) == "23:59",
+        "the final minute before a day boundary should retain its hour");
+    TEST_ASSERT(plot::default_format_elapsed_time(k_day, k_minute) == "1d 00:00",
+        "one elapsed day should not wrap to the zero label");
+    TEST_ASSERT(plot::default_format_elapsed_time(3 * k_day + 6 * 60 * k_minute, k_minute) ==
+        "3d 06:00",
+        "multi-day labels should include the elapsed day count and time");
+    TEST_ASSERT(plot::default_format_elapsed_time(3 * k_day + 200'000'000, 200'000'000) ==
+        "3d 00:00:00.2",
+        "subsecond elapsed labels should remain distinguishable");
+    TEST_ASSERT(plot::default_format_elapsed_time(
+        std::numeric_limits<std::int64_t>::min(), k_minute) == "-106751d 23:47",
+        "the minimum elapsed timestamp should format without overflow");
+    TEST_ASSERT(plot::default_format_elapsed_time(
+        std::numeric_limits<std::int64_t>::max(), k_minute) == "106751d 23:47",
+        "the maximum elapsed timestamp should format without overflow");
+
+    return true;
+}
+
 bool test_horizontal_label_fades_do_not_restore_duplicate_text()
 {
     struct label_t
@@ -1294,6 +1321,7 @@ int main()
     RUN_TEST(test_layout_cache_key_distinguishes_adjacent_int64_time_windows);
     RUN_TEST(test_format_axis_fixed_or_int);
     RUN_TEST(test_default_timestamp_precision_follows_step);
+    RUN_TEST(test_default_elapsed_time_distinguishes_day_boundaries);
     RUN_TEST(test_horizontal_label_fades_do_not_restore_duplicate_text);
     RUN_TEST(test_horizontal_label_crossfades_suppress_rendered_duplicate_text);
     RUN_TEST(test_time_unit_helpers_handle_edges);

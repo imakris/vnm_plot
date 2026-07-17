@@ -126,6 +126,26 @@ bool test_time_grid_layers_do_not_report_non_multiple_for_current_ladder()
     return true;
 }
 
+bool test_time_grid_layers_cover_seven_days()
+{
+    constexpr double k_seconds_per_day = 24.0 * 60.0 * 60.0;
+    constexpr double k_view_seconds    = 7.0 * k_seconds_per_day;
+    constexpr double k_width_px        = 1200.0;
+    const plot::grid_layer_params_t levels =
+        plot::build_time_grid_layers(0.0, k_view_seconds, k_width_px, 10.0);
+    const float day_spacing_px = float(k_seconds_per_day * k_width_px / k_view_seconds);
+
+    TEST_ASSERT(std::any_of(
+        levels.spacing_px,
+        levels.spacing_px + levels.count,
+        [day_spacing_px](float spacing_px) {
+            return nearly_equal(spacing_px, day_spacing_px);
+        }),
+        "a seven-day grid should retain a daily level for elapsed labels");
+
+    return true;
+}
+
 } // namespace
 
 int main()
@@ -137,6 +157,7 @@ int main()
     RUN_TEST(test_time_grid_layers_preserve_phase);
     RUN_TEST(test_time_grid_layers_reject_degenerate_ranges);
     RUN_TEST(test_time_grid_layers_do_not_report_non_multiple_for_current_ladder);
+    RUN_TEST(test_time_grid_layers_cover_seven_days);
 
     std::cout << "\nTime grid tests: " << passed << " passed, " << failed << " failed\n";
 

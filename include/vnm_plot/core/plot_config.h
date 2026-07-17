@@ -278,4 +278,49 @@ inline std::string default_format_timestamp(std::int64_t timestamp_ns, std::int6
     return with_fraction(buf, fractional_ns);
 }
 
+/**
+ * Format signed elapsed nanoseconds without wrapping at day boundaries.
+ * step_ns selects the displayed precision, matching the timestamp formatter.
+ */
+inline std::string default_format_elapsed_time(std::int64_t elapsed_ns, std::int64_t step_ns)
+{
+    constexpr std::uint64_t k_seconds_per_minute = 60;
+    constexpr std::uint64_t k_seconds_per_hour   = 60 * k_seconds_per_minute;
+    constexpr std::uint64_t k_seconds_per_day    = 24 * k_seconds_per_hour;
+
+    const bool negative = elapsed_ns < 0;
+    const std::uint64_t magnitude_ns = negative
+        ? std::uint64_t(-(elapsed_ns + 1)) + 1
+        : std::uint64_t(elapsed_ns);
+    const std::uint64_t total_seconds = magnitude_ns / std::uint64_t(k_ns_per_second);
+    const std::uint64_t days          = total_seconds / k_seconds_per_day;
+    const std::uint64_t hours         = total_seconds / k_seconds_per_hour % 24;
+    const std::uint64_t minutes       = total_seconds / k_seconds_per_minute % 60;
+    const std::uint64_t seconds       = total_seconds % 60;
+    const std::uint64_t fractional_ns = magnitude_ns % std::uint64_t(k_ns_per_second);
+
+    const auto two_digits = [](std::uint64_t value) {
+        return value < 10 ? "0" + std::to_string(value) : std::to_string(value);
+    };
+
+    std::string text = negative ? "-" : "";
+    if (days > 0) {
+        text += std::to_string(days) + "d ";
+    }
+    text += two_digits(hours) + ":" + two_digits(minutes);
+    if (step_ns < 60 * k_ns_per_second) {
+        text += ":" + two_digits(seconds);
+    }
+    for (std::int64_t quantum = k_ns_per_second;
+        step_ns > 0 && step_ns < quantum;
+        quantum /= 10)
+    {
+        if (quantum == k_ns_per_second) {
+            text += '.';
+        }
+        text += char('0' + fractional_ns / std::uint64_t(quantum / 10) % 10);
+    }
+    return text;
+}
+
 } // namespace vnm::plot
