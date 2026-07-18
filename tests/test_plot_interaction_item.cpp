@@ -3,6 +3,7 @@
 #include "test_macros.h"
 
 #include <vnm_plot/core/access_policy.h>
+#include <vnm_plot/core/algo.h>
 #include <vnm_plot/core/time_units.h>
 #include <vnm_plot/rhi/asset_loader.h>
 #include <vnm_plot/rhi/series_renderer.h>
@@ -281,6 +282,105 @@ bool test_zoom_math_handles_zero_velocity()
 
     TEST_ASSERT(nearly_equal(state.scale, 1.0),    "zero velocity should keep identity scale");
     TEST_ASSERT(nearly_equal(state.velocity, 0.0), "zero velocity should stay zero");
+
+    return true;
+}
+
+bool test_wheel_zoom_handles_near_zero_value_range()
+{
+    constexpr std::int64_t tmin_ns = 0;
+    constexpr std::int64_t tmax_ns = 2'000'000'000;
+    constexpr float        vmin    = -0.4e-6f;
+    constexpr float        vmax    = 3.1e-6f;
+
+    {
+        plot::Plot_widget widget;
+        configure_view(widget, tmin_ns, tmax_ns, vmin, vmax);
+
+        test_interaction_item_t item;
+        item.setWidth(1000.0);
+        item.setHeight(500.0);
+        item.set_plot_widget(&widget);
+
+        TEST_ASSERT(
+            item.handle_wheel(500.0, 250.0, 0.0, 120.0, 0.0, 0.0, Qt::NoModifier),
+            "ordinary wheel zoom should be handled");
+        TEST_ASSERT(widget.t_max() - widget.t_min() < tmax_ns - tmin_ns,
+            "ordinary wheel zoom should shrink the time range");
+        TEST_ASSERT(widget.v_min() == vmin && widget.v_max() == vmax,
+            "ordinary wheel zoom should leave the value range unchanged");
+    }
+
+    {
+        plot::Plot_widget widget;
+        configure_view(widget, tmin_ns, tmax_ns, 50.0f, 190.0f);
+
+        test_interaction_item_t item;
+        item.setWidth(1000.0);
+        item.setHeight(500.0);
+        item.set_plot_widget(&widget);
+
+        TEST_ASSERT(
+            item.handle_wheel(
+                500.0, 250.0, 0.0, 120.0, 0.0, 0.0, static_cast<int>(Qt::AltModifier)),
+            "Alt+wheel zoom should be handled for the normal-sized control range");
+        TEST_ASSERT(widget.v_max() - widget.v_min() < 140.0f,
+            "Alt+wheel zoom should shrink the normal-sized control range");
+    }
+
+    {
+        plot::Plot_widget widget;
+        configure_view(widget, tmin_ns, tmax_ns, vmin, vmax);
+
+        test_interaction_item_t item;
+        item.setWidth(1000.0);
+        item.setHeight(500.0);
+        item.set_plot_widget(&widget);
+
+        TEST_ASSERT(
+            item.handle_wheel(
+                500.0, 250.0, 0.0, 120.0, 0.0, 0.0, static_cast<int>(Qt::AltModifier)),
+            "Alt+wheel zoom should be handled for the near-zero range");
+        TEST_ASSERT(widget.v_max() - widget.v_min() < vmax - vmin,
+            "Alt+wheel zoom should shrink, not expand, the near-zero range");
+        TEST_ASSERT(widget.t_min() == tmin_ns && widget.t_max() == tmax_ns,
+            "Alt+wheel zoom should leave the time range unchanged");
+
+        bool reached_precision_limit = false;
+        for (int step = 0; step < 512; ++step) {
+            const float previous_span = widget.v_max() - widget.v_min();
+            const float min_span = plot::detail::min_v_span_for(widget.v_min(), widget.v_max());
+            if (previous_span <= 1.05f * min_span) {
+                reached_precision_limit = true;
+                break;
+            }
+
+            widget.adjust_v_from_pivot_and_scale(0.5f, 0.95f);
+            TEST_ASSERT(widget.v_max() - widget.v_min() < previous_span,
+                "repeated near-zero zoom steps should progress above the float-precision limit");
+        }
+        TEST_ASSERT(reached_precision_limit,
+            "repeated near-zero zoom should reach the float-precision limit");
+    }
+
+    {
+        plot::Plot_widget widget;
+        configure_view(widget, tmin_ns, tmax_ns, vmin, vmax);
+
+        test_interaction_item_t item;
+        item.setWidth(1000.0);
+        item.setHeight(500.0);
+        item.set_plot_widget(&widget);
+
+        TEST_ASSERT(
+            item.handle_wheel(
+                500.0, 250.0, 0.0, 120.0, 0.0, 0.0, static_cast<int>(Qt::ControlModifier)),
+            "Ctrl+wheel zoom should be handled for the near-zero range");
+        TEST_ASSERT(widget.v_max() - widget.v_min() < vmax - vmin,
+            "Ctrl+wheel zoom should shrink the near-zero value range");
+        TEST_ASSERT(widget.t_max() - widget.t_min() < tmax_ns - tmin_ns,
+            "Ctrl+wheel zoom should shrink the time range");
+    }
 
     return true;
 }
@@ -938,6 +1038,7 @@ int main(int argc, char** argv)
     RUN_TEST(test_zoom_math_stays_composable_across_small_velocity_decay);
     RUN_TEST(test_zoom_math_handles_negative_velocity);
     RUN_TEST(test_zoom_math_handles_zero_velocity);
+    RUN_TEST(test_wheel_zoom_handles_near_zero_value_range);
     RUN_TEST(test_indicator_samples_linearly_interpolate_between_samples);
     RUN_TEST(test_indicator_samples_step_after_holds_previous_sample);
     RUN_TEST(test_indicator_reports_stack_sum_only_inside_common_domain);

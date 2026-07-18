@@ -296,10 +296,10 @@ inline int find_time_step_start_index(const std::vector<double>& steps, double t
 // Minimal usable span for the vertical axis (prevents float precision collapse).
 inline float min_v_span_for(float a, float b)
 {
-    float mag       = std::max(std::abs(a), std::abs(b));
-    float ulps      = 64.0f * std::numeric_limits<float>::epsilon() * std::max(1.0f, mag);
-    float floor_abs = 1e-6f * std::max(1.0f, mag);
-    return std::max(ulps, floor_abs);
+    const float magnitude = std::max(std::abs(a), std::abs(b));
+    return 64.0f * std::max(
+        std::numeric_limits<float>::epsilon() * magnitude,
+        std::numeric_limits<float>::denorm_min());
 }
 
 // -----------------------------------------------------------------------------

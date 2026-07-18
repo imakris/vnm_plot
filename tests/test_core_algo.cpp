@@ -170,6 +170,40 @@ bool test_decimal_precision_helpers_reject_invalid_scaled_values()
     return true;
 }
 
+bool test_min_v_span_follows_float_magnitude()
+{
+    const float zero_span = plot::detail::min_v_span_for(0.0f, 0.0f);
+    TEST_ASSERT(zero_span > 0.0f && std::isfinite(zero_span),
+        "a degenerate zero range should retain a finite precision floor");
+
+    const float mixed_near_zero_span = plot::detail::min_v_span_for(-0.4e-6f, 3.1e-6f);
+    TEST_ASSERT(mixed_near_zero_span > 0.0f && mixed_near_zero_span < 3.5e-6f,
+        "a mixed-sign micro range should not inherit a unit-scale floor");
+
+    const float negative_span = plot::detail::min_v_span_for(-3.1e-6f, -0.4e-6f);
+    TEST_ASSERT(negative_span > 0.0f && negative_span < 2.7e-6f,
+        "a negative-only micro range should remain zoomable");
+
+    constexpr float equal_value = 1.0e-6f;
+    const float equal_span = plot::detail::min_v_span_for(equal_value, equal_value);
+    TEST_ASSERT(
+        equal_value - 0.5f * equal_span < equal_value &&
+        equal_value + 0.5f * equal_span > equal_value,
+        "an equal nonzero range should expand to distinct float endpoints");
+
+    const float large_value = std::ldexp(1.0f, 60);
+    const float large_ulp = std::nextafter(
+        large_value,
+        std::numeric_limits<float>::infinity()) - large_value;
+    const float large_span = plot::detail::min_v_span_for(large_value, large_value);
+    TEST_ASSERT(large_span >= 64.0f * large_ulp,
+        "a large range should retain the existing float-precision protection");
+    TEST_ASSERT(large_span < large_value * 1.0e-3f,
+        "the precision floor should remain small relative to large values");
+
+    return true;
+}
+
 bool test_lower_and_upper_bound_on_contiguous_buffer()
 {
     // Sample timestamps are int64 nanoseconds; the test uses small ordinals
@@ -1308,6 +1342,7 @@ int main()
     RUN_TEST(test_compute_lod_scales_forces_minimum_of_one);
     RUN_TEST(test_get_shift_handles_invalid_inputs);
     RUN_TEST(test_decimal_precision_helpers_reject_invalid_scaled_values);
+    RUN_TEST(test_min_v_span_follows_float_magnitude);
     RUN_TEST(test_lower_and_upper_bound_on_contiguous_buffer);
     RUN_TEST(test_timestamp_search_rejects_null_samples);
     RUN_TEST(test_raw_timestamp_search_rejects_zero_stride);
