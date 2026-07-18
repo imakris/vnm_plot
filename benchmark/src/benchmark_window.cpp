@@ -1147,7 +1147,6 @@ bool Benchmark_rhi_offscreen_runner::render_frame(
 #endif
     layout_params.h_label_vertical_nudge_factor = vnm::plot::detail::k_h_label_vertical_nudge_px;
     layout_params.format_timestamp_func = format_benchmark_timestamp;
-    layout_params.get_required_fixed_digits_func = [](double) { return 2; };
     layout_params.profiler = &m_profiler;
 
     vnm::plot::layout_cache_key_t cache_key;

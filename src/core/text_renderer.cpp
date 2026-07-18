@@ -198,7 +198,8 @@ bool Text_renderer::render_axis_labels(
                 fade_labels,
                 std::chrono::steady_clock::now(),
                 [](const v_label_t& label) { return label.value; },
-                [](double, const std::string&, float) {});
+                [](double, const std::string&, float) {},
+                true);
         }
     }
 
@@ -261,7 +262,8 @@ bool Text_renderer::render_axis_labels(
         fade_labels,
         std::chrono::steady_clock::now(),
         [](const v_label_t& label) { return label.value; },
-        draw_label);
+        draw_label,
+        true);
 }
 
 bool Text_renderer::render_info_overlay(
@@ -367,17 +369,18 @@ bool Text_renderer::render_info_overlay(
                   - static_cast<float>(ctx.adjusted_font_px * overlay_line_count * k_line_spacing)
                   + overlay_baseline;
 
+        const int info_value_digits = std::max(k_value_decimals, pl.v_label_fixed_digits);
         const auto format_info_value = [&](double value) {
             if (ctx.config && ctx.config->format_value) {
                 value_format_context_t context;
                 context.role                   = Value_format_role::INFO_OVERLAY;
-                context.suggested_fixed_digits = k_value_decimals;
+                context.suggested_fixed_digits = info_value_digits;
                 const std::string text = ctx.config->format_value(value, context);
                 if (!text.empty()) {
                     return text;
                 }
             }
-            std::snprintf(buf, sizeof(buf), "%.*f", k_value_decimals, value);
+            std::snprintf(buf, sizeof(buf), "%.*f", info_value_digits, value);
             return std::string(buf);
         };
 

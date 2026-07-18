@@ -27,6 +27,14 @@ using detail::trim_trailing_zero_decimals;
 
 namespace {
 
+int fixed_digits_for_step(double step)
+{
+    if (!(step > 0.0) || !std::isfinite(step)) {
+        return 0;
+    }
+    return std::max(0, static_cast<int>(std::ceil(-std::log10(step))));
+}
+
 template<typename T>
 static auto to_ieee_bits(T value)
 {
@@ -686,10 +694,9 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
             VNM_PLOT_PROFILE_SCOPE(
                 profiler,
                 "renderer.frame.calculate_layout.impl.cache_miss.pass1.vertical_axis.fixed_digits");
-            const int required_digits = params.get_required_fixed_digits_func
-                ? params.get_required_fixed_digits_func(finest_step_accepted)
-                : 0;
-            res.v_label_fixed_digits = std::max(0, required_digits);
+            res.v_label_fixed_digits = params.get_required_fixed_digits_func
+                ? std::max(0, params.get_required_fixed_digits_func(finest_step_accepted))
+                : fixed_digits_for_step(finest_step_accepted);
 
             auto& vals = m_scratch_vals_d;
             vals.clear();
@@ -755,6 +762,21 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
                 res.max_v_label_text_width = std::max(res.max_v_label_text_width, width);
                 e.text = std::move(text);
             }
+
+            std::sort(
+                res.v_labels.begin(),
+                res.v_labels.end(),
+                [](const v_label_t& lhs, const v_label_t& rhs) {
+                    return lhs.value < rhs.value;
+                });
+            res.v_labels.erase(
+                std::unique(
+                    res.v_labels.begin(),
+                    res.v_labels.end(),
+                    [](const v_label_t& lhs, const v_label_t& rhs) {
+                        return lhs.text == rhs.text;
+                    }),
+                res.v_labels.end());
         }
     }
 

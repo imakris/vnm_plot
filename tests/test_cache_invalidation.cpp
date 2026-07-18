@@ -1082,6 +1082,43 @@ bool test_frame_range_planner_skips_preview_when_disabled()
     return true;
 }
 
+bool test_frame_range_planner_applies_manual_range_to_preview()
+{
+    auto main_source = std::make_shared<Query_range_source>();
+    main_source->query_status = Data_query_status::READY;
+    main_source->query_range  = {1.0f, 4.0f};
+
+    auto preview_source = std::make_shared<Query_range_source>();
+    preview_source->query_status = Data_query_status::READY;
+    preview_source->query_range  = {-2.0f, 11.0f};
+
+    auto series = make_series(main_source);
+    plot::preview_config_t preview;
+    preview.data_source    = preview_source;
+    preview.access         = make_policy();
+    series->preview_config = preview;
+
+    plot::detail::Frame_range_planner planner;
+    const auto data_cfg = make_data_config();
+    const auto plan = planner.plan(
+        make_series_map(series),
+        data_cfg,
+        Plot_config{},
+        false,
+        true);
+
+    TEST_ASSERT(plan.main_v_range.min == data_cfg.v_manual_min &&
+        plan.main_v_range.max == data_cfg.v_manual_max,
+                "manual main range should use the configured limits");
+    TEST_ASSERT(plan.preview_v_range.min == data_cfg.v_manual_min &&
+        plan.preview_v_range.max == data_cfg.v_manual_max,
+                "manual main range should also apply to the preview");
+    TEST_ASSERT(main_source->query_calls == 0 && preview_source->query_calls == 0,
+        "manual range should not query main or preview sources");
+
+    return true;
+}
+
 bool test_frame_range_planner_preserves_step_after_visible_scan()
 {
     auto source = std::make_shared<Query_range_source>();
@@ -1195,6 +1232,7 @@ int main()
     RUN_TEST(test_preview_auto_range_uses_preview_query_source);
     RUN_TEST(test_frame_range_planner_populates_ranges_and_reuses_cache);
     RUN_TEST(test_frame_range_planner_skips_preview_when_disabled);
+    RUN_TEST(test_frame_range_planner_applies_manual_range_to_preview);
     RUN_TEST(test_frame_range_planner_preserves_step_after_visible_scan);
     RUN_TEST(test_manual_range_skips_queries);
     RUN_TEST(test_stacked_auto_range_includes_cumulative_envelope);

@@ -30,7 +30,7 @@ Frame_range_plan Frame_range_planner::plan(
     plan.main_v_range = make_value_range_plan(
         resolve_main_v_range(series, data_cfg, config, v_auto, &m_cache));
 
-    if (preview_enabled) {
+    if (preview_enabled && v_auto) {
         plan.preview_v_range = make_value_range_plan(
             resolve_preview_v_range(series, data_cfg, config, &m_cache));
     }

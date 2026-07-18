@@ -269,8 +269,8 @@ void Chrome_renderer::render_grid_and_backgrounds(
                     return static_cast<float>(
                         pl.usable_height - (entry.first - double(ctx.v0)) * px_per_unit);
                 },
-                [](const auto& entry) { return entry.second.alpha; },
-                prepared_text->m_vertical_fade.states,
+                [](const auto& entry) { return entry.second; },
+                prepared_text->m_vertical_fade.visible_alphas,
                 vertical_levels);
         }
 

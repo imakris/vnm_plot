@@ -121,7 +121,6 @@ Layout_calculator::parameters_t build_layout_params(
         };
     }
 
-    params.get_required_fixed_digits_func = [](double) { return 2; };
     const Plot_config* config_ptr = &config;
     params.format_timestamp_func = [config_ptr](
         std::int64_t   ts_ns,

@@ -55,7 +55,6 @@ plot::Layout_calculator::parameters_t make_minimal_params(
     params.measure_text_func             = [](const char* text) {
         return static_cast<float>(std::strlen(text)) * 8.0f;
     };
-    params.get_required_fixed_digits_func = [](double) { return 2; };
     // Recording formatter: capture every (timestamp, step) pair the
     // calculator passes through.
     params.format_timestamp_func = [&recorded_calls](
@@ -379,6 +378,70 @@ bool test_vertical_labels_keep_dense_level_when_glyphs_fit()
     return true;
 }
 
+bool test_default_small_vertical_layout_labels_are_distinct()
+{
+    std::vector<Recorded_call> recorded;
+    auto params = make_minimal_params(0LL, 60LL * k_ns_per_second, recorded);
+
+    params.v_min = -0.002f;
+    params.v_max = 0.002f;
+
+    plot::Layout_calculator calc;
+    const auto result = calc.calculate(params);
+
+    TEST_ASSERT(result.v_labels.size() > 2,
+        "a small vertical range should produce multiple labels");
+    TEST_ASSERT(result.v_label_fixed_digits > 2,
+        "vertical precision should follow a tick step below one hundredth");
+    for (std::size_t i = 1; i < result.v_labels.size(); ++i) {
+        TEST_ASSERT(result.v_labels[i - 1].text != result.v_labels[i].text,
+            "adjacent small-range vertical labels should be distinguishable");
+    }
+
+    params.get_required_fixed_digits_func = [](double) { return 0; };
+    const auto overridden_result = calc.calculate(params);
+    TEST_ASSERT(overridden_result.v_label_fixed_digits == 0,
+        "an explicit vertical precision override should remain supported");
+    TEST_ASSERT(overridden_result.v_labels.size() == 1,
+        "equal strings produced by an explicit precision should still be suppressed");
+
+    return true;
+}
+
+bool test_vertical_axis_suppresses_only_consecutive_equal_text()
+{
+    std::vector<Recorded_call> recorded;
+    auto params = make_minimal_params(0LL, 60LL * k_ns_per_second, recorded);
+
+    params.v_min             = -1.0f;
+    params.v_max             = 1.0f;
+    params.format_value_func = [](double value, const plot::value_format_context_t&) {
+        return std::abs(value) < 0.25 ? std::string("middle") : std::string("edge");
+    };
+
+    plot::Layout_calculator calc;
+    const auto result = calc.calculate(params);
+
+    TEST_ASSERT(result.v_labels.size() == 3,
+        "vertical edge/middle/edge formatter runs should retain three labels");
+    TEST_ASSERT(
+        result.v_labels[0].text == " edge" &&
+        result.v_labels[1].text == " middle" &&
+        result.v_labels[2].text == " edge",
+        "only consecutive equal vertical strings should be suppressed");
+
+    params.format_value_func = [](double, const plot::value_format_context_t&) {
+        return std::string("same");
+    };
+    const auto constant_result = calc.calculate(params);
+    TEST_ASSERT(constant_result.v_labels.size() == 1,
+        "a single vertical formatter run should retain one label");
+    TEST_ASSERT(constant_result.v_labels.front().value < 0.0,
+        "bottom-to-top duplicate suppression should retain the lowest label");
+
+    return true;
+}
+
 } // namespace
 
 int main()
@@ -394,6 +457,8 @@ int main()
     RUN_TEST(test_horizontal_axis_suppresses_only_consecutive_equal_text);
     RUN_TEST(test_default_subsecond_layout_labels_are_distinct);
     RUN_TEST(test_vertical_labels_keep_dense_level_when_glyphs_fit);
+    RUN_TEST(test_default_small_vertical_layout_labels_are_distinct);
+    RUN_TEST(test_vertical_axis_suppresses_only_consecutive_equal_text);
 
     std::cout << "Results: " << passed << " passed, " << failed << " failed" << std::endl;
     return failed > 0 ? 1 : 0;
