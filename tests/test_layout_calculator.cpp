@@ -253,6 +253,7 @@ bool test_horizontal_axis_suppresses_only_consecutive_equal_text()
     std::vector<Recorded_call> recorded;
     auto params = make_minimal_params(0, 60LL * k_ns_per_second, recorded);
     params.format_timestamp_revision     = 1;
+    params.vbar_width                    = 0.0;
     params.monospace_char_advance_px     = 0.0f;
     params.monospace_advance_is_reliable = false;
     params.measure_text_func             = [](const char*) { return 0.0f; };
@@ -284,25 +285,100 @@ bool test_horizontal_axis_suppresses_only_consecutive_equal_text()
     const auto unique_result = calc.calculate(params);
     TEST_ASSERT(unique_result.h_labels.size() > 1,
         "unique formatting should expose both candidate endpoints");
-    const float leftmost_x  = unique_result.h_labels.front().position.x;
-    const float rightmost_x = unique_result.h_labels.back().position.x;
+    const float        leftmost_x      = unique_result.h_labels.front().position.x;
+    const float        rightmost_x     = unique_result.h_labels.back().position.x;
+    const std::int64_t leftmost_value  = unique_result.h_labels.front().value;
+    const std::int64_t rightmost_value = unique_result.h_labels.back().value;
 
     params.format_timestamp_revision = 3;
-    params.format_timestamp_func     = [](std::int64_t, std::int64_t) {
-        return std::string("same");
+    params.format_timestamp_func     = [leftmost_value](
+        std::int64_t timestamp_ns,
+        std::int64_t)
+    {
+        return timestamp_ns < leftmost_value ? std::string("outside") : std::string("same");
     };
     const auto constant_result = calc.calculate(params);
     TEST_ASSERT(constant_result.h_labels.size() == 1,
-        "a single consecutive run should retain only its first label");
+        "a consecutive run starting in view should retain only its first label");
     TEST_ASSERT(constant_result.h_labels.front().position.x == leftmost_x,
         "left-to-right duplicate suppression should retain the exact leftmost label");
 
     params.horizontal_axis_left_to_right = false;
+    params.format_timestamp_revision     = 4;
+    params.format_timestamp_func         = [rightmost_value](
+        std::int64_t timestamp_ns,
+        std::int64_t)
+    {
+        return timestamp_ns > rightmost_value
+            ? std::string("outside")
+            : std::string("same");
+    };
     const auto reversed_result = calc.calculate(params);
     TEST_ASSERT(reversed_result.h_labels.size() == 1,
-        "right-to-left duplicate suppression should retain one label");
+        "a consecutive run ending in view should retain only its last label");
     TEST_ASSERT(reversed_result.h_labels.front().position.x == rightmost_x,
         "right-to-left duplicate suppression should retain the exact rightmost label");
+
+    return true;
+}
+
+bool test_horizontal_axis_hides_duplicate_run_entering_viewport()
+{
+    plot::Layout_calculator calc;
+    const auto whole_seconds = [](std::int64_t timestamp_ns, std::int64_t) {
+        return plot::default_format_elapsed_time(timestamp_ns, k_ns_per_second);
+    };
+
+    std::vector<Recorded_call> recorded_ltr;
+    auto params_ltr = make_minimal_params(
+        770'000'000,
+        2LL * k_ns_per_second,
+        recorded_ltr);
+    params_ltr.usable_width              = 1435.0;
+    params_ltr.format_timestamp_revision = 1;
+    params_ltr.format_timestamp_func     = whole_seconds;
+    const auto result_ltr = calc.calculate(params_ltr);
+
+    TEST_ASSERT(std::none_of(
+        result_ltr.h_labels.begin(),
+        result_ltr.h_labels.end(),
+        [](const plot::h_label_t& label) {
+            return label.text == "00:00:00";
+        }),
+        "an LTR duplicate run whose retained end is off-screen should remain hidden");
+    TEST_ASSERT(std::any_of(
+        result_ltr.h_labels.begin(),
+        result_ltr.h_labels.end(),
+        [](const plot::h_label_t& label) {
+            return label.text == "00:00:01";
+        }),
+        "the next LTR label run starting inside the viewport should remain visible");
+
+    std::vector<Recorded_call> recorded_rtl;
+    auto params_rtl = make_minimal_params(
+        0,
+        1'230'000'000,
+        recorded_rtl);
+    params_rtl.usable_width                  = 1435.0;
+    params_rtl.format_timestamp_revision     = 2;
+    params_rtl.format_timestamp_func         = whole_seconds;
+    params_rtl.horizontal_axis_left_to_right = false;
+    const auto result_rtl = calc.calculate(params_rtl);
+
+    TEST_ASSERT(std::none_of(
+        result_rtl.h_labels.begin(),
+        result_rtl.h_labels.end(),
+        [](const plot::h_label_t& label) {
+            return label.text == "00:00:01";
+        }),
+        "an RTL duplicate run whose retained end is off-screen should remain hidden");
+    TEST_ASSERT(std::any_of(
+        result_rtl.h_labels.begin(),
+        result_rtl.h_labels.end(),
+        [](const plot::h_label_t& label) {
+            return label.text == "00:00:00";
+        }),
+        "the preceding RTL label run ending inside the viewport should remain visible");
 
     return true;
 }
@@ -455,6 +531,7 @@ int main()
     RUN_TEST(test_format_timestamp_step_matches_nanosecond_seconds_grid);
     RUN_TEST(test_horizontal_axis_handles_full_int64_time_span);
     RUN_TEST(test_horizontal_axis_suppresses_only_consecutive_equal_text);
+    RUN_TEST(test_horizontal_axis_hides_duplicate_run_entering_viewport);
     RUN_TEST(test_default_subsecond_layout_labels_are_distinct);
     RUN_TEST(test_vertical_labels_keep_dense_level_when_glyphs_fit);
     RUN_TEST(test_default_small_vertical_layout_labels_are_distinct);

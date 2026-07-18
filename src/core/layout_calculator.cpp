@@ -1213,7 +1213,7 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
         // narrower formats. Re-format all with finest_step, then remove
         // any labels that now overlap due to wider text.
         if (any_level && finest_step > 0.0 && params.format_timestamp_func &&
-            res.h_labels.size() > 1)
+            !res.h_labels.empty())
         {
             const std::int64_t finest_step_ns = seconds_to_ns(finest_step);
             for (auto& label : res.h_labels) {
@@ -1225,15 +1225,40 @@ Layout_calculator::result_t Layout_calculator::calculate(const parameters_t& par
                     return a.position.x < b.position.x;
                 });
 
+            std::string previous_text;
+            std::string following_text;
+            bool        have_previous_text  = false;
+            bool        have_following_text = false;
+            // Include the adjacent grid tick so culling cannot promote a
+            // later duplicate to the retained position.
+            if (params.horizontal_axis_left_to_right) {
+                const auto previous = checked_sub_ns(
+                    res.h_labels.front().value,
+                    finest_step_ns);
+                if (previous) {
+                    previous_text = params.format_timestamp_func(*previous, finest_step_ns);
+                    have_previous_text = true;
+                }
+            }
+            else {
+                const auto following = checked_add_ns(
+                    res.h_labels.back().value,
+                    finest_step_ns);
+                if (following) {
+                    following_text = params.format_timestamp_func(*following, finest_step_ns);
+                    have_following_text = true;
+                }
+            }
+
             float prev_right = -std::numeric_limits<float>::max();
             auto  write      = res.h_labels.begin();
-            std::string previous_text;
-            bool        have_previous_text = false;
             for (auto it = res.h_labels.begin(); it != res.h_labels.end(); ++it) {
                 const auto next = std::next(it);
                 const bool duplicate = params.horizontal_axis_left_to_right
                     ? have_previous_text && it->text == previous_text
-                    : next != res.h_labels.end() && it->text == next->text;
+                    : (next != res.h_labels.end() && it->text == next->text) ||
+                        (next == res.h_labels.end() &&
+                            have_following_text && it->text == following_text);
                 previous_text      = it->text;
                 have_previous_text = true;
                 if (duplicate) {
