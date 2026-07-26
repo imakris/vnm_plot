@@ -364,6 +364,7 @@ private:
     mutable std::atomic<bool>      m_rendered_t_range_valid{false};
     std::shared_ptr<detail::plot_render_feedback_channel_t>
                                    m_render_feedback_channel;
+    QMetaObject::Connection        m_render_feedback_completion_connection;
     QMetaObject::Connection        m_render_feedback_delivery_connection;
     std::uint64_t                  m_render_feedback_generation = 0;
     struct rendered_stack_source_revision_t
@@ -438,7 +439,8 @@ private:
     bool consume_view_state_reset_request();
     void arm_render_feedback_delivery(
         const std::shared_ptr<detail::plot_render_feedback_channel_t>& channel);
-    void deliver_render_feedback();
+    void deliver_render_feedback(
+        const std::shared_ptr<detail::plot_render_feedback_channel_t>& channel);
     void apply_render_feedback(const detail::plot_render_feedback_t& feedback);
     void set_rendered_v_range(float v_min, float v_max) const;
     void set_rendered_t_range(qint64 t_min_ns, qint64 t_max_ns) const;

@@ -176,6 +176,8 @@ Plot_widget::Plot_widget()
 Plot_widget::~Plot_widget()
 {
     m_vbar_width_timer.stop();
+    QObject::disconnect(m_render_feedback_completion_connection);
+    m_render_feedback_completion_connection = {};
     QObject::disconnect(m_render_feedback_delivery_connection);
     m_render_feedback_delivery_connection = {};
     m_render_feedback_channel.reset();
@@ -828,6 +830,8 @@ void Plot_widget::apply_vbar_width_target(double target, bool publish_shared)
 void Plot_widget::arm_render_feedback_delivery(
     const std::shared_ptr<detail::plot_render_feedback_channel_t>& channel)
 {
+    QObject::disconnect(m_render_feedback_completion_connection);
+    m_render_feedback_completion_connection = {};
     QObject::disconnect(m_render_feedback_delivery_connection);
     m_render_feedback_delivery_connection = {};
 
@@ -841,6 +845,20 @@ void Plot_widget::arm_render_feedback_delivery(
         return;
     }
 
+    // Connection order is intentional: Qt invokes the direct completion
+    // marker before it enqueues the item-context delivery for the same signal.
+    const auto completion_type = static_cast<Qt::ConnectionType>(
+        static_cast<int>(Qt::DirectConnection) |
+        static_cast<int>(Qt::SingleShotConnection));
+    m_render_feedback_completion_connection = QObject::connect(
+        quick_window,
+        &QQuickWindow::afterRendering,
+        this,
+        [channel] {
+            channel->mark_latest_completed();
+        },
+        completion_type);
+
     const auto delivery_type = static_cast<Qt::ConnectionType>(
         static_cast<int>(Qt::QueuedConnection) |
         static_cast<int>(Qt::SingleShotConnection));
@@ -848,18 +866,19 @@ void Plot_widget::arm_render_feedback_delivery(
         quick_window,
         &QQuickWindow::afterRendering,
         this,
-        &Plot_widget::deliver_render_feedback,
+        [this, channel] {
+            deliver_render_feedback(channel);
+        },
         delivery_type);
 }
 
-void Plot_widget::deliver_render_feedback()
+void Plot_widget::deliver_render_feedback(
+    const std::shared_ptr<detail::plot_render_feedback_channel_t>& channel)
 {
-    const auto channel = m_render_feedback_channel;
-    if (!channel) {
-        return;
-    }
-
-    auto feedback = channel->take_after(m_render_feedback_generation);
+    auto feedback = detail::take_completed_feedback(
+        m_render_feedback_channel,
+        channel,
+        m_render_feedback_generation);
     if (!feedback) {
         return;
     }

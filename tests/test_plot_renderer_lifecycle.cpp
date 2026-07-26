@@ -1,6 +1,7 @@
 // vnm_plot QQuickRhiItem renderer ownership tests
 
 #include "test_macros.h"
+#include "plot_render_feedback.h"
 #include "plot_renderer.h"
 
 #include <vnm_plot/qt/plot_widget.h>
@@ -169,6 +170,59 @@ void configure_static_widget(test_widget_t& widget, QQuickWindow& window)
     widget.set_t_range(2000, 7000);
 }
 
+bool test_feedback_channel_respects_completed_frame_boundary()
+{
+    auto channel = std::make_shared<plot::detail::plot_render_feedback_channel_t>();
+
+    plot::detail::plot_render_feedback_t first;
+    first.v_min = 11.0f;
+    channel->publish(std::move(first));
+    channel->mark_latest_completed();
+
+    plot::detail::plot_render_feedback_t second;
+    second.v_min = 22.0f;
+    channel->publish(std::move(second));
+
+    auto completed = plot::detail::take_completed_feedback(channel, channel, 0);
+    TEST_ASSERT(completed && completed->generation == 1 && completed->v_min == 11.0f,
+        "frame N delivery must consume frame N's completed generation");
+
+    completed = plot::detail::take_completed_feedback(channel, channel, 1);
+    TEST_ASSERT(!completed,
+        "published frame N+1 feedback must wait for its own completion marker");
+
+    channel->mark_latest_completed();
+    completed = plot::detail::take_completed_feedback(channel, channel, 1);
+    TEST_ASSERT(completed && completed->generation == 2 && completed->v_min == 22.0f,
+        "frame N+1 feedback should become consumable after its frame boundary");
+    return true;
+}
+
+bool test_replaced_feedback_channel_ignores_old_callback()
+{
+    auto old_channel =
+        std::make_shared<plot::detail::plot_render_feedback_channel_t>();
+    auto current_channel =
+        std::make_shared<plot::detail::plot_render_feedback_channel_t>();
+
+    plot::detail::plot_render_feedback_t old_feedback;
+    old_feedback.v_min = 17.0f;
+    old_channel->publish(std::move(old_feedback));
+    old_channel->mark_latest_completed();
+
+    auto completed = plot::detail::take_completed_feedback(
+        current_channel,
+        old_channel,
+        0);
+    TEST_ASSERT(!completed,
+        "an old renderer callback must not consume a replacement channel");
+
+    completed = plot::detail::take_completed_feedback(old_channel, old_channel, 0);
+    TEST_ASSERT(completed && completed->generation == 1 && completed->v_min == 17.0f,
+        "rejecting an old callback must leave its channel generation untouched");
+    return true;
+}
+
 bool test_renderer_outlives_synchronized_widget()
 {
     auto renderer = std::make_unique<test_renderer_t>();
@@ -308,6 +362,8 @@ int main(int argc, char** argv)
     int passed = 0;
     int failed = 0;
 
+    RUN_TEST(test_feedback_channel_respects_completed_frame_boundary);
+    RUN_TEST(test_replaced_feedback_channel_ignores_old_callback);
     RUN_TEST(test_renderer_outlives_synchronized_widget);
     RUN_TEST(test_created_renderer_has_independent_lifetime);
     RUN_TEST(test_static_first_frame_delivers_feedback);
