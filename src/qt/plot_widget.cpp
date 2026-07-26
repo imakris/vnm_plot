@@ -252,18 +252,32 @@ std::map<int, std::shared_ptr<const series_data_t>> Plot_widget::get_series_snap
 void Plot_widget::set_config(const Plot_config& config)
 {
     Plot_config effective_config;
+    bool        dark_changed    = false;
+    bool        grid_changed    = false;
+    bool        preview_changed = false;
+    bool        line_changed    = false;
 
     {
         std::unique_lock lock(m_config_mutex);
-        const double prev_grid_visibility    = m_config.grid_visibility;
-        const double prev_preview_visibility = m_config.preview_visibility;
-        const double prev_line_width_px      = m_config.line_width_px;
-        m_config                             = config;
-        m_config.grid_visibility             = prev_grid_visibility;    // Preserve QML-controlled setting
-        m_config.preview_visibility          = prev_preview_visibility; // Preserve QML-controlled setting
-        m_config.line_width_px               = prev_line_width_px;      // Preserve QML-controlled setting
+        dark_changed    = m_config.dark_mode != config.dark_mode;
+        grid_changed    = m_config.grid_visibility != config.grid_visibility;
+        preview_changed = m_config.preview_visibility != config.preview_visibility;
+        line_changed    = m_config.line_width_px != config.line_width_px;
+        m_config        = config;
         m_config_revision.fetch_add(1, std::memory_order_relaxed);
         effective_config = m_config;
+    }
+    if (dark_changed) {
+        emit dark_mode_changed();
+    }
+    if (grid_changed) {
+        emit grid_visibility_changed();
+    }
+    if (preview_changed) {
+        emit preview_visibility_changed();
+    }
+    if (line_changed) {
+        emit line_width_px_changed();
     }
     m_adjusted_font_size = effective_config.font_size_px * m_scaling_factor;
     m_base_label_height = effective_config.base_label_height_px * m_scaling_factor;

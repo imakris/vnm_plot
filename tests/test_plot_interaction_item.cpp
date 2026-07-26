@@ -991,6 +991,51 @@ bool test_widget_local_preview_adjustment_matches_shared_axis()
     return true;
 }
 
+bool test_set_config_applies_complete_config_and_notifies()
+{
+    plot::Plot_widget widget;
+    int               dark_notifications    = 0;
+    int               grid_notifications    = 0;
+    int               preview_notifications = 0;
+    int               line_notifications    = 0;
+
+    QObject::connect(&widget, &plot::Plot_widget::dark_mode_changed,
+        &widget, [&]() { ++dark_notifications; });
+    QObject::connect(&widget, &plot::Plot_widget::grid_visibility_changed,
+        &widget, [&]() { ++grid_notifications; });
+    QObject::connect(&widget, &plot::Plot_widget::preview_visibility_changed,
+        &widget, [&]() { ++preview_notifications; });
+    QObject::connect(&widget, &plot::Plot_widget::line_width_px_changed,
+        &widget, [&]() { ++line_notifications; });
+
+    auto config = widget.config();
+    config.dark_mode          = true;
+    config.grid_visibility    = 0.25;
+    config.preview_visibility = 0.5;
+    config.line_width_px      = 2.0;
+    widget.set_config(config);
+
+    const auto applied = widget.config();
+    TEST_ASSERT(applied.dark_mode && widget.dark_mode(),
+        "set_config should apply dark_mode");
+    TEST_ASSERT(applied.grid_visibility == 0.25 && widget.grid_visibility() == 0.25,
+        "set_config should apply grid_visibility");
+    TEST_ASSERT(applied.preview_visibility == 0.5 && widget.preview_visibility() == 0.5,
+        "set_config should apply preview_visibility");
+    TEST_ASSERT(applied.line_width_px == 2.0 && widget.line_width_px() == 2.0,
+        "set_config should apply line_width_px");
+    TEST_ASSERT(dark_notifications == 1 && grid_notifications == 1 &&
+            preview_notifications == 1 && line_notifications == 1,
+        "set_config should notify every changed config-backed QML property");
+
+    widget.set_config(applied);
+    TEST_ASSERT(dark_notifications == 1 && grid_notifications == 1 &&
+            preview_notifications == 1 && line_notifications == 1,
+        "set_config should not notify unchanged config-backed QML properties");
+
+    return true;
+}
+
 bool test_preview_thumb_press_handles_full_int64_availability()
 {
     constexpr std::int64_t k_min = std::numeric_limits<std::int64_t>::min();
@@ -1057,6 +1102,7 @@ int main(int argc, char** argv)
     RUN_TEST(test_shared_vbar_enabling_sync_publishes_current_owner_width);
     RUN_TEST(test_widget_local_available_clamp_matches_shared_axis);
     RUN_TEST(test_widget_local_preview_adjustment_matches_shared_axis);
+    RUN_TEST(test_set_config_applies_complete_config_and_notifies);
     RUN_TEST(test_preview_thumb_press_handles_full_int64_availability);
 
     std::cout << "Results: " << passed << " passed, " << failed << " failed" << std::endl;
