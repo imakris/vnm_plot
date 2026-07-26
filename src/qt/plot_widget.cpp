@@ -7,6 +7,7 @@
 #include <vnm_plot/rhi/qrhi_series_layer.h>
 #include <vnm_plot/rhi/series_data.h>
 #include <vnm_plot/rhi/series_renderer.h>
+#include <vnm_qt_dispatch/vnm_qt_dispatch.h>
 #include "../core/series_window_planner.h"
 
 #include <QGuiApplication>
@@ -834,21 +835,27 @@ void Plot_widget::publish_measured_vbar_width(double px) const
         if (!m_sync_vbar_width_active.load(std::memory_order_acquire)) {
             return;
         }
-        QMetaObject::invokeMethod(
-            const_cast<Plot_widget*>(this),
-            [this, px] {
-                const_cast<Plot_widget*>(this)->apply_vbar_width_target(px, true);
-            },
-            Qt::QueuedConnection);
+        auto* const self = const_cast<Plot_widget*>(this);
+        const auto result = vnm::qt::post(
+            self,
+            [self, px] {
+                self->apply_vbar_width_target(px, true);
+            });
+        if (result != vnm::qt::Post_result::QUEUED) {
+            qWarning("vnm_plot: Failed to queue a vbar width update.");
+        }
         return;
     }
 
-    QMetaObject::invokeMethod(
-        const_cast<Plot_widget*>(this),
-        [this, px] {
-            const_cast<Plot_widget*>(this)->apply_vbar_width_target(px, true);
-        },
-        Qt::QueuedConnection);
+    auto* const self = const_cast<Plot_widget*>(this);
+    const auto result = vnm::qt::post(
+        self,
+        [self, px] {
+            self->apply_vbar_width_target(px, true);
+        });
+    if (result != vnm::qt::Post_result::QUEUED) {
+        qWarning("vnm_plot: Failed to queue a vbar width update.");
+    }
 }
 
 double Plot_widget::update_dpi_scaling_factor()

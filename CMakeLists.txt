@@ -39,6 +39,37 @@ if(NOT Qt6ShaderTools_FOUND)
         "Install the Qt 6 'Shader Tools' module on the build machine.")
 endif()
 
+set(VNM_QT_DISPATCH_SOURCE_DIR "" CACHE PATH
+    "Optional path to a local vnm_qt_dispatch source checkout.")
+if(NOT TARGET vnm_qt_dispatch::vnm_qt_dispatch)
+    if(VNM_QT_DISPATCH_SOURCE_DIR)
+        if(NOT EXISTS "${VNM_QT_DISPATCH_SOURCE_DIR}/CMakeLists.txt")
+            message(FATAL_ERROR
+                "VNM_QT_DISPATCH_SOURCE_DIR does not contain a "
+                "vnm_qt_dispatch CMakeLists.txt:\n"
+                "  ${VNM_QT_DISPATCH_SOURCE_DIR}")
+        endif()
+        FetchContent_Declare(vnm_plot_qt_dispatch
+            SOURCE_DIR "${VNM_QT_DISPATCH_SOURCE_DIR}"
+            BINARY_DIR
+                "${CMAKE_BINARY_DIR}/_deps/vnm_qt_dispatch-build")
+    else()
+        FetchContent_Declare(vnm_plot_qt_dispatch
+            GIT_REPOSITORY
+                "https://github.com/Varinomics/vnm_qt_dispatch.git"
+            GIT_TAG master
+            GIT_SHALLOW FALSE
+            BINARY_DIR
+                "${CMAKE_BINARY_DIR}/_deps/vnm_qt_dispatch-build")
+    endif()
+    FetchContent_MakeAvailable(vnm_plot_qt_dispatch)
+endif()
+
+if(NOT TARGET vnm_qt_dispatch::vnm_qt_dispatch)
+    message(FATAL_ERROR
+        "vnm_qt_dispatch target is unavailable after dependency discovery.")
+endif()
+
 # Text rendering is optional - stub implementations maintain stable layout when OFF
 if(NOT VNM_PLOT_ENABLE_TEXT)
     message(STATUS "vnm_plot: Text rendering disabled (using stub implementations)")
@@ -576,6 +607,7 @@ target_link_libraries(vnm_plot_qtquick
         Qt6::Quick
     PRIVATE
         Qt6::GuiPrivate
+        vnm_qt_dispatch::vnm_qt_dispatch
 )
 
 if(WIN32)

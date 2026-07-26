@@ -13,14 +13,15 @@
 #include <vnm_plot/rhi/primitive_renderer.h>
 #include <vnm_plot/rhi/series_renderer.h>
 #include <vnm_plot/rhi/text_renderer.h>
+#include <vnm_qt_dispatch/vnm_qt_dispatch.h>
 #include "../core/frame_range_planner.h"
 #include "../core/label_pane_geometry.h"
 #include "../core/lcd_policy.h"
 
 #include <QColor>
 #include <QMatrix4x4>
-#include <QMetaObject>
 #include <QQuickWindow>
+#include <QtLogging>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -546,10 +547,16 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
                 pane_opacity.horizontal_axis_label_pane_is_opaque);
             prepared_text = m_impl->text.get();
             if (fades_active && m_impl->owner) {
-                QMetaObject::invokeMethod(
-                    const_cast<Plot_widget*>(m_impl->owner),
-                    "update",
-                    Qt::QueuedConnection);
+                auto* const owner = const_cast<Plot_widget*>(m_impl->owner);
+                const auto result = vnm::qt::post(
+                    owner,
+                    [owner] {
+                        owner->update();
+                    });
+                if (result != vnm::qt::Post_result::QUEUED) {
+                    qWarning(
+                        "vnm_plot: Failed to queue a fade continuation update.");
+                }
             }
         }
 #endif
