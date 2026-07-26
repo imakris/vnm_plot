@@ -11,12 +11,10 @@
 
 namespace vnm::plot {
 
-class Plot_widget;
-
 class Plot_renderer : public QQuickRhiItemRenderer
 {
 public:
-    explicit Plot_renderer(const Plot_widget* owner);
+    Plot_renderer();
     ~Plot_renderer() override;
 
     Plot_renderer(const Plot_renderer&)            = delete;

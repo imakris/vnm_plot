@@ -19,7 +19,6 @@
 
 #include <QColor>
 #include <QMatrix4x4>
-#include <QMetaObject>
 #include <QQuickWindow>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -172,8 +171,25 @@ struct Plot_renderer::impl_t
         std::uint64_t          series_revision         = 0;
     };
 
-    const Plot_widget*             owner                  = nullptr;
+    // Render output is handed back to the item only from synchronize(), while
+    // the GUI thread is blocked and the item is known to be alive. The stack
+    // publication itself remains in the renderer-owned Series_renderer.
+    struct render_feedback_t
+    {
+        double                 measured_vbar_width = detail::k_vbar_min_width_px_d;
+        float                  v_min                = 0.0f;
+        float                  v_max                = 1.0f;
+        std::int64_t           t_min                = 0;
+        std::int64_t           t_max                = 1;
+        std::int64_t           t_available_min      = 0;
+        std::int64_t           t_available_max      = 1;
+        std::uint64_t          series_revision      = 0;
+        bool                   stack_validity_ready = false;
+        bool                   ready                = false;
+    };
+
     render_snapshot_t              snapshot;
+    render_feedback_t              feedback;
 
     Asset_loader                   asset_loader;
     Series_renderer                series;
@@ -194,10 +210,9 @@ struct Plot_renderer::impl_t
     bool series_initialized = false;
 };
 
-Plot_renderer::Plot_renderer(const Plot_widget* owner)
+Plot_renderer::Plot_renderer()
     : m_impl(std::make_unique<impl_t>())
 {
-    m_impl->owner = owner;
     init_embedded_assets(m_impl->asset_loader);
 }
 
@@ -222,6 +237,23 @@ void Plot_renderer::synchronize(QQuickRhiItem* item)
     auto* widget = static_cast<Plot_widget*>(item);
     if (!widget) {
         return;
+    }
+
+    if (m_impl->feedback.ready) {
+        const auto& feedback = m_impl->feedback;
+        widget->publish_measured_vbar_width(feedback.measured_vbar_width);
+        widget->set_rendered_v_range(feedback.v_min, feedback.v_max);
+        widget->set_rendered_t_range(feedback.t_min, feedback.t_max);
+        if (feedback.stack_validity_ready) {
+            widget->set_rendered_stack_validity(
+                m_impl->series,
+                feedback.t_min,
+                feedback.t_max,
+                feedback.t_available_min,
+                feedback.t_available_max,
+                feedback.series_revision);
+        }
+        m_impl->feedback.ready = false;
     }
 
     {
@@ -460,23 +492,14 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
 
     vbar_width = layout_ptr->v_bar_width;
     m_impl->last_vbar_width_pixels = vbar_width;
-    if (m_impl->owner) {
-        m_impl->owner->publish_measured_vbar_width(vbar_width);
-    }
 
     frame_context_t ctx{*layout_ptr};
     ctx.v0         = v_min;
     ctx.v1         = v_max;
     ctx.preview_v0 = preview_v_min;
     ctx.preview_v1 = preview_v_max;
-    if (m_impl->owner) {
-        m_impl->owner->set_rendered_v_range(ctx.v0, ctx.v1);
-    }
     ctx.t0 = snapshot.data_cfg.t_min;
     ctx.t1 = snapshot.data_cfg.t_max;
-    if (m_impl->owner) {
-        m_impl->owner->set_rendered_t_range(ctx.t0, ctx.t1);
-    }
     ctx.t_available_min = snapshot.data_cfg.t_available_min;
     ctx.t_available_max = snapshot.data_cfg.t_available_max;
     ctx.win_w           = win_w;
@@ -506,6 +529,16 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
     ctx.cb                       = cb;
     ctx.render_target            = rt;
 
+    impl_t::render_feedback_t feedback;
+    feedback.measured_vbar_width = vbar_width;
+    feedback.v_min                = ctx.v0;
+    feedback.v_max                = ctx.v1;
+    feedback.t_min                = ctx.t0;
+    feedback.t_max                = ctx.t1;
+    feedback.t_available_min      = ctx.t_available_min;
+    feedback.t_available_max      = ctx.t_available_max;
+    feedback.series_revision      = snapshot.series_revision;
+
     // Open the resource-update batch BEFORE the render pass. Both series and
     // primitives fill it (series via prepare(), primitives via flush_rects /
     // draw_grid_shader called from chrome); beginPass then submits the
@@ -523,15 +556,7 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
 
         if (m_impl->series_initialized) {
             m_impl->series.prepare(ctx, snapshot.series);
-            if (m_impl->owner) {
-                m_impl->owner->set_rendered_stack_validity(
-                    m_impl->series,
-                    ctx.t0,
-                    ctx.t1,
-                    ctx.t_available_min,
-                    ctx.t_available_max,
-                    snapshot.series_revision);
-            }
+            feedback.stack_validity_ready = true;
         }
 
         const Text_renderer* prepared_text = nullptr;
@@ -545,11 +570,8 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
                 pane_opacity.vertical_axis_label_pane_is_opaque,
                 pane_opacity.horizontal_axis_label_pane_is_opaque);
             prepared_text = m_impl->text.get();
-            if (fades_active && m_impl->owner) {
-                QMetaObject::invokeMethod(
-                    const_cast<Plot_widget*>(m_impl->owner),
-                    "update",
-                    Qt::QueuedConnection);
+            if (fades_active) {
+                update();
             }
         }
 #endif
@@ -586,6 +608,9 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
         cb->endPass();
         m_impl->primitives.reset_frame();
     }
+
+    feedback.ready   = true;
+    m_impl->feedback = std::move(feedback);
 }
 
 } // namespace vnm::plot

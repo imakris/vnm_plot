@@ -2114,7 +2114,7 @@ void Plot_widget::recalculate_preview_height()
 
 QQuickRhiItemRenderer* Plot_widget::createRenderer()
 {
-    return new Plot_renderer(this);
+    return new Plot_renderer();
 }
 
 void Plot_widget::geometryChange(const QRectF& newGeometry, const QRectF& oldGeometry)
