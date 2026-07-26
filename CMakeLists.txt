@@ -363,6 +363,7 @@ set(VNM_PLOT_QTQUICK_HEADERS
     include/vnm_plot/qt/plot_widget.h
     include/vnm_plot/qt/plot_interaction_item.h
     include/vnm_plot/qt/plot_time_axis.h
+    src/qt/plot_render_feedback.h
     src/qt/plot_renderer.h
     src/qt/lcd_resolver.h
 )

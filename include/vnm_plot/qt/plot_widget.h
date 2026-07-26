@@ -35,6 +35,11 @@ class Plot_renderer;
 class Series_renderer;
 class Plot_time_axis;
 
+namespace detail {
+class plot_render_feedback_channel_t;
+struct plot_render_feedback_t;
+} // namespace detail
+
 // -----------------------------------------------------------------------------
 // Plot_view
 // -----------------------------------------------------------------------------
@@ -357,6 +362,10 @@ private:
     mutable std::atomic<qint64>    m_rendered_t_min{0};
     mutable std::atomic<qint64>    m_rendered_t_max{1};
     mutable std::atomic<bool>      m_rendered_t_range_valid{false};
+    std::shared_ptr<detail::plot_render_feedback_channel_t>
+                                   m_render_feedback_channel;
+    QMetaObject::Connection        m_render_feedback_delivery_connection;
+    std::uint64_t                  m_render_feedback_generation = 0;
     struct rendered_stack_source_revision_t
     {
         int                    series_id     = 0;
@@ -427,6 +436,10 @@ private:
     }
 
     bool consume_view_state_reset_request();
+    void arm_render_feedback_delivery(
+        const std::shared_ptr<detail::plot_render_feedback_channel_t>& channel);
+    void deliver_render_feedback();
+    void apply_render_feedback(const detail::plot_render_feedback_t& feedback);
     void set_rendered_v_range(float v_min, float v_max) const;
     void set_rendered_t_range(qint64 t_min_ns, qint64 t_max_ns) const;
     void sync_time_axis_state();
@@ -434,7 +447,6 @@ private:
     void handle_window_changed(QQuickWindow* window);
     void invalidate_display_context();
     void apply_vbar_width_target(double px, bool publish_shared = false);
-    void publish_measured_vbar_width(double px) const;
 
     QPointer<Plot_time_axis>       m_time_axis;
     QMetaObject::Connection        m_time_axis_connection;

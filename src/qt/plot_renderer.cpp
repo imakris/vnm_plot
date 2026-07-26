@@ -1,5 +1,6 @@
 #include "plot_renderer.h"
 #include "lcd_resolver.h"
+#include "plot_render_feedback.h"
 #include <vnm_plot/qt/plot_widget.h>
 #include <vnm_plot/core/color_palette.h>
 #include <vnm_plot/core/constants.h>
@@ -171,25 +172,10 @@ struct Plot_renderer::impl_t
         std::uint64_t          series_revision         = 0;
     };
 
-    // Render output is handed back to the item only from synchronize(), while
-    // the GUI thread is blocked and the item is known to be alive. The stack
-    // publication itself remains in the renderer-owned Series_renderer.
-    struct render_feedback_t
-    {
-        double                 measured_vbar_width = detail::k_vbar_min_width_px_d;
-        float                  v_min                = 0.0f;
-        float                  v_max                = 1.0f;
-        std::int64_t           t_min                = 0;
-        std::int64_t           t_max                = 1;
-        std::int64_t           t_available_min      = 0;
-        std::int64_t           t_available_max      = 1;
-        std::uint64_t          series_revision      = 0;
-        bool                   stack_validity_ready = false;
-        bool                   ready                = false;
-    };
-
     render_snapshot_t              snapshot;
-    render_feedback_t              feedback;
+    std::shared_ptr<detail::plot_render_feedback_channel_t>
+                                   feedback_channel =
+                                       std::make_shared<detail::plot_render_feedback_channel_t>();
 
     Asset_loader                   asset_loader;
     Series_renderer                series;
@@ -239,22 +225,7 @@ void Plot_renderer::synchronize(QQuickRhiItem* item)
         return;
     }
 
-    if (m_impl->feedback.ready) {
-        const auto& feedback = m_impl->feedback;
-        widget->publish_measured_vbar_width(feedback.measured_vbar_width);
-        widget->set_rendered_v_range(feedback.v_min, feedback.v_max);
-        widget->set_rendered_t_range(feedback.t_min, feedback.t_max);
-        if (feedback.stack_validity_ready) {
-            widget->set_rendered_stack_validity(
-                m_impl->series,
-                feedback.t_min,
-                feedback.t_max,
-                feedback.t_available_min,
-                feedback.t_available_max,
-                feedback.series_revision);
-        }
-        m_impl->feedback.ready = false;
-    }
+    widget->arm_render_feedback_delivery(m_impl->feedback_channel);
 
     {
         std::shared_lock lock(widget->m_config_mutex);
@@ -529,7 +500,7 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
     ctx.cb                       = cb;
     ctx.render_target            = rt;
 
-    impl_t::render_feedback_t feedback;
+    detail::plot_render_feedback_t feedback;
     feedback.measured_vbar_width = vbar_width;
     feedback.v_min                = ctx.v0;
     feedback.v_max                = ctx.v1;
@@ -556,6 +527,33 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
 
         if (m_impl->series_initialized) {
             m_impl->series.prepare(ctx, snapshot.series);
+            for (const auto& [group, revisions] : m_impl->series.main_stack_validity()) {
+                auto& stored = feedback.stack_validity[group];
+                stored.reserve(revisions.size());
+                for (const auto& revision : revisions) {
+                    stored.push_back({
+                        revision.series_id,
+                        revision.source,
+                        revision.lod,
+                        revision.sequence,
+                        revision.interpolation,
+                        revision.cumulative});
+                }
+            }
+            for (const auto& [key, rendered] : m_impl->series.stack_view_statuses()) {
+                auto& stored  = feedback.stack_statuses[key];
+                stored.status = rendered.status;
+                stored.sources.reserve(rendered.sources.size());
+                for (const auto& source : rendered.sources) {
+                    stored.sources.push_back({
+                        source.series_id,
+                        source.source,
+                        source.lod,
+                        source.sequence,
+                        source.interpolation,
+                        source.cumulative});
+                }
+            }
             feedback.stack_validity_ready = true;
         }
 
@@ -609,8 +607,7 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
         m_impl->primitives.reset_frame();
     }
 
-    feedback.ready   = true;
-    m_impl->feedback = std::move(feedback);
+    m_impl->feedback_channel->publish(std::move(feedback));
 }
 
 } // namespace vnm::plot

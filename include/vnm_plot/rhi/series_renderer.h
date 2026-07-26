@@ -25,6 +25,7 @@ namespace vnm::plot {
 
 class Asset_loader;
 class Profiler;
+class Plot_renderer;
 class Plot_widget;
 
 namespace detail {
@@ -83,6 +84,7 @@ public:
                                series);
 
 private:
+    friend class Plot_renderer;
     friend class Plot_widget;
 
     struct stack_source_revision_t
