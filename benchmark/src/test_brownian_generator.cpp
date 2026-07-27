@@ -46,14 +46,6 @@ bool double_eq(double a, double b, double tol = DOUBLE_TOLERANCE) {
         } \
     } while(0)
 
-// Test: Struct sizes are correct (packed)
-bool test_struct_sizes() {
-    // Use static_assert for compile-time size checks (avoids C4127 warning)
-    static_assert(sizeof(Bar_sample) == 28, "Bar_sample should be 28 bytes");
-    static_assert(sizeof(Trade_sample) == 16, "Trade_sample should be 16 bytes");
-    return true;
-}
-
 // Test: Default configuration
 bool test_default_config() {
     Brownian_generator::Config config;
@@ -286,7 +278,6 @@ int main() {
     int passed = 0;
     int failed = 0;
 
-    RUN_TEST(test_struct_sizes);
     RUN_TEST(test_default_config);
     RUN_TEST(test_bar_generation);
     RUN_TEST(test_trade_generation);

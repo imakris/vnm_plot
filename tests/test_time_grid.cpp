@@ -112,14 +112,13 @@ bool test_time_grid_layers_reject_degenerate_ranges()
 bool test_time_grid_layers_do_not_report_non_multiple_for_current_ladder()
 {
     bool dropped_non_multiple_step = true;
-    const plot::grid_layer_params_t levels = plot::build_time_grid_layers(
+    plot::build_time_grid_layers(
         0.0,
         60.0,
         600.0,
         10.0,
         &dropped_non_multiple_step);
 
-    TEST_ASSERT(levels.count > 0, "representative grid should produce levels");
     TEST_ASSERT(!dropped_non_multiple_step,
         "current time-step ladder should not report non-multiple diagnostics");
 

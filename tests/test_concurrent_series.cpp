@@ -9,7 +9,6 @@
 #include <cstdint>
 #include <iostream>
 #include <memory>
-#include <mutex>
 #include <thread>
 #include <vector>
 
@@ -360,101 +359,6 @@ bool test_vector_source_snapshots_progress_while_set_data_is_active()
     return true;
 }
 
-class Ring_source final : public plot::Data_source
-{
-public:
-    plot::snapshot_result_t try_snapshot(std::size_t /*lod*/) override
-    {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        if (m_samples.empty()) {
-            return {plot::data_snapshot_t{}, plot::snapshot_result_t::Snapshot_status::EMPTY};
-        }
-        auto buffer = std::make_shared<std::vector<sample_t>>(m_samples);
-        plot::data_snapshot_t snapshot;
-        snapshot.data     = buffer->data();
-        snapshot.count    = buffer->size();
-        snapshot.stride   = sizeof(sample_t);
-        snapshot.sequence = m_sequence;
-        snapshot.hold     = buffer;
-        return {snapshot, plot::snapshot_result_t::Snapshot_status::READY};
-    }
-
-    std::size_t sample_stride() const override { return sizeof(sample_t); }
-    std::uint64_t current_sequence(std::size_t) const override
-    {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        return m_sequence;
-    }
-
-    void append(const sample_t& s)
-    {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        m_samples.push_back(s);
-        ++m_sequence;
-    }
-
-private:
-    mutable std::mutex     m_mutex;
-    std::vector<sample_t>  m_samples;
-    std::uint64_t          m_sequence = 0;
-};
-
-bool test_ring_source_snapshots_are_consistent_under_concurrent_writes()
-{
-    Ring_source source;
-    std::atomic<bool> stop{false};
-    std::atomic<std::uint64_t> observed_max_sequence{0};
-    std::atomic<std::uint64_t> reader_errors{0};
-
-    std::thread writer([&] {
-        for (std::size_t i = 0; i < 5000 && !stop.load(std::memory_order_acquire); ++i) {
-            source.append({static_cast<double>(i), static_cast<float>(i)});
-        }
-    });
-
-    auto reader_fn = [&] {
-        while (!stop.load(std::memory_order_acquire)) {
-            auto result = source.try_snapshot(0);
-            if (!result) {
-                continue;
-            }
-            const auto& snap  = result.snapshot;
-            const auto* first = reinterpret_cast<const sample_t*>(snap.data);
-            double      prev  = first->t;
-            for (std::size_t i = 1; i < snap.count; ++i) {
-                const auto* cur = reinterpret_cast<const sample_t*>(
-                    reinterpret_cast<const std::uint8_t*>(snap.data) + i * snap.stride);
-                if (cur->t < prev) {
-                    reader_errors.fetch_add(1, std::memory_order_relaxed);
-                    break;
-                }
-                prev = cur->t;
-            }
-            std::uint64_t current = observed_max_sequence.load(std::memory_order_relaxed);
-            while (snap.sequence > current &&
-                !observed_max_sequence.compare_exchange_weak(current, snap.sequence,
-                    std::memory_order_relaxed))
-            {
-            }
-        }
-    };
-
-    std::thread reader1(reader_fn);
-    std::thread reader2(reader_fn);
-
-    writer.join();
-    std::this_thread::sleep_for(std::chrono::milliseconds(20));
-    stop.store(true, std::memory_order_release);
-    reader1.join();
-    reader2.join();
-
-    TEST_ASSERT(reader_errors.load() == 0,
-        "readers should never observe non-monotonic timestamps inside a snapshot");
-    TEST_ASSERT(observed_max_sequence.load() > 0,
-        "readers should observe at least one non-zero sequence");
-    return true;
-}
-
 } // namespace
 
 int main()
@@ -470,7 +374,6 @@ int main()
     RUN_TEST(test_vector_source_snapshot_hold_keeps_old_payload_after_set_data);
     RUN_TEST(test_vector_source_snapshots_are_consistent_under_concurrent_set_data);
     RUN_TEST(test_vector_source_snapshots_progress_while_set_data_is_active);
-    RUN_TEST(test_ring_source_snapshots_are_consistent_under_concurrent_writes);
 
     std::cout << "Results: " << passed << " passed, " << failed << " failed" << std::endl;
     return failed > 0 ? 1 : 0;

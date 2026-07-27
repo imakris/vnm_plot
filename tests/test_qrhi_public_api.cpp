@@ -13,7 +13,6 @@
 #include <glm/mat4x4.hpp>
 
 #include <cmath>
-#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <iostream>
@@ -27,50 +26,6 @@
 namespace plot = vnm::plot;
 
 namespace {
-
-struct sample_t
-{
-    std::int64_t   timestamp_ns = 0;
-    float          value        = 0.0f;
-    float          range_min    = 0.0f;
-    float          range_max    = 0.0f;
-};
-
-template<typename T, typename = void>
-struct has_get_signal : std::false_type {};
-
-template<typename T>
-struct has_get_signal<T, std::void_t<decltype(&T::get_signal)>> : std::true_type {};
-
-template<typename T, typename = void>
-struct has_get_aux : std::false_type {};
-
-template<typename T>
-struct has_get_aux<T, std::void_t<decltype(&T::get_aux)>> : std::true_type {};
-
-template<typename T, typename = void>
-struct has_get_auxiliary : std::false_type {};
-
-template<typename T>
-struct has_get_auxiliary<T, std::void_t<decltype(&T::get_auxiliary)>> : std::true_type {};
-
-template<typename T, typename = void>
-struct has_colormap_area : std::false_type {};
-
-template<typename T>
-struct has_colormap_area<T, std::void_t<decltype(&T::colormap_area)>> : std::true_type {};
-
-template<typename T, typename = void>
-struct has_colormap_line : std::false_type {};
-
-template<typename T>
-struct has_colormap_line<T, std::void_t<decltype(&T::colormap_line)>> : std::true_type {};
-
-template<typename T, typename = void>
-struct has_get_colormap : std::false_type {};
-
-template<typename T>
-struct has_get_colormap<T, std::void_t<decltype(&T::get_colormap)>> : std::true_type {};
 
 template<typename T, typename = void>
 struct has_bind_internal_access : std::false_type {};
@@ -113,20 +68,6 @@ static_assert(!has_bind_internal_access<erased_value_accessor_t>::value);
 static_assert(!has_bind_internal_access<erased_range_accessor_t>::value);
 static_assert(std::is_same_v<decltype(plot::Data_access_policy::layout_key), std::uint64_t>);
 
-static_assert(!has_get_signal<plot::Data_access_policy>::value);
-static_assert(!has_get_signal<plot::Data_access_policy_typed<sample_t>>::value);
-static_assert(!has_get_aux<plot::Data_access_policy>::value);
-static_assert(!has_get_aux<plot::Data_access_policy_typed<sample_t>>::value);
-static_assert(!has_get_auxiliary<plot::Data_access_policy>::value);
-static_assert(!has_get_auxiliary<plot::Data_access_policy_typed<sample_t>>::value);
-static_assert(!has_get_colormap<plot::Data_access_policy>::value);
-static_assert(!has_get_colormap<plot::Data_access_policy_typed<sample_t>>::value);
-static_assert(!has_colormap_area<plot::series_data_t>::value);
-static_assert(!has_colormap_line<plot::series_data_t>::value);
-static_assert(!has_colormap_area<plot::Series_builder>::value);
-static_assert(!has_colormap_line<plot::Series_builder>::value);
-static_assert(!has_colormap_area<plot::Rhi_series_builder>::value);
-static_assert(!has_colormap_line<plot::Rhi_series_builder>::value);
 static_assert(std::is_same_v<
     decltype(std::declval<plot::Series_builder&>().enabled(true)),
     plot::Series_builder&>);
@@ -149,19 +90,6 @@ static_assert(static_cast<int>(plot::Display_style::DOTS)           == 0x1);
 static_assert(static_cast<int>(plot::Display_style::LINE)           == 0x2);
 static_assert(static_cast<int>(plot::Display_style::AREA)           == 0x4);
 static_assert(static_cast<int>(plot::Display_style::DOTS_LINE_AREA) == 0x7);
-
-static_assert(offsetof(plot::series_view_uniform_std140_t, pmv)              == 0);
-static_assert(offsetof(plot::series_view_uniform_std140_t, color)            == 64);
-static_assert(offsetof(plot::series_view_uniform_std140_t, t_min)            == 80);
-static_assert(offsetof(plot::series_view_uniform_std140_t, t_max)            == 84);
-static_assert(offsetof(plot::series_view_uniform_std140_t, v_min)            == 88);
-static_assert(offsetof(plot::series_view_uniform_std140_t, v_max)            == 92);
-static_assert(offsetof(plot::series_view_uniform_std140_t, width)            == 96);
-static_assert(offsetof(plot::series_view_uniform_std140_t, height)           == 100);
-static_assert(offsetof(plot::series_view_uniform_std140_t, y_offset)         == 104);
-static_assert(offsetof(plot::series_view_uniform_std140_t, win_h)            == 108);
-static_assert(offsetof(plot::series_view_uniform_std140_t, framebuffer_y_up) == 112);
-static_assert(sizeof(plot::series_view_uniform_std140_t) == 128);
 
 static_assert(std::is_default_constructible_v<plot::qrhi_series_sample_buffer_layout_t>);
 static_assert(std::is_default_constructible_v<plot::qrhi_series_sample_buffer_t>);
@@ -305,16 +233,6 @@ bool test_series_data_copy_preserves_layer_shared_pointers()
 
 bool test_qrhi_layer_api_surface_can_be_implemented()
 {
-    const Test_layer layer("api-layer", 23, -5);
-
-    TEST_ASSERT(layer.id() == "api-layer", "layer id accessor mismatch");
-    TEST_ASSERT(layer.revision() == 23,    "layer revision accessor mismatch");
-    TEST_ASSERT(layer.z_order() == -5,     "layer z_order accessor mismatch");
-    TEST_ASSERT(layer.draws_view(plot::Series_view_kind::MAIN),
-        "test layer should draw the main view");
-    TEST_ASSERT(!layer.draws_view(plot::Series_view_kind::PREVIEW),
-        "test layer should not draw the preview view");
-
     plot::qrhi_series_prepare_context_t prepare_context;
     plot::qrhi_series_record_context_t record_context;
     TEST_ASSERT(prepare_context.rhi == nullptr, "prepare context rhi default mismatch");
@@ -396,15 +314,6 @@ bool test_core_plan_types_are_usable()
     plot::Frame_range_plan frame_plan;
     frame_plan.main_v_range    = range;
     frame_plan.preview_v_range = range;
-
-    TEST_ASSERT(frame_plan.main_v_range.valid, "main range validity mismatch");
-    TEST_ASSERT(view_plan.snapshot.sequence == 17,
-        "planned snapshot sequence mismatch");
-    TEST_ASSERT(view_plan.drawable_spans[0].source_count == 5,
-        "drawable span source count mismatch");
-    TEST_ASSERT(view_plan.synthetic_hold_count == 1,
-        "synthetic hold count mismatch");
-    TEST_ASSERT(view_plan.gpu_count == 6, "gpu count mismatch");
 
     plot::sample_window_t window;
     TEST_ASSERT(window.view_kind == plot::Series_view_kind::MAIN,

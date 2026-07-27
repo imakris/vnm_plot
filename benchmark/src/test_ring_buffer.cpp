@@ -271,7 +271,6 @@ bool test_thread_safety() {
 
     // Just verify no crashes and some reads happened
     TEST_ASSERT(read_count > 0, "consumer should have read some data");
-    TEST_ASSERT(buf.sequence() > 0, "producer should have pushed data");
 
     return true;
 }

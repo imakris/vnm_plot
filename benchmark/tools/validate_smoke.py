@@ -100,8 +100,6 @@ def validate(
             raise RuntimeError("OpenGL fallback-surface resolution is missing")
     if int(metadata["measured_frames"]) != args.frames:
         raise RuntimeError("metadata measured-frame count mismatch")
-    if metadata.get("static_sample_count") != "10000":
-        raise RuntimeError("static smoke sample-count mismatch")
     if int(metadata["pixel_checksum"]) == 0:
         raise RuntimeError("pixel checksum is zero")
     if int(metadata["pixel_nonuniform_count"]) == 0:

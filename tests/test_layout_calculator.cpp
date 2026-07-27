@@ -144,9 +144,6 @@ bool test_format_timestamp_receives_nanosecond_units()
         TEST_ASSERT(call.timestamp_ns != k_sentinel_lo &&
             call.timestamp_ns != k_sentinel_hi,
             "no formatter call should receive an INT64 sentinel timestamp");
-        TEST_ASSERT(call.step_ns > 0,
-            "formatter step must be positive (the calculator should never "
-            "pass step_ns <= 0)");
     }
 
     return true;

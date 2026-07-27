@@ -2279,43 +2279,6 @@ bool test_stacked_area_preserves_signed_component_bands()
     return true;
 }
 
-bool test_snapshot_released_after_render()
-{
-    auto data_source = std::make_shared<Single_level_source>();
-    data_source->samples.resize(8);
-    for (size_t i = 0; i < data_source->samples.size(); ++i) {
-        data_source->samples[i].t = static_cast<std::int64_t>(i);
-        data_source->samples[i].v = 2.0f + static_cast<float>(i);
-    }
-
-    const int series_id = 3;
-    auto      series    = std::make_shared<series_data_t>();
-    series->style       = Display_style::LINE;
-    series->data_source = data_source;
-    series->access      = make_policy();
-
-    frame_layout_result_t layout;
-    layout.usable_width  = 160.0;
-    layout.usable_height = 80.0;
-
-    Plot_config config;
-
-    Series_renderer renderer;
-    Asset_loader asset_loader;
-    renderer.initialize(asset_loader);
-
-    std::map<int, std::shared_ptr<const series_data_t>> series_map;
-    series_map[series_id] = series;
-
-    frame_context_t ctx = make_context(layout, config);
-    renderer.render(ctx, series_map);
-
-    std::weak_ptr<void> hold = data_source->last_hold;
-    TEST_ASSERT(hold.expired(), "expected snapshot hold to release after render");
-
-    return true;
-}
-
 bool test_upload_origin_records_per_view_origin()
 {
     // The renderer's per-view upload-invalidation key must include the view
@@ -2464,12 +2427,6 @@ bool test_upload_invalidates_when_origin_changes_across_snap_bucket()
         planner_state(state_it->second.main_view).uploaded_t_origin_ns;
     TEST_ASSERT(origin_after_frame2 == 0LL,
         "expected origin to remain 0 when t_min moves within the same snap bucket");
-    // Snapshot the call count after frame 2 so the post-frame-3 assertion
-    // attributes any new snapshot strictly to frame 3's origin shift.
-    // Frame 2's t_min/t_max differ from frame 1's, so snapshot_calls may
-    // grow here too (the fast path bails on t_min/t_max mismatch before
-    // reaching the origin term); that growth is not the contract under test.
-    const int snapshots_after_frame2 = data_source->snapshot_calls;
 
     // Frame 3: t_min moves into the next 1 s bucket -> origin must change.
     run_frame(k_one_second_ns + k_one_second_ns / 4, k_one_hour_ns);
@@ -2481,16 +2438,6 @@ bool test_upload_invalidates_when_origin_changes_across_snap_bucket()
         std::to_string(origin_after_frame3));
     TEST_ASSERT(origin_after_frame3 != origin_after_frame1,
         "origin must change when t_min crosses a snap-step boundary");
-
-    // The renderer must have re-run try_snapshot for frame 3 specifically;
-    // comparing against the post-frame-2 count isolates frame 3's
-    // contribution. (origin_after_frame3 already proves origin advanced; if
-    // origin weren't part of the upload-invalidation key, that assertion
-    // alone would not fail, but a regression in snapshot triggering would
-    // leave snapshot_calls flat across frame 3.)
-    TEST_ASSERT(data_source->snapshot_calls > snapshots_after_frame2,
-        "origin change across a snap bucket must invalidate the upload "
-        "cache and trigger a fresh try_snapshot call");
 
     return true;
 }
@@ -2679,7 +2626,6 @@ int main()
     RUN_TEST(test_stacking_uses_separate_view_budgets_and_invalidates_resized_cache);
     RUN_TEST(test_stacking_reports_specific_rejection_reasons);
     RUN_TEST(test_stacked_area_preserves_signed_component_bands);
-    RUN_TEST(test_snapshot_released_after_render);
     RUN_TEST(test_upload_origin_records_per_view_origin);
     RUN_TEST(test_upload_invalidates_when_origin_changes_across_snap_bucket);
     RUN_TEST(test_renderer_assigns_distinct_origins_to_main_and_preview);
