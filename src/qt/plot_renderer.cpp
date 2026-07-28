@@ -1,5 +1,6 @@
 #include "plot_renderer.h"
 #include "lcd_resolver.h"
+#include "plot_render_feedback.h"
 #include <vnm_plot/qt/plot_widget.h>
 #include <vnm_plot/core/color_palette.h>
 #include <vnm_plot/core/constants.h>
@@ -13,7 +14,6 @@
 #include <vnm_plot/rhi/primitive_renderer.h>
 #include <vnm_plot/rhi/series_renderer.h>
 #include <vnm_plot/rhi/text_renderer.h>
-#include <vnm_qt_dispatch/vnm_qt_dispatch.h>
 #include "../core/frame_range_planner.h"
 #include "../core/label_pane_geometry.h"
 #include "../core/lcd_policy.h"
@@ -21,7 +21,6 @@
 #include <QColor>
 #include <QMatrix4x4>
 #include <QQuickWindow>
-#include <QtLogging>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -173,8 +172,10 @@ struct Plot_renderer::impl_t
         std::uint64_t          series_revision         = 0;
     };
 
-    const Plot_widget*             owner                  = nullptr;
     render_snapshot_t              snapshot;
+    std::shared_ptr<detail::plot_render_feedback_channel_t>
+                                   feedback_channel =
+                                       std::make_shared<detail::plot_render_feedback_channel_t>();
 
     Asset_loader                   asset_loader;
     Series_renderer                series;
@@ -195,10 +196,9 @@ struct Plot_renderer::impl_t
     bool series_initialized = false;
 };
 
-Plot_renderer::Plot_renderer(const Plot_widget* owner)
+Plot_renderer::Plot_renderer()
     : m_impl(std::make_unique<impl_t>())
 {
-    m_impl->owner = owner;
     init_embedded_assets(m_impl->asset_loader);
 }
 
@@ -224,6 +224,8 @@ void Plot_renderer::synchronize(QQuickRhiItem* item)
     if (!widget) {
         return;
     }
+
+    widget->arm_render_feedback_delivery(m_impl->feedback_channel);
 
     {
         std::shared_lock lock(widget->m_config_mutex);
@@ -461,23 +463,14 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
 
     vbar_width = layout_ptr->v_bar_width;
     m_impl->last_vbar_width_pixels = vbar_width;
-    if (m_impl->owner) {
-        m_impl->owner->publish_measured_vbar_width(vbar_width);
-    }
 
     frame_context_t ctx{*layout_ptr};
     ctx.v0         = v_min;
     ctx.v1         = v_max;
     ctx.preview_v0 = preview_v_min;
     ctx.preview_v1 = preview_v_max;
-    if (m_impl->owner) {
-        m_impl->owner->set_rendered_v_range(ctx.v0, ctx.v1);
-    }
     ctx.t0 = snapshot.data_cfg.t_min;
     ctx.t1 = snapshot.data_cfg.t_max;
-    if (m_impl->owner) {
-        m_impl->owner->set_rendered_t_range(ctx.t0, ctx.t1);
-    }
     ctx.t_available_min = snapshot.data_cfg.t_available_min;
     ctx.t_available_max = snapshot.data_cfg.t_available_max;
     ctx.win_w           = win_w;
@@ -507,6 +500,16 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
     ctx.cb                       = cb;
     ctx.render_target            = rt;
 
+    detail::plot_render_feedback_t feedback;
+    feedback.measured_vbar_width = vbar_width;
+    feedback.v_min                = ctx.v0;
+    feedback.v_max                = ctx.v1;
+    feedback.t_min                = ctx.t0;
+    feedback.t_max                = ctx.t1;
+    feedback.t_available_min      = ctx.t_available_min;
+    feedback.t_available_max      = ctx.t_available_max;
+    feedback.series_revision      = snapshot.series_revision;
+
     // Open the resource-update batch BEFORE the render pass. Both series and
     // primitives fill it (series via prepare(), primitives via flush_rects /
     // draw_grid_shader called from chrome); beginPass then submits the
@@ -524,15 +527,34 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
 
         if (m_impl->series_initialized) {
             m_impl->series.prepare(ctx, snapshot.series);
-            if (m_impl->owner) {
-                m_impl->owner->set_rendered_stack_validity(
-                    m_impl->series,
-                    ctx.t0,
-                    ctx.t1,
-                    ctx.t_available_min,
-                    ctx.t_available_max,
-                    snapshot.series_revision);
+            for (const auto& [group, revisions] : m_impl->series.main_stack_validity()) {
+                auto& stored = feedback.stack_validity[group];
+                stored.reserve(revisions.size());
+                for (const auto& revision : revisions) {
+                    stored.push_back({
+                        revision.series_id,
+                        revision.source,
+                        revision.lod,
+                        revision.sequence,
+                        revision.interpolation,
+                        revision.cumulative});
+                }
             }
+            for (const auto& [key, rendered] : m_impl->series.stack_view_statuses()) {
+                auto& stored  = feedback.stack_statuses[key];
+                stored.status = rendered.status;
+                stored.sources.reserve(rendered.sources.size());
+                for (const auto& source : rendered.sources) {
+                    stored.sources.push_back({
+                        source.series_id,
+                        source.source,
+                        source.lod,
+                        source.sequence,
+                        source.interpolation,
+                        source.cumulative});
+                }
+            }
+            feedback.stack_validity_ready = true;
         }
 
         const Text_renderer* prepared_text = nullptr;
@@ -546,17 +568,8 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
                 pane_opacity.vertical_axis_label_pane_is_opaque,
                 pane_opacity.horizontal_axis_label_pane_is_opaque);
             prepared_text = m_impl->text.get();
-            if (fades_active && m_impl->owner) {
-                auto* const owner = const_cast<Plot_widget*>(m_impl->owner);
-                const auto result = vnm::qt::post(
-                    owner,
-                    [owner] {
-                        owner->update();
-                    });
-                if (result != vnm::qt::Post_result::QUEUED) {
-                    qWarning(
-                        "vnm_plot: Failed to queue a fade continuation update.");
-                }
+            if (fades_active) {
+                update();
             }
         }
 #endif
@@ -593,6 +606,8 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
         cb->endPass();
         m_impl->primitives.reset_frame();
     }
+
+    m_impl->feedback_channel->publish(std::move(feedback));
 }
 
 } // namespace vnm::plot

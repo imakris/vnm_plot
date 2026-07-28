@@ -91,6 +91,12 @@ if(TARGET vnm_plot_qtquick)
     add_executable(test_plot_interaction_item test_plot_interaction_item.cpp)
     target_link_libraries(test_plot_interaction_item PRIVATE vnm_plot::qtquick)
 
+    add_executable(test_plot_renderer_lifecycle test_plot_renderer_lifecycle.cpp)
+    target_link_libraries(test_plot_renderer_lifecycle PRIVATE vnm_plot::qtquick)
+    target_include_directories(test_plot_renderer_lifecycle PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/qt
+    )
+
     add_executable(test_plot_time_axis test_plot_time_axis.cpp)
     target_link_libraries(test_plot_time_axis PRIVATE vnm_plot::qtquick)
 
@@ -109,6 +115,7 @@ endif()
 if(TARGET vnm_plot_qtquick)
     set_target_properties(
         test_plot_interaction_item
+        test_plot_renderer_lifecycle
         test_plot_time_axis
         test_lcd_resolver
         PROPERTIES
@@ -177,6 +184,7 @@ endif()
 
 if(TARGET vnm_plot_qtquick)
     vnm_plot_add_test(PlotInteractionItem test_plot_interaction_item)
+    vnm_plot_add_test(PlotRendererLifecycle test_plot_renderer_lifecycle)
     vnm_plot_add_test(PlotTimeAxis test_plot_time_axis)
     vnm_plot_add_test(LcdResolver test_lcd_resolver)
 endif()
@@ -295,6 +303,9 @@ if(WIN32)
     if(TARGET test_plot_interaction_item)
         list(APPEND _vnm_plot_windows_test_targets test_plot_interaction_item)
     endif()
+    if(TARGET test_plot_renderer_lifecycle)
+        list(APPEND _vnm_plot_windows_test_targets test_plot_renderer_lifecycle)
+    endif()
     if(TARGET test_plot_time_axis)
         list(APPEND _vnm_plot_windows_test_targets test_plot_time_axis)
     endif()
@@ -381,6 +392,7 @@ foreach(_test IN LISTS _vnm_plot_rhi_tests)
 endforeach()
 if(TARGET vnm_plot_qtquick)
     message(STATUS "  - test_plot_interaction_item")
+    message(STATUS "  - test_plot_renderer_lifecycle")
     message(STATUS "  - test_plot_time_axis")
     message(STATUS "  - test_lcd_resolver")
 endif()

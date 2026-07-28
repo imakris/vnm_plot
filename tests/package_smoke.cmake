@@ -41,19 +41,6 @@ if(NOT _install_result EQUAL 0)
         "${_install_output}\n${_install_error}")
 endif()
 
-file(GLOB_RECURSE _provider_config_paths
-    LIST_DIRECTORIES FALSE
-    "${_install_prefix}/vnm_qt_dispatchConfig.cmake")
-list(LENGTH _provider_config_paths _provider_config_count)
-if(NOT _provider_config_count EQUAL 1)
-    message(FATAL_ERROR
-        "Expected one staged vnm_qt_dispatchConfig.cmake, found "
-        "${_provider_config_count} under ${_install_prefix}.")
-endif()
-list(GET _provider_config_paths 0 _provider_config_path)
-get_filename_component(
-    _provider_package_dir "${_provider_config_path}" DIRECTORY)
-
 file(TO_CMAKE_PATH "${VNM_PLOT_GLM_INCLUDE_DIR}" _stub_glm_include_dir)
 file(TO_CMAKE_PATH "${VNM_PLOT_MSDF_TEXT_INCLUDE_DIR}" _stub_msdf_text_include_dir)
 
@@ -145,13 +132,9 @@ function(vnm_plot_consumer_configure_command out_var consumer_source_dir consume
         -S "${consumer_source_dir}"
         -B "${consumer_build_dir}"
         "-DCMAKE_PREFIX_PATH=${_install_prefix}"
-        "-Dvnm_qt_dispatch_DIR:PATH=${_provider_package_dir}"
         -DCMAKE_FIND_PACKAGE_PREFER_CONFIG=TRUE
-        -DCMAKE_FIND_USE_PACKAGE_ROOT_PATH=FALSE
         -DCMAKE_FIND_USE_PACKAGE_REGISTRY=FALSE
-        -DCMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY=FALSE
-        -DCMAKE_FIND_PACKAGE_NO_PACKAGE_REGISTRY=TRUE
-        -DCMAKE_FIND_PACKAGE_NO_SYSTEM_PACKAGE_REGISTRY=TRUE)
+        -DCMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY=FALSE)
 
     if(DEFINED VNM_PLOT_TEST_BUILD_TYPE AND
        NOT VNM_PLOT_TEST_BUILD_TYPE STREQUAL "")
@@ -265,28 +248,6 @@ if(NOT _configure_result EQUAL 0)
     message(FATAL_ERROR
         "Configuring vnm_plot package consumer failed.\n"
         "${_configure_output}\n${_configure_error}")
-endif()
-
-set(_consumer_cache "${_consumer_build_dir}/CMakeCache.txt")
-file(STRINGS "${_consumer_cache}" _provider_cache_entries
-    REGEX "^vnm_qt_dispatch_DIR:PATH=")
-list(LENGTH _provider_cache_entries _provider_cache_entry_count)
-if(NOT _provider_cache_entry_count EQUAL 1)
-    message(FATAL_ERROR
-        "Package smoke cache does not contain exactly one "
-        "vnm_qt_dispatch_DIR entry:\n"
-        "  ${_consumer_cache}")
-endif()
-list(GET _provider_cache_entries 0 _provider_cache_entry)
-string(REGEX REPLACE "^[^=]*=" "" _resolved_provider_dir
-    "${_provider_cache_entry}")
-file(REAL_PATH "${_resolved_provider_dir}" _resolved_provider_dir)
-file(REAL_PATH "${_provider_package_dir}" _provider_package_dir)
-if(NOT _resolved_provider_dir STREQUAL _provider_package_dir)
-    message(FATAL_ERROR
-        "Package smoke resolved vnm_qt_dispatch outside the staged prefix:\n"
-        "  expected=${_provider_package_dir}\n"
-        "  actual=${_resolved_provider_dir}")
 endif()
 
 set(_build_command "${CMAKE_COMMAND}" --build "${_consumer_build_dir}")

@@ -1,5 +1,6 @@
 #include <vnm_plot/qt/plot_widget.h>
 #include "plot_renderer.h"
+#include "plot_render_feedback.h"
 #include "t_axis_adjust.h"
 #include <vnm_plot/qt/plot_time_axis.h>
 #include <vnm_plot/core/constants.h>
@@ -7,7 +8,6 @@
 #include <vnm_plot/rhi/qrhi_series_layer.h>
 #include <vnm_plot/rhi/series_data.h>
 #include <vnm_plot/rhi/series_renderer.h>
-#include <vnm_qt_dispatch/vnm_qt_dispatch.h>
 #include "../core/series_window_planner.h"
 
 #include <QGuiApplication>
@@ -176,6 +176,11 @@ Plot_widget::Plot_widget()
 Plot_widget::~Plot_widget()
 {
     m_vbar_width_timer.stop();
+    QObject::disconnect(m_render_feedback_completion_connection);
+    m_render_feedback_completion_connection = {};
+    QObject::disconnect(m_render_feedback_delivery_connection);
+    m_render_feedback_delivery_connection = {};
+    m_render_feedback_channel.reset();
     QObject::disconnect(m_window_screen_connection);
     m_window_screen_connection = {};
 
@@ -822,39 +827,110 @@ void Plot_widget::apply_vbar_width_target(double target, bool publish_shared)
     }
 }
 
-void Plot_widget::publish_measured_vbar_width(double px) const
+void Plot_widget::arm_render_feedback_delivery(
+    const std::shared_ptr<detail::plot_render_feedback_channel_t>& channel)
 {
-    if (!std::isfinite(px) || px <= 0.0) {
+    QObject::disconnect(m_render_feedback_completion_connection);
+    m_render_feedback_completion_connection = {};
+    QObject::disconnect(m_render_feedback_delivery_connection);
+    m_render_feedback_delivery_connection = {};
+
+    if (m_render_feedback_channel != channel) {
+        m_render_feedback_channel    = channel;
+        m_render_feedback_generation = 0;
+    }
+
+    QQuickWindow* const quick_window = window();
+    if (!m_render_feedback_channel || !quick_window) {
         return;
     }
 
-    const double current = m_vbar_width_px.load(std::memory_order_acquire);
-    if (std::isfinite(current) &&
-        std::abs(px - current) <= k_vbar_width_change_threshold_d)
-    {
-        if (!m_sync_vbar_width_active.load(std::memory_order_acquire)) {
-            return;
-        }
-        auto* const self = const_cast<Plot_widget*>(this);
-        const auto result = vnm::qt::post(
-            self,
-            [self, px] {
-                self->apply_vbar_width_target(px, true);
-            });
-        if (result != vnm::qt::Post_result::QUEUED) {
-            qWarning("vnm_plot: Failed to queue a vbar width update.");
-        }
+    // Connection order is intentional: Qt invokes the direct completion
+    // marker before it enqueues the item-context delivery for the same signal.
+    const auto completion_type = static_cast<Qt::ConnectionType>(
+        static_cast<int>(Qt::DirectConnection) |
+        static_cast<int>(Qt::SingleShotConnection));
+    m_render_feedback_completion_connection = QObject::connect(
+        quick_window,
+        &QQuickWindow::afterRendering,
+        this,
+        [channel] {
+            channel->mark_latest_completed();
+        },
+        completion_type);
+
+    const auto delivery_type = static_cast<Qt::ConnectionType>(
+        static_cast<int>(Qt::QueuedConnection) |
+        static_cast<int>(Qt::SingleShotConnection));
+    m_render_feedback_delivery_connection = QObject::connect(
+        quick_window,
+        &QQuickWindow::afterRendering,
+        this,
+        [this, channel] {
+            deliver_render_feedback(channel);
+        },
+        delivery_type);
+}
+
+void Plot_widget::deliver_render_feedback(
+    const std::shared_ptr<detail::plot_render_feedback_channel_t>& channel)
+{
+    auto feedback = detail::take_completed_feedback(
+        m_render_feedback_channel,
+        channel,
+        m_render_feedback_generation);
+    if (!feedback) {
         return;
     }
 
-    auto* const self = const_cast<Plot_widget*>(this);
-    const auto result = vnm::qt::post(
-        self,
-        [self, px] {
-            self->apply_vbar_width_target(px, true);
-        });
-    if (result != vnm::qt::Post_result::QUEUED) {
-        qWarning("vnm_plot: Failed to queue a vbar width update.");
+    m_render_feedback_generation = feedback->generation;
+    apply_render_feedback(*feedback);
+}
+
+void Plot_widget::apply_render_feedback(const detail::plot_render_feedback_t& feedback)
+{
+    apply_vbar_width_target(feedback.measured_vbar_width, true);
+    set_rendered_v_range(feedback.v_min, feedback.v_max);
+    set_rendered_t_range(feedback.t_min, feedback.t_max);
+
+    if (!feedback.stack_validity_ready) {
+        return;
+    }
+
+    std::lock_guard lock(m_rendered_stack_validity_mutex);
+    m_rendered_stack_validity.clear();
+    m_rendered_stack_statuses.clear();
+    m_rendered_stack_t_min           = feedback.t_min;
+    m_rendered_stack_t_max           = feedback.t_max;
+    m_rendered_stack_available_t_min = feedback.t_available_min;
+    m_rendered_stack_available_t_max = feedback.t_available_max;
+    m_rendered_stack_series_revision = feedback.series_revision;
+    for (const auto& [group, revisions] : feedback.stack_validity) {
+        auto& stored = m_rendered_stack_validity[group];
+        stored.reserve(revisions.size());
+        for (const auto& revision : revisions) {
+            stored.push_back({
+                revision.series_id,
+                revision.source,
+                revision.lod,
+                revision.sequence,
+                revision.interpolation,
+                revision.cumulative});
+        }
+    }
+    for (const auto& [key, rendered] : feedback.stack_statuses) {
+        auto& stored  = m_rendered_stack_statuses[key];
+        stored.status = rendered.status;
+        stored.sources.reserve(rendered.sources.size());
+        for (const auto& source : rendered.sources) {
+            stored.sources.push_back({
+                source.series_id,
+                source.source,
+                source.lod,
+                source.sequence,
+                source.interpolation,
+                source.cumulative});
+        }
     }
 }
 
@@ -2121,7 +2197,7 @@ void Plot_widget::recalculate_preview_height()
 
 QQuickRhiItemRenderer* Plot_widget::createRenderer()
 {
-    return new Plot_renderer(this);
+    return new Plot_renderer();
 }
 
 void Plot_widget::geometryChange(const QRectF& newGeometry, const QRectF& oldGeometry)

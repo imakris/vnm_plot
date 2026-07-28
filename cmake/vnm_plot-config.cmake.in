@@ -3,7 +3,6 @@
 include(CMakeFindDependencyMacro)
 
 find_dependency(glm)
-find_dependency(vnm_qt_dispatch 2 CONFIG REQUIRED)
 
 set(_vnm_plot_needs_data_dependencies FALSE)
 set(_vnm_plot_needs_rhi_dependencies FALSE)
