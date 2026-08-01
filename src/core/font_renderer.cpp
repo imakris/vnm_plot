@@ -1,6 +1,7 @@
 #include <vnm_plot/rhi/font_renderer.h>
 #include <vnm_plot/core/lcd.h>
 #include <vnm_plot/rhi/asset_loader.h>
+#include "font_atlas_cache.h"
 #include "platform_paths.h"
 #include "rhi_helpers.h"
 
@@ -27,10 +28,8 @@
 #include <iomanip>
 #include <limits>
 #include <memory>
-#include <mutex>
 #include <sstream>
 #include <type_traits>
-#include <unordered_map>
 #include <vector>
 
 namespace vnm::plot {
@@ -129,12 +128,6 @@ void vertex_buffer_clear(vertex_buffer_t* buffer)
     buffer->index_data.clear();
 }
 
-// --- Thread-Safe Global Font Storage ---
-// The raw .ttf file data. Loaded once and shared by all threads.
-std::vector<uint8_t> s_font_storage;
-// Mutex to protect the one-time lazy loading of the font data.
-static std::mutex s_font_storage_mutex;
-
 struct thread_local_font_resources_t
 {
     vertex_buffer_t*   m_buffer       = nullptr;
@@ -164,50 +157,22 @@ thread_local_font_resources_t& thread_local_resources()
 
 std::atomic<std::uint64_t> s_next_cache_epoch{1};
 
-struct cached_font_data_t
+using detail::cached_font_data_t;
+using detail::font_atlas_key_t;
+
+// Every retained entry is one k_atlas_texture_size RGBA bitmap (16 MiB at
+// 2048), so this budget keeps the eight most recently used (font, draw height)
+// pairs alive: enough for the handful of label sizes a plot cycles through
+// while DPI or zoom changes, and far below the ~1 GiB a 64-entry ceiling
+// allowed. Evicted entries cost a rebuild, not a wrong result.
+constexpr std::size_t k_max_retained_atlas_bytes =
+    8u * static_cast<std::size_t>(k_atlas_texture_size) *
+    static_cast<std::size_t>(k_atlas_texture_size) * 4u;
+
+detail::Font_atlas_cache& font_atlas_cache()
 {
-    msdf_atlas_t                   atlas;
-    // The requested draw pixel height this cache entry was built for. The atlas
-    // is baked at a (possibly larger) bucket, so this is tracked separately from
-    // atlas.baked_pixel_height and is the cache-map key and disk-file height.
-    int                            draw_pixel_height = 0;
-    std::uint64_t                  cache_epoch       = 0;
-    std::array<std::uint8_t, 32>   font_digest{};
-};
-
-static std::mutex s_cached_fonts_mutex;
-static std::unordered_map<int, std::shared_ptr<cached_font_data_t>> s_cached_fonts;
-
-std::shared_ptr<cached_font_data_t> get_cached_font(
-    int                                    pixel_height,
-    const std::array<std::uint8_t, 32>&    font_digest)
-{
-    std::lock_guard<std::mutex> lock(s_cached_fonts_mutex);
-    auto it = s_cached_fonts.find(pixel_height);
-    if (it != s_cached_fonts.end()) {
-        if (it->second && it->second->font_digest == font_digest) {
-            return it->second;
-        }
-    }
-    return nullptr;
-}
-
-void store_cached_font(const std::shared_ptr<cached_font_data_t>& font)
-{
-    if (!font) {
-        return;
-    }
-    std::lock_guard<std::mutex> lock(s_cached_fonts_mutex);
-
-    constexpr std::size_t k_max_cached_fonts = 64;
-    if (s_cached_fonts.size() >= k_max_cached_fonts) {
-        auto it = s_cached_fonts.begin();
-        if (it != s_cached_fonts.end()) {
-            s_cached_fonts.erase(it);
-        }
-    }
-
-    s_cached_fonts[font->draw_pixel_height] = font;
+    static detail::Font_atlas_cache cache(k_max_retained_atlas_bytes);
+    return cache;
 }
 
 vnm::msdf_text::options_t atlas_options()
@@ -391,7 +356,7 @@ void add_text_to_buffer(const char* text, float x, float y, thread_local_font_re
         res->m_buffer->index_data);
 }
 
-std::array<std::uint8_t, 32> compute_font_digest()
+std::array<std::uint8_t, 32> compute_font_digest(const Byte_buffer& font_bytes)
 {
     QCryptographicHash hash(QCryptographicHash::Sha256);
     const auto add_view = [&hash](const char* data, qsizetype size) {
@@ -409,11 +374,7 @@ std::array<std::uint8_t, 32> compute_font_digest()
     add_view(semantics.data(), static_cast<qsizetype>(semantics.size()));
     const std::string glyph_seed = glyph_seed_string();
     add_view(glyph_seed.data(), static_cast<qsizetype>(glyph_seed.size()));
-    if (!s_font_storage.empty()) {
-        add_view(
-            reinterpret_cast<const char*>(s_font_storage.data()),
-            static_cast<qsizetype>(s_font_storage.size()));
-    }
+    add_view(font_bytes.data(), static_cast<qsizetype>(font_bytes.size()));
 
     const QByteArray bytes = hash.result();
     std::array<std::uint8_t, 32> digest{};
@@ -433,32 +394,41 @@ std::string digest_to_hex(const std::array<std::uint8_t, 32>& digest)
         ).toHex().toStdString();
 }
 
+std::filesystem::path resolve_cache_directory()
+{
+    // Prefer cache directory for disposable MSDF artifacts
+    auto cache_dir = get_cache_directory();
+    if (!cache_dir.empty()) {
+        return cache_dir;
+    }
+
+    // Fallback to data directory
+    cache_dir = get_data_directory();
+    if (!cache_dir.empty()) {
+        return cache_dir;
+    }
+
+    // Last resort: current directory
+    cache_dir = std::filesystem::current_path() / ".vnm_plot_cache";
+    std::error_code ec;
+    std::filesystem::create_directories(cache_dir, ec);
+    return cache_dir;
+}
+
 std::filesystem::path cache_file_path(
     int                                    pixel_height,
     const std::array<std::uint8_t, 32>&    font_digest)
 {
-    static std::filesystem::path s_cache_dir;
-
-    if (s_cache_dir.empty()) {
-        // Prefer cache directory for disposable MSDF artifacts
-        s_cache_dir = get_cache_directory();
-        if (s_cache_dir.empty()) {
-            // Fallback to data directory
-            s_cache_dir = get_data_directory();
-        }
-        if (s_cache_dir.empty()) {
-            // Last resort: current directory
-            s_cache_dir = std::filesystem::current_path() / ".vnm_plot_cache";
-            std::error_code ec;
-            std::filesystem::create_directories(s_cache_dir, ec);
-        }
-    }
+    // Resolved exactly once and never reassigned: the magic-static guard makes
+    // the resolution itself thread-safe and the value is immutable afterwards,
+    // so concurrent render threads never observe a half-assigned path.
+    static const std::filesystem::path cache_dir = resolve_cache_directory();
 
     std::ostringstream oss;
     oss << "msdf_cache_v" << k_cache_version << "_px" << pixel_height << "_font";
     oss << digest_to_hex(font_digest);
     oss << ".bin";
-    return s_cache_dir / oss.str();
+    return cache_dir / oss.str();
 }
 
 // Forward declarations for disk cache helpers
@@ -688,6 +658,7 @@ void save_cached_font_to_disk(
 }
 
 std::shared_ptr<cached_font_data_t> build_font_cache(
+    const Byte_buffer&                             font_bytes,
     int                                            pixel_height,
     const std::array<std::uint8_t, 32>&            font_digest,
     const std::function<void(const std::string&)>& log_error,
@@ -698,8 +669,8 @@ std::shared_ptr<cached_font_data_t> build_font_cache(
     font->draw_pixel_height = pixel_height;
 
     auto result = vnm::msdf_text::build_font_atlas(
-        s_font_storage.data(),
-        s_font_storage.size(),
+        reinterpret_cast<const std::uint8_t*>(font_bytes.data()),
+        font_bytes.size(),
         pixel_height,
         glyph_codepoints(),
         atlas_options(),
@@ -720,49 +691,53 @@ std::shared_ptr<cached_font_data_t> build_font_cache(
 std::shared_ptr<cached_font_data_t> load_or_build_font_cache(
     Asset_loader&                                  asset_loader,
     int                                            pixel_height,
+    bool                                           force_rebuild,
     const std::function<void(const std::string&)>& log_error,
     const std::function<void(const std::string&)>& log_debug)
 {
-    if (s_font_storage.empty()) {
-        std::lock_guard<std::mutex> locker(s_font_storage_mutex);
-        if (s_font_storage.empty()) {
-            auto font_data = asset_loader.load("fonts/monospace.ttf");
-            if (font_data) {
-                s_font_storage.assign(font_data->begin(), font_data->end());
-            }
-        }
-    }
-
-    if (s_font_storage.empty()) {
+    // The font belongs to the asset loader that was passed in: a process can
+    // hold several loaders that register different fonts under this name, so
+    // the bytes are read per request and their digest keys the cache.
+    const auto font_bytes = asset_loader.load("fonts/monospace.ttf");
+    if (!font_bytes || font_bytes->empty()) {
         if (log_error) {
             log_error("Failed to load MSDF font asset fonts/monospace.ttf");
         }
         return nullptr;
     }
 
-    const auto font_digest = compute_font_digest();
-    const bool disk_cache  = s_disk_cache_enabled.load(std::memory_order_relaxed);
+    const font_atlas_key_t key{compute_font_digest(*font_bytes), pixel_height};
+    const bool             disk_cache = s_disk_cache_enabled.load(std::memory_order_relaxed);
 
-    auto cached = get_cached_font(pixel_height, font_digest);
-    if (!cached && disk_cache) {
-        const auto cache_path = cache_file_path(pixel_height, font_digest);
-        cached = load_cached_font_from_disk(cache_path, font_digest, pixel_height);
-        if (cached) {
-            store_cached_font(cached);
-        }
-    }
-    if (!cached) {
-        cached = build_font_cache(pixel_height, font_digest, log_error, log_debug);
-        if (cached) {
-            store_cached_font(cached);
-            if (disk_cache) {
-                const auto cache_path = cache_file_path(pixel_height, font_digest);
-                save_cached_font_to_disk(cache_path, *cached);
+    return font_atlas_cache().get_or_build(
+        key,
+        force_rebuild,
+        [&]() -> std::shared_ptr<cached_font_data_t> {
+            // A forced rebuild has to regenerate the atlas, so it bypasses the
+            // disk cache as well as the memo; reading the file back would hand
+            // out the same bytes through another door.
+            if (disk_cache && !force_rebuild) {
+                auto from_disk = load_cached_font_from_disk(
+                    cache_file_path(pixel_height, key.font_digest),
+                    key.font_digest,
+                    pixel_height);
+                if (from_disk) {
+                    return from_disk;
+                }
             }
-        }
-    }
 
-    return cached;
+            auto built = build_font_cache(
+                *font_bytes,
+                pixel_height,
+                key.font_digest,
+                log_error,
+                log_debug);
+            if (built && disk_cache) {
+                save_cached_font_to_disk(
+                    cache_file_path(pixel_height, key.font_digest), *built);
+            }
+            return built;
+        });
 }
 
 } // anonymous namespace
@@ -975,6 +950,7 @@ void Font_renderer::initialize_metrics(
     auto cached = load_or_build_font_cache(
         asset_loader,
         pixel_height,
+        force_rebuild,
         m_impl->m_log_error,
         m_impl->m_log_debug);
     if (!cached) {

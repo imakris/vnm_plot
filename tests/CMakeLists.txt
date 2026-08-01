@@ -26,7 +26,9 @@ set(_vnm_plot_rhi_tests
 
 if(VNM_PLOT_ENABLE_TEXT)
     list(APPEND _vnm_plot_rhi_tests
+        test_font_atlas_cache
         test_font_disk_cache
+        test_font_identity
         test_font_renderer_bounds
         test_msdf_lcd_shader_reference
     )
@@ -73,6 +75,14 @@ target_link_libraries(test_qrhi_layer_lifecycle PRIVATE Qt6::GuiPrivate Qt6::Gui
 target_link_libraries(test_qrhi_public_api PRIVATE Qt6::GuiPrivate Qt6::Gui)
 target_link_libraries(test_rhi_helpers PRIVATE Qt6::GuiPrivate Qt6::Gui)
 
+if(TARGET test_font_atlas_cache)
+    # The cache header carries the built atlas type, so the test needs the
+    # atlas builder's headers as well as the library it is linked against.
+    target_link_libraries(test_font_atlas_cache PRIVATE vnm_msdf_text::vnm_msdf_text)
+    if(TARGET Threads::Threads)
+        target_link_libraries(test_font_atlas_cache PRIVATE Threads::Threads)
+    endif()
+endif()
 if(TARGET test_font_disk_cache)
     target_compile_definitions(test_font_disk_cache PRIVATE VNM_PLOT_ENABLE_TEST_HOOKS=1)
 endif()
@@ -172,8 +182,14 @@ vnm_plot_add_test(RhiHelpers test_rhi_helpers)
 vnm_plot_add_test(LabelPaneGeometry test_label_pane_geometry)
 vnm_plot_add_test(QrhiLayerLifecycle test_qrhi_layer_lifecycle)
 vnm_plot_add_test(QrhiPublicApi test_qrhi_public_api)
+if(TARGET test_font_atlas_cache)
+    vnm_plot_add_test(FontAtlasCache test_font_atlas_cache)
+endif()
 if(TARGET test_font_disk_cache)
     vnm_plot_add_test(FontDiskCache test_font_disk_cache)
+endif()
+if(TARGET test_font_identity)
+    vnm_plot_add_test(FontIdentity test_font_identity)
 endif()
 if(TARGET test_font_renderer_bounds)
     vnm_plot_add_test(FontRendererBounds test_font_renderer_bounds)

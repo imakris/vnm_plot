@@ -69,7 +69,7 @@ bool test_bounds_fail_closed_for_no_visible_glyphs()
     plot::init_embedded_assets(loader);
 
     plot::Font_renderer renderer;
-    renderer.initialize_metrics(loader, k_test_font_px, true);
+    renderer.initialize_metrics(loader, k_test_font_px);
 
     glm::vec4 bounds(1.0f);
     TEST_ASSERT(!renderer.text_visual_bounds_px(nullptr, 10.0f, 20.0f, bounds),
@@ -89,7 +89,7 @@ bool test_visible_bounds_are_finite_ordered_and_translation_invariant()
     plot::init_embedded_assets(loader);
 
     plot::Font_renderer renderer;
-    renderer.initialize_metrics(loader, k_test_font_px, true);
+    renderer.initialize_metrics(loader, k_test_font_px);
 
     constexpr const char* k_text = "Axis 123";
     constexpr float       x      = 12.25f;

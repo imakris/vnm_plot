@@ -91,6 +91,10 @@ public:
     void initialize(Asset_loader& asset_loader, int pixel_height, bool force_rebuild = false);
 
     // Initializes CPU font metrics/cache for layout calculation before the render pass.
+    // The atlas is built from the "fonts/monospace.ttf" asset of the given
+    // loader: loaders that register different font bytes get different atlases,
+    // and each atlas is built once per (font, pixel height) across all threads.
+    // force_rebuild discards the cached atlas for that pair and rebuilds it.
     void initialize_metrics(
         Asset_loader&          asset_loader,
         int                    pixel_height,
