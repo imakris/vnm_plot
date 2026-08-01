@@ -1,6 +1,7 @@
 #include <vnm_plot/rhi/font_renderer.h>
 #include <vnm_plot/core/lcd.h>
 #include <vnm_plot/rhi/asset_loader.h>
+#include "atomic_file_write.h"
 #include "font_atlas_cache.h"
 #include "platform_paths.h"
 #include "rhi_helpers.h"
@@ -437,7 +438,7 @@ std::shared_ptr<cached_font_data_t> load_cached_font_from_disk(
     const std::array<std::uint8_t, 32>&    expected_digest,
     int                                    pixel_height);
 
-void save_cached_font_to_disk(
+[[nodiscard]] bool save_cached_font_to_disk(
     const std::filesystem::path&           path,
     const cached_font_data_t&              font);
 
@@ -595,15 +596,8 @@ std::shared_ptr<cached_font_data_t> load_cached_font_from_disk(
     return font;
 }
 
-void save_cached_font_to_disk(
-    const std::filesystem::path&   path,
-    const cached_font_data_t&      font)
+bool serialize_cached_font(std::ostream& out, const cached_font_data_t& font)
 {
-    std::ofstream out(path, std::ios::binary | std::ios::trunc);
-    if (!out) {
-        return;
-    }
-
     auto write = [&](auto val) {
         out.write(reinterpret_cast<const char*>(&val), sizeof(val));
     };
@@ -655,6 +649,22 @@ void save_cached_font_to_disk(
             reinterpret_cast<const char*>(font.atlas.rgba.data()),
             static_cast<std::streamsize>(font.atlas.rgba.size()));
     }
+
+    return static_cast<bool>(out);
+}
+
+bool save_cached_font_to_disk(
+    const std::filesystem::path&   path,
+    const cached_font_data_t&      font)
+{
+    // Published through a temporary of its own, so a reader never sees a
+    // partially written cache and two writers of the same file cannot
+    // interleave their records into a structurally valid mixture.
+    return detail::write_file_atomically(
+        path,
+        [&font](std::ostream& out) {
+            return serialize_cached_font(out, font);
+        });
 }
 
 std::shared_ptr<cached_font_data_t> build_font_cache(
@@ -733,8 +743,10 @@ std::shared_ptr<cached_font_data_t> load_or_build_font_cache(
                 log_error,
                 log_debug);
             if (built && disk_cache) {
-                save_cached_font_to_disk(
-                    cache_file_path(pixel_height, key.font_digest), *built);
+                const auto cache_path = cache_file_path(pixel_height, key.font_digest);
+                if (!save_cached_font_to_disk(cache_path, *built) && log_error) {
+                    log_error("Failed to publish MSDF font cache " + cache_path.string());
+                }
             }
             return built;
         });

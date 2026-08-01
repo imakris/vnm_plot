@@ -324,6 +324,7 @@ set(VNM_PLOT_RHI_SOURCES
 
 if(VNM_PLOT_ENABLE_TEXT)
     list(APPEND VNM_PLOT_RHI_SOURCES
+        src/core/atomic_file_write.cpp
         src/core/font_atlas_cache.cpp
         src/core/font_renderer.cpp
         src/core/msdf_text_api_guard.cpp
