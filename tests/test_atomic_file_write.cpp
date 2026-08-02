@@ -167,6 +167,91 @@ bool test_concurrent_writers_publish_one_whole_file()
     return true;
 }
 
+bool test_a_concurrent_reader_never_observes_a_partial_file()
+{
+    Scoped_temp_dir tmp;
+    const auto      path = tmp.path / "republished.bin";
+
+    // The MSDF cache is written by whichever renderer just baked an atlas while
+    // another renderer may be loading the same file, so the destination is
+    // republished under a live reader. Sized to make the write span several
+    // buffer flushes, which is what let the previous in-place writer expose a
+    // file that had been truncated to zero and was still growing.
+    constexpr std::size_t k_payload_bytes = 1024 * 1024;
+    constexpr int         k_republish_rounds = 12;
+
+    TEST_ASSERT(detail::write_file_atomically(
+            path,
+            [](std::ostream& out) {
+                return write_text(out, std::string(k_payload_bytes, 'A'));
+            }),
+        "the first publication should succeed");
+
+    std::atomic<bool> stop{false};
+    std::atomic<bool> reader_started{false};
+    std::atomic<int>  whole_reads{0};
+    std::atomic<int>  torn_reads{0};
+
+    std::thread reader([&] {
+        while (!stop.load(std::memory_order_relaxed)) {
+            std::ifstream in(path, std::ios::binary);
+            if (!in) {
+                // A replacing rename leaves the old file delete-pending for an
+                // instant, during which the destination cannot be opened by
+                // name. The cache reader treats that as a miss and rebuilds, so
+                // it costs a rebuild rather than producing a wrong result.
+                reader_started.store(true, std::memory_order_release);
+                continue;
+            }
+            std::ostringstream buffer;
+            buffer << in.rdbuf();
+            const std::string contents = buffer.str();
+            if (contents.size() != k_payload_bytes ||
+                contents != std::string(k_payload_bytes, contents.front()))
+            {
+                torn_reads.fetch_add(1, std::memory_order_relaxed);
+            }
+            else {
+                whole_reads.fetch_add(1, std::memory_order_relaxed);
+            }
+            reader_started.store(true, std::memory_order_release);
+        }
+    });
+
+    // The republication loop can outrun thread startup, so wait until the reader
+    // has observed the settled first publication before contending with it.
+    while (!reader_started.load(std::memory_order_acquire)) {
+        std::this_thread::yield();
+    }
+
+    // A reader that holds the destination open blocks the replacing rename on
+    // Windows, so a republication under this reader is allowed to fail; what it
+    // may never do is let the reader see anything but one writer's whole
+    // payload. Failed publications are covered by the tests above.
+    for (int round = 1; round <= k_republish_rounds; ++round) {
+        (void)detail::write_file_atomically(
+            path,
+            [round](std::ostream& out) {
+                return write_text(out, std::string(k_payload_bytes, static_cast<char>('A' + round)));
+            });
+    }
+    stop.store(true, std::memory_order_relaxed);
+    reader.join();
+
+    TEST_ASSERT(whole_reads.load(std::memory_order_relaxed) > 0,
+        "the reader should have observed the destination at least once");
+    TEST_ASSERT(torn_reads.load(std::memory_order_relaxed) == 0,
+        "an opened destination must never be empty, short or a mixture of two payloads");
+
+    const std::string contents = read_file(path);
+    TEST_ASSERT(contents.size() == k_payload_bytes &&
+        contents == std::string(k_payload_bytes, contents.front()),
+        "the destination must end up as exactly one writer's payload");
+    TEST_ASSERT(entry_count(tmp.path) == 1u,
+        "a blocked republication must not leave a temporary behind");
+    return true;
+}
+
 } // namespace
 
 int main()
@@ -180,6 +265,7 @@ int main()
     RUN_TEST(test_interrupted_body_leaves_the_destination_untouched);
     RUN_TEST(test_failed_stream_write_is_not_published);
     RUN_TEST(test_concurrent_writers_publish_one_whole_file);
+    RUN_TEST(test_a_concurrent_reader_never_observes_a_partial_file);
 
     std::cout << "Results: " << passed << " passed, " << failed << " failed" << std::endl;
     return failed > 0 ? 1 : 0;
