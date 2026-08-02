@@ -72,7 +72,8 @@ using font_disk_cache_digest_t = std::array<std::uint8_t, 32>;
 // Font Renderer
 // -----------------------------------------------------------------------------
 // Renders text using multi-channel signed distance field (MSDF) technique.
-// Thread-local resources are managed internally for multi-threaded rendering.
+// The atlas is memoized process-wide and handed to each instance as an
+// immutable shared snapshot, so instances on one thread stay independent.
 class Font_renderer
 {
 public:
@@ -85,11 +86,6 @@ public:
     Font_renderer(Font_renderer&&)                 = delete;
     Font_renderer& operator=(Font_renderer&&)      = delete;
 
-    // Initializes the font system and ensures text metrics are ready.
-    // asset_loader: Provider for font and shader assets
-    // force_rebuild regenerates cached metrics even if the pixel height matches.
-    void initialize(Asset_loader& asset_loader, int pixel_height, bool force_rebuild = false);
-
     // Initializes CPU font metrics/cache for layout calculation before the render pass.
     // The atlas is built from the "fonts/monospace.ttf" asset of the given
     // loader: loaders that register different font bytes get different atlases,
@@ -99,9 +95,6 @@ public:
         Asset_loader&          asset_loader,
         int                    pixel_height,
         bool                   force_rebuild = false);
-
-    // Releases this instance's weak reference to the shared resources.
-    void deinitialize();
 
     void set_log_callbacks(
         std::function<void(const std::string&)>    log_error,
@@ -132,7 +125,10 @@ public:
 
     // --- Text Rendering ---
 
-    // Adds a string to an internal vertex buffer to be drawn in a batch.
+    // Appends a string to the QRhi CPU batch to be drawn in this frame.
+    // There is exactly one such batch, and it only exists between
+    // rhi_begin_frame() and rhi_record_frame(): outside that window, or before
+    // initialize_metrics() has produced an atlas, the call is a no-op.
     void batch_text(float x, float y, const char* text);
 
     // Starts a QRhi text frame. Subsequent batch_text() calls append to the
@@ -163,9 +159,6 @@ public:
 
     // Clears QRhi per-frame CPU/draw state without touching persistent resources.
     void rhi_reset_frame();
-
-    // Clears the batch buffer without rendering.
-    void clear_buffer();
 
 private:
     struct impl_t;

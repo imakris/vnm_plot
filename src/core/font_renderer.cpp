@@ -71,13 +71,6 @@ bool font_disk_cache_enabled()
 
 namespace {
 
-struct vertex_buffer_t
-{
-    // 10 floats per vertex: position, tex bounds, local glyph frame rect
-    std::vector<float>         vertex_data;
-    std::vector<std::uint32_t> index_data;
-};
-
 using msdf_atlas_t       = vnm::msdf_text::atlas_t;
 using msdf_glyph_t       = vnm::msdf_text::glyph_t;
 using msdf_kerning_key_t = vnm::msdf_text::kerning_key_t;
@@ -105,56 +98,6 @@ static_assert(
 static_assert(
     std::is_standard_layout_v<rhi_text_vertex_t>,
     "MSDF RHI text vertex must remain standard layout");
-
-vertex_buffer_t* vertex_buffer_new(const char*)
-{
-    return new vertex_buffer_t();
-}
-
-void vertex_buffer_delete(vertex_buffer_t* buffer)
-{
-    if (!buffer) {
-        return;
-    }
-
-    delete buffer;
-}
-
-void vertex_buffer_clear(vertex_buffer_t* buffer)
-{
-    if (!buffer) {
-        return;
-    }
-    buffer->vertex_data.clear();
-    buffer->index_data.clear();
-}
-
-struct thread_local_font_resources_t
-{
-    vertex_buffer_t*   m_buffer       = nullptr;
-    int                m_pixel_height = 0;
-    std::uint64_t      m_cache_epoch  = 0;
-    msdf_atlas_t       m_atlas;
-
-    ~thread_local_font_resources_t()
-    {
-        destroy_resources();
-    }
-
-    void destroy_resources()
-    {
-        if (m_buffer) {
-            vertex_buffer_delete(m_buffer);
-            m_buffer = nullptr;
-        }
-    }
-};
-
-thread_local_font_resources_t& thread_local_resources()
-{
-    thread_local thread_local_font_resources_t resources;
-    return resources;
-}
 
 std::atomic<std::uint64_t> s_next_cache_epoch{1};
 
@@ -340,21 +283,6 @@ void add_text_to_vectors(
         vertex_data.push_back(vertex.frame_width);
         vertex_data.push_back(vertex.frame_height);
     }
-}
-
-void add_text_to_buffer(const char* text, float x, float y, thread_local_font_resources_t* res)
-{
-    if (!res || !res->m_buffer) {
-        return;
-    }
-    add_text_to_vectors(
-        text,
-        x,
-        y,
-        res->m_pixel_height,
-        res->m_atlas,
-        res->m_buffer->vertex_data,
-        res->m_buffer->index_data);
 }
 
 std::array<std::uint8_t, 32> compute_font_digest(const Byte_buffer& font_bytes)
@@ -861,7 +789,6 @@ struct rhi_text_state_t
 // --- PIMPL Definition ---
 struct Font_renderer::impl_t
 {
-    thread_local_font_resources_t*             m_resources           = nullptr;
     std::shared_ptr<cached_font_data_t>        m_font_cache;
     int                                        m_metric_pixel_height = 0;
     std::function<void(const std::string&)>    m_log_error;
@@ -874,28 +801,17 @@ struct Font_renderer::impl_t
 
     rhi_text_state_t m_rhi;
 
-    // m_resources is the live thread-local atlas the renderer mutates and
-    // m_font_cache is the cross-thread snapshot used by readers. The
-    // metric/measure accessors below prefer m_resources when set and fall
-    // back to m_font_cache; this helper centralizes the choice so each
-    // accessor doesn't repeat the "res ? res->X : (cached ? cached->Y : ...)"
-    // dance.
+    // m_font_cache is a shared_ptr to an immutable atlas, so the accessors below
+    // read it without a copy and two renderers on one thread never alias each
+    // other's font: each holds its own reference to the entry its own asset
+    // loader and draw height selected.
     const msdf_atlas_t* current_atlas() const
     {
-        if (m_resources) {
-            return &m_resources->m_atlas;
-        }
-        if (m_font_cache) {
-            return &m_font_cache->atlas;
-        }
-        return nullptr;
+        return m_font_cache ? &m_font_cache->atlas : nullptr;
     }
 
     std::uint64_t current_cache_epoch() const
     {
-        if (m_resources) {
-            return m_resources->m_cache_epoch;
-        }
         return m_font_cache ? m_font_cache->cache_epoch : std::uint64_t{0};
     }
 
@@ -903,9 +819,6 @@ struct Font_renderer::impl_t
     // needs it to derive draw-size geometry, advances, metrics, and px_range.
     int current_draw_pixel_height() const
     {
-        if (m_resources) {
-            return m_resources->m_pixel_height;
-        }
         return m_metric_pixel_height;
     }
 };
@@ -925,26 +838,6 @@ void Font_renderer::set_log_callbacks(
 {
     m_impl->m_log_error = log_error;
     m_impl->m_log_debug = log_debug;
-}
-
-void Font_renderer::initialize(Asset_loader& asset_loader, int pixel_height, bool force_rebuild)
-{
-    initialize_metrics(asset_loader, pixel_height, force_rebuild);
-    auto& resources = thread_local_resources();
-    if (force_rebuild || resources.m_pixel_height != pixel_height) {
-        resources.destroy_resources();
-        resources.m_buffer = vertex_buffer_new("vertex:2f,tex_bounds:4f,frame_rect:4f");
-    }
-    if (!m_impl->m_font_cache) {
-        m_impl->m_resources = nullptr;
-        return;
-    }
-
-    const auto& cached       = *m_impl->m_font_cache;
-    resources.m_pixel_height = pixel_height;
-    resources.m_cache_epoch  = cached.cache_epoch;
-    resources.m_atlas        = cached.atlas;
-    m_impl->m_resources      = &resources;
 }
 
 void Font_renderer::initialize_metrics(
@@ -971,13 +864,6 @@ void Font_renderer::initialize_metrics(
 
     m_impl->m_font_cache          = std::move(cached);
     m_impl->m_metric_pixel_height = pixel_height;
-}
-
-void Font_renderer::deinitialize()
-{
-    // Detach this instance from the thread-local GPU resources.
-    // We do not force global TLS teardown here; resources are reclaimed on normal process exit.
-    m_impl->m_resources = nullptr;
 }
 
 float Font_renderer::measure_text_px(const char* text) const
@@ -1080,27 +966,18 @@ float Font_renderer::baseline_offset_px() const
 
 void Font_renderer::batch_text(float x, float y, const char* text)
 {
-    if (m_impl->m_rhi_batch_active) {
-        const auto* cached = m_impl->m_font_cache.get();
-        if (!cached) {
-            return;
-        }
-        add_text_to_vectors(
-            text,
-            x,
-            y,
-            cached->draw_pixel_height,
-            cached->atlas,
-            m_impl->m_rhi_vertex_data,
-            m_impl->m_rhi_index_data);
+    const auto* cached = m_impl->m_font_cache.get();
+    if (!m_impl->m_rhi_batch_active || !cached) {
         return;
     }
-
-    auto* res = m_impl->m_resources;
-    if (!res) {
-        return;
-    }
-    add_text_to_buffer(text, x, y, res);
+    add_text_to_vectors(
+        text,
+        x,
+        y,
+        cached->draw_pixel_height,
+        cached->atlas,
+        m_impl->m_rhi_vertex_data,
+        m_impl->m_rhi_index_data);
 }
 
 void Font_renderer::rhi_begin_frame()
@@ -1610,20 +1487,6 @@ void Font_renderer::rhi_reset_frame()
     m_impl->m_rhi_frame_index_data.clear();
     m_impl->m_rhi.ops.clear();
     m_impl->m_rhi.call_used = 0;
-}
-
-void Font_renderer::clear_buffer()
-{
-    if (m_impl->m_rhi_batch_active) {
-        m_impl->m_rhi_vertex_data.clear();
-        m_impl->m_rhi_index_data.clear();
-        return;
-    }
-
-    auto* res = m_impl->m_resources;
-    if (res && res->m_buffer) {
-        vertex_buffer_clear(res->m_buffer);
-    }
 }
 
 } // namespace vnm::plot

@@ -662,9 +662,6 @@ Benchmark_rhi_offscreen_runner::Benchmark_rhi_offscreen_runner(const Benchmark_c
 Benchmark_rhi_offscreen_runner::~Benchmark_rhi_offscreen_runner()
 {
     stop_generator_thread();
-#if defined(VNM_PLOT_ENABLE_TEXT)
-    m_font_renderer.deinitialize();
-#endif
 }
 
 void Benchmark_rhi_offscreen_runner::setup_data_source()

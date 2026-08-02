@@ -38,17 +38,7 @@ bool font_disk_cache_enabled()
 Font_renderer::Font_renderer()  = default;
 Font_renderer::~Font_renderer() = default;
 
-void Font_renderer::initialize(Asset_loader&, int, bool)
-{
-    // No-op in stub.
-}
-
 void Font_renderer::initialize_metrics(Asset_loader&, int, bool)
-{
-    // No-op in stub.
-}
-
-void Font_renderer::deinitialize()
 {
     // No-op in stub.
 }
@@ -137,11 +127,6 @@ void Font_renderer::rhi_record_frame(const frame_context_t&)
 }
 
 void Font_renderer::rhi_reset_frame()
-{
-    // No-op in stub.
-}
-
-void Font_renderer::clear_buffer()
 {
     // No-op in stub.
 }
