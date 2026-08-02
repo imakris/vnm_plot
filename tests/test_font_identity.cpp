@@ -9,9 +9,11 @@
 #include <vnm_plot/rhi/asset_loader.h>
 #include <vnm_plot/rhi/font_renderer.h>
 
+#include <atomic>
 #include <cstdint>
 #include <iostream>
 #include <string>
+#include <thread>
 
 namespace plot = vnm::plot;
 
@@ -106,6 +108,51 @@ bool test_forced_rebuild_regenerates_the_atlas()
     return true;
 }
 
+bool test_concurrent_renderers_share_one_atlas_build()
+{
+    Scoped_font_disk_cache_setting cache_setting(false);
+
+    plot::Asset_loader loader;
+    plot::init_embedded_assets(loader);
+
+    // A height no earlier case in this process has built, so both threads miss
+    // the memo and the disk cache is off, which keeps the bake long enough for
+    // the second thread to arrive while the first is still inside it. This is
+    // the shape Logonomic and Phylax produce: two QQuickRhiItems, and therefore
+    // two Qt scene-graph render threads, initializing font metrics at once.
+    constexpr int k_concurrent_font_px = k_test_font_px + 1;
+
+    plot::Font_renderer   first_renderer;
+    plot::Font_renderer   second_renderer;
+    std::atomic<int>      ready{0};
+
+    const auto initialize = [&](plot::Font_renderer& renderer) {
+        ready.fetch_add(1, std::memory_order_acq_rel);
+        while (ready.load(std::memory_order_acquire) < 2) {
+            std::this_thread::yield();
+        }
+        renderer.initialize_metrics(loader, k_concurrent_font_px);
+    };
+
+    std::thread first([&] { initialize(first_renderer); });
+    std::thread second([&] { initialize(second_renderer); });
+    first.join();
+    second.join();
+
+    const std::uint64_t first_key  = first_renderer.text_measure_cache_key();
+    const std::uint64_t second_key = second_renderer.text_measure_cache_key();
+
+    TEST_ASSERT(first_key != 0 && second_key != 0,
+        "both concurrent renderers must end up with an atlas");
+    // The key is the atlas' cache epoch, which is stamped once per production,
+    // so two distinct keys mean the two threads each ran their own multi-second
+    // bake of the same font at the same height.
+    TEST_ASSERT(first_key == second_key,
+        "concurrent renderers at one height must share a single atlas build");
+
+    return true;
+}
+
 } // namespace
 
 int main()
@@ -117,6 +164,7 @@ int main()
 
     RUN_TEST(test_distinct_loader_fonts_do_not_share_an_atlas);
     RUN_TEST(test_forced_rebuild_regenerates_the_atlas);
+    RUN_TEST(test_concurrent_renderers_share_one_atlas_build);
 
     std::cout << "Results: " << passed << " passed, " << failed << " failed" << std::endl;
     return failed > 0 ? 1 : 0;
