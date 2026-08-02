@@ -238,7 +238,7 @@ void Plot_renderer::synchronize(QQuickRhiItem* item)
     {
         std::shared_lock lock(widget->m_series_mutex);
         m_impl->snapshot.series          = widget->m_series;
-        m_impl->snapshot.series_revision = widget->m_series_revision.load(std::memory_order_acquire);
+        m_impl->snapshot.series_revision = widget->series_revision();
     }
     m_impl->snapshot.v_auto = widget->m_v_auto.load(std::memory_order_acquire);
     m_impl->snapshot.visible_info_flags =
@@ -527,34 +527,7 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
 
         if (m_impl->series_initialized) {
             m_impl->series.prepare(ctx, snapshot.series);
-            for (const auto& [group, revisions] : m_impl->series.main_stack_validity()) {
-                auto& stored = feedback.stack_validity[group];
-                stored.reserve(revisions.size());
-                for (const auto& revision : revisions) {
-                    stored.push_back({
-                        revision.series_id,
-                        revision.source,
-                        revision.lod,
-                        revision.sequence,
-                        revision.interpolation,
-                        revision.cumulative});
-                }
-            }
-            for (const auto& [key, rendered] : m_impl->series.stack_view_statuses()) {
-                auto& stored  = feedback.stack_statuses[key];
-                stored.status = rendered.status;
-                stored.sources.reserve(rendered.sources.size());
-                for (const auto& source : rendered.sources) {
-                    stored.sources.push_back({
-                        source.series_id,
-                        source.source,
-                        source.lod,
-                        source.sequence,
-                        source.interpolation,
-                        source.cumulative});
-                }
-            }
-            feedback.stack_validity_ready = true;
+            detail::fill_stack_feedback(m_impl->series, feedback);
         }
 
         const Text_renderer* prepared_text = nullptr;

@@ -352,6 +352,7 @@ set(VNM_PLOT_RHI_HEADERS
 )
 
 set(VNM_PLOT_QTQUICK_SOURCES
+    src/qt/plot_render_feedback.cpp
     src/qt/plot_renderer.cpp
     src/qt/lcd_resolver.cpp
     src/qt/plot_widget.cpp

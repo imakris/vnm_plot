@@ -48,6 +48,10 @@ struct plot_render_feedback_t
     bool                   stack_validity_ready = false;
 };
 
+// The stack half of this record has exactly one producer, detail::fill_stack_feedback:
+// declared in vnm_plot/rhi/series_renderer.h, which befriends it so that it can read a
+// completed pass, and defined in plot_render_feedback.cpp.
+
 // Shared by the scene-graph renderer and its item without either retaining
 // the other. Render publishes into latest; the after-rendering marker moves
 // only a frame-complete generation into completed for GUI-thread delivery.

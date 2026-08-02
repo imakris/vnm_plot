@@ -1905,78 +1905,9 @@ bool Plot_widget::rendered_t_range(qint64& out_min_ns, qint64& out_max_ns) const
     return true;
 }
 
-void Plot_widget::set_rendered_stack_validity(
-    const Series_renderer& renderer,
-    qint64                 t_min_ns,
-    qint64                 t_max_ns) const
+std::uint64_t Plot_widget::series_revision() const
 {
-    set_rendered_stack_validity(
-        renderer,
-        t_min_ns,
-        t_max_ns,
-        t_min_ns,
-        t_max_ns,
-        m_series_revision.load(std::memory_order_acquire));
-}
-
-void Plot_widget::set_rendered_stack_validity(
-    const Series_renderer& renderer,
-    qint64                 t_min_ns,
-    qint64                 t_max_ns,
-    std::uint64_t          series_revision) const
-{
-    set_rendered_stack_validity(
-        renderer,
-        t_min_ns,
-        t_max_ns,
-        t_min_ns,
-        t_max_ns,
-        series_revision);
-}
-
-void Plot_widget::set_rendered_stack_validity(
-    const Series_renderer& renderer,
-    qint64                 t_min_ns,
-    qint64                 t_max_ns,
-    qint64                 t_available_min_ns,
-    qint64                 t_available_max_ns,
-    std::uint64_t          series_revision) const
-{
-    std::lock_guard lock(m_rendered_stack_validity_mutex);
-    m_rendered_stack_validity.clear();
-    m_rendered_stack_statuses.clear();
-    m_rendered_stack_t_min           = t_min_ns;
-    m_rendered_stack_t_max           = t_max_ns;
-    m_rendered_stack_available_t_min = t_available_min_ns;
-    m_rendered_stack_available_t_max = t_available_max_ns;
-    m_rendered_stack_series_revision = series_revision;
-    for (const auto& [group, revisions] : renderer.main_stack_validity()) {
-        auto& stored = m_rendered_stack_validity[group];
-        stored.reserve(revisions.size());
-        for (const auto& revision : revisions) {
-            stored.push_back({
-                revision.series_id,
-                revision.source,
-                revision.lod,
-                revision.sequence,
-                revision.interpolation,
-                revision.cumulative});
-        }
-    }
-    for (const auto& [key, rendered] : renderer.stack_view_statuses()) {
-        auto& stored  = m_rendered_stack_statuses[key];
-        stored.status = rendered.status;
-        stored.sources.reserve(rendered.sources.size());
-        for (const auto& source : rendered.sources) {
-            stored.sources.push_back({
-                source.series_id,
-                source.source,
-                source.lod,
-                source.sequence,
-                source.interpolation,
-                source.cumulative});
-        }
-    }
+    return m_series_revision.load(std::memory_order_acquire);
 }
 
 std::optional<std::vector<std::pair<int, double>>> Plot_widget::rendered_stack_values(

@@ -32,7 +32,6 @@ class QQuickWindow;
 namespace vnm::plot {
 
 class Plot_renderer;
-class Series_renderer;
 class Plot_time_axis;
 
 namespace detail {
@@ -287,24 +286,16 @@ protected:
         qint64&                out_min_ns,
         qint64&                out_max_ns) const;
 
-    void set_rendered_stack_validity(
-        const Series_renderer& renderer,
-        qint64                 t_min_ns,
-        qint64                 t_max_ns) const;
+    // Revision of the series set, bumped whenever series are added, replaced or
+    // removed. A pass renders one revision and reports it back through
+    // apply_render_feedback, which is how the widget tells a current rendered
+    // result from one the series have moved past.
+    std::uint64_t series_revision() const;
 
-    void set_rendered_stack_validity(
-        const Series_renderer& renderer,
-        qint64                 t_min_ns,
-        qint64                 t_max_ns,
-        std::uint64_t          series_revision) const;
-
-    void set_rendered_stack_validity(
-        const Series_renderer& renderer,
-        qint64                 t_min_ns,
-        qint64                 t_max_ns,
-        qint64                 t_available_min_ns,
-        qint64                 t_available_max_ns,
-        std::uint64_t          series_revision) const;
+    // Applies a completed render pass to the rendered-state mirror that QML
+    // reads. The renderer delivers its passes through the feedback channel,
+    // which ends here.
+    void apply_render_feedback(const detail::plot_render_feedback_t& feedback);
 
 private:
     enum class Indicator_sample_mode
@@ -441,7 +432,6 @@ private:
         const std::shared_ptr<detail::plot_render_feedback_channel_t>& channel);
     void deliver_render_feedback(
         const std::shared_ptr<detail::plot_render_feedback_channel_t>& channel);
-    void apply_render_feedback(const detail::plot_render_feedback_t& feedback);
     void set_rendered_v_range(float v_min, float v_max) const;
     void set_rendered_t_range(qint64 t_min_ns, qint64 t_max_ns) const;
     void sync_time_axis_state();

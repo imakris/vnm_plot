@@ -2,6 +2,8 @@
 
 #include "test_macros.h"
 
+#include "../src/qt/plot_render_feedback.h"
+
 #include <vnm_plot/core/access_policy.h>
 #include <vnm_plot/core/algo.h>
 #include <vnm_plot/core/time_units.h>
@@ -37,12 +39,18 @@ public:
 class indicator_test_widget_t : public plot::Plot_widget
 {
 public:
-    void publish_stack_validity(
-        const plot::Series_renderer&   renderer,
-        std::int64_t                   t_min_ns,
-        std::int64_t                   t_max_ns)
+    // Stamps a render pass with the revision it renders, the way the renderer
+    // does when it captures the widget's series.
+    std::uint64_t rendered_series_revision() const
     {
-        set_rendered_stack_validity(renderer, t_min_ns, t_max_ns);
+        return series_revision();
+    }
+
+    // Hands a completed pass to the widget through the same entry point the
+    // renderer's feedback channel delivers to.
+    void publish_render_feedback(const plot::detail::plot_render_feedback_t& feedback)
+    {
+        apply_render_feedback(feedback);
     }
 };
 
@@ -223,8 +231,16 @@ void publish_rendered_stack_validity(
     plot::Asset_loader assets;
     plot::Series_renderer renderer;
     renderer.initialize(assets);
+
+    plot::detail::plot_render_feedback_t feedback;
+    feedback.t_min           = t_min_ns;
+    feedback.t_max           = t_max_ns;
+    feedback.t_available_min = t_min_ns;
+    feedback.t_available_max = t_max_ns;
+    feedback.series_revision = widget.rendered_series_revision();
     renderer.render(context, series);
-    widget.publish_stack_validity(renderer, t_min_ns, t_max_ns);
+    plot::detail::fill_stack_feedback(renderer, feedback);
+    widget.publish_render_feedback(feedback);
 }
 
 bool test_zoom_math_is_invariant_to_timer_cadence()

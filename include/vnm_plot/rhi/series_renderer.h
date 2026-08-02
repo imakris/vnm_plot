@@ -26,11 +26,18 @@ namespace vnm::plot {
 class Asset_loader;
 class Profiler;
 class Plot_renderer;
-class Plot_widget;
+class Series_renderer;
 
 namespace detail {
 struct series_window_planner_state_t;
 struct Series_window_snapshot_cache;
+struct plot_render_feedback_t;
+
+// Copies the stack validity a completed pass produced into the render feedback
+// the plot widget applies. The Qt layer owns plot_render_feedback_t and defines
+// this in src/qt/plot_render_feedback.cpp; the declaration lives here only so
+// that Series_renderer can befriend the single producer of that feedback.
+void fill_stack_feedback(const Series_renderer& series, plot_render_feedback_t& feedback);
 
 // One contiguous run of GPU samples a built-in LINE/AREA primitive draws as a
 // single strip. Derived purely from a sample_window_t; computed once during
@@ -85,7 +92,9 @@ public:
 
 private:
     friend class Plot_renderer;
-    friend class Plot_widget;
+    friend void detail::fill_stack_feedback(
+        const Series_renderer&              series,
+        detail::plot_render_feedback_t&     feedback);
 
     struct stack_source_revision_t
     {
