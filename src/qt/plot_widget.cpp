@@ -166,7 +166,7 @@ Plot_widget::Plot_widget()
     setSampleCount(k_msaa_samples);
     setFlag(ItemHasContents, true);
 
-    QObject::connect(
+    m_window_changed_connection = QObject::connect(
         this,
         &QQuickItem::windowChanged,
         this,
@@ -175,6 +175,13 @@ Plot_widget::Plot_widget()
 
 Plot_widget::~Plot_widget()
 {
+    // ~QQuickItem detaches from its parent item and emits windowChanged from
+    // inside the base destructor, long after this subobject and its mutexes
+    // are gone. Drop the connection before anything else so that path cannot
+    // re-enter a destroyed Plot_widget.
+    QObject::disconnect(m_window_changed_connection);
+    m_window_changed_connection = {};
+
     m_vbar_width_timer.stop();
     QObject::disconnect(m_render_feedback_completion_connection);
     m_render_feedback_completion_connection = {};

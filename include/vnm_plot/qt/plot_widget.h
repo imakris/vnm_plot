@@ -445,6 +445,7 @@ private:
     QMetaObject::Connection        m_time_axis_destroyed_connection;
     QMetaObject::Connection        m_time_axis_vbar_connection;
     QMetaObject::Connection        m_time_axis_sync_vbar_connection;
+    QMetaObject::Connection        m_window_changed_connection;
     QMetaObject::Connection        m_window_screen_connection;
 };
 
