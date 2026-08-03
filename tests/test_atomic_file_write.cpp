@@ -12,6 +12,7 @@
 #include <iostream>
 #include <ostream>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <system_error>
 #include <thread>
@@ -125,6 +126,36 @@ bool test_failed_stream_write_is_not_published()
         "a failed stream write must not create the destination");
     TEST_ASSERT(entry_count(tmp.path) == 0u,
         "a failed stream write must not leave a temporary behind");
+    return true;
+}
+
+bool test_a_throwing_body_leaves_no_temporary_behind()
+{
+    Scoped_temp_dir tmp;
+    const auto      path = tmp.path / "thrown.bin";
+
+    // write_file_atomically documents that any failure removes the temporary,
+    // and a body that throws is a failure it cannot report through its return
+    // value. Serializing a cache record allocates, so the escape is reachable
+    // even though today's caller has no throw of its own.
+    bool propagated = false;
+    try {
+        (void)detail::write_file_atomically(
+            path,
+            [](std::ostream& out) -> bool {
+                write_text(out, "half");
+                throw std::runtime_error("write_body failed");
+            });
+    }
+    catch (const std::runtime_error&) {
+        propagated = true;
+    }
+
+    TEST_ASSERT(propagated, "an exception out of the body must reach the caller");
+    TEST_ASSERT(!std::filesystem::exists(path),
+        "a throwing body must not create the destination");
+    TEST_ASSERT(entry_count(tmp.path) == 0u,
+        "a throwing body must not leave a temporary behind");
     return true;
 }
 
@@ -264,6 +295,7 @@ int main()
     RUN_TEST(test_published_file_holds_the_written_payload);
     RUN_TEST(test_interrupted_body_leaves_the_destination_untouched);
     RUN_TEST(test_failed_stream_write_is_not_published);
+    RUN_TEST(test_a_throwing_body_leaves_no_temporary_behind);
     RUN_TEST(test_concurrent_writers_publish_one_whole_file);
     RUN_TEST(test_a_concurrent_reader_never_observes_a_partial_file);
 

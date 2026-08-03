@@ -96,6 +96,25 @@ bool write_file_atomically(
 {
     const std::filesystem::path temporary = temporary_path_for(path);
 
+    // The temporary exists only to become the destination, so every exit that
+    // does not rename it removes it. The guard is declared before the stream so
+    // the stream is closed first, which is what lets Windows delete the file,
+    // and it covers the one exit a return statement cannot: write_body throwing.
+    struct Temporary_file_guard
+    {
+        const std::filesystem::path&   file;
+        bool                           published = false;
+
+        ~Temporary_file_guard()
+        {
+            if (published) {
+                return;
+            }
+            std::error_code ec;
+            std::filesystem::remove(file, ec);
+        }
+    } guard{temporary};
+
     std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
     if (!out) {
         return false;
@@ -111,11 +130,10 @@ bool write_file_atomically(
     complete = complete && out.good();
 
     if (complete && replace_destination(temporary, path)) {
+        guard.published = true;
         return true;
     }
 
-    std::error_code ec;
-    std::filesystem::remove(temporary, ec);
     return false;
 }
 
