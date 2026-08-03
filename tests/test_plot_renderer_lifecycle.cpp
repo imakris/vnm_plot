@@ -458,9 +458,6 @@ int main(int argc, char** argv)
 {
     qputenv("QSG_RENDER_LOOP", QByteArrayLiteral("threaded"));
     QGuiApplication app(argc, argv);
-#if defined(Q_OS_WIN)
-    QQuickWindow::setGraphicsApi(QSGRendererInterface::Direct3D11);
-#endif
 
     std::cout << "Plot renderer lifecycle tests" << std::endl;
 
