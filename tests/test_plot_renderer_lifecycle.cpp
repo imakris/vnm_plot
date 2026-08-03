@@ -159,6 +159,54 @@ bool wait_until(const std::function<bool()>& predicate, int timeout_ms)
     return predicate();
 }
 
+struct rhi_probe_t
+{
+    std::atomic<bool> answered{false};
+    std::atomic<bool> has_rhi{false};
+};
+
+// Records whether this window's scene graph came up with a QRhi. It is the same
+// interrogation QQuickRhiItemNode::sync() performs before it declares that the
+// item "will not be functional", so it names the exact capability the
+// renderer-backed cases depend on - never the platform they happen to run on.
+// The query runs on the scene-graph thread, where the resource pointer is the
+// one the renderer will use, and the state is shared so the connection cannot
+// outlive what it writes into.
+std::shared_ptr<rhi_probe_t> probe_window_rhi(QQuickWindow& window)
+{
+    auto probe = std::make_shared<rhi_probe_t>();
+
+    QObject::connect(
+        &window,
+        &QQuickWindow::sceneGraphInitialized,
+        &window,
+        [probe, &window] {
+            QSGRendererInterface* renderer_interface = window.rendererInterface();
+            probe->has_rhi.store(
+                renderer_interface != nullptr &&
+                    renderer_interface->getResource(
+                        &window,
+                        QSGRendererInterface::RhiResource) != nullptr,
+                std::memory_order_release);
+            probe->answered.store(true, std::memory_order_release);
+        },
+        Qt::DirectConnection);
+
+    return probe;
+}
+
+// A scene graph that never answers, and one that answers without a QRhi, are
+// the same fact for a QQuickRhiItem: no renderer callback will ever run, so its
+// behavior is unobservable here rather than wrong.
+bool window_provides_rhi(const std::shared_ptr<rhi_probe_t>& probe)
+{
+    const bool answered = wait_until(
+        [&] { return probe->answered.load(std::memory_order_acquire); },
+        k_scene_graph_timeout_ms);
+
+    return answered && probe->has_rhi.load(std::memory_order_acquire);
+}
+
 void configure_static_widget(test_widget_t& widget, QQuickWindow& window)
 {
     widget.setParentItem(window.contentItem());
@@ -250,14 +298,21 @@ bool test_created_renderer_has_independent_lifetime()
     return true;
 }
 
-bool test_static_first_frame_delivers_feedback()
+bool test_static_first_frame_delivers_feedback(bool& unsupported_configuration)
 {
     QQuickWindow window;
     window.resize(480, 320);
+    auto probe = probe_window_rhi(window);
 
     auto widget = std::make_unique<test_widget_t>();
     configure_static_widget(*widget, window);
     window.show();
+
+    if (!window_provides_rhi(probe)) {
+        unsupported_configuration = true;
+        window.close();
+        return false;
+    }
 
     float  v_min = 0.0f;
     float  v_max = 0.0f;
@@ -282,10 +337,12 @@ bool test_static_first_frame_delivers_feedback()
     return true;
 }
 
-bool test_destroy_before_renderer_only_frame_cancels_feedback_delivery()
+bool test_destroy_before_renderer_only_frame_cancels_feedback_delivery(
+    bool& unsupported_configuration)
 {
     QQuickWindow window;
     window.resize(480, 320);
+    auto probe = probe_window_rhi(window);
 
     QObject gui_context;
     auto state  = std::make_shared<destruction_state_t>();
@@ -323,6 +380,13 @@ bool test_destroy_before_renderer_only_frame_cancels_feedback_delivery()
         Qt::DirectConnection);
 
     window.show();
+
+    if (!window_provides_rhi(probe)) {
+        unsupported_configuration = true;
+        window.close();
+        return false;
+    }
+
     const bool lifecycle_completed = wait_until(
         [&] {
             return
@@ -347,6 +411,47 @@ bool test_destroy_before_renderer_only_frame_cancels_feedback_delivery()
     return true;
 }
 
+using rhi_dependent_test_fn_t = bool (*)(bool& unsupported_configuration);
+
+// An RHI-dependent case reports through its out-parameter that the window it
+// opened never received a QRhi. That is a statement about the environment, not
+// about the renderer, so it is tallied and printed apart from a real failure:
+// it must never read as a pass, and it must still fail the run, because a job
+// that is supposed to have a graphics backend and silently stops exercising it
+// is exactly the degradation this suite exists to catch.
+void run_rhi_dependent_test(
+    const char*             name,
+    rhi_dependent_test_fn_t test_fn,
+    int&                    passed,
+    int&                    failed,
+    int&                    unsupported)
+{
+    std::cout << "Running " << name << "... ";
+
+    bool       unsupported_configuration = false;
+    const bool assertions_held           = test_fn(unsupported_configuration);
+
+    if (unsupported_configuration) {
+        std::cout << "UNSUPPORTED CONFIGURATION" << std::endl;
+        std::cerr
+            << "UNSUPPORTED CONFIGURATION: " << name
+            << " needs a QRhi, and this window's scene graph never provided one."
+            << std::endl;
+        ++unsupported;
+    }
+    else if (assertions_held) {
+        std::cout << "OK" << std::endl;
+        ++passed;
+    }
+    else {
+        std::cout << "FAIL" << std::endl;
+        ++failed;
+    }
+}
+
+#define RUN_RHI_DEPENDENT_TEST(test_fn)                                                \
+    run_rhi_dependent_test(#test_fn, test_fn, passed, failed, unsupported)
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -359,16 +464,32 @@ int main(int argc, char** argv)
 
     std::cout << "Plot renderer lifecycle tests" << std::endl;
 
-    int passed = 0;
-    int failed = 0;
+    int passed      = 0;
+    int failed      = 0;
+    int unsupported = 0;
 
     RUN_TEST(test_feedback_channel_respects_completed_frame_boundary);
     RUN_TEST(test_replaced_feedback_channel_ignores_old_callback);
     RUN_TEST(test_renderer_outlives_synchronized_widget);
     RUN_TEST(test_created_renderer_has_independent_lifetime);
-    RUN_TEST(test_static_first_frame_delivers_feedback);
-    RUN_TEST(test_destroy_before_renderer_only_frame_cancels_feedback_delivery);
+    RUN_RHI_DEPENDENT_TEST(test_static_first_frame_delivers_feedback);
+    RUN_RHI_DEPENDENT_TEST(test_destroy_before_renderer_only_frame_cancels_feedback_delivery);
 
-    std::cout << "Results: " << passed << " passed, " << failed << " failed" << std::endl;
-    return failed > 0 ? 1 : 0;
+    std::cout
+        << "Results: "
+        << passed      << " passed, "
+        << failed      << " failed, "
+        << unsupported << " unsupported"
+        << std::endl;
+
+    if (unsupported > 0) {
+        std::cerr
+            << "UNSUPPORTED CONFIGURATION: no QRhi was available on this run, so "
+            << unsupported
+            << " renderer case(s) never executed. A job that is expected to have a "
+               "graphics backend must be repaired, not skipped."
+            << std::endl;
+    }
+
+    return failed > 0 || unsupported > 0 ? 1 : 0;
 }
