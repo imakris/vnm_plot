@@ -10,11 +10,14 @@
 #include <QElapsedTimer>
 #include <QEventLoop>
 #include <QGuiApplication>
+#include <QQuickRenderControl>
+#include <QQuickRenderTarget>
 #include <QQuickRhiItem>
 #include <QQuickWindow>
-#include <QSemaphore>
 #include <QSGRendererInterface>
+#include <QSize>
 #include <QThread>
+#include <rhi/qrhi.h>
 
 #include <atomic>
 #include <functional>
@@ -31,17 +34,13 @@ static_assert(!std::is_constructible_v<plot::Plot_renderer, const plot::Plot_wid
 
 constexpr int k_scene_graph_timeout_ms = 10000;
 
+// Every field is written and read from the one thread that drives the frames,
+// so none of it needs to be atomic.
 struct destruction_state_t
 {
-    QSemaphore        second_render_entered;
-    QSemaphore        continue_second_render;
-    std::atomic<bool> destroyed{false};
-    std::atomic<bool> feedback_visible_at_destruction{false};
-    std::atomic<bool> second_render_completed{false};
-    std::atomic<bool> second_render_timed_out{false};
-    std::atomic<bool> deletion_timed_out{false};
-    std::atomic<int>  render_callbacks{0};
-    std::atomic<int>  frames_completed{0};
+    bool feedback_visible_at_destruction = false;
+    bool renderer_only_frame_completed   = false;
+    int  render_callbacks                = 0;
 };
 
 class test_renderer_t final : public plot::Plot_renderer
@@ -69,10 +68,8 @@ public:
         float  v_max = 0.0f;
         qint64 t_min = 0;
         qint64 t_max = 0;
-        m_destruction_state->feedback_visible_at_destruction.store(
-            rendered_v_range(v_min, v_max) || rendered_t_range(t_min, t_max),
-            std::memory_order_release);
-        m_destruction_state->destroyed.store(true, std::memory_order_release);
+        m_destruction_state->feedback_visible_at_destruction =
+            rendered_v_range(v_min, v_max) || rendered_t_range(t_min, t_max);
     }
 
     using plot::Plot_widget::createRenderer;
@@ -92,27 +89,20 @@ private:
     std::shared_ptr<destruction_state_t> m_destruction_state;
 };
 
-class gated_renderer_t final : public plot::Plot_renderer
+// Records each renderer pass and, from the first one, asks for one more. That
+// request is what makes the follow-up pass a renderer-only frame: update()
+// re-arms the scene-graph node without the item contributing a synchronize().
+class recording_renderer_t final : public plot::Plot_renderer
 {
 public:
-    explicit gated_renderer_t(std::shared_ptr<destruction_state_t> state)
+    explicit recording_renderer_t(std::shared_ptr<destruction_state_t> state)
         : m_state(std::move(state))
     {}
 
 protected:
     void render(QRhiCommandBuffer* cb) override
     {
-        const int callback =
-            m_state->render_callbacks.fetch_add(1, std::memory_order_acq_rel) + 1;
-        if (callback == 2) {
-            m_state->second_render_entered.release();
-            if (!m_state->continue_second_render.tryAcquire(
-                    1,
-                    k_scene_graph_timeout_ms))
-            {
-                m_state->second_render_timed_out.store(true, std::memory_order_release);
-            }
-        }
+        const int callback = ++m_state->render_callbacks;
 
         plot::Plot_renderer::render(cb);
 
@@ -120,7 +110,7 @@ protected:
             update();
         }
         else if (callback == 2) {
-            m_state->second_render_completed.store(true, std::memory_order_release);
+            m_state->renderer_only_frame_completed = true;
         }
     }
 
@@ -128,10 +118,10 @@ private:
     std::shared_ptr<destruction_state_t> m_state;
 };
 
-class gated_widget_t final : public test_widget_t
+class recording_widget_t final : public test_widget_t
 {
 public:
-    explicit gated_widget_t(std::shared_ptr<destruction_state_t> state)
+    explicit recording_widget_t(std::shared_ptr<destruction_state_t> state)
         :
         test_widget_t(state),
         m_state(std::move(state))
@@ -139,7 +129,7 @@ public:
 
     QQuickRhiItemRenderer* createRenderer() override
     {
-        return new gated_renderer_t(m_state);
+        return new recording_renderer_t(m_state);
     }
 
 private:
@@ -217,6 +207,49 @@ void configure_static_widget(test_widget_t& widget, QQuickWindow& window)
     widget.set_available_t_range(1000, 9000);
     widget.set_t_range(2000, 7000);
 }
+
+// A QQuickRenderControl window has no swapchain, so the caller owns the color
+// buffer the scene graph draws into. These objects belong to the render
+// control's QRhi and must therefore be released before it is.
+class offscreen_render_target_t
+{
+public:
+    bool create(QRhi& rhi, const QSize& size)
+    {
+        m_color.reset(rhi.newTexture(
+            QRhiTexture::RGBA8,
+            size,
+            1,
+            QRhiTexture::RenderTarget | QRhiTexture::UsedAsTransferSource));
+        if (!m_color->create()) {
+            return false;
+        }
+
+        m_depth_stencil.reset(rhi.newRenderBuffer(QRhiRenderBuffer::DepthStencil, size, 1));
+        if (!m_depth_stencil->create()) {
+            return false;
+        }
+
+        QRhiTextureRenderTargetDescription description(QRhiColorAttachment(m_color.get()));
+        description.setDepthStencilBuffer(m_depth_stencil.get());
+
+        m_target.reset(rhi.newTextureRenderTarget(description));
+        m_render_pass.reset(m_target->newCompatibleRenderPassDescriptor());
+        m_target->setRenderPassDescriptor(m_render_pass.get());
+        return m_target->create();
+    }
+
+    QQuickRenderTarget quick_render_target() const
+    {
+        return QQuickRenderTarget::fromRhiRenderTarget(m_target.get());
+    }
+
+private:
+    std::unique_ptr<QRhiTexture>              m_color;
+    std::unique_ptr<QRhiRenderBuffer>         m_depth_stencil;
+    std::unique_ptr<QRhiTextureRenderTarget>  m_target;
+    std::unique_ptr<QRhiRenderPassDescriptor> m_render_pass;
+};
 
 bool test_feedback_channel_respects_completed_frame_boundary()
 {
@@ -337,77 +370,84 @@ bool test_static_first_frame_delivers_feedback(bool& unsupported_configuration)
     return true;
 }
 
+// A render loop owns the order of synchronize() and render(), and the two run
+// on different threads, so a case that needs the item destroyed between them
+// could only pin that order by parking one thread until the other arrives.
+// polishAndSync already parks the GUI thread on the render thread, so such a
+// rendezvous can close a cycle that nothing but a timeout breaks. A
+// QQuickRenderControl issues polishItems / sync / render from the calling
+// thread, which turns the order this case needs into a plain statement
+// sequence with nothing to wait for.
 bool test_destroy_before_renderer_only_frame_cancels_feedback_delivery(
     bool& unsupported_configuration)
 {
-    QQuickWindow window;
-    window.resize(480, 320);
-    auto probe = probe_window_rhi(window);
+    const QSize size(480, 320);
 
-    QObject gui_context;
-    auto state  = std::make_shared<destruction_state_t>();
-    auto widget = new gated_widget_t(state);
-    configure_static_widget(*widget, window);
+    QQuickRenderControl       control;
+    QQuickWindow              window(&control);
+    offscreen_render_target_t render_target;
 
-    QObject::connect(
-        &window,
-        &QQuickWindow::afterRendering,
-        &window,
-        [state, widget, &gui_context] {
-            const int frame =
-                state->frames_completed.fetch_add(1, std::memory_order_acq_rel) + 1;
-            if (frame != 1) {
-                return;
-            }
+    window.setGeometry(0, 0, size.width(), size.height());
+    window.contentItem()->setSize(QSizeF(size));
 
-            QMetaObject::invokeMethod(
-                &gui_context,
-                [state, widget] {
-                    if (!state->second_render_entered.tryAcquire(
-                            1,
-                            k_scene_graph_timeout_ms))
-                    {
-                        state->deletion_timed_out.store(true, std::memory_order_release);
-                        state->continue_second_render.release();
-                        return;
-                    }
-
-                    delete widget;
-                    state->continue_second_render.release();
-                },
-                Qt::QueuedConnection);
-        },
-        Qt::DirectConnection);
-
-    window.show();
-
-    if (!window_provides_rhi(probe)) {
+    if (!control.initialize()) {
         unsupported_configuration = true;
-        window.close();
         return false;
     }
 
-    const bool lifecycle_completed = wait_until(
-        [&] {
-            return
-                state->destroyed.load(std::memory_order_acquire) &&
-                state->second_render_completed.load(std::memory_order_acquire);
-        },
-        k_scene_graph_timeout_ms);
+    // initialize() also succeeds on a backend that has no QRhi at all, and that
+    // is the same fact for this case as it is for the window-backed ones: no
+    // renderer callback will ever run, so the behavior is unobservable here
+    // rather than wrong.
+    QRhi* const rhi = control.rhi();
+    if (!rhi) {
+        unsupported_configuration = true;
+        return false;
+    }
 
-    TEST_ASSERT(lifecycle_completed,
-        "renderer-only frame should finish after GUI-thread item destruction");
-    TEST_ASSERT(!state->deletion_timed_out.load(std::memory_order_acquire),
-        "GUI thread should delete the item after the renderer-only frame enters");
-    TEST_ASSERT(!state->second_render_timed_out.load(std::memory_order_acquire),
-        "renderer-only frame should resume after item destruction");
-    TEST_ASSERT(state->render_callbacks.load(std::memory_order_acquire) >= 2,
-        "lifecycle regression must execute render after item destruction");
-    TEST_ASSERT(!state->feedback_visible_at_destruction.load(std::memory_order_acquire),
+    // A QRhi exists from here on, so anything that fails below is a failure of
+    // this suite's subject, not of the environment.
+    TEST_ASSERT(render_target.create(*rhi, size),
+        "the render control's QRhi should provide an offscreen color target");
+    window.setRenderTarget(render_target.quick_render_target());
+
+    auto state  = std::make_shared<destruction_state_t>();
+    auto widget = std::make_unique<recording_widget_t>(state);
+    configure_static_widget(*widget, window);
+
+    // A complete frame: synchronize() arms the item's queued feedback
+    // delivery, render() publishes the frame's feedback, and afterRendering
+    // both marks that generation deliverable and posts the delivery.
+    control.polishItems();
+    control.beginFrame();
+    TEST_ASSERT(control.sync(),
+        "the render control should synchronize the first frame");
+    control.render();
+    control.endFrame();
+
+    TEST_ASSERT(state->render_callbacks == 1,
+        "the first frame should reach the renderer exactly once");
+
+    // The item dies with that delivery still queued, so its destructor is the
+    // only thing that can cancel it.
+    widget.reset();
+    TEST_ASSERT(!state->feedback_visible_at_destruction,
         "feedback must not run before the queued owner-thread delivery point");
 
+    // No sync, so the scene graph still carries the node the destroyed item
+    // left behind and this pass is the renderer-only frame.
+    control.beginFrame();
+    control.render();
+    control.endFrame();
+
+    TEST_ASSERT(state->render_callbacks == 2,
+        "lifecycle regression must execute render after item destruction");
+    TEST_ASSERT(state->renderer_only_frame_completed,
+        "renderer-only frame should finish after item destruction");
+
+    // Draining the queue is where a delivery that outlived its receiver would
+    // reach freed memory.
     QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
-    window.close();
     return true;
 }
 

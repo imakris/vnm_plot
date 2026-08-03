@@ -113,7 +113,12 @@ if(TARGET vnm_plot_qtquick)
     target_link_libraries(test_plot_interaction_item PRIVATE vnm_plot::qtquick)
 
     add_executable(test_plot_renderer_lifecycle test_plot_renderer_lifecycle.cpp)
-    target_link_libraries(test_plot_renderer_lifecycle PRIVATE vnm_plot::qtquick)
+    target_link_libraries(test_plot_renderer_lifecycle
+        PRIVATE
+            vnm_plot::qtquick
+            Qt6::GuiPrivate
+            Qt6::Gui
+    )
     target_include_directories(test_plot_renderer_lifecycle PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/../src/qt
     )
