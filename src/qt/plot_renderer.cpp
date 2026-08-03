@@ -218,12 +218,33 @@ void Plot_renderer::initialize(QRhiCommandBuffer* /*cb*/)
 #endif
 }
 
+// The item is a live Plot_widget, so the shared_locks below are taken on live
+// mutexes. Qt reaches here only through QQuickRhiItemNode::sync(), whose sole
+// caller is QQuickRhiItem::updatePaintNode(), which
+// QQuickWindowPrivate::updateDirtyNode() invokes during the scene-graph sync
+// phase for items on the window's dirty list. A destroyed item can no longer be
+// dispatched from there: ~QQuickItem calls derefWindow(), whose
+// removeFromDirtyList() takes the item off that list before ~QObject runs.
+// Destruction and the sync phase also never interleave - the threaded loop
+// parks the GUI thread in polishAndSync() for the duration of
+// syncSceneGraph(), while the basic loop and QQuickRenderControl run sync on
+// the same thread that would be running the destructor. Qt itself relies on
+// the same fact: sync() dereferences the item - d_func(), width(), height(),
+// effectiveColorBufferSizeChanged() - before handing it over. The item is
+// never null either: the node keeps the pointer it was constructed with in
+// updatePaintNode (new QQuickRhiItemNode(this)) and never reassigns it, and
+// the only other entry is a direct call from a test, which passes a live
+// widget.
+//
+// This reasoning covers synchronize() only. The node itself outlives the item:
+// derefWindow() hands the item's node subtree to
+// QQuickWindowPrivate::cleanup(), which destroys it only at the next sync, in
+// the cleanupNodes() that heads updateDirtyNodes(). Until then render() can
+// still run for a destroyed widget, which is why it reads no widget state and
+// publishes through the shared feedback channel instead.
 void Plot_renderer::synchronize(QQuickRhiItem* item)
 {
     auto* widget = static_cast<Plot_widget*>(item);
-    if (!widget) {
-        return;
-    }
 
     widget->arm_render_feedback_delivery(m_impl->feedback_channel);
 
