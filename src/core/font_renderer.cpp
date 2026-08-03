@@ -789,6 +789,15 @@ struct rhi_text_state_t
 // --- PIMPL Definition ---
 struct Font_renderer::impl_t
 {
+    explicit impl_t(Asset_loader& asset_loader)
+    :
+        m_asset_loader(asset_loader)
+    {}
+
+    // The renderer's font source for its whole life, so the atlas this instance
+    // holds can only go stale in its draw size, or through an in-place change
+    // to this loader's font bytes, which is what force_rebuild is for.
+    Asset_loader&                              m_asset_loader;
     std::shared_ptr<cached_font_data_t>        m_font_cache;
     int                                        m_metric_pixel_height = 0;
     std::function<void(const std::string&)>    m_log_error;
@@ -825,8 +834,8 @@ struct Font_renderer::impl_t
 
 // --- Public API Implementation ---
 
-Font_renderer::Font_renderer()
-    : m_impl(std::make_unique<impl_t>())
+Font_renderer::Font_renderer(Asset_loader& asset_loader)
+    : m_impl(std::make_unique<impl_t>(asset_loader))
 {
 }
 
@@ -840,11 +849,11 @@ void Font_renderer::set_log_callbacks(
     m_impl->m_log_debug = log_debug;
 }
 
-void Font_renderer::initialize_metrics(
-    Asset_loader&  asset_loader,
-    int            pixel_height,
-    bool           force_rebuild)
+void Font_renderer::initialize_metrics(int pixel_height, bool force_rebuild)
 {
+    // Resolving the font below reads the asset and digests it, which this call
+    // site repeats once per frame. The atlas already held was produced from the
+    // same bound loader, so at an unchanged draw size it is still the right one.
     if (!force_rebuild &&
         m_impl->m_font_cache &&
         m_impl->m_metric_pixel_height == pixel_height)
@@ -853,7 +862,7 @@ void Font_renderer::initialize_metrics(
     }
 
     auto cached = load_or_build_font_cache(
-        asset_loader,
+        m_impl->m_asset_loader,
         pixel_height,
         force_rebuild,
         m_impl->m_log_error,

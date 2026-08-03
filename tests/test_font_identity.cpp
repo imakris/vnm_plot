@@ -58,21 +58,21 @@ bool test_distinct_loader_fonts_do_not_share_an_atlas()
     plot::init_embedded_assets(overriding_loader);
     overriding_loader.register_embedded("fonts/monospace.ttf", overridden_font);
 
-    plot::Font_renderer bundled_renderer;
-    bundled_renderer.initialize_metrics(bundled_loader, k_test_font_px);
+    plot::Font_renderer bundled_renderer(bundled_loader);
+    bundled_renderer.initialize_metrics(k_test_font_px);
     const std::uint64_t bundled_key = bundled_renderer.text_measure_cache_key();
     TEST_ASSERT(bundled_key != 0, "the bundled loader must produce an atlas");
 
-    plot::Font_renderer overriding_renderer;
-    overriding_renderer.initialize_metrics(overriding_loader, k_test_font_px);
+    plot::Font_renderer overriding_renderer(overriding_loader);
+    overriding_renderer.initialize_metrics(k_test_font_px);
     const std::uint64_t overriding_key = overriding_renderer.text_measure_cache_key();
     TEST_ASSERT(overriding_key != 0, "the overriding loader must produce an atlas");
 
     TEST_ASSERT(bundled_key != overriding_key,
         "a loader that supplies its own font must not be served the other loader's atlas");
 
-    plot::Font_renderer second_bundled_renderer;
-    second_bundled_renderer.initialize_metrics(bundled_loader, k_test_font_px);
+    plot::Font_renderer second_bundled_renderer(bundled_loader);
+    second_bundled_renderer.initialize_metrics(k_test_font_px);
     TEST_ASSERT(second_bundled_renderer.text_measure_cache_key() == bundled_key,
         "a loader with unchanged font bytes must keep reusing its own atlas");
 
@@ -86,17 +86,17 @@ bool test_forced_rebuild_regenerates_the_atlas()
     plot::Asset_loader loader;
     plot::init_embedded_assets(loader);
 
-    plot::Font_renderer renderer;
-    renderer.initialize_metrics(loader, k_test_font_px);
+    plot::Font_renderer renderer(loader);
+    renderer.initialize_metrics(k_test_font_px);
     const std::uint64_t initial_key = renderer.text_measure_cache_key();
     TEST_ASSERT(initial_key != 0, "the first initialization must produce an atlas");
 
-    renderer.initialize_metrics(loader, k_test_font_px);
+    renderer.initialize_metrics(k_test_font_px);
     TEST_ASSERT(renderer.text_measure_cache_key() == initial_key,
         "an unforced initialization at the same height must reuse the atlas");
 
     const float advance_before = renderer.measure_text_px("0123456789");
-    renderer.initialize_metrics(loader, k_test_font_px, true);
+    renderer.initialize_metrics(k_test_font_px, true);
     const std::uint64_t rebuilt_key = renderer.text_measure_cache_key();
 
     TEST_ASSERT(rebuilt_key != 0, "the forced rebuild must produce an atlas");
@@ -122,8 +122,8 @@ bool test_concurrent_renderers_share_one_atlas_build()
     // two Qt scene-graph render threads, initializing font metrics at once.
     constexpr int k_concurrent_font_px = k_test_font_px + 1;
 
-    plot::Font_renderer   first_renderer;
-    plot::Font_renderer   second_renderer;
+    plot::Font_renderer   first_renderer(loader);
+    plot::Font_renderer   second_renderer(loader);
     std::atomic<int>      ready{0};
 
     const auto initialize = [&](plot::Font_renderer& renderer) {
@@ -131,7 +131,7 @@ bool test_concurrent_renderers_share_one_atlas_build()
         while (ready.load(std::memory_order_acquire) < 2) {
             std::this_thread::yield();
         }
-        renderer.initialize_metrics(loader, k_concurrent_font_px);
+        renderer.initialize_metrics(k_concurrent_font_px);
     };
 
     std::thread first([&] { initialize(first_renderer); });

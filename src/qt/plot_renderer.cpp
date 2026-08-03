@@ -212,7 +212,7 @@ void Plot_renderer::initialize(QRhiCommandBuffer* /*cb*/)
     }
 #if defined(VNM_PLOT_ENABLE_TEXT)
     if (!m_impl->fonts) {
-        m_impl->fonts = std::make_unique<Font_renderer>();
+        m_impl->fonts = std::make_unique<Font_renderer>(m_impl->asset_loader);
         m_impl->text  = std::make_unique<Text_renderer>(m_impl->fonts.get());
     }
 #endif
@@ -355,7 +355,7 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
     if (m_impl->fonts && config.show_text) {
         const int font_px_int = static_cast<int>(std::lround(snapshot.adjusted_font_px));
         if (font_px_int > 0) {
-            m_impl->fonts->initialize_metrics(m_impl->asset_loader, font_px_int);
+            m_impl->fonts->initialize_metrics(font_px_int);
         }
     }
     const Font_renderer* layout_fonts =

@@ -51,8 +51,11 @@ struct Scoped_font_disk_cache_setting
 
 bool test_bounds_fail_closed_without_atlas()
 {
-    plot::Font_renderer renderer;
-    glm::vec4 bounds(1.0f);
+    // Bound to a font source but never initialized, which is the state the
+    // measurement accessors have to fail closed in.
+    plot::Asset_loader  loader;
+    plot::Font_renderer renderer(loader);
+    glm::vec4           bounds(1.0f);
 
     TEST_ASSERT(!renderer.text_visual_bounds_px(nullptr, 0.0f, 0.0f, bounds),
         "null text must fail closed before font initialization");
@@ -68,8 +71,8 @@ bool test_bounds_fail_closed_for_no_visible_glyphs()
     plot::Asset_loader loader;
     plot::init_embedded_assets(loader);
 
-    plot::Font_renderer renderer;
-    renderer.initialize_metrics(loader, k_test_font_px);
+    plot::Font_renderer renderer(loader);
+    renderer.initialize_metrics(k_test_font_px);
 
     glm::vec4 bounds(1.0f);
     TEST_ASSERT(!renderer.text_visual_bounds_px(nullptr, 10.0f, 20.0f, bounds),
@@ -88,8 +91,8 @@ bool test_visible_bounds_are_finite_ordered_and_translation_invariant()
     plot::Asset_loader loader;
     plot::init_embedded_assets(loader);
 
-    plot::Font_renderer renderer;
-    renderer.initialize_metrics(loader, k_test_font_px);
+    plot::Font_renderer renderer(loader);
+    renderer.initialize_metrics(k_test_font_px);
 
     constexpr const char* k_text = "Axis 123";
     constexpr float       x      = 12.25f;

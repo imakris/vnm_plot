@@ -35,10 +35,14 @@ bool font_disk_cache_enabled()
 // Font Renderer (stub)
 // -----------------------------------------------------------------------------
 
-Font_renderer::Font_renderer()  = default;
+Font_renderer::Font_renderer(Asset_loader&)
+{
+    // No atlas is ever built, so the loader is not retained.
+}
+
 Font_renderer::~Font_renderer() = default;
 
-void Font_renderer::initialize_metrics(Asset_loader&, int, bool)
+void Font_renderer::initialize_metrics(int, bool)
 {
     // No-op in stub.
 }

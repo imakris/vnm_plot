@@ -77,7 +77,15 @@ using font_disk_cache_digest_t = std::array<std::uint8_t, 32>;
 class Font_renderer
 {
 public:
-    Font_renderer();
+    // Binds the font source for the renderer's whole life: the "fonts/monospace.ttf"
+    // asset of this loader, which must outlive the renderer. A consumer that wants
+    // a second typeface builds a second renderer on the loader that registers it.
+    //
+    // Resolving the font costs a read and a digest of the font bytes, which is
+    // too much to repeat on every frame, so initialize_metrics() below keeps the
+    // atlas it already holds. Binding the loader here is what makes that sound:
+    // one renderer can never be asked for two fonts.
+    explicit Font_renderer(Asset_loader& asset_loader);
     ~Font_renderer();
 
     // Non-copyable and non-movable due to renderer resource ownership.
@@ -87,14 +95,14 @@ public:
     Font_renderer& operator=(Font_renderer&&)      = delete;
 
     // Initializes CPU font metrics/cache for layout calculation before the render pass.
-    // The atlas is built from the "fonts/monospace.ttf" asset of the given
-    // loader: loaders that register different font bytes get different atlases,
-    // and each atlas is built once per (font, pixel height) across all threads.
-    // force_rebuild discards the cached atlas for that pair and rebuilds it.
-    void initialize_metrics(
-        Asset_loader&          asset_loader,
-        int                    pixel_height,
-        bool                   force_rebuild = false);
+    // The atlas is built from the bound loader's font asset, so renderers whose
+    // loaders register different font bytes get different atlases, and each
+    // atlas is built once per (font, pixel height) across all threads.
+    //
+    // The font asset is read at the first call for a pixel height. force_rebuild
+    // re-reads it and rebuilds the atlas, which is also how a caller that
+    // changed the loader's font bytes in place picks them up.
+    void initialize_metrics(int pixel_height, bool force_rebuild = false);
 
     void set_log_callbacks(
         std::function<void(const std::string&)>    log_error,

@@ -657,6 +657,9 @@ Benchmark_rhi_offscreen_runner::Benchmark_rhi_offscreen_runner(const Benchmark_c
         gen_config.time_step = 1.0 / config.rate;
         return gen_config;
     }())
+#if defined(VNM_PLOT_ENABLE_TEXT)
+    , m_font_renderer(m_asset_loader)
+#endif
 {}
 
 Benchmark_rhi_offscreen_runner::~Benchmark_rhi_offscreen_runner()
@@ -704,7 +707,7 @@ void Benchmark_rhi_offscreen_runner::setup_rendering()
 
 #if defined(VNM_PLOT_ENABLE_TEXT)
     const int font_px = static_cast<int>(std::round(k_adjusted_font_px));
-    m_font_renderer.initialize_metrics(m_asset_loader, font_px, true);
+    m_font_renderer.initialize_metrics(font_px, true);
     m_text_renderer = std::make_unique<vnm::plot::Text_renderer>(&m_font_renderer);
 #endif
 
