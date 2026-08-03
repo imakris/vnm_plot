@@ -165,8 +165,17 @@ bool test_basic_scope() {
 
     const auto& scope = *profiler.root().children.at("test_scope");
     TEST_ASSERT(scope.call_count == 1, "call_count should be 1");
-    TEST_ASSERT(scope.total_ms >= 9.0, "total_ms should be >= 9");  // Allow some tolerance
-    TEST_ASSERT(scope.total_ms < 100.0, "total_ms should be < 100");
+
+    // The lower bound is the oracle for the property under test: elapsed wall
+    // time is attributed to the scope that was open. The upper bound only
+    // checks the unit. The smallest possible unit mistake - microseconds, or
+    // raw clock ticks, stored into a field named _ms - reads at least 10000
+    // for this sleep, so the ceiling sits below that signal and far above any
+    // delay a loaded scheduler can inject into a 10 ms sleep. It deliberately
+    // no longer asserts that the sleep returned promptly, which is a property
+    // of the host's load rather than of the profiler.
+    TEST_ASSERT(scope.total_ms >=    9.0, "total_ms should be >= 9");
+    TEST_ASSERT(scope.total_ms <  5000.0, "total_ms should be < 5000 (unit check)");
 
     return true;
 }
