@@ -801,7 +801,7 @@ struct Font_renderer::impl_t
     std::shared_ptr<cached_font_data_t>        m_font_cache;
     int                                        m_metric_pixel_height = 0;
     std::function<void(const std::string&)>    m_log_error;
-    std::function<void(const std::string&)>    m_log_debug;
+    std::function<void(const std::string&)>    m_log_debug_info;
     bool                                       m_rhi_batch_active    = false;
     std::vector<float>                         m_rhi_vertex_data;
     std::vector<std::uint32_t>                 m_rhi_index_data;
@@ -846,7 +846,7 @@ void Font_renderer::set_log_callbacks(
     std::function<void(const std::string&)>    log_debug_info)
 {
     m_impl->m_log_error = log_error;
-    m_impl->m_log_debug = log_debug_info;
+    m_impl->m_log_debug_info = log_debug_info;
 }
 
 void Font_renderer::initialize_metrics(int pixel_height, bool force_rebuild)
@@ -866,7 +866,7 @@ void Font_renderer::initialize_metrics(int pixel_height, bool force_rebuild)
         pixel_height,
         force_rebuild,
         m_impl->m_log_error,
-        m_impl->m_log_debug);
+        m_impl->m_log_debug_info);
     if (!cached) {
         return;
     }
