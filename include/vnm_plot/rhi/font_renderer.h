@@ -106,7 +106,7 @@ public:
 
     void set_log_callbacks(
         std::function<void(const std::string&)>    log_error,
-        std::function<void(const std::string&)>    log_debug);
+        std::function<void(const std::string&)>    log_debug_info);
 
     // --- Text Measurement ---
 

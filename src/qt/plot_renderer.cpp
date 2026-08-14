@@ -332,7 +332,7 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
 
     m_impl->primitives.set_profiler(profiler);
     const auto log_error = config.log_error;
-    const auto log_debug = config.log_debug;
+    const auto log_debug_info = config.log_debug_info;
     m_impl->asset_loader.set_log_callback(log_error);
     m_impl->primitives.set_log_callback(log_error);
 
@@ -371,7 +371,7 @@ void Plot_renderer::render(QRhiCommandBuffer* cb)
     m_impl->label_spans_initialized    = true;
 
     if (m_impl->fonts) {
-        m_impl->fonts->set_log_callbacks(log_error, log_debug);
+        m_impl->fonts->set_log_callbacks(log_error, log_debug_info);
     }
     if (m_impl->fonts && config.show_text) {
         const int font_px_int = static_cast<int>(std::lround(snapshot.adjusted_font_px));

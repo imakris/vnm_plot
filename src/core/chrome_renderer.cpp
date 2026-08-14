@@ -186,8 +186,8 @@ void Chrome_renderer::render_grid_and_backgrounds(
         pl.usable_width,
         ctx.adjusted_font_px,
         &dropped_non_multiple_step);
-    if (dropped_non_multiple_step && ctx.config && ctx.config->log_debug) {
-        ctx.config->log_debug(
+    if (dropped_non_multiple_step && ctx.config && ctx.config->log_debug_info) {
+        ctx.config->log_debug_info(
             "vnm_plot: dropping non-multiple time grid step; adjust "
             "build_time_steps_covering() subdivision levels to exact multiples.");
     }

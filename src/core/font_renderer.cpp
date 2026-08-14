@@ -600,7 +600,7 @@ std::shared_ptr<cached_font_data_t> build_font_cache(
     int                                            pixel_height,
     const std::array<std::uint8_t, 32>&            font_digest,
     const std::function<void(const std::string&)>& log_error,
-    const std::function<void(const std::string&)>& log_debug)
+    const std::function<void(const std::string&)>& log_debug_info)
 {
     auto font = std::make_shared<cached_font_data_t>();
     font->font_digest       = font_digest;
@@ -612,7 +612,7 @@ std::shared_ptr<cached_font_data_t> build_font_cache(
         pixel_height,
         glyph_codepoints(),
         atlas_options(),
-        log_debug);
+        log_debug_info);
     if (result.status == vnm::msdf_text::Build_status::FAILURE) {
         if (log_error) {
             log_error(result.message);
@@ -631,7 +631,7 @@ std::shared_ptr<cached_font_data_t> load_or_build_font_cache(
     int                                            pixel_height,
     bool                                           force_rebuild,
     const std::function<void(const std::string&)>& log_error,
-    const std::function<void(const std::string&)>& log_debug)
+    const std::function<void(const std::string&)>& log_debug_info)
 {
     // The font belongs to the asset loader that was passed in: a process can
     // hold several loaders that register different fonts under this name, so
@@ -669,7 +669,7 @@ std::shared_ptr<cached_font_data_t> load_or_build_font_cache(
                 pixel_height,
                 key.font_digest,
                 log_error,
-                log_debug);
+                log_debug_info);
             if (built && disk_cache) {
                 const auto cache_path = cache_file_path(pixel_height, key.font_digest);
                 if (!save_cached_font_to_disk(cache_path, *built) && log_error) {
@@ -843,10 +843,10 @@ Font_renderer::~Font_renderer() = default;
 
 void Font_renderer::set_log_callbacks(
     std::function<void(const std::string&)>    log_error,
-    std::function<void(const std::string&)>    log_debug)
+    std::function<void(const std::string&)>    log_debug_info)
 {
     m_impl->m_log_error = log_error;
-    m_impl->m_log_debug = log_debug;
+    m_impl->m_log_debug = log_debug_info;
 }
 
 void Font_renderer::initialize_metrics(int pixel_height, bool force_rebuild)

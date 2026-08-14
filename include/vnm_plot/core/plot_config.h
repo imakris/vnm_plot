@@ -144,7 +144,7 @@ struct Plot_config
 
     // --- Logging (optional) ---
     // Hook for debug messages (e.g., LOD selection).
-    std::function<void(const std::string&)>    log_debug;
+    std::function<void(const std::string&)>    log_debug_info;
     std::function<void(const std::string&)>    log_error;
 
     // --- Preview Bar ---

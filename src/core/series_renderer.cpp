@@ -992,14 +992,14 @@ void Series_renderer::prepare(
         main_plan.height_px    = static_cast<float>(layout.usable_height);
         main_plan.y_offset_px  = 0.0f;
         main_plan.window_alpha = 1.0f;
-        if (ctx.config && ctx.config->log_debug &&
+        if (ctx.config && ctx.config->log_debug_info &&
             main_plan.gpu_count >  0 &&
             main_plan.lod_level != prev_lod_level)
         {
             std::string message = "LOD selection: series=" + std::to_string(id) +
                 " level=" + std::to_string(main_plan.lod_level) +
                 " pps=" + std::to_string(main_plan.pixels_per_sample);
-            ctx.config->log_debug(message);
+            ctx.config->log_debug_info(message);
         }
 
         Series_view_plan preview_plan;
